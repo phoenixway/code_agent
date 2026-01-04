@@ -1,7 +1,12 @@
-import os
 import sys
-import shlex
 import json
+import re
+import select
+import termios
+import tty
+from datetime import datetime
+
+# Importing custom modules based on the project structure 
 from modules.config_loader import load_settings, CONFIG_DIR
 from modules.ui import UI
 from modules.files import FileModule
@@ -12,144 +17,168 @@ from modules.processor import ResponseProcessor
 from modules.policy import PermissionPolicy
 from modules.chat import get_chat_provider
 
-# Припустимо, цей модуль повертає об'єкт чату
+class AngelicaAgent:
+    def __init__(self):
+        """Initializes the agent with settings and necessary managers[cite: 1, 2]."""
+        self.settings = load_settings()
+        self.ui = UI()
+        self.files = FileModule()
+        self.context_manager = ContextManager(self.files)
+        self.log_file = "communication.log"
+        
+        # Setup AI provider and history 
+        model_name = self.settings.get("default_model", "ollama/qwen3:4b")
+        self.chat = get_chat_provider(model_name)
+        
+        self.history = HistoryManager(self.chat, max_tokens=self.settings.get("max_history_tokens", 4000))
+        self.session_manager = SessionManager(CONFIG_DIR, self.history, self.context_manager, self.ui)
+        self.policy = PermissionPolicy(self.settings.get("permission_policy", "ask"))
+        self.processor = ResponseProcessor(self.ui, self.files, self.chat, self.policy)
 
-def handle_commands(command_str, context_manager, history_manager, session_manager, ui):
-    """Обробник слеш-команд (не йдуть у ШІ)."""
-    try:
-        parts = shlex.split(command_str)
-        cmd = parts[0].lower()
-        args = parts[1:]
+    def _log_communication(self, direction, content):
+        """Logs incoming and outgoing messages for debugging[cite: 3]."""
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with open(self.log_file, "a", encoding="utf-8") as f:
+            f.write(f"\n{'='*60}\n[{timestamp}] {direction}\n{'-'*60}\n{content}\n{'='*60}\n")
 
-        if cmd == "/add":
-            for path in args:
-                if context_manager.add_file(path):
-                    ui.print_system(f"➕ Додано в контекст: {path}")
-                else:
-                    ui.print_error(f"Файл не знайдено: {path}")
+    def _is_esc_pressed(self):
+        """Checks if the Escape key was pressed without blocking[cite: 3, 4]."""
+        if select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], []):
+            char = sys.stdin.read(1)
+            if char == '\x1b': return True
+        return False
 
-        elif cmd == "/drop":
-            if not args:
-                context_manager.clear()
-                ui.print_system("🗑️ Кошик контексту очищено.")
-            else:
-                for path in args:
-                    if context_manager.remove_file(path):
-                        ui.print_system(f"➖ Видалено з контексту: {path}")
-                    else:
-                        ui.print_error(f"Файл не знайдено в кошику: {path}")
+    def _parse_output(self, text):
+        """
+        Parses AI output into:
+        1. Thoughts (inside <think> tags) [cite: 5, 7]
+        2. A single JSON command (raw JSON outside markdown)
+        3. Plain text message (if no command is found) [cite: 20]
+        """
+        thoughts = []
+        command = None
+        plain_text = ""
 
-        elif cmd == "/list":
-            files = context_manager.list_files()
-            if files:
-                ui.print_system(f"📁 Поточний контекст: {', '.join(files)}")
-            else:
-                ui.print_system("🌑 Кошик контексту порожній.")
-
-        elif cmd == "/save":
-            name = args[0] if args else "default"
-            session_manager.save_session(name)
-
-        elif cmd == "/load":
-            name = args[0] if args else "default"
-            session_manager.load_session(name)
-
-        elif cmd == "/sessions":
-            sessions = session_manager.list_sessions()
-            ui.print_system(f"💾 Доступні сесії: {', '.join(sessions) if sessions else 'порожньо'}")
-
-        elif cmd in ["/exit", "/quit"]:
-            ui.print_system("👋 Завершення роботи...")
-            sys.exit(0)
-
-        else:
-            ui.print_error(f"Невідома команда: {cmd}")
-
-    except Exception as e:
-        ui.print_error(f"Помилка команди: {e}")
-
-def main():
-    # 1. Ініціалізація базових налаштувань та UI
-    settings = load_settings()
-    ui = UI()
-    ui.print_system("✨ Angelica-AI: Запуск системи...")
-
-    # 2. Ініціалізація модулів
-    files = FileModule()
-    context_manager = ContextManager(files)
-    
-    # Вибір моделі та провайдера
-    model_name = settings.get("default_model", "gemini-1.5-pro")
-    chat = get_chat_provider(model_name)
-    
-    # Історія та сесії
-    history = HistoryManager(chat, max_tokens=settings.get("max_history_tokens", 4000))
-    session_manager = SessionManager(CONFIG_DIR, history, context_manager, ui)
-    
-    # Політика дозволів та процесор
-    policy = PermissionPolicy(settings.get("permission_policy", "ask"))
-    processor = ResponseProcessor(ui, files, chat, policy)
-
-    ui.print_system(f"🤖 Модель: [bold cyan]{model_name}[/]")
-    ui.print_system("Команди: /add, /drop, /list, /save, /load, /sessions, /exit")
-    ui.print_horizontal_rule()
-
-    while True:
-        try:
-            # Вивід статистики в рядку вводу
-            file_count, tokens = context_manager.get_stats()
-            prompt_label = f"You [Files:{file_count} | ~{tokens}tk] > "
-            
-            user_input = input(prompt_label).strip()
-            if not user_input: continue
-
-            # Перевірка на команди
-            if user_input.startswith("/"):
-                handle_commands(user_input, context_manager, history, session_manager, ui)
+        # 1. Extract thought blocks [cite: 5, 6]
+        closing_tags = ["</think>", "</thought>", "</thinking>"]
+        tag_used = None
+        for tag in closing_tags:
+            if tag in text:
+                tag_used = tag
+                break
+        
+        content_after_thoughts = text
+        if tag_used:
+            parts = text.split(tag_used, 1)
+            thought_part = parts[0]
+            # Clean opening tags [cite: 7]
+            thought_part = re.sub(r'<(?:thought|thinking|think)>', '', thought_part, flags=re.IGNORECASE)
+            thoughts.append(thought_part.strip())
+            content_after_thoughts = parts[1].strip()
+        
+        # 2. Search for the first valid JSON object in the remaining text [cite: 10, 11]
+        json_matches = re.findall(r'(\{.*?\})', content_after_thoughts, re.DOTALL)
+        for candidate in json_matches:
+            try:
+                data = json.loads(candidate)
+                if isinstance(data, dict) and "type" in data:
+                    command = data
+                    break 
+            except:
                 continue
 
-            # Додаємо запит користувача в історію
-            history.add_message("user", user_input)
+        # 3. If no command is present, treat the non-thought content as plain text [cite: 20, 21]
+        if not command:
+            plain_text = re.sub(r'<(?:thought|thinking|think)>.*?</(?:thought|thinking|think)>', '', text, flags=re.DOTALL | re.IGNORECASE).strip()
+            if not tag_used and not thoughts:
+                plain_text = text.strip()
+        
+        return thoughts, command, plain_text
 
-            # Формуємо запит (Контекст файлів + Питання)
-            context_data = context_manager.get_context_prompt()
-            full_query = context_data + user_input
+    def get_quiet_response(self, query):
+        """Fetches AI response while showing a status spinner in the UI[cite: 12, 13]."""
+        full_text = ""
+        old_attr = termios.tcgetattr(sys.stdin)
+        tty.setcbreak(sys.stdin.fileno())
+        try:
+            self._log_communication("OUTGOING TO AI", query)
+            with self.ui.console.status("[bold cyan]🤖 Angelica is thinking...") as status:
+                for chunk in self.chat.get_streaming_response(query, self.history.get_history_for_api()):
+                    if self._is_esc_pressed():
+                        self.ui.print_system("\n🛑 Operation cancelled by user.")
+                        break
+                    full_text += chunk
+            self._log_communication("INCOMING FROM AI", full_text)
+            return full_text
+        finally:
+            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_attr)
 
-            # Запит до ШІ
-            with ui.console.status("[bold grey37]Думаю..."):
-                response = chat.get_response_with_history(full_query, history.get_history_for_api())
-
-            # Вивід відповіді та збереження в історію
-            ui.print_message(response, role="assistant")
-            history.add_message("assistant", response)
-
-            # --- ОБРОБКА ДІЙ (JSON) ---
-            # Якщо були команди виконання (run_command), процесор може повернути результат
-            command_feedback = processor.process_response(response)
-
-            # --- LOOPBACK (Зворотний зв'язок від команд) ---
-            while command_feedback:
-                ui.print_system("🔄 Відправка результату команди назад в ШІ...")
-                history.add_message("system", f"Result of command execution:\n{command_feedback}")
+    def run(self):
+        """Main agent loop handling input and the command execution lifecycle[cite: 15, 17, 24]."""
+        self.ui.print_system("✨ Angelica-AI is ready.")
+        
+        while True:
+            try:
+                # Display current context stats [cite: 15, 16]
+                stats = self.context_manager.get_stats()
+                user_input = input(f"\n❯ You [Files:{stats[0]} | ~{stats[1]}tk] > ").strip()
                 
-                with ui.console.status("[bold magenta]Аналіз результату..."):
-                    response = chat.get_response_with_history(
-                        "Analyze the command output and proceed.", 
-                        history.get_history_for_api()
-                    )
+                if not user_input: continue
+                if user_input.startswith("/exit"): break
+
+                self.history.add_message("user", user_input)
+                current_query = self.context_manager.get_context_prompt() + user_input
                 
-                ui.print_message(response, role="assistant")
-                history.add_message("assistant", response)
-                command_feedback = processor.process_response(response)
+                active_loop = True
+                while active_loop:
+                    response = self.get_quiet_response(current_query)
+                    if not response: break
+                    
+                    self.history.add_message("assistant", response)
+                    thoughts, command, plain_text = self._parse_output(response)
 
-            # Перевірка на необхідність сумаризації
-            history.check_and_summarize(ui)
+                    # 1. Output AI thoughts in gray italic [cite: 18, 19]
+                    for thought in thoughts:
+                        self.ui.console.print(f"[grey37][italic]💭 {thought.strip()}[/italic][/grey37]")
 
-        except KeyboardInterrupt:
-            ui.print_system("\n👋 Роботу перервано користувачем.")
-            break
-        except Exception as e:
-            ui.print_error(f"Критична помилка: {e}")
+                    # 2. Command Execution Lifecycle
+                    if command:
+                        active_loop = False # Default to stopping unless control is requested
+                        
+                        # Phase: Before Execution
+                        if command.get("before_execution"):
+                            self.ui.console.print(f"\n[bold cyan]🤖 Plan:[/] {command['before_execution']}")
+
+                        # Phase: During Execution (Spinner)
+                        status_msg = command.get("during_execution", "Processing action...")
+                        with self.ui.console.status(f"[bold yellow]{status_msg}"):
+                            result = self.processor.process_single_action(command) # [cite: 23]
+                        
+                        # Phase: After Execution
+                        if command.get("after_execution") and result.get("status") != "failed":
+                            self.ui.console.print(f"[bold green]✅ {command['after_execution']}[/]")
+                        
+                        # Loopback logic: return control if requested OR if action failed [cite: 24]
+                        if result.get("status") == "failed" or command.get("return_control") is True:
+                            active_loop = True
+                            current_query = f"System Result ({result.get('status')}):\n{result.get('output')}"
+                            self.history.add_message("system", current_query)
+                    
+                    # 3. Text output (only if no command was issued) [cite: 21]
+                    elif plain_text.strip():
+                        # Clean technical markers from text if any [cite: 20]
+                        display_text = re.sub(r'\{.*?\}', '', plain_text, flags=re.DOTALL).strip()
+                        if display_text:
+                            self.ui.console.print(f"\n[bold white]🤖 Angelica:[/]\n{display_text}")
+                        active_loop = False
+
+                self.history.check_and_summarize(self.ui)
+
+            except KeyboardInterrupt:
+                break
+            except Exception as e:
+                self.ui.print_error(f"Critical Error: {e}") [cite: 25]
 
 if __name__ == "__main__":
-    main()
+    agent = AngelicaAgent()
+    agent.run()

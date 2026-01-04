@@ -1,148 +1,131 @@
-import json
-import re
 import subprocess
-from modules.files import EditBlock
+import os
+import re
 
 class ResponseProcessor:
     def __init__(self, ui, files, chat, policy):
+        """
+        Initializes the processor with necessary modules.
+        Args:
+            ui: UI instance for console output.
+            files: FileModule instance for file operations.
+            chat: Chat provider instance.
+            policy: PermissionPolicy instance for safety checks.
+        """
         self.ui = ui
         self.files = files
         self.chat = chat
         self.policy = policy
 
-    def process_response(self, response):
+    def process_single_action(self, action):
         """
-        Послідовно знаходить та виконує JSON-інструкції, 
-        зберігаючи контекст тексту між ними.
+        Routes the action to the appropriate handler based on its type.
+        Returns: dict with 'status' and 'output'.
         """
-        # Шукаємо всі блоки ```json ... ```
-        # Ми використовуємо finditer, щоб обробляти їх у порядку появи
-        matches = list(re.finditer(r"```json\s*\n(.*?)\n\s*```", response, re.DOTALL))
-        
-        if not matches:
-            return None
-
-        all_results = []
-
-        for match in matches:
-            json_str = match.group(1).strip()
-            try:
-                data = json.loads(json_str)
-                # Перетворюємо одиничну дію в список для уніфікації
-                actions = data if isinstance(data, list) else [data]
-                
-                for action in actions:
-                    result = self._execute_action(action)
-                    if result:
-                        all_results.append(result)
-                        
-            except json.JSONDecodeError as e:
-                err_msg = f"Помилка JSON у блоці: {str(e)}"
-                self.ui.print_error(err_msg)
-                all_results.append(err_msg)
-
-        return "\n---\n".join(all_results) if all_results else None
-
-    def _execute_action(self, action):
-        """Визначає тип дії та викликає відповідний обробник."""
         action_type = action.get("type")
+        
+        # Check permissions before sensitive operations
+        if action_type in ["run_command", "write_file", "create_file"]:
+            if not self.policy.check(action):
+                return {"status": "cancelled", "output": "Action denied by user policy."}
 
-        if action_type == "create_file":
-            return self._handle_create(action)
-        
-        elif action_type == "edit_file":
-            return self._handle_edit(action)
-        
-        elif action_type == "run_command":
-            return self._handle_command(action)
-        
-        else:
-            msg = f"Unknown action type: {action_type}"
-            self.ui.print_error(msg)
-            return msg
+        # Dispatcher logic
+        handlers = {
+            "run_command": self._handle_run_command,
+            "read_file": self._handle_read_file,
+            "write_file": self._handle_write_file,
+            "create_file": self._handle_create_file,
+            "edit_file": self._handle_edit_file
+        }
 
-    def _handle_create(self, action):
-        path = action.get("file_path")
-        content = action.get("content", "")
-        
-        self.ui.print_system(f"🆕 [bold green]CREATE[/]: {path}")
-        
-        if self.policy.should_ask():
-            if input(f"Створити файл {path}? (y/n): ").lower() != 'y':
-                return f"Creation of {path} cancelled by user."
-
-        res = self.files.create_file(path, content)
-        if res.success:
-            return f"Successfully created file: {path}"
-        else:
-            self.ui.print_error(res.message)
-            return f"Error creating {path}: {res.message}"
-
-    def _handle_edit(self, action):
-        path = action.get("file_path")
-        edits = action.get("edits", [])
-        
-        self.ui.print_system(f"📝 [bold yellow]EDIT[/]: {path} ({len(edits)} blocks)")
-        
-        if self.policy.should_ask():
-            if input(f"Застосувати зміни до {path}? (y/n): ").lower() != 'y':
-                return f"Edits to {path} cancelled by user."
-
-        results = []
-        for edit in edits:
-            block = EditBlock(
-                file_path=path,
-                search_text=edit.get("search", ""),
-                replace_text=edit.get("replace", "")
-            )
-            res = self.files.apply_edit(block)
-            if res.success:
-                results.append(f"Successfully patched block in {path}")
-            else:
-                self.ui.print_error(f"Patch failed in {path}: {res.message}")
-                results.append(f"FAILED to patch {path}: {res.message}")
-        
-        return "\n".join(results)
-
-    def _handle_command(self, action):
-        command = action.get("command")
-        reason = action.get("reason", "No reason")
-        
-        self.ui.print_system(f"🐚 [bold magenta]RUN[/]: {command}")
-        self.ui.console.print(f"[grey62]Reason: {reason}[/]")
-        
-        if self.policy.should_ask():
-            if input(f"Виконати команду? (y/n): ").lower() != 'y':
-                return "Command execution cancelled by user."
+        handler = handlers.get(action_type)
+        if not handler:
+            return {"status": "failed", "output": f"Unknown action type: {action_type}"}
 
         try:
-            # Виконуємо команду в Termux/Linux
-            process = subprocess.run(
-                command,
-                shell=True,
-                capture_output=True,
-                text=True,
-                timeout=300 # 5 хвилин для довгих операцій (наприклад, збірка Gradle)
+            return handler(action)
+        except Exception as e:
+            return {"status": "failed", "output": f"Execution error: {str(e)}"}
+
+    def _handle_run_command(self, action):
+        """Executes shell commands and captures output."""
+        cmd = action.get("command")
+        if not cmd:
+            return {"status": "failed", "output": "No command provided."}
+
+        try:
+            # Using shell=True to support pipes and environment variables in Termux/Fedora
+            result = subprocess.run(
+                cmd, 
+                shell=True, 
+                capture_output=True, 
+                text=True, 
+                timeout=300 # 5 minute safety timeout
             )
             
-            output = f"Command: {command}\nExit Code: {process.returncode}\n"
-            if process.stdout:
-                output += f"STDOUT:\n{process.stdout}\n"
-            if process.stderr:
-                output += f"STDERR:\n{process.stderr}\n"
-                
-            if process.returncode == 0:
-                self.ui.print_system("✅ Команда виконана успішно.")
-            else:
-                self.ui.print_error(f"Команда завершилася з помилкою (код {process.returncode})")
-                
-            return output
-
+            output = result.stdout
+            if result.stderr:
+                output += f"\nError Output:\n{result.stderr}"
+            
+            status = "success" if result.returncode == 0 else "failed"
+            return {"status": status, "output": output.strip() or "Command finished with no output."}
+            
         except subprocess.TimeoutExpired:
-            msg = "Error: Command timed out after 300 seconds."
-            self.ui.print_error(msg)
-            return msg
-        except Exception as e:
-            msg = f"System Error executing command: {str(e)}"
-            self.ui.print_error(msg)
-            return msg
+            return {"status": "failed", "output": "Command timed out after 5 minutes."}
+
+    def _handle_read_file(self, action):
+        """Reads file content safely."""
+        path = action.get("path") or action.get("file_path")
+        content = self.files.read_file(path) # Assuming files.py handles exceptions
+        if content is None:
+            return {"status": "failed", "output": f"Could not read file: {path}"}
+        return {"status": "success", "output": content}
+
+    def _handle_create_file(self, action):
+        """Creates a new file. Fails if file exists to prevent accidental overwrite."""
+        path = action.get("path") or action.get("file_path")
+        content = action.get("content", "")
+
+        if os.path.exists(path):
+            return {"status": "failed", "output": f"File already exists: {path}. Use edit_file instead."}
+
+        self.files.write_file(path, content)
+        return {"status": "success", "output": f"File {path} created successfully."}
+
+    def _handle_write_file(self, action):
+        """Standard file writing (overwrites content)."""
+        path = action.get("path") or action.get("file_path")
+        content = action.get("content", "")
+        self.files.write_file(path, content)
+        return {"status": "success", "output": f"File {path} written successfully."}
+
+    def _handle_edit_file(self, action):
+        """
+        Implements search-and-replace editing.
+        Expects 'edits' list with 'search' and 'replace' blocks.
+        """
+        path = action.get("path") or action.get("file_path")
+        edits = action.get("edits", [])
+        
+        content = self.files.read_file(path)
+        if content is None:
+            return {"status": "failed", "output": f"File not found for editing: {path}"}
+
+        original_content = content
+        for edit in edits:
+            search_text = edit.get("search")
+            replace_text = edit.get("replace")
+            
+            if search_text not in content:
+                return {
+                    "status": "failed", 
+                    "output": f"Search block not found in {path}. Ensure exact matching (spaces/newlines)."
+                }
+            
+            content = content.replace(search_text, replace_text)
+
+        if content == original_content:
+            return {"status": "failed", "output": "No changes applied during edit_file operation."}
+
+        self.files.write_file(path, content)
+        return {"status": "success", "output": f"Successfully applied {len(edits)} edits to {path}."}

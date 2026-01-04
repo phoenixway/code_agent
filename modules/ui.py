@@ -26,3 +26,9 @@ class UI:
 
     def print_horizontal_rule(self):
         self.console.print("—" * 50)
+
+    def print_thought(self, text):
+        """Рендерить блок міркувань ШІ."""
+        if not text.strip(): return
+        # Використовуємо спеціальний колір та італік для думок
+        self.console.print(f"[bold grey37]💭 Міркування:[/][grey37][italic] {text.strip()}[/]")

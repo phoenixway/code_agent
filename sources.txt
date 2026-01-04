@@ -1,0 +1,358 @@
+TABLE OF CONTENTS
+================================================================================
+
+- [/home/romankozak/studio/public/code_agent/agent.py](##<<FILE_1>>)
+- [/home/romankozak/studio/public/code_agent/chat.py](##<<FILE_2>>)
+- [/home/romankozak/studio/public/code_agent/config_loader.py](##<<FILE_3>>)
+- [/home/romankozak/studio/public/code_agent/context.py](##<<FILE_4>>)
+- [/home/romankozak/studio/public/code_agent/defaults.py](##<<FILE_5>>)
+- [/home/romankozak/studio/public/code_agent/files.py](##<<FILE_6>>)
+- [/home/romankozak/studio/public/code_agent/healer.py](##<<FILE_7>>)
+- [/home/romankozak/studio/public/code_agent/history.py](##<<FILE_8>>)
+- [/home/romankozak/studio/public/code_agent/policy.py](##<<FILE_9>>)
+- [/home/romankozak/studio/public/code_agent/processor.py](##<<FILE_10>>)
+- [/home/romankozak/studio/public/code_agent/project.py](##<<FILE_11>>)
+- [/home/romankozak/studio/public/code_agent/session.py](##<<FILE_12>>)
+- [/home/romankozak/studio/public/code_agent/storage.py](##<<FILE_13>>)
+- [/home/romankozak/studio/public/code_agent/ui.py](##<<FILE_14>>)
+
+================================================================================
+
+## <<FILE_1>>
+================================================================================
+BEGIN FILE: /home/romankozak/studio/public/code_agent/agent.py (ID: FILE_1)
+================================================================================
+
+import sys
+import json
+import re
+import select
+import termios
+import tty
+from datetime import datetime
+from modules.config_loader import load_settings, CONFIG_DIR
+from modules.ui import UI
+from modules.files import FileModule
+from modules.context import ContextManager
+from modules.history import HistoryManager
+from modules.session import SessionManager
+from modules.processor import ResponseProcessor
+from modules.policy import PermissionPolicy
+from modules.chat import get_chat_provider
+
+class AngelicaAgent:
+    def __init__(self):
+        self.settings = load_settings()
+        self.ui = UI()
+        self.files = FileModule()
+        self.context_manager = ContextManager(self.files)
+        self.log_file = "communication.log"
+        
+        model_name = self.settings.get("default_model", "ollama/qwen3:4b")
+        self.chat = get_chat_provider(model_name)
+        
+        self.history = HistoryManager(self.chat, max_tokens=self.settings.get("max_history_tokens", 4000))
+        self.session_manager = SessionManager(CONFIG_DIR, self.history, self.context_manager, self.ui)
+        self.policy = PermissionPolicy(self.settings.get("permission_policy", "ask"))
+        self.processor = ResponseProcessor(self.ui, self.files, self.chat, self.policy)
+
+    def _log_communication(self, direction, content):
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with open(self.log_file, "a", encoding="utf-8") as f:
+            f.write(f"\n{'='*60}\n[{timestamp}] {direction}\n{'-'*60}\n{content}\n{'='*60}\n")
+
+    def _is_esc_pressed(self):
+        if select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], []):
+            char = sys.stdin.read(1)
+            if char == '\x1b': return True
+        return False
+
+    def _parse_output(self, text):
+        """Розділяє думки та команди. Працює, навіть якщо відкриваючий тег <think> відсутній."""
+        thoughts = []
+        clean_text = text
+        
+        # Визначаємо закриваючий тег
+        closing_tags = ["</think>", "</thought>", "</thinking>"]
+        tag_used = None
+        for tag in closing_tags:
+            if tag in clean_text:
+                tag_used = tag
+                break
+        
+        if tag_used:
+            # Якщо є закриваючий тег, все що ДО нього — це думки
+            parts = clean_text.split(tag_used, 1)
+            thought_part = parts[0]
+            # Видаляємо відкриваючий тег, якщо він все ж був
+            thought_part = re.sub(r'<(?:thought|thinking|think)>', '', thought_part, flags=re.IGNORECASE)
+            thoughts.append(thought_part.strip())
+            clean_text = parts[1].strip()
+        else:
+            # Якщо закриваючого тегу немає, але є відкриваючий (рідкісний випадок)
+            thought_pattern = r'<(?:thought|thinking|think)>(.*?)$'
+            match = re.search(thought_pattern, clean_text, re.DOTALL | re.IGNORECASE)
+            if match:
+                thoughts.append(match.group(1).strip())
+                clean_text = re.sub(thought_pattern, '', clean_text, flags=re.DOTALL | re.IGNORECASE).strip()
+
+        # Пошук команд JSON у тексті, що залишився (ігноруючи ```json блоки)
+        executable_text = re.sub(r'```json\s*.*?\s*```', '', clean_text, flags=re.DOTALL)
+        commands = []
+        seen_commands = set()
+        matches = re.findall(r'(\{(?:[^{}]|)*\})', executable_text, re.DOTALL)
+        
+        for content in matches:
+            content = content.strip()
+            if content in seen_commands: continue
+            try:
+                data = json.loads(content)
+                if isinstance(data, dict) and "type" in data:
+                    commands.append(data)
+                    seen_commands.add(content)
+            except: continue
+            
+        return thoughts, commands, clean_text
+
+    def get_quiet_response(self, query):
+        """Отримує відповідь без виводу в термінал, поки вона не готова."""
+        full_text = ""
+        old_attr = termios.tcgetattr(sys.stdin)
+        tty.setcbreak(sys.stdin.fileno())
+        
+        try:
+            self._log_communication("OUTGOING TO AI", query)
+            # Використовуємо rich-spinner для візуалізації процесу
+            with self.ui.console.status("[bold cyan]🤖 Angelica працює... (Esc для зупинки)") as status:
+                for chunk in self.chat.get_streaming_response(query, self.history.get_history_for_api()):
+                    if self._is_esc_pressed():
+                        self.ui.print_system("\n🛑 Операцію перервано.")
+                        break
+                    full_text += chunk
+            
+            self._log_communication("INCOMING FROM AI", full_text)
+            return full_text
+        finally:
+            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_attr)
+
+    def run(self):
+        self.ui.print_system("✨ Система готова (тихий режим).")
+        
+        while True:
+            try:
+                stats = self.context_manager.get_stats()
+                user_input = input(f"\n❯ You [Files:{stats[0]} | ~{stats[1]}tk] > ").strip()
+                
+                if not user_input: continue
+                if user_input.startswith("/exit"): break
+
+                self.history.add_message("user", user_input)
+                current_query = self.context_manager.get_context_prompt() + user_input
+                
+                active_loop = True
+                while active_loop:
+                    response = self.get_quiet_response(current_query)
+                    if not response: break
+                    
+                    self.history.add_message("assistant", response)
+                    thoughts, commands, plain_text = self._parse_output(response)
+
+                    # 1. Виводимо думки красиво (курсивом)
+                    for thought in thoughts:
+                        if thought.strip():
+                            self.ui.console.print(f"[grey37][italic]💭 {thought.strip()}[/italic][/grey37]")
+
+                    # 2. Виводимо текстове повідомлення
+                    if plain_text.strip():
+                        # Видаляємо технічні JSON з тексту для виводу користувачу
+                        display_text = re.sub(r'\{.*?\}', '', plain_text, flags=re.DOTALL).strip()
+                        if display_text:
+                            self.ui.console.print(f"\n[bold cyan]🤖 Angelica:[/]\n{display_text}")
+
+                    if not commands:
+                        active_loop = False
+                        continue
+
+                    # 3. Виконання команд
+                    active_loop = False 
+                    feedback_results = []
+
+                    for cmd in commands:
+                        res = self.processor.process_single_action(cmd)
+                        feedback_results.append(res["output"])
+                        if res.get("need_loopback") and res.get("status") != "cancelled":
+                            active_loop = True
+
+                    if active_loop:
+                        current_query = "Results:\n" + "\n---\n".join(feedback_results)
+                        self.history.add_message("system", current_query)
+
+                self.history.check_and_summarize(self.ui)
+
+            except KeyboardInterrupt: break
+            except Exception as e: self.ui.print_error(f"Критична помилка: {e}")
+
+if __name__ == "__main__":
+    agent = AngelicaAgent()
+    agent.run()
+
+================================================================================
+END FILE: /home/romankozak/studio/public/code_agent/agent.py
+================================================================================
+
+## <<FILE_2>>
+================================================================================
+BEGIN FILE: /home/romankozak/studio/public/code_agent/chat.py (ID: FILE_2)
+================================================================================
+
+[Помилка читання файлу /home/romankozak/studio/public/code_agent/chat.py: [Errno 2] No such file or directory: '/home/romankozak/studio/public/code_agent/chat.py']
+
+
+================================================================================
+END FILE: /home/romankozak/studio/public/code_agent/chat.py
+================================================================================
+
+## <<FILE_3>>
+================================================================================
+BEGIN FILE: /home/romankozak/studio/public/code_agent/config_loader.py (ID: FILE_3)
+================================================================================
+
+[Помилка читання файлу /home/romankozak/studio/public/code_agent/config_loader.py: [Errno 2] No such file or directory: '/home/romankozak/studio/public/code_agent/config_loader.py']
+
+
+================================================================================
+END FILE: /home/romankozak/studio/public/code_agent/config_loader.py
+================================================================================
+
+## <<FILE_4>>
+================================================================================
+BEGIN FILE: /home/romankozak/studio/public/code_agent/context.py (ID: FILE_4)
+================================================================================
+
+[Помилка читання файлу /home/romankozak/studio/public/code_agent/context.py: [Errno 2] No such file or directory: '/home/romankozak/studio/public/code_agent/context.py']
+
+
+================================================================================
+END FILE: /home/romankozak/studio/public/code_agent/context.py
+================================================================================
+
+## <<FILE_5>>
+================================================================================
+BEGIN FILE: /home/romankozak/studio/public/code_agent/defaults.py (ID: FILE_5)
+================================================================================
+
+[Помилка читання файлу /home/romankozak/studio/public/code_agent/defaults.py: [Errno 2] No such file or directory: '/home/romankozak/studio/public/code_agent/defaults.py']
+
+
+================================================================================
+END FILE: /home/romankozak/studio/public/code_agent/defaults.py
+================================================================================
+
+## <<FILE_6>>
+================================================================================
+BEGIN FILE: /home/romankozak/studio/public/code_agent/files.py (ID: FILE_6)
+================================================================================
+
+[Помилка читання файлу /home/romankozak/studio/public/code_agent/files.py: [Errno 2] No such file or directory: '/home/romankozak/studio/public/code_agent/files.py']
+
+
+================================================================================
+END FILE: /home/romankozak/studio/public/code_agent/files.py
+================================================================================
+
+## <<FILE_7>>
+================================================================================
+BEGIN FILE: /home/romankozak/studio/public/code_agent/healer.py (ID: FILE_7)
+================================================================================
+
+[Помилка читання файлу /home/romankozak/studio/public/code_agent/healer.py: [Errno 2] No such file or directory: '/home/romankozak/studio/public/code_agent/healer.py']
+
+
+================================================================================
+END FILE: /home/romankozak/studio/public/code_agent/healer.py
+================================================================================
+
+## <<FILE_8>>
+================================================================================
+BEGIN FILE: /home/romankozak/studio/public/code_agent/history.py (ID: FILE_8)
+================================================================================
+
+[Помилка читання файлу /home/romankozak/studio/public/code_agent/history.py: [Errno 2] No such file or directory: '/home/romankozak/studio/public/code_agent/history.py']
+
+
+================================================================================
+END FILE: /home/romankozak/studio/public/code_agent/history.py
+================================================================================
+
+## <<FILE_9>>
+================================================================================
+BEGIN FILE: /home/romankozak/studio/public/code_agent/policy.py (ID: FILE_9)
+================================================================================
+
+[Помилка читання файлу /home/romankozak/studio/public/code_agent/policy.py: [Errno 2] No such file or directory: '/home/romankozak/studio/public/code_agent/policy.py']
+
+
+================================================================================
+END FILE: /home/romankozak/studio/public/code_agent/policy.py
+================================================================================
+
+## <<FILE_10>>
+================================================================================
+BEGIN FILE: /home/romankozak/studio/public/code_agent/processor.py (ID: FILE_10)
+================================================================================
+
+[Помилка читання файлу /home/romankozak/studio/public/code_agent/processor.py: [Errno 2] No such file or directory: '/home/romankozak/studio/public/code_agent/processor.py']
+
+
+================================================================================
+END FILE: /home/romankozak/studio/public/code_agent/processor.py
+================================================================================
+
+## <<FILE_11>>
+================================================================================
+BEGIN FILE: /home/romankozak/studio/public/code_agent/project.py (ID: FILE_11)
+================================================================================
+
+[Помилка читання файлу /home/romankozak/studio/public/code_agent/project.py: [Errno 2] No such file or directory: '/home/romankozak/studio/public/code_agent/project.py']
+
+
+================================================================================
+END FILE: /home/romankozak/studio/public/code_agent/project.py
+================================================================================
+
+## <<FILE_12>>
+================================================================================
+BEGIN FILE: /home/romankozak/studio/public/code_agent/session.py (ID: FILE_12)
+================================================================================
+
+[Помилка читання файлу /home/romankozak/studio/public/code_agent/session.py: [Errno 2] No such file or directory: '/home/romankozak/studio/public/code_agent/session.py']
+
+
+================================================================================
+END FILE: /home/romankozak/studio/public/code_agent/session.py
+================================================================================
+
+## <<FILE_13>>
+================================================================================
+BEGIN FILE: /home/romankozak/studio/public/code_agent/storage.py (ID: FILE_13)
+================================================================================
+
+[Помилка читання файлу /home/romankozak/studio/public/code_agent/storage.py: [Errno 2] No such file or directory: '/home/romankozak/studio/public/code_agent/storage.py']
+
+
+================================================================================
+END FILE: /home/romankozak/studio/public/code_agent/storage.py
+================================================================================
+
+## <<FILE_14>>
+================================================================================
+BEGIN FILE: /home/romankozak/studio/public/code_agent/ui.py (ID: FILE_14)
+================================================================================
+
+[Помилка читання файлу /home/romankozak/studio/public/code_agent/ui.py: [Errno 2] No such file or directory: '/home/romankozak/studio/public/code_agent/ui.py']
+
+
+================================================================================
+END FILE: /home/romankozak/studio/public/code_agent/ui.py
+================================================================================
+
