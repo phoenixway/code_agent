@@ -10,12 +10,12 @@ Screen {
 
 #history {
     height: 1fr;
-    border: round green;
-    margin: 1 2;
+    /* No border and no horizontal margin for mobile */
+    margin: 1 0;
 }
 
 #input {
     height: 3;
-    border: round green;
-    margin: 0 2 1 2;
+    /* No border and no horizontal margin for mobile */
+    margin: 0 0 1 0;
 }
