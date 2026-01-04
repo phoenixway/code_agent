@@ -15,9 +15,14 @@ class UI:
         self.console.print(f"[bold red]✘ Error:[/] {text}")
 
     def print_message(self, text, role="assistant"):
+        """Виводить текст відповіді, рендерячи Markdown."""
         color = "cyan" if role == "assistant" else "green"
         title = "🤖 Angelica" if role == "assistant" else "👤 You"
-        self.console.print(Panel(Markdown(text), title=title, border_style=color))
+        
+        # Ми рендеримо весь текст. Rich автоматично підсвітить блоки коду 
+        # та прибере зайві символи Markdown.
+        md = Markdown(text)
+        self.console.print(Panel(md, title=title, border_style=color))
 
     def print_horizontal_rule(self):
         self.console.print("—" * 50)

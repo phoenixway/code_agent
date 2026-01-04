@@ -10,7 +10,9 @@ from modules.history import HistoryManager
 from modules.session import SessionManager
 from modules.processor import ResponseProcessor
 from modules.policy import PermissionPolicy
-from modules.chat import get_chat_provider # Припустимо, цей модуль повертає об'єкт чату
+from modules.chat import get_chat_provider
+
+# Припустимо, цей модуль повертає об'єкт чату
 
 def handle_commands(command_str, context_manager, history_manager, session_manager, ui):
     """Обробник слеш-команд (не йдуть у ШІ)."""
