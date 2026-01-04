@@ -10,12 +10,20 @@ Screen {
 
 #history {
     height: 1fr;
-    /* No border and no horizontal margin for mobile */
-    margin: 1 0;
+    margin: 1 0 0 0;
 }
 
 #input {
     height: 3;
-    /* No border and no horizontal margin for mobile */
+    margin: 1 0;
+}
+
+#loading {
+    display: none;
+    height: 1;
     margin: 0 0 1 0;
+}
+
+.chat-message {
+    margin-bottom: 1;
 }
