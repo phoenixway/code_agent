@@ -23,6 +23,6 @@ class PermissionPolicy:
         # Using rich.prompt for a better user experience
         return Confirm.ask(
             f"[bold yellow]⚠️  ALLOW this action? ⚠️[/bold yellow]\n"
-            f"   - Type: [bold cyan]{{action_type}}[/bold cyan]\n"
-            f"   - Details: [bold red]{{details}}[/bold red]\n"
+            f"   - Type: [bold cyan]{action_type}[/bold cyan]\n"
+            f"   - Details: [bold red]{details}[/bold red]\n"
         )

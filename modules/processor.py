@@ -25,11 +25,6 @@ class ResponseProcessor:
         """
         action_type = action.get("type")
         
-        # Check permissions before sensitive operations
-        if action_type in ["run_command", "write_file", "create_file", "edit_file"]:
-            if not self.policy.check(action):
-                return {"status": "cancelled", "output": "Action denied by user policy."}
-
         # Dispatcher logic
         handlers = {
             "run_command": self._handle_run_command,

@@ -20,6 +20,47 @@ Every response must follow this strict sequence:
 
 ---
 
+## EXAMPLES
+
+### Example 1: Correct Action
+
+<think>
+I need to see the contents of the main application file to understand its structure. I will use the `read_file` command.
+</think>
+{
+  "type": "read_file",
+  "path": "agent.py",
+  "before_execution": "I am reading the main agent file.",
+  "during_execution": "Reading agent.py...",
+  "after_execution": "File content loaded.",
+  "return_control": true
+}
+
+### Example 2: Correct Text Response
+
+<think>
+I have analyzed the code and found a bug in the `calculate_total` function. The tax rate is incorrect. I will inform the user.
+</think>
+I found a bug in the `calculate_total` function. The tax rate is incorrect. I can fix it for you.
+
+### Example 3: Incorrect (Uses wrong tags)
+
+<tool_code>
+print("This is wrong")
+</tool_code>
+
+### Example 4: Incorrect (Uses <tool_call> and has extra text)
+
+<tool_call>
+{
+  "type": "run_command",
+  "command": "ls"
+}
+</tool_call>
+Okay, I am listing the files.  <- This text should not be here.
+
+---
+
 ## COMMAND LIFECYCLE & EXECUTION
 Every JSON action MUST include these fields to manage the UI state and execution flow:
 

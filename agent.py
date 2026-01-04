@@ -54,7 +54,6 @@ class AngelicaAgent:
         command = None
         
         # 1. Extract and parse command (JSON)
-        command_json = None
         json_match = re.search(r'```json\s*(\{.*?\})\s*```|(\{.*?\})', text, re.DOTALL)
         if json_match:
             potential_json = json_match.group(1) or json_match.group(2)
@@ -66,19 +65,28 @@ class AngelicaAgent:
             except json.JSONDecodeError:
                 pass
 
-        # 2. Extract thoughts
-        thought_pattern = r'<(?:think|thought|thinking)>(.*?)</(?:think|thought|thinking)>'
-        thought_matches = re.findall(thought_pattern, text, re.DOTALL | re.IGNORECASE)
-        if thought_matches:
-            for thought in thought_matches:
-                thoughts.append(thought.strip())
-            text = re.sub(thought_pattern, '', text, flags=re.DOTALL | re.IGNORECASE)
+        # 2. Extract thoughts (greedy: everything up to the last closing tag)
+        thought_end_pattern = r'</(?:think|thought|thinking)>'
+        last_match = None
+        for match in re.finditer(thought_end_pattern, text, re.IGNORECASE | re.DOTALL):
+            last_match = match
+        
+        if last_match:
+            end_pos = last_match.end()
+            thought_block = text[:end_pos]
+            text = text[end_pos:] # The rest is plain text
+
+            # Clean the inside of the thought block
+            cleaned_thought = re.sub(r'</?(?:think|thought|thinking)>', '', thought_block, flags=re.IGNORECASE).strip()
+            if cleaned_thought:
+                thoughts.append(cleaned_thought)
 
         # 3. Clean up and get plain text
         plain_text = re.sub(r'</?(?:think|thought|thinking|tool_code|tool_call|json|code|text|message)\b.*?>', '', text, flags=re.IGNORECASE)
         plain_text = re.sub(r'^Text Message:\s*', '', plain_text, flags=re.IGNORECASE).strip()
         
         return thoughts, command, plain_text
+
 
     def get_quiet_response(self, query):
         full_text = ""
@@ -130,9 +138,16 @@ class AngelicaAgent:
                             self.ui.console.print(f"[grey37][italic]💭 {thought.strip()}[/italic][/grey37]")
 
                     if command:
-                        active_loop = False 
+                        active_loop = False
                         if command.get("before_execution"):
                             self.ui.console.print(f"\n[bold cyan]🤖 Plan:[/] {command['before_execution']}")
+
+                        # Perform permission check BEFORE showing status
+                        action_type = command.get("type")
+                        if action_type in ["run_command", "write_file", "create_file", "edit_file"]:
+                            if not self.policy.check(command):
+                                self.ui.print_system("🛑 Action cancelled by user.")
+                                continue # Go back to the main input loop
 
                         status_msg = command.get("during_execution", "Processing...")
                         with self.ui.console.status(f"[bold yellow]{status_msg}"):
