@@ -1,6 +1,7 @@
 import subprocess
 import os
 import re
+from modules.files import EditBlock
 
 class ResponseProcessor:
     def __init__(self, ui, files, chat, policy):
@@ -25,7 +26,7 @@ class ResponseProcessor:
         action_type = action.get("type")
         
         # Check permissions before sensitive operations
-        if action_type in ["run_command", "write_file", "create_file"]:
+        if action_type in ["run_command", "write_file", "create_file", "edit_file"]:
             if not self.policy.check(action):
                 return {"status": "cancelled", "output": "Action denied by user policy."}
 
@@ -85,19 +86,24 @@ class ResponseProcessor:
         """Creates a new file. Fails if file exists to prevent accidental overwrite."""
         path = action.get("path") or action.get("file_path")
         content = action.get("content", "")
-
-        if os.path.exists(path):
-            return {"status": "failed", "output": f"File already exists: {path}. Use edit_file instead."}
-
-        self.files.write_file(path, content)
-        return {"status": "success", "output": f"File {path} created successfully."}
+        result = self.files.create_file(path, content)
+        return {"status": "success" if result.success else "failed", "output": result.message}
 
     def _handle_write_file(self, action):
         """Standard file writing (overwrites content)."""
         path = action.get("path") or action.get("file_path")
-        content = action.get("content", "")
-        self.files.write_file(path, content)
-        return {"status": "success", "output": f"File {path} written successfully."}
+        new_content = action.get("content", "")
+        
+        old_content = self.files.read_file(path)
+        if old_content is None:
+            # If the file doesn't exist, create it.
+            result = self.files.create_file(path, new_content)
+            return {"status": "success" if result.success else "failed", "output": result.message}
+        
+        # If the file exists, replace its content.
+        edit = EditBlock(file_path=path, search_text=old_content, replace_text=new_content)
+        result = self.files.apply_edit(edit)
+        return {"status": "success" if result.success else "failed", "output": result.message}
 
     def _handle_edit_file(self, action):
         """
@@ -107,25 +113,24 @@ class ResponseProcessor:
         path = action.get("path") or action.get("file_path")
         edits = action.get("edits", [])
         
-        content = self.files.read_file(path)
-        if content is None:
+        if not self.files.read_file(path):
             return {"status": "failed", "output": f"File not found for editing: {path}"}
 
-        original_content = content
         for edit in edits:
             search_text = edit.get("search")
             replace_text = edit.get("replace")
             
-            if search_text not in content:
+            # We need to read the file for each edit as the content changes
+            current_content = self.files.read_file(path)
+            if search_text not in current_content:
                 return {
                     "status": "failed", 
                     "output": f"Search block not found in {path}. Ensure exact matching (spaces/newlines)."
                 }
-            
-            content = content.replace(search_text, replace_text)
 
-        if content == original_content:
-            return {"status": "failed", "output": "No changes applied during edit_file operation."}
+            edit_block = EditBlock(file_path=path, search_text=search_text, replace_text=replace_text)
+            result = self.files.apply_edit(edit_block)
+            if not result.success:
+                return {"status": "failed", "output": f"Failed to apply edit: {result.message}"}
 
-        self.files.write_file(path, content)
         return {"status": "success", "output": f"Successfully applied {len(edits)} edits to {path}."}

@@ -114,18 +114,26 @@ class GeminiRestChat(BaseChat):
         except Exception as e:
             yield f"Gemini Stream Error: {str(e)}"
 
+# A dictionary to map model name keywords to provider classes and their arguments
+PROVIDERS = {
+    "gemini": (GeminiRestChat, []),
+    "deepseek": (OpenAICompatibleChat, ["https://api.deepseek.com", "DEEPSEEK_API_KEY"]),
+    "gpt": (OpenAICompatibleChat, ["https://api.openai.com/v1", "OPENAI_API_KEY"]),
+    "ollama": (OllamaChat, []),
+    "qwen": (OllamaChat, []),
+}
+
 def get_chat_provider(model_name):
-    """Фабрика провайдерів."""
-    m = model_name.lower()
+    """Factory function to get the appropriate chat provider."""
+    m_lower = model_name.lower()
     
-    if "gemini" in m:
-        return GeminiRestChat(model_name)
-    elif "deepseek" in m:
-        return OpenAICompatibleChat(model_name, "https://api.deepseek.com", "DEEPSEEK_API_KEY")
-    elif "gpt" in m:
-        return OpenAICompatibleChat(model_name, "https://api.openai.com/v1", "OPENAI_API_KEY")
-    elif "ollama" in m or "qwen" in m:
-        clean_name = model_name.split('/')[-1] if '/' in model_name else model_name
-        return OllamaChat(clean_name)
-    
+    for keyword, (provider_class, args) in PROVIDERS.items():
+        if keyword in m_lower:
+            if keyword in ["ollama", "qwen"]:
+                # Special handling for local models to clean up the name
+                clean_name = model_name.split('/')[-1] if '/' in model_name else model_name
+                return provider_class(clean_name)
+            return provider_class(model_name, *args)
+            
+    # Default fallback provider
     return GeminiRestChat("gemini-1.5-pro")
