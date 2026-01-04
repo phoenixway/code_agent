@@ -51,122 +51,130 @@ class AngelicaAgent:
     def _parse_output(self, text):
         thoughts = []
         command = None
-        plain_text = ""
+        remaining_text = text
 
-        # Шукаємо межі думок
-        if "<think>" in text:
-            # Класичний випадок: є відкриваючий тег
-            parts = text.split("<think>", 1)[1].split("</think>", 1)
-            thoughts.append(parts[0].strip())
-            content_after = parts[1].strip() if len(parts) > 1 else ""
-        elif "</think>" in text:
-            # Випадок як у вас: модель забула <think>, але написала </think>
-            parts = text.split("</think>", 1)
-            thoughts.append(parts[0].strip())
-            content_after = parts[1].strip()
-        else:
-            # Взагалі немає тегів думок
-            content_after = text.strip()
+        # 1. Покращений пошук блоків думок (шукаємо всі збіги)
+        thought_pattern = r'<(?:think|thought|thinking)>(.*?)</(?:think|thought|thinking)>'
+        thought_matches = re.findall(thought_pattern, remaining_text, re.DOTALL | re.IGNORECASE)
+        
+        if thought_matches:
+            for m in thought_matches:
+                thoughts.append(m.strip())
+            # Видаляємо всі знайдені блоки думок з тексту
+            remaining_text = re.sub(thought_pattern, '', remaining_text, flags=re.DOTALL | re.IGNORECASE).strip()
+        
+        # 2. Обробка випадку, коли модель забула відкрити тег, але закрила його (або закрила кілька разів)
+        if "</think>" in remaining_text:
+            # Беремо все до ОСТАННЬОГО закриваючого тегу як думки
+            parts = remaining_text.rsplit("</think>", 1)
+            raw_thoughts = parts[0].replace("<think>", "").strip()
+            if raw_thoughts:
+                thoughts.append(raw_thoughts)
+            remaining_text = parts[1].strip()
 
-        # Пошук JSON (Action)
-        json_match = re.search(r'(\{.*?\})', content_after, re.DOTALL)
+        # 3. Пошук JSON (шукаємо перший валідний об'єкт)
+        json_match = re.search(r'(\{.*?\})', remaining_text, re.DOTALL)
         if json_match:
             try:
                 data = json.loads(json_match.group(1))
                 if isinstance(data, dict) and "type" in data:
                     command = data
-            except:
+                    # Видаляємо JSON з фінального тексту, щоб він не дублювався
+                    remaining_text = remaining_text.replace(json_match.group(1), "").strip()
+            except: 
                 pass
 
-        # Якщо JSON не знайдено, все, що після думок — це текст
-        if not command:
-            plain_text = content_after
+        # 4. Фінальне очищення тексту від залишків тегів, які модель могла вигадати
+        plain_text = re.sub(r'<(?:think|thought|thinking|tool_call)>.*?</(?:think|thought|thinking|tool_call)>', '', remaining_text, flags=re.DOTALL | re.IGNORECASE).strip()
         
+        # Видаляємо маркер "Text Message:", якщо модель його додала за інерцією з інструкцій
+        plain_text = re.sub(r'^Text Message:\s*', '', plain_text, flags=re.IGNORECASE).strip()
+            
         return thoughts, command, plain_text
-
     def get_quiet_response(self, query):
-        """Fetches AI response while showing a status spinner in the UI[cite: 12, 13]."""
         full_text = ""
         old_attr = termios.tcgetattr(sys.stdin)
         tty.setcbreak(sys.stdin.fileno())
         try:
             self._log_communication("OUTGOING TO AI", query)
+            
+            # Add \n at the beginning of the status message
+            print("")  # Move to a new line before status
             with self.ui.console.status("[bold cyan]🤖 Angelica is thinking...") as status:
                 for chunk in self.chat.get_streaming_response(query, self.history.get_history_for_api()):
                     if self._is_esc_pressed():
-                        self.ui.print_system("\n🛑 Operation cancelled by user.")
+                        self.ui.print_system("\n🛑 Operation cancelled.")
                         break
                     full_text += chunk
+            
             self._log_communication("INCOMING FROM AI", full_text)
             return full_text
         finally:
             termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_attr)
 
+
     def run(self):
-        """Main agent loop handling input and the command execution lifecycle[cite: 15, 17, 24]."""
         self.ui.print_system("✨ Angelica-AI is ready.")
         
         while True:
             try:
-                # Display current context stats [cite: 15, 16]
                 stats = self.context_manager.get_stats()
                 user_input = input(f"\n❯ You [Files:{stats[0]} | ~{stats[1]}tk] > ").strip()
                 
                 if not user_input: continue
                 if user_input.startswith("/exit"): break
 
+                # 1. Додаємо в історію ТІЛЬКИ ТУТ
                 self.history.add_message("user", user_input)
-                current_query = self.context_manager.get_context_prompt() + user_input
                 
+                # 2. Формуємо початковий query. 
+                # Якщо є файли в контексті, передаємо їх як системну інструкцію.
+                # Саме повідомлення користувача вже є в історії, тому query може бути порожнім 
+                # або містити лише контекст.
+                context_info = self.context_manager.get_context_prompt()
+                current_query = context_info if context_info else ""
+
                 active_loop = True
                 while active_loop:
+                    # Якщо history вже містить user_input, деякі провайдери 
+                    # вимагають, щоб query не дублював останнє повідомлення.
                     response = self.get_quiet_response(current_query)
                     if not response: break
                     
                     self.history.add_message("assistant", response)
                     thoughts, command, plain_text = self._parse_output(response)
 
-                    # 1. Output AI thoughts in gray italic [cite: 18, 19]
                     for thought in thoughts:
-                        self.ui.console.print(f"[grey37][italic]💭 {thought.strip()}[/italic][/grey37]")
+                        if thought.strip():
+                            self.ui.console.print(f"[grey37][italic]💭 {thought.strip()}[/italic][/grey37]")
 
-                    # 2. Command Execution Lifecycle
                     if command:
-                        active_loop = False # Default to stopping unless control is requested
-                        
-                        # Phase: Before Execution
+                        active_loop = False 
                         if command.get("before_execution"):
                             self.ui.console.print(f"\n[bold cyan]🤖 Plan:[/] {command['before_execution']}")
 
-                        # Phase: During Execution (Spinner)
-                        status_msg = command.get("during_execution", "Processing action...")
+                        status_msg = command.get("during_execution", "Processing...")
                         with self.ui.console.status(f"[bold yellow]{status_msg}"):
-                            result = self.processor.process_single_action(command) # [cite: 23]
+                            result = self.processor.process_single_action(command)
                         
-                        # Phase: After Execution
                         if command.get("after_execution") and result.get("status") != "failed":
                             self.ui.console.print(f"[bold green]✅ {command['after_execution']}[/]")
                         
-                        # Loopback logic: return control if requested OR if action failed [cite: 24]
+                        # Логіка повернення контролю (Loopback)
                         if result.get("status") == "failed" or command.get("return_control") is True:
                             active_loop = True
-                            current_query = f"System Result ({result.get('status')}):\n{result.get('output')}"
+                            # Тепер query використовується для передачі результату дії
+                            current_query = f"SYSTEM RESULT:\n{result.get('output')}"
                             self.history.add_message("system", current_query)
                     
-                    # 3. Text output (only if no command was issued) [cite: 21]
                     elif plain_text.strip():
-                        # Clean technical markers from text if any [cite: 20]
-                        display_text = re.sub(r'\{.*?\}', '', plain_text, flags=re.DOTALL).strip()
-                        if display_text:
-                            self.ui.console.print(f"\n[bold white]🤖 Angelica:[/]\n{display_text}")
+                        self.ui.console.print(f"\n[bold white]🤖 Angelica:[/]\n{plain_text}")
                         active_loop = False
 
                 self.history.check_and_summarize(self.ui)
 
-            except KeyboardInterrupt:
-                break
-            except Exception as e:
-                self.ui.print_error(f"Critical Error: {e}") [cite: 25]
+            except KeyboardInterrupt: break
+            except Exception as e: self.ui.print_error(f"Error: {e}")
 
 if __name__ == "__main__":
     agent = AngelicaAgent()

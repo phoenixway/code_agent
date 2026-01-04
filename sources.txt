@@ -2,19 +2,19 @@ TABLE OF CONTENTS
 ================================================================================
 
 - [/home/romankozak/studio/public/code_agent/agent.py](##<<FILE_1>>)
-- [/home/romankozak/studio/public/code_agent/chat.py](##<<FILE_2>>)
-- [/home/romankozak/studio/public/code_agent/config_loader.py](##<<FILE_3>>)
-- [/home/romankozak/studio/public/code_agent/context.py](##<<FILE_4>>)
-- [/home/romankozak/studio/public/code_agent/defaults.py](##<<FILE_5>>)
-- [/home/romankozak/studio/public/code_agent/files.py](##<<FILE_6>>)
-- [/home/romankozak/studio/public/code_agent/healer.py](##<<FILE_7>>)
-- [/home/romankozak/studio/public/code_agent/history.py](##<<FILE_8>>)
-- [/home/romankozak/studio/public/code_agent/policy.py](##<<FILE_9>>)
-- [/home/romankozak/studio/public/code_agent/processor.py](##<<FILE_10>>)
-- [/home/romankozak/studio/public/code_agent/project.py](##<<FILE_11>>)
-- [/home/romankozak/studio/public/code_agent/session.py](##<<FILE_12>>)
-- [/home/romankozak/studio/public/code_agent/storage.py](##<<FILE_13>>)
-- [/home/romankozak/studio/public/code_agent/ui.py](##<<FILE_14>>)
+- [/home/romankozak/studio/public/code_agent/modules/chat.py](##<<FILE_2>>)
+- [/home/romankozak/studio/public/code_agent/modules/config_loader.py](##<<FILE_3>>)
+- [/home/romankozak/studio/public/code_agent/modules/context.py](##<<FILE_4>>)
+- [/home/romankozak/studio/public/code_agent/modules/defaults.py](##<<FILE_5>>)
+- [/home/romankozak/studio/public/code_agent/modules/files.py](##<<FILE_6>>)
+- [/home/romankozak/studio/public/code_agent/modules/healer.py](##<<FILE_7>>)
+- [/home/romankozak/studio/public/code_agent/modules/history.py](##<<FILE_8>>)
+- [/home/romankozak/studio/public/code_agent/modules/policy.py](##<<FILE_9>>)
+- [/home/romankozak/studio/public/code_agent/modules/processor.py](##<<FILE_10>>)
+- [/home/romankozak/studio/public/code_agent/modules/project.py](##<<FILE_11>>)
+- [/home/romankozak/studio/public/code_agent/modules/session.py](##<<FILE_12>>)
+- [/home/romankozak/studio/public/code_agent/modules/storage.py](##<<FILE_13>>)
+- [/home/romankozak/studio/public/code_agent/modules/ui.py](##<<FILE_14>>)
 
 ================================================================================
 
@@ -30,6 +30,8 @@ import select
 import termios
 import tty
 from datetime import datetime
+
+# Importing custom modules based on the project structure 
 from modules.config_loader import load_settings, CONFIG_DIR
 from modules.ui import UI
 from modules.files import FileModule
@@ -42,12 +44,14 @@ from modules.chat import get_chat_provider
 
 class AngelicaAgent:
     def __init__(self):
+        """Initializes the agent with settings and necessary managers[cite: 1, 2]."""
         self.settings = load_settings()
         self.ui = UI()
         self.files = FileModule()
         self.context_manager = ContextManager(self.files)
         self.log_file = "communication.log"
         
+        # Setup AI provider and history 
         model_name = self.settings.get("default_model", "ollama/qwen3:4b")
         self.chat = get_chat_provider(model_name)
         
@@ -57,76 +61,65 @@ class AngelicaAgent:
         self.processor = ResponseProcessor(self.ui, self.files, self.chat, self.policy)
 
     def _log_communication(self, direction, content):
+        """Logs incoming and outgoing messages for debugging[cite: 3]."""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         with open(self.log_file, "a", encoding="utf-8") as f:
             f.write(f"\n{'='*60}\n[{timestamp}] {direction}\n{'-'*60}\n{content}\n{'='*60}\n")
 
     def _is_esc_pressed(self):
+        """Checks if the Escape key was pressed without blocking[cite: 3, 4]."""
         if select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], []):
             char = sys.stdin.read(1)
             if char == '\x1b': return True
         return False
 
     def _parse_output(self, text):
-        """Розділяє думки та команди. Працює, навіть якщо відкриваючий тег <think> відсутній."""
         thoughts = []
-        clean_text = text
+        command = None
         
-        # Визначаємо закриваючий тег
-        closing_tags = ["</think>", "</thought>", "</thinking>"]
-        tag_used = None
-        for tag in closing_tags:
-            if tag in clean_text:
-                tag_used = tag
-                break
+        # 1. Шукаємо будь-які теги думок (навіть якщо модель галюцинує теги з ваших інструкцій)
+        # Підтримуємо <think>, <thought>, <thinking> та навіть <tool_call>, якщо вона впала в цикл
+        thought_pattern = r'<(?:think|thought|thinking|tool_call)>(.*?)</(?:think|thought|thinking|tool_call)>'
+        thought_matches = re.findall(thought_pattern, text, re.DOTALL | re.IGNORECASE)
         
-        if tag_used:
-            # Якщо є закриваючий тег, все що ДО нього — це думки
-            parts = clean_text.split(tag_used, 1)
-            thought_part = parts[0]
-            # Видаляємо відкриваючий тег, якщо він все ж був
-            thought_part = re.sub(r'<(?:thought|thinking|think)>', '', thought_part, flags=re.IGNORECASE)
-            thoughts.append(thought_part.strip())
-            clean_text = parts[1].strip()
-        else:
-            # Якщо закриваючого тегу немає, але є відкриваючий (рідкісний випадок)
-            thought_pattern = r'<(?:thought|thinking|think)>(.*?)$'
-            match = re.search(thought_pattern, clean_text, re.DOTALL | re.IGNORECASE)
-            if match:
-                thoughts.append(match.group(1).strip())
-                clean_text = re.sub(thought_pattern, '', clean_text, flags=re.DOTALL | re.IGNORECASE).strip()
+        remaining_text = text
+        if thought_matches:
+            for m in thought_matches: thoughts.append(m.strip())
+            remaining_text = re.sub(thought_pattern, '', text, flags=re.DOTALL | re.IGNORECASE).strip()
+        elif "</think>" in text:
+            # Якщо модель забула відкрити тег, але закрила його
+            parts = text.split("</think>", 1)
+            thoughts.append(parts[0].replace("<think>", "").strip())
+            remaining_text = parts[1].strip()
 
-        # Пошук команд JSON у тексті, що залишився (ігноруючи ```json блоки)
-        executable_text = re.sub(r'```json\s*.*?\s*```', '', clean_text, flags=re.DOTALL)
-        commands = []
-        seen_commands = set()
-        matches = re.findall(r'(\{(?:[^{}]|)*\})', executable_text, re.DOTALL)
-        
-        for content in matches:
-            content = content.strip()
-            if content in seen_commands: continue
+        # 2. Пошук JSON (шукаємо перший валідний об'єкт)
+        json_match = re.search(r'(\{.*?\})', remaining_text, re.DOTALL)
+        if json_match:
             try:
-                data = json.loads(content)
+                data = json.loads(json_match.group(1))
                 if isinstance(data, dict) and "type" in data:
-                    commands.append(data)
-                    seen_commands.add(content)
-            except: continue
+                    command = data
+            except: pass
+
+        # 3. Якщо команди немає, залишок — це текст повідомлення
+        plain_text = ""
+        if not command:
+            plain_text = re.sub(r'\{.*?\}', '', remaining_text, flags=re.DOTALL).strip()
             
-        return thoughts, commands, clean_text
+        return thoughts, command, plain_text
 
     def get_quiet_response(self, query):
-        """Отримує відповідь без виводу в термінал, поки вона не готова."""
         full_text = ""
         old_attr = termios.tcgetattr(sys.stdin)
         tty.setcbreak(sys.stdin.fileno())
-        
         try:
             self._log_communication("OUTGOING TO AI", query)
-            # Використовуємо rich-spinner для візуалізації процесу
-            with self.ui.console.status("[bold cyan]🤖 Angelica працює... (Esc для зупинки)") as status:
+            
+            # Add \n at the beginning of the status message
+            with self.ui.console.status("\n[bold cyan]🤖 Angelica is thinking...") as status:
                 for chunk in self.chat.get_streaming_response(query, self.history.get_history_for_api()):
                     if self._is_esc_pressed():
-                        self.ui.print_system("\n🛑 Операцію перервано.")
+                        self.ui.print_system("\n🛑 Operation cancelled.")
                         break
                     full_text += chunk
             
@@ -135,8 +128,9 @@ class AngelicaAgent:
         finally:
             termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_attr)
 
+
     def run(self):
-        self.ui.print_system("✨ Система готова (тихий режим).")
+        self.ui.print_system("✨ Angelica-AI is ready.")
         
         while True:
             try:
@@ -146,51 +140,57 @@ class AngelicaAgent:
                 if not user_input: continue
                 if user_input.startswith("/exit"): break
 
+                # 1. Додаємо в історію ТІЛЬКИ ТУТ
                 self.history.add_message("user", user_input)
-                current_query = self.context_manager.get_context_prompt() + user_input
                 
+                # 2. Формуємо початковий query. 
+                # Якщо є файли в контексті, передаємо їх як системну інструкцію.
+                # Саме повідомлення користувача вже є в історії, тому query може бути порожнім 
+                # або містити лише контекст.
+                context_info = self.context_manager.get_context_prompt()
+                current_query = context_info if context_info else ""
+
                 active_loop = True
                 while active_loop:
+                    # Якщо history вже містить user_input, деякі провайдери 
+                    # вимагають, щоб query не дублював останнє повідомлення.
                     response = self.get_quiet_response(current_query)
                     if not response: break
                     
                     self.history.add_message("assistant", response)
-                    thoughts, commands, plain_text = self._parse_output(response)
+                    thoughts, command, plain_text = self._parse_output(response)
 
-                    # 1. Виводимо думки красиво (курсивом)
                     for thought in thoughts:
                         if thought.strip():
                             self.ui.console.print(f"[grey37][italic]💭 {thought.strip()}[/italic][/grey37]")
 
-                    # 2. Виводимо текстове повідомлення
-                    if plain_text.strip():
-                        # Видаляємо технічні JSON з тексту для виводу користувачу
-                        display_text = re.sub(r'\{.*?\}', '', plain_text, flags=re.DOTALL).strip()
-                        if display_text:
-                            self.ui.console.print(f"\n[bold cyan]🤖 Angelica:[/]\n{display_text}")
+                    if command:
+                        active_loop = False 
+                        if command.get("before_execution"):
+                            self.ui.console.print(f"\n[bold cyan]🤖 Plan:[/] {command['before_execution']}")
 
-                    if not commands:
-                        active_loop = False
-                        continue
-
-                    # 3. Виконання команд
-                    active_loop = False 
-                    feedback_results = []
-
-                    for cmd in commands:
-                        res = self.processor.process_single_action(cmd)
-                        feedback_results.append(res["output"])
-                        if res.get("need_loopback") and res.get("status") != "cancelled":
+                        status_msg = command.get("during_execution", "Processing...")
+                        with self.ui.console.status(f"[bold yellow]{status_msg}"):
+                            result = self.processor.process_single_action(command)
+                        
+                        if command.get("after_execution") and result.get("status") != "failed":
+                            self.ui.console.print(f"[bold green]✅ {command['after_execution']}[/]")
+                        
+                        # Логіка повернення контролю (Loopback)
+                        if result.get("status") == "failed" or command.get("return_control") is True:
                             active_loop = True
-
-                    if active_loop:
-                        current_query = "Results:\n" + "\n---\n".join(feedback_results)
-                        self.history.add_message("system", current_query)
+                            # Тепер query використовується для передачі результату дії
+                            current_query = f"SYSTEM RESULT:\n{result.get('output')}"
+                            self.history.add_message("system", current_query)
+                    
+                    elif plain_text.strip():
+                        self.ui.console.print(f"\n[bold white]🤖 Angelica:[/]\n{plain_text}")
+                        active_loop = False
 
                 self.history.check_and_summarize(self.ui)
 
             except KeyboardInterrupt: break
-            except Exception as e: self.ui.print_error(f"Критична помилка: {e}")
+            except Exception as e: self.ui.print_error(f"Error: {e}")
 
 if __name__ == "__main__":
     agent = AngelicaAgent()
@@ -202,157 +202,706 @@ END FILE: /home/romankozak/studio/public/code_agent/agent.py
 
 ## <<FILE_2>>
 ================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/chat.py (ID: FILE_2)
+BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/chat.py (ID: FILE_2)
 ================================================================================
 
-[Помилка читання файлу /home/romankozak/studio/public/code_agent/chat.py: [Errno 2] No such file or directory: '/home/romankozak/studio/public/code_agent/chat.py']
+import os
+import requests
+import json
+from modules.defaults import DEFAULT_SYSTEM_PROMPT
 
+class BaseChat:
+    """Базовий клас для всіх провайдерів."""
+    def __init__(self, model_name):
+        self.model_name = model_name
+
+    def _prepare_messages(self, prompt, history):
+        """Уніфікована підготовка історії повідомлень."""
+        messages = [{"role": "system", "content": DEFAULT_SYSTEM_PROMPT}]
+        # Додаємо історію (крім останнього системного повідомлення, якщо воно є)
+        messages.extend(history)
+        # Додаємо поточний запит
+        messages.append({"role": "user", "content": prompt})
+        return messages
+
+class OpenAICompatibleChat(BaseChat):
+    """Для OpenAI, DeepSeek та інших OpenAI-сумісних сервісів."""
+    def __init__(self, model_name, base_url, api_key_env):
+        super().__init__(model_name)
+        self.base_url = base_url
+        self.api_key = os.getenv(api_key_env)
+
+    def get_streaming_response(self, prompt, history):
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": self.model_name,
+            "messages": self._prepare_messages(prompt, history),
+            "temperature": 0.2,
+            "stream": True
+        }
+
+        try:
+            response = requests.post(f"{self.base_url}/chat/completions", headers=headers, json=payload, stream=True)
+            for line in response.iter_lines():
+                if line:
+                    line_text = line.decode('utf-8').replace('data: ', '')
+                    if line_text == '[DONE]': break
+                    try:
+                        data = json.loads(line_text)
+                        content = data['choices'][0]['delta'].get('content', '')
+                        if content: yield content
+                    except: continue
+        except Exception as e:
+            yield f"Error: {str(e)}"
+
+class OllamaChat(BaseChat):
+    """Для локального запуску через Ollama (Termux)."""
+    def __init__(self, model_name):
+        super().__init__(model_name)
+        # Використовуємо /api/chat для Ollama
+        self.url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/api/chat")
+
+    def get_streaming_response(self, prompt, history):
+        payload = {
+            "model": self.model_name,
+            "messages": self._prepare_messages(prompt, history),
+            "stream": True
+        }
+
+        try:
+            response = requests.post(self.url, json=payload, stream=True)
+            for line in response.iter_lines():
+                if line:
+                    data = json.loads(line.decode('utf-8'))
+                    if 'message' in data:
+                        yield data['message'].get('content', '')
+                    if data.get('done'): break
+        except Exception as e:
+            yield f"Ollama Connection Error: {str(e)}"
+
+class GeminiRestChat(BaseChat):
+    """Полегшена версія Gemini з підтримкою стрімінгу через REST."""
+    def __init__(self, model_name):
+        super().__init__(model_name)
+        self.api_key = os.getenv("GEMINI_API_KEY")
+        # Використовуємо streamGenerateContent замість generateContent
+        self.url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:streamGenerateContent?key={self.api_key}"
+
+    def get_streaming_response(self, prompt, history):
+        contents = []
+        for m in history:
+            contents.append({
+                "role": "user" if m["role"] == "user" else "model",
+                "parts": [{"text": m["content"]}]
+            })
+        contents.append({"role": "user", "parts": [{"text": prompt}]})
+
+        payload = {
+            "contents": contents,
+            "system_instruction": {"parts": [{"text": DEFAULT_SYSTEM_PROMPT}]}
+        }
+        
+        try:
+            response = requests.post(self.url, json=payload, stream=True)
+            # Gemini повертає JSON масив частин
+            for line in response.iter_lines():
+                if line:
+                    line_text = line.decode('utf-8').strip()
+                    # Прибираємо коми та дужки масиву, які додає REST API Gemini в стрімі
+                    if line_text.startswith(','): line_text = line_text[1:]
+                    if line_text.startswith('[') or line_text.startswith(']'): continue
+                    
+                    try:
+                        data = json.loads(line_text)
+                        yield data['candidates'][0]['content']['parts'][0]['text']
+                    except: continue
+        except Exception as e:
+            yield f"Gemini Stream Error: {str(e)}"
+
+def get_chat_provider(model_name):
+    """Фабрика провайдерів."""
+    m = model_name.lower()
+    
+    if "gemini" in m:
+        return GeminiRestChat(model_name)
+    elif "deepseek" in m:
+        return OpenAICompatibleChat(model_name, "https://api.deepseek.com", "DEEPSEEK_API_KEY")
+    elif "gpt" in m:
+        return OpenAICompatibleChat(model_name, "https://api.openai.com/v1", "OPENAI_API_KEY")
+    elif "ollama" in m or "qwen" in m:
+        clean_name = model_name.split('/')[-1] if '/' in model_name else model_name
+        return OllamaChat(clean_name)
+    
+    return GeminiRestChat("gemini-1.5-pro")
 
 ================================================================================
-END FILE: /home/romankozak/studio/public/code_agent/chat.py
+END FILE: /home/romankozak/studio/public/code_agent/modules/chat.py
 ================================================================================
 
 ## <<FILE_3>>
 ================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/config_loader.py (ID: FILE_3)
+BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/config_loader.py (ID: FILE_3)
 ================================================================================
 
-[Помилка читання файлу /home/romankozak/studio/public/code_agent/config_loader.py: [Errno 2] No such file or directory: '/home/romankozak/studio/public/code_agent/config_loader.py']
+# modules/config_loader.py
+import os
+import yaml
+from pathlib import Path
+from dotenv import load_dotenv
+
+CONFIG_DIR = Path.home() / ".config" / "angelica-ai"
+CONFIG_FILE = CONFIG_DIR / "config.yaml"
+ENV_FILE = CONFIG_DIR / ".env"
+
+def load_settings():
+    if not CONFIG_DIR.exists():
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    
+    if not CONFIG_FILE.exists():
+        default = {"default_model": "gemini-1.5-pro", "permission_policy": "ask", "max_history_tokens": 4000}
+        with open(CONFIG_FILE, 'w') as f:
+            yaml.dump(default, f)
+            
+    if ENV_FILE.exists():
+        load_dotenv(ENV_FILE)
+        
+    with open(CONFIG_FILE, 'r') as f:
+        return yaml.safe_load(f) or {}
 
 
 ================================================================================
-END FILE: /home/romankozak/studio/public/code_agent/config_loader.py
+END FILE: /home/romankozak/studio/public/code_agent/modules/config_loader.py
 ================================================================================
 
 ## <<FILE_4>>
 ================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/context.py (ID: FILE_4)
+BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/context.py (ID: FILE_4)
 ================================================================================
 
-[Помилка читання файлу /home/romankozak/studio/public/code_agent/context.py: [Errno 2] No such file or directory: '/home/romankozak/studio/public/code_agent/context.py']
+# modules/context.py
+class ContextManager:
+    def __init__(self, files_module):
+        self.files = files_module
+        self.basket = {}
+
+    def add_file(self, path):
+        content = self.files.read_file(path)
+        if content:
+            self.basket[path] = content
+            return True
+        return False
+
+    def remove_file(self, path):
+        return self.basket.pop(path, None) is not None
+
+    def clear(self):
+        self.basket.clear()
+
+    def get_stats(self):
+        chars = sum(len(c) for c in self.basket.values())
+        return len(self.basket), chars // 4
+
+    def get_context_prompt(self):
+        if not self.basket: return ""
+        out = "\n--- CONTEXT ---\n"
+        for p, c in self.basket.items():
+            out += f"FILE: {p}\n{c}\n---\n"
+        return out
+
+    def list_files(self):
+        return list(self.basket.keys())
 
 
 ================================================================================
-END FILE: /home/romankozak/studio/public/code_agent/context.py
+END FILE: /home/romankozak/studio/public/code_agent/modules/context.py
 ================================================================================
 
 ## <<FILE_5>>
 ================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/defaults.py (ID: FILE_5)
+BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/defaults.py (ID: FILE_5)
 ================================================================================
 
-[Помилка читання файлу /home/romankozak/studio/public/code_agent/defaults.py: [Errno 2] No such file or directory: '/home/romankozak/studio/public/code_agent/defaults.py']
+# modules/defaults.py
 
+DEFAULT_SYSTEM_PROMPT = """You are Angelica-AI, a professional coding agent optimized for autonomous problem-solving in Linux (Fedora/Desktop) and Android (Termux) environments.
+
+## RESPONSE ARCHITECTURE
+Every response must follow this strict sequence:
+
+1. **Internal Reasoning (<think>)**:
+   - Start every response with this block.
+   - Analyze the user's request, plan your steps, and explain your technical choices.
+   - Use this space for Chain-of-Thought reasoning.
+
+2. **EITHER a Technical Action (JSON)**:
+   - If a technical step is required (read/write/execute), provide EXACTLY ONE raw JSON object immediately after the </think> tag.
+   - **CRITICAL**: Do NOT use Markdown code blocks (```json) for commands. Provide the raw JSON string.
+   - Do NOT add any text after the JSON block.
+
+3. **OR a Text Message**:
+   - If no further action is needed or you need to ask a question, provide a concise text response after the </think> tag.
+
+---
+
+## COMMAND LIFECYCLE & EXECUTION
+Every JSON action MUST include these fields to manage the UI state and execution flow:
+
+- "before_execution": A brief explanation for the user of what you are about to do.
+- "during_execution": A short status message (e.g., "Compiling...") displayed during the process.
+- "after_execution": A confirmation message shown once the action succeeds.
+- "return_control": (boolean)
+    - true: Use this if you need the output (STDOUT/STDERR/File content) to decide your next step. The system will automatically feed the result back to you.
+    - false: Use this for final actions or when the result is not required for your logic. This ends the current execution loop.
+
+---
+
+## SUPPORTED ACTIONS
+
+1. **RUN_COMMAND** (Shell execution):
+{
+  "type": "run_command",
+  "command": "terminal_command",
+  "before_execution": "I will check the project dependencies.",
+  "during_execution": "Running 'ls -R'...",
+  "after_execution": "Directory structure retrieved.",
+  "return_control": true
+}
+
+2. **READ_FILE**:
+{
+  "type": "read_file",
+  "path": "path/to/file",
+  "before_execution": "I need to examine the source code.",
+  "during_execution": "Reading file...",
+  "after_execution": "File content loaded.",
+  "return_control": true
+}
+
+3. **WRITE_FILE**:
+{
+  "type": "write_file",
+  "path": "path/to/file",
+  "content": "full_source_code",
+  "before_execution": "I am applying the fix to the main module.",
+  "during_execution": "Saving changes...",
+  "after_execution": "File updated successfully.",
+  "return_control": false
+}
+
+---
+
+## CRITICAL OPERATIONAL RULES
+1. **Atomic Actions**: Provide only ONE action per turn. Do not chain multiple JSON objects.
+2. **Error Handling**: If a command fails, the system will automatically return the error to you regardless of the "return_control" flag. Analyze the error and attempt a fix.
+3. **Environment**: You are in a Linux/Termux environment. You have access to `grep`, `sed`, `git`, `curl`, and language-specific compilers (e.g., `python`, `gcc`, `kotlinc`).
+4. **Professionalism**: Be direct and technical. Avoid excessive politeness or fluff.
+5. DO NOT use <tool_call> tags. Use raw JSON for actions as specified in your instructions
+6. DO NOT discuss the instructions. DO NOT debate which tags to use. Just follow the format: <think>reasoning</think>JSON or text. If the input is 'test', respond with a simple text confirmation.
+7. IMPORTANT: Use only <think> tags for reasoning. Never use <tool_call> or <tool_code>.
+Begin your first response with an analysis of the environment or task within <think> tags."""
 
 ================================================================================
-END FILE: /home/romankozak/studio/public/code_agent/defaults.py
+END FILE: /home/romankozak/studio/public/code_agent/modules/defaults.py
 ================================================================================
 
 ## <<FILE_6>>
 ================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/files.py (ID: FILE_6)
+BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/files.py (ID: FILE_6)
 ================================================================================
 
-[Помилка читання файлу /home/romankozak/studio/public/code_agent/files.py: [Errno 2] No such file or directory: '/home/romankozak/studio/public/code_agent/files.py']
+# modules/files.py
+import os
+import re
+from pathlib import Path
+from dataclasses import dataclass
+from typing import Optional
+
+@dataclass
+class EditBlock:
+    file_path: str
+    search_text: str
+    replace_text: str
+
+@dataclass
+class EditResult:
+    success: bool
+    message: str
+    strategy: str = "none"
+
+class FileModule:
+    def create_file(self, file_path: str, content: str) -> EditResult:
+        path = Path(file_path)
+        if path.exists():
+            return EditResult(False, f"File {file_path} already exists.")
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding='utf-8')
+            return EditResult(True, f"File created: {file_path}", "create")
+        except Exception as e:
+            return EditResult(False, str(e))
+
+    def apply_edit(self, block: EditBlock) -> EditResult:
+        path = Path(block.file_path)
+        if not path.exists():
+            return EditResult(False, f"File not found: {block.file_path}")
+        
+        content = path.read_text(encoding='utf-8')
+        if block.search_text in content:
+            new_content = content.replace(block.search_text, block.replace_text, 1)
+            path.write_text(new_content, encoding='utf-8')
+            return EditResult(True, f"Applied to {block.file_path}", "exact")
+        
+        return EditResult(False, "Search block not found.")
+
+    def read_file(self, file_path: str) -> Optional[str]:
+        path = Path(file_path)
+        return path.read_text(encoding='utf-8') if path.exists() else None
 
 
 ================================================================================
-END FILE: /home/romankozak/studio/public/code_agent/files.py
+END FILE: /home/romankozak/studio/public/code_agent/modules/files.py
 ================================================================================
 
 ## <<FILE_7>>
 ================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/healer.py (ID: FILE_7)
+BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/healer.py (ID: FILE_7)
 ================================================================================
 
-[Помилка читання файлу /home/romankozak/studio/public/code_agent/healer.py: [Errno 2] No such file or directory: '/home/romankozak/studio/public/code_agent/healer.py']
+# modules/healer.py
+class HealerModule:
+    @staticmethod
+    def generate_healing_prompt(file_path, error, content):
+        return f"Patch failed for {file_path}.\nError: {error}\nCurrent file state:\n{content}\nPlease provide a correct JSON patch."
 
 
 ================================================================================
-END FILE: /home/romankozak/studio/public/code_agent/healer.py
+END FILE: /home/romankozak/studio/public/code_agent/modules/healer.py
 ================================================================================
 
 ## <<FILE_8>>
 ================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/history.py (ID: FILE_8)
+BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/history.py (ID: FILE_8)
 ================================================================================
 
-[Помилка читання файлу /home/romankozak/studio/public/code_agent/history.py: [Errno 2] No such file or directory: '/home/romankozak/studio/public/code_agent/history.py']
+# modules/history.py
+class HistoryManager:
+    def __init__(self, chat_provider, max_tokens=4000):
+        self.messages = []
+        self.chat = chat_provider
+        self.max_tokens = max_tokens
+
+    def add_message(self, role, content):
+        self.messages.append({"role": role, "content": content})
+
+    def get_history_for_api(self):
+        return self.messages
+
+    def check_and_summarize(self, ui):
+        tokens = sum(len(m["content"]) for m in self.messages) // 4
+        if tokens > self.max_tokens:
+            ui.print_system("Summarizing history...")
+            # Логіка сумаризації через self.chat
+            pass
 
 
 ================================================================================
-END FILE: /home/romankozak/studio/public/code_agent/history.py
+END FILE: /home/romankozak/studio/public/code_agent/modules/history.py
 ================================================================================
 
 ## <<FILE_9>>
 ================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/policy.py (ID: FILE_9)
+BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/policy.py (ID: FILE_9)
 ================================================================================
 
-[Помилка читання файлу /home/romankozak/studio/public/code_agent/policy.py: [Errno 2] No such file or directory: '/home/romankozak/studio/public/code_agent/policy.py']
+# modules/policy.py
+class PermissionPolicy:
+    def __init__(self, mode="ask"):
+        self.mode = mode
+
+    def should_ask(self):
+        return self.mode == "ask"
 
 
 ================================================================================
-END FILE: /home/romankozak/studio/public/code_agent/policy.py
+END FILE: /home/romankozak/studio/public/code_agent/modules/policy.py
 ================================================================================
 
 ## <<FILE_10>>
 ================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/processor.py (ID: FILE_10)
+BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/processor.py (ID: FILE_10)
 ================================================================================
 
-[Помилка читання файлу /home/romankozak/studio/public/code_agent/processor.py: [Errno 2] No such file or directory: '/home/romankozak/studio/public/code_agent/processor.py']
+import subprocess
+import os
+import re
 
+class ResponseProcessor:
+    def __init__(self, ui, files, chat, policy):
+        """
+        Initializes the processor with necessary modules.
+        Args:
+            ui: UI instance for console output.
+            files: FileModule instance for file operations.
+            chat: Chat provider instance.
+            policy: PermissionPolicy instance for safety checks.
+        """
+        self.ui = ui
+        self.files = files
+        self.chat = chat
+        self.policy = policy
+
+    def process_single_action(self, action):
+        """
+        Routes the action to the appropriate handler based on its type.
+        Returns: dict with 'status' and 'output'.
+        """
+        action_type = action.get("type")
+        
+        # Check permissions before sensitive operations
+        if action_type in ["run_command", "write_file", "create_file"]:
+            if not self.policy.check(action):
+                return {"status": "cancelled", "output": "Action denied by user policy."}
+
+        # Dispatcher logic
+        handlers = {
+            "run_command": self._handle_run_command,
+            "read_file": self._handle_read_file,
+            "write_file": self._handle_write_file,
+            "create_file": self._handle_create_file,
+            "edit_file": self._handle_edit_file
+        }
+
+        handler = handlers.get(action_type)
+        if not handler:
+            return {"status": "failed", "output": f"Unknown action type: {action_type}"}
+
+        try:
+            return handler(action)
+        except Exception as e:
+            return {"status": "failed", "output": f"Execution error: {str(e)}"}
+
+    def _handle_run_command(self, action):
+        """Executes shell commands and captures output."""
+        cmd = action.get("command")
+        if not cmd:
+            return {"status": "failed", "output": "No command provided."}
+
+        try:
+            # Using shell=True to support pipes and environment variables in Termux/Fedora
+            result = subprocess.run(
+                cmd, 
+                shell=True, 
+                capture_output=True, 
+                text=True, 
+                timeout=300 # 5 minute safety timeout
+            )
+            
+            output = result.stdout
+            if result.stderr:
+                output += f"\nError Output:\n{result.stderr}"
+            
+            status = "success" if result.returncode == 0 else "failed"
+            return {"status": status, "output": output.strip() or "Command finished with no output."}
+            
+        except subprocess.TimeoutExpired:
+            return {"status": "failed", "output": "Command timed out after 5 minutes."}
+
+    def _handle_read_file(self, action):
+        """Reads file content safely."""
+        path = action.get("path") or action.get("file_path")
+        content = self.files.read_file(path) # Assuming files.py handles exceptions
+        if content is None:
+            return {"status": "failed", "output": f"Could not read file: {path}"}
+        return {"status": "success", "output": content}
+
+    def _handle_create_file(self, action):
+        """Creates a new file. Fails if file exists to prevent accidental overwrite."""
+        path = action.get("path") or action.get("file_path")
+        content = action.get("content", "")
+
+        if os.path.exists(path):
+            return {"status": "failed", "output": f"File already exists: {path}. Use edit_file instead."}
+
+        self.files.write_file(path, content)
+        return {"status": "success", "output": f"File {path} created successfully."}
+
+    def _handle_write_file(self, action):
+        """Standard file writing (overwrites content)."""
+        path = action.get("path") or action.get("file_path")
+        content = action.get("content", "")
+        self.files.write_file(path, content)
+        return {"status": "success", "output": f"File {path} written successfully."}
+
+    def _handle_edit_file(self, action):
+        """
+        Implements search-and-replace editing.
+        Expects 'edits' list with 'search' and 'replace' blocks.
+        """
+        path = action.get("path") or action.get("file_path")
+        edits = action.get("edits", [])
+        
+        content = self.files.read_file(path)
+        if content is None:
+            return {"status": "failed", "output": f"File not found for editing: {path}"}
+
+        original_content = content
+        for edit in edits:
+            search_text = edit.get("search")
+            replace_text = edit.get("replace")
+            
+            if search_text not in content:
+                return {
+                    "status": "failed", 
+                    "output": f"Search block not found in {path}. Ensure exact matching (spaces/newlines)."
+                }
+            
+            content = content.replace(search_text, replace_text)
+
+        if content == original_content:
+            return {"status": "failed", "output": "No changes applied during edit_file operation."}
+
+        self.files.write_file(path, content)
+        return {"status": "success", "output": f"Successfully applied {len(edits)} edits to {path}."}
 
 ================================================================================
-END FILE: /home/romankozak/studio/public/code_agent/processor.py
+END FILE: /home/romankozak/studio/public/code_agent/modules/processor.py
 ================================================================================
 
 ## <<FILE_11>>
 ================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/project.py (ID: FILE_11)
+BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/project.py (ID: FILE_11)
 ================================================================================
 
-[Помилка читання файлу /home/romankozak/studio/public/code_agent/project.py: [Errno 2] No such file or directory: '/home/romankozak/studio/public/code_agent/project.py']
+# modules/project.py
+import os
 
+class ProjectModule:
+    def get_project_tree(self, root_path, max_depth=3):
+        """Повертає дерево каталогів проєкту."""
+        tree = []
+        for root, dirs, files in os.walk(root_path):
+            depth = root[len(root_path):].count(os.sep)
+            if depth < max_depth:
+                indent = "  " * depth
+                tree.append(f"{indent}📁 {os.path.basename(root)}/")
+                for f in files:
+                    if f.endswith(('.kt', '.xml', '.gradle', '.kts')):
+                        tree.append(f"{indent}  📄 {f}")
+        return "\n".join(tree)
+
+    def read_source_file(self, file_path):
+        """Зчитує вміст конкретного файлу."""
+        if os.path.exists(file_path):
+            with open(file_path, "r", encoding="utf-8") as f:
+                return f.read()
+        return "⚠️ Файл не знайдено."
 
 ================================================================================
-END FILE: /home/romankozak/studio/public/code_agent/project.py
+END FILE: /home/romankozak/studio/public/code_agent/modules/project.py
 ================================================================================
 
 ## <<FILE_12>>
 ================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/session.py (ID: FILE_12)
+BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/session.py (ID: FILE_12)
 ================================================================================
 
-[Помилка читання файлу /home/romankozak/studio/public/code_agent/session.py: [Errno 2] No such file or directory: '/home/romankozak/studio/public/code_agent/session.py']
+# modules/session.py
+import json
+
+class SessionManager:
+    def __init__(self, config_dir, history, context, ui):
+        self.dir = config_dir / "sessions"
+        self.dir.mkdir(exist_ok=True)
+        self.history = history
+        self.context = context
+        self.ui = ui
+
+    def save_session(self, name):
+        data = {"history": self.history.messages, "context": self.context.list_files()}
+        with open(self.dir / f"{name}.json", 'w') as f:
+            json.dump(data, f)
 
 
 ================================================================================
-END FILE: /home/romankozak/studio/public/code_agent/session.py
+END FILE: /home/romankozak/studio/public/code_agent/modules/session.py
 ================================================================================
 
 ## <<FILE_13>>
 ================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/storage.py (ID: FILE_13)
+BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/storage.py (ID: FILE_13)
 ================================================================================
 
-[Помилка читання файлу /home/romankozak/studio/public/code_agent/storage.py: [Errno 2] No such file or directory: '/home/romankozak/studio/public/code_agent/storage.py']
+import json
+import os
+from datetime import datetime
 
+class Storage:
+    def __init__(self, session_dir="sessions"):
+        self.session_dir = session_dir
+        if not os.path.exists(session_dir):
+            os.makedirs(session_dir)
+        self.current_session = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        self.history = []
+
+    def save_message(self, role, content):
+        self.history.append({"role": role, "content": content, "timestamp": str(datetime.now())})
+        with open(os.path.join(self.session_dir, self.current_session), "w", encoding="utf-8") as f:
+            json.dump(self.history, f, indent=4, ensure_ascii=False)
+
+# Тестовий виклик
+if __name__ == "__main__":
+    s = Storage()
+    s.save_message("user", "Hello")
+    print(f"Збережено в {s.current_session}")
 
 ================================================================================
-END FILE: /home/romankozak/studio/public/code_agent/storage.py
+END FILE: /home/romankozak/studio/public/code_agent/modules/storage.py
 ================================================================================
 
 ## <<FILE_14>>
 ================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/ui.py (ID: FILE_14)
+BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/ui.py (ID: FILE_14)
 ================================================================================
 
-[Помилка читання файлу /home/romankozak/studio/public/code_agent/ui.py: [Errno 2] No such file or directory: '/home/romankozak/studio/public/code_agent/ui.py']
+# modules/ui.py
+from rich.console import Console
+from rich.panel import Panel
+from rich.markdown import Markdown
+from rich.syntax import Syntax
 
+class UI:
+    def __init__(self):
+        self.console = Console()
+
+    def print_system(self, text):
+        self.console.print(f"[bold blue]ℹ[/] {text}")
+
+    def print_error(self, text):
+        self.console.print(f"[bold red]✘ Error:[/] {text}")
+
+    def print_message(self, text, role="assistant"):
+        """Виводить текст відповіді, рендерячи Markdown."""
+        color = "cyan" if role == "assistant" else "green"
+        title = "🤖 Angelica" if role == "assistant" else "👤 You"
+        
+        # Ми рендеримо весь текст. Rich автоматично підсвітить блоки коду 
+        # та прибере зайві символи Markdown.
+        md = Markdown(text)
+        self.console.print(Panel(md, title=title, border_style=color))
+
+    def print_horizontal_rule(self):
+        self.console.print("—" * 50)
+
+    def print_thought(self, text):
+        """Рендерить блок міркувань ШІ."""
+        if not text.strip(): return
+        # Використовуємо спеціальний колір та італік для думок
+        self.console.print(f"[bold grey37]💭 Міркування:[/][grey37][italic] {text.strip()}[/]")
 
 ================================================================================
-END FILE: /home/romankozak/studio/public/code_agent/ui.py
+END FILE: /home/romankozak/studio/public/code_agent/modules/ui.py
 ================================================================================
 
