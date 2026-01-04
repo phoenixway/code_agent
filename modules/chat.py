@@ -1,91 +1,126 @@
-# modules/chat.py
-import ollama
-from openai import OpenAI
-import google.generativeai as genai
 import os
-from modules.config_loader import load_system_prompt
+import requests
+import json
+from modules.defaults import DEFAULT_SYSTEM_PROMPT
 
 class BaseChat:
-    def __init__(self):
-        # Завантажуємо промпт з файлу користувача
-        self.system_prompt = load_system_prompt()
-        self.examples = [] # Можна теж винести в окремий файл за бажанням
+        """Базовий клас для всіх провайдерів."""
+        def __init__(self, model_name):
+                self.model_name = model_name
 
-    def _prepare_messages(self, user_input):
-        return [
-            {"role": "system", "content": self.system_prompt},
-            {"role": "user", "content": user_input}
-        ]
-
-class OllamaProvider(BaseChat):
-    def __init__(self, model_id):
-        super().__init__()
-        self.model_id = model_id
-
-    def get_response(self, user_input):
-        try:
-            response = ollama.chat(
-                model=self.model_id,
-                messages=self._prepare_messages(user_input),
-                options={'temperature': 0.1}
-            )
-            return response['message']['content']
-        except Exception as e:
-            return f"❌ Ollama Error: {str(e)}"
-
-class OpenAICompatibleProvider(BaseChat):
-    def __init__(self, model_id, api_key, base_url=None):
-        super().__init__()
-        self.client = OpenAI(api_key=api_key, base_url=base_url)
-        self.model_id = model_id
-
-    def get_response(self, user_input):
-        try:
-            resp = self.client.chat.completions.create(
-                model=self.model_id,
-                messages=self._prepare_messages(user_input),
-                temperature=0.1
-            )
-            return resp.choices[0].message.content
-        except Exception as e:
-            return f"❌ API Error: {str(e)}"
-
-class GeminiProvider(BaseChat):
-    def __init__(self, model_id):
-        super().__init__()
-        genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-        self.model = genai.GenerativeModel(
-            model_name=model_id,
-            system_instruction=self.system_prompt # Gemini підтримує system_instruction окремо
-        )
-
-    def get_response(self, user_input):
-        try:
-            # Для Gemini додаємо приклади як історію чату або частину промпту
-            response = self.model.generate_content(user_input)
-            return response.text
-        except Exception as e:
-            return f"❌ Gemini Error: {str(e)}"
-
-# Фабрика залишається без змін, але тепер вона ініціалізує класи з промптами
-def get_chat_provider(model_string):
-    if model_string.startswith("ollama/"):
-        return OllamaProvider(model_string.replace("ollama/", ""))
+class OpenAICompatibleChat(BaseChat):
+        """Для OpenAI, DeepSeek та інших OpenAI-сумісних сервісів."""
+        def __init__(self, model_name, base_url, api_key_env):
     
-    if "deepseek" in model_string:
-        return OpenAICompatibleProvider(
-            model_id="deepseek-chat",
-            api_key=os.getenv("DEEPSEEK_API_KEY"),
-            base_url="https://api.deepseek.com"
-        )
-    
-    if "openai" in model_string:
-        return OpenAICompatibleProvider(
-            model_id=model_string.split('/')[-1],
-            api_key=os.getenv("OPENAI_API_KEY")
-        )
+                super().__init__(model_name)
+                self.base_url = base_url
+                self.api_key = os.getenv(api_key_env)
 
-    if "gemini" in model_string:
-        return GeminiProvider(model_string.split('/')[-1])
-        
-    raise ValueError(f"Unknown model format: {model_string}")
+        def get_response_with_history(self, prompt, history):
+                headers = {
+                        "Authorization": f"Bearer {self.api_key}",
+                        "Content-Type": "application/json"
+                    }
+                
+                # Формуємо повідомлення: System + History + Current Prompt
+                messages = [{"role": "system", "content": DEFAULT_SYSTEM_PROMPT}]
+                # Очікуємо, що історія — це список словників {"role": "...", "content": "..."}
+                messages.extend(history[:-1])
+                messages.append({"role": "user", "content": prompt})
+
+                payload = {
+                        "model": self.model_name,
+                        "messages": messages,
+                        "temperature": 0.2
+                    }
+
+                try:
+                        response = requests.post(f"{self.base_url}/chat/completions", headers=headers, json=payload)
+                        if response.status_code == 200:
+                                return response.json()['choices'][0]['message']['content']
+                        else:
+                                return f"Error {response.status_code}: {response.text}"
+                except Exception as e:
+                        return f"Request Exception: {str(e)}"
+
+class OllamaChat(BaseChat):
+        """Для локального запуску через Ollama (Termux)."""
+        def __init__(self, model_name):
+                super().__init__(model_name)
+                self.base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/api/chat")
+
+        def get_response_with_history(self, prompt, history):
+                messages = [{"role": "system", "content": DEFAULT_SYSTEM_PROMPT}]
+                messages.extend(history[:-1])
+                messages.append({"role": "user", "content": prompt})
+
+                payload = {
+                        "model": self.model_name,
+                        "messages": messages,
+                        "stream": False
+                    }
+
+                try:
+                        response = requests.post(self.base_url, json=payload)
+                        if response.status_code == 200:
+                                return response.json()['message']['content']
+                        return f"Ollama Error: {response.text}"
+                except Exception as e:
+                        return f"Ollama Connection Error: {str(e)}"
+
+                class GeminiRestChat(BaseChat):
+                        """Полегшена версія Gemini без gRPC."""
+                        def __init__(self, model_name):
+                                super().__init__(model_name)
+                                self.api_key = os.getenv("GEMINI_API_KEY")
+                                self.url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={self.api_key}"
+
+                        def get_response_with_history(self, prompt, history):
+                                contents = []
+                                for m in history[:-1]:
+                                        contents.append({
+                                                "role": "user" if m["role"] == "user" else "model",
+                                                "parts": [{"text": m["content"]}]
+                                            })
+                                        contents.append({"role": "user", "parts": [{"text": prompt}]})
+
+                                payload = {
+                                        "contents": contents,
+                                        "system_instruction": {"parts": [{"text": DEFAULT_SYSTEM_PROMPT}]}
+                                    }
+                                
+                                try:
+                                        response = requests.post(self.url, json=payload)
+                                        if response.status_code == 200:
+                                                res_data = response.json()
+                                                return res_data['candidates'][0]['content']['parts'][0]['text']
+                                        return f"Gemini Error: {response.text}"
+                                except Exception as e:
+                                        return f"Gemini Request Error: {str(e)}"
+
+                            def get_chat_provider(model_name):
+                                """Фабрика провайдерів."""
+                                m = model_name.lower()
+                                
+                                if "gemini" in m:
+                                        return GeminiRestChat(model_name)
+                            elif "deepseek" in m:
+                                        return OpenAICompatibleChat(model_name, "https://api.deepseek.com", "DEEPSEEK_API_KEY")
+                            elif "gpt" in m:
+                                        return OpenAICompatibleChat(model_name, "https://api.openai.com/v1", "OPENAI_API_KEY")
+                            elif "ollama" in m or "qwen" in m:
+                                        clean_name = model_name.split('/')[-1] if '/' in model_name else model_name
+                                        return OllamaChat(clean_name)
+                            
+                            return GeminiRestChat("gemini-1.5-pro")
+
+                        "
+                        }
+                            })
+                "
+        }
+"
+        }
+        }
+"
+"

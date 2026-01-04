@@ -1,8 +1,6 @@
 rich
 pygments
-google-genai
-google-cloud-aiplatform
-google.generativeai
 openai
 PyYAML 
+ollama
 python-dotenv

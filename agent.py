@@ -1,178 +1,153 @@
-import sys
 import os
-import re
+import sys
+import shlex
 import json
-import warnings
-import argparse
-
-# Приховуємо системні попередження для чистого інтерфейсу
-warnings.filterwarnings("ignore")
-
-# Імпорт модулів Angelica-AI
-from modules.ui import UI
-from modules.chat import get_chat_provider
-from modules.storage import Storage
-from modules.files import FileModule, EditBlock
-from modules.project import ProjectModule
 from modules.config_loader import load_settings, CONFIG_DIR
+from modules.ui import UI
+from modules.files import FileModule
+from modules.context import ContextManager
+from modules.history import HistoryManager
+from modules.session import SessionManager
+from modules.processor import ResponseProcessor
+from modules.policy import PermissionPolicy
+from modules.chat import get_chat_provider # Припустимо, цей модуль повертає об'єкт чату
 
-def apply_changes_logic(ui, files, response):
-    """
-    Мультиформатний диспетчер. Автоматично розпізнає формат відповіді ШІ.
-    Порядок перевірки: JSON -> Diff -> XML -> SEARCH/REPLACE -> Markdown (Нові файли).
-    """
-    
-    # --- 1. Формат: STRUCTURED JSON (Tooling) ---
-    if response.strip().startswith("{") or "```json" in response:
-        try:
-            # Очищення від Markdown-обгорток
-            clean_json = response.strip()
-            if "```json" in clean_json:
-                clean_json = clean_json.split("```json")[1].split("```")[0].strip()
-            elif "```" in clean_json:
-                clean_json = clean_json.split("```")[1].split("```")[0].strip()
-            
-            data = json.loads(clean_json)
-            edits = data if isinstance(data, list) else [data]
-            
-            for item in edits:
-                if item.get("type") == "edit_file":
-                    file_path = item.get("file_path")
-                    ui.print_system(f"🛠️  JSON Edit Request: [bold]{file_path}[/]")
-                    if input("Apply changes? (y/n): ").lower() == 'y':
-                        for e in item.get("edits", []):
-                            block = EditBlock(file_path, e['search'], e['replace'])
-                            res = files.apply_edit(block)
-                            ui.print_system(res.message) if res.success else ui.print_error(res.message)
-            return 
-        except Exception:
-            pass # Якщо не JSON, перевіряємо наступні формати
+def handle_commands(command_str, context_manager, history_manager, session_manager, ui):
+    """Обробник слеш-команд (не йдуть у ШІ)."""
+    try:
+        parts = shlex.split(command_str)
+        cmd = parts[0].lower()
+        args = parts[1:]
 
-    # --- 2. Формат: UNIFIED DIFF (--- a/ +++ b/) ---
-    if "--- a/" in response and "+++ b/" in response:
-        ui.print_system("🔍 Detected Unified Diff format.")
-        diff_pattern = r"(--- a/.*?\n\+\+\+ b/.*?\n@@.*?\n.*?)(?=\n--- a/|\Z)"
-        diffs = re.findall(diff_pattern, response, re.DOTALL)
-        
-        for diff in diffs:
-            if input("Apply this Git-style patch? (y/n): ").lower() == 'y':
-                res = files.apply_unified_diff(diff)
-                ui.print_system(res.message) if res.success else ui.print_error(res.message)
-        return
-
-    # --- 3. Формат: XML TAGS (Claude Style) ---
-    if "<file_edit>" in response:
-        xml_pattern = r"<file_edit>\s*<file>(.*?)</file>\s*<search>(.*?)</search>\s*<replace>(.*?)</replace>"
-        xml_matches = re.findall(xml_pattern, response, re.DOTALL)
-        
-        for f, s, r in xml_matches:
-            file_path = f.strip()
-            ui.print_system(f"📦 XML Edit Request: [bold]{file_path}[/]")
-            if input("Apply? (y/n): ").lower() == 'y':
-                res = files.apply_edit(EditBlock(file_path, s, r))
-                ui.print_system(res.message) if res.success else ui.print_error(res.message)
-        return
-
-    # --- 4. Формат: SEARCH/REPLACE (DeepSeek/Aider style) ---
-    sr_pattern = r"([\w\.\-/]+)\n<<<<<<< SEARCH\n(.*?)\n=======\n(.*?)\n>>>>>>> REPLACE"
-    sr_matches = re.findall(sr_pattern, response, re.DOTALL)
-    
-    if sr_matches:
-        for f, s, r in sr_matches:
-            file_path = f.strip()
-            ui.print_system(f"📝 SEARCH/REPLACE Request: [bold]{file_path}[/]")
-            if input("Apply? (y/n): ").lower() == 'y':
-                res = files.apply_edit(EditBlock(file_path, s, r))
-                ui.print_system(res.message) if res.success else ui.print_error(res.message)
-        return
-
-    # --- 5. НОВІ ФАЙЛИ: Markdown блоки з коментарем-назвою ---
-    code_blocks = re.findall(r"```(?:\w+)?\n(.*?)\n```", response, re.DOTALL)
-    for block in code_blocks:
-        first_line = block.split('\n')[0]
-        file_match = re.search(r"(?:#|//|--)\s*([\w\.\-/]+)", first_line)
-        if file_match:
-            suggested_name = file_match.group(1).strip()
-            ui.console.print()
-            if input(f"💾 Detected code for new file '{suggested_name}'. Create? (y/n): ").lower() == 'y':
-                success = files.write_file(suggested_name, block)
-                if success is True:
-                    ui.print_system(f"🚀 File '{suggested_name}' successfully created.")
+        if cmd == "/add":
+            for path in args:
+                if context_manager.add_file(path):
+                    ui.print_system(f"➕ Додано в контекст: {path}")
                 else:
-                    ui.print_error(f"Error creating file: {success}")
+                    ui.print_error(f"Файл не знайдено: {path}")
+
+        elif cmd == "/drop":
+            if not args:
+                context_manager.clear()
+                ui.print_system("🗑️ Кошик контексту очищено.")
+            else:
+                for path in args:
+                    if context_manager.remove_file(path):
+                        ui.print_system(f"➖ Видалено з контексту: {path}")
+                    else:
+                        ui.print_error(f"Файл не знайдено в кошику: {path}")
+
+        elif cmd == "/list":
+            files = context_manager.list_files()
+            if files:
+                ui.print_system(f"📁 Поточний контекст: {', '.join(files)}")
+            else:
+                ui.print_system("🌑 Кошик контексту порожній.")
+
+        elif cmd == "/save":
+            name = args[0] if args else "default"
+            session_manager.save_session(name)
+
+        elif cmd == "/load":
+            name = args[0] if args else "default"
+            session_manager.load_session(name)
+
+        elif cmd == "/sessions":
+            sessions = session_manager.list_sessions()
+            ui.print_system(f"💾 Доступні сесії: {', '.join(sessions) if sessions else 'порожньо'}")
+
+        elif cmd in ["/exit", "/quit"]:
+            ui.print_system("👋 Завершення роботи...")
+            sys.exit(0)
+
+        else:
+            ui.print_error(f"Невідома команда: {cmd}")
+
+    except Exception as e:
+        ui.print_error(f"Помилка команди: {e}")
 
 def main():
-    # 1. Налаштування (Пріоритет: CLI > Config > Default)
+    # 1. Ініціалізація базових налаштувань та UI
     settings = load_settings()
-    default_model = settings.get("default_model", "ollama/deepseek-coder:6.7b")
-
-    parser = argparse.ArgumentParser(description="Angelica-AI: Pro Coding Agent")
-    parser.add_argument("-m", "--model", type=str, default=default_model,
-                        help=f"Model ID (e.g., cloud/deepseek). Default: {default_model}")
-    args = parser.parse_args()
-
-    # 2. Ініціалізація сервісів
     ui = UI()
-    storage = Storage()
+    ui.print_system("✨ Angelica-AI: Запуск системи...")
+
+    # 2. Ініціалізація модулів
     files = FileModule()
-    project = ProjectModule()
+    context_manager = ContextManager(files)
     
-    try:
-        # Провайдер ініціалізується з вибраною моделлю та системним промптом
-        chat = get_chat_provider(args.model)
-    except Exception as e:
-        ui.print_error(f"Initialization failed: {e}")
-        return
+    # Вибір моделі та провайдера
+    model_name = settings.get("default_model", "gemini-1.5-pro")
+    chat = get_chat_provider(model_name)
+    
+    # Історія та сесії
+    history = HistoryManager(chat, max_tokens=settings.get("max_history_tokens", 4000))
+    session_manager = SessionManager(CONFIG_DIR, history, context_manager, ui)
+    
+    # Політика дозволів та процесор
+    policy = PermissionPolicy(settings.get("permission_policy", "ask"))
+    processor = ResponseProcessor(ui, files, chat, policy)
 
-    # 3. Стартовий банер
-    ui.print_system("✨ Angelica-AI is online.")
-    ui.print_system(f"🤖 Active Model: [bold cyan]{args.model}[/]")
-    ui.print_system(f"📂 Config Directory: [grey62]{CONFIG_DIR}[/]")
-    ui.print_system("Use 'analyze <path>' to start or ask a question. 'exit' to quit.")
-    print()
+    ui.print_system(f"🤖 Модель: [bold cyan]{model_name}[/]")
+    ui.print_system("Команди: /add, /drop, /list, /save, /load, /sessions, /exit")
+    ui.print_horizontal_rule()
 
-    # 4. Основний цикл чату
     while True:
         try:
-            user_input = input("You > ").strip()
+            # Вивід статистики в рядку вводу
+            file_count, tokens = context_manager.get_stats()
+            prompt_label = f"You [Files:{file_count} | ~{tokens}tk] > "
             
+            user_input = input(prompt_label).strip()
             if not user_input: continue
-            if user_input.lower() in ['exit', 'quit', 'вихід']:
-                ui.print_system("Goodbye!")
-                break
 
-            # Очищення вводу для візуального стилю Rich
-            sys.stdout.write("\033[F\033[K")
-            sys.stdout.flush()
-            ui.print_message(user_input, role="user")
-            storage.save_message("user", user_input)
+            # Перевірка на команди
+            if user_input.startswith("/"):
+                handle_commands(user_input, context_manager, history, session_manager, ui)
+                continue
 
-            # Обробка аналізу проєкту
-            if user_input.startswith("analyze "):
-                target_path = user_input.replace("analyze ", "").strip()
-                ui.print_system(f"Scanning directory: {target_path}")
-                tree = project.get_project_tree(target_path)
-                # Перетворюємо команду в контекстний промпт
-                user_input = f"This is my current project structure at {target_path}:\n\n{tree}\n\nKeep this in context for future requests."
+            # Додаємо запит користувача в історію
+            history.add_message("user", user_input)
 
-            ui.console.print()
+            # Формуємо запит (Контекст файлів + Питання)
+            context_data = context_manager.get_context_prompt()
+            full_query = context_data + user_input
 
-            # Отримання відповіді ШІ
-            with ui.console.status(f"[bold grey37]Thinking ({args.model})...", spinner="dots"):
-                response = chat.get_response(user_input)
+            # Запит до ШІ
+            with ui.console.status("[bold grey37]Думаю..."):
+                response = chat.get_response_with_history(full_query, history.get_history_for_api())
 
-            # Вивід відповіді ШІ
+            # Вивід відповіді та збереження в історію
             ui.print_message(response, role="assistant")
-            storage.save_message("assistant", response)
+            history.add_message("assistant", response)
 
-            # Аналіз та застосування змін
-            apply_changes_logic(ui, files, response)
+            # --- ОБРОБКА ДІЙ (JSON) ---
+            # Якщо були команди виконання (run_command), процесор може повернути результат
+            command_feedback = processor.process_response(response)
+
+            # --- LOOPBACK (Зворотний зв'язок від команд) ---
+            while command_feedback:
+                ui.print_system("🔄 Відправка результату команди назад в ШІ...")
+                history.add_message("system", f"Result of command execution:\n{command_feedback}")
+                
+                with ui.console.status("[bold magenta]Аналіз результату..."):
+                    response = chat.get_response_with_history(
+                        "Analyze the command output and proceed.", 
+                        history.get_history_for_api()
+                    )
+                
+                ui.print_message(response, role="assistant")
+                history.add_message("assistant", response)
+                command_feedback = processor.process_response(response)
+
+            # Перевірка на необхідність сумаризації
+            history.check_and_summarize(ui)
 
         except KeyboardInterrupt:
-            ui.print_system("\nSession interrupted. Exiting...")
+            ui.print_system("\n👋 Роботу перервано користувачем.")
             break
         except Exception as e:
-            ui.print_error(f"Fatal error: {str(e)}")
+            ui.print_error(f"Критична помилка: {e}")
 
 if __name__ == "__main__":
     main()
