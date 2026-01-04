@@ -4,3 +4,4 @@ openai
 PyYAML 
 ollama
 python-dotenv
+textual

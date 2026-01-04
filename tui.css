@@ -1,0 +1,21 @@
+/* tui.css */
+Screen {
+    overflow: hidden;
+}
+
+#app-grid {
+    layout: vertical;
+    height: 100%;
+}
+
+#history {
+    height: 1fr;
+    border: round green;
+    margin: 1 2;
+}
+
+#input {
+    height: 3;
+    border: round green;
+    margin: 0 2 1 2;
+}
