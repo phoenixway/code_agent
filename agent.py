@@ -49,49 +49,38 @@ class AngelicaAgent:
         return False
 
     def _parse_output(self, text):
-        """
-        Parses AI output into:
-        1. Thoughts (inside <think> tags) [cite: 5, 7]
-        2. A single JSON command (raw JSON outside markdown)
-        3. Plain text message (if no command is found) [cite: 20]
-        """
         thoughts = []
         command = None
         plain_text = ""
 
-        # 1. Extract thought blocks [cite: 5, 6]
-        closing_tags = ["</think>", "</thought>", "</thinking>"]
-        tag_used = None
-        for tag in closing_tags:
-            if tag in text:
-                tag_used = tag
-                break
-        
-        content_after_thoughts = text
-        if tag_used:
-            parts = text.split(tag_used, 1)
-            thought_part = parts[0]
-            # Clean opening tags [cite: 7]
-            thought_part = re.sub(r'<(?:thought|thinking|think)>', '', thought_part, flags=re.IGNORECASE)
-            thoughts.append(thought_part.strip())
-            content_after_thoughts = parts[1].strip()
-        
-        # 2. Search for the first valid JSON object in the remaining text [cite: 10, 11]
-        json_matches = re.findall(r'(\{.*?\})', content_after_thoughts, re.DOTALL)
-        for candidate in json_matches:
+        # Шукаємо межі думок
+        if "<think>" in text:
+            # Класичний випадок: є відкриваючий тег
+            parts = text.split("<think>", 1)[1].split("</think>", 1)
+            thoughts.append(parts[0].strip())
+            content_after = parts[1].strip() if len(parts) > 1 else ""
+        elif "</think>" in text:
+            # Випадок як у вас: модель забула <think>, але написала </think>
+            parts = text.split("</think>", 1)
+            thoughts.append(parts[0].strip())
+            content_after = parts[1].strip()
+        else:
+            # Взагалі немає тегів думок
+            content_after = text.strip()
+
+        # Пошук JSON (Action)
+        json_match = re.search(r'(\{.*?\})', content_after, re.DOTALL)
+        if json_match:
             try:
-                data = json.loads(candidate)
+                data = json.loads(json_match.group(1))
                 if isinstance(data, dict) and "type" in data:
                     command = data
-                    break 
             except:
-                continue
+                pass
 
-        # 3. If no command is present, treat the non-thought content as plain text [cite: 20, 21]
+        # Якщо JSON не знайдено, все, що після думок — це текст
         if not command:
-            plain_text = re.sub(r'<(?:thought|thinking|think)>.*?</(?:thought|thinking|think)>', '', text, flags=re.DOTALL | re.IGNORECASE).strip()
-            if not tag_used and not thoughts:
-                plain_text = text.strip()
+            plain_text = content_after
         
         return thoughts, command, plain_text
 
