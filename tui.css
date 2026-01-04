@@ -13,17 +13,58 @@ Screen {
     margin: 1 0 0 0;
 }
 
-#input {
-    height: 3;
-    margin: 1 0;
-}
-
-#loading {
+#loading-container {
     display: none;
     height: 1;
-    margin: 0 0 1 0;
+    layout: horizontal;
+    margin: 0 0 1 2; /* Same horizontal margin as input */
+}
+
+#loading-label {
+    margin-left: 1;
+}
+
+#input {
+    height: 3;
+    border: round green;
+    margin: 0 2 1 2;
 }
 
 .chat-message {
     margin-bottom: 1;
+}
+
+.thought-message {
+    margin-bottom: 2;
+}
+
+/* Confirmation Screen Styles */
+ConfirmationScreen {
+    align: center middle;
+}
+
+.confirmation-panel {
+    width: 80%;
+    max-width: 80;
+    height: auto;
+    background: $panel;
+    border: heavy $accent;
+    padding: 1 2;
+}
+
+.confirmation-title {
+    text-align: center;
+    margin-bottom: 1;
+}
+
+.confirmation-detail {
+    margin-left: 2;
+}
+
+.confirmation-buttons {
+    margin-top: 2;
+    align-horizontal: center;
+    & Button {
+        margin: 0 1;
+    }
 }

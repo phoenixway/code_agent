@@ -1,11 +1,12 @@
 from rich.prompt import Confirm
+from modules.tui_ui import TuiUI # Import TuiUI
 
 class PermissionPolicy:
     def __init__(self, ui, mode="ask"):
         self.ui = ui
         self.mode = mode
 
-    def check(self, action):
+    async def check(self, action): # Make it async
         """Checks if the action is allowed based on the current policy."""
         if self.mode == "always":
             return True
@@ -20,9 +21,13 @@ class PermissionPolicy:
         elif action_type in ["write_file", "create_file", "edit_file"]:
             details = action.get("path") or action.get("file_path")
         
-        # Using rich.prompt for a better user experience
-        return Confirm.ask(
-            f"[bold yellow]⚠️  ALLOW this action? ⚠️[/bold yellow]\n"
-            f"   - Type: [bold cyan]{action_type}[/bold cyan]\n"
-            f"   - Details: [bold red]{details}[/bold red]\n"
-        )
+        if isinstance(self.ui, TuiUI):
+            # Use async confirmation for TUI
+            return await self.ui.confirm_action(action)
+        else:
+            # Fallback to synchronous confirmation for old CLI
+            return Confirm.ask(
+                f"[bold yellow]⚠️  ALLOW this action? ⚠️[/bold yellow]\n"
+                f"   - Type: [bold cyan]{action_type}[/bold cyan]\n"
+                f"   - Details: [bold red]{details}[/bold red]\n"
+            )

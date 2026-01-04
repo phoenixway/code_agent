@@ -98,39 +98,43 @@ class AngelicaAgent:
         current_query = context_info if context_info else ""
 
         active_loop = True
-        while active_loop:
-            response = await self.get_response(current_query)
-            if not response: break
-            
-            self.history.add_message("assistant", response)
-            thoughts, command, plain_text = self._parse_output(response)
+        try:
+            self.ui.start_thinking()
+            while active_loop:
+                response = await self.get_response(current_query)
+                if not response: 
+                    active_loop = False
+                    break
+                
+                self.history.add_message("assistant", response)
+                thoughts, command, plain_text = self._parse_output(response)
 
-            for thought in thoughts:
-                self.ui.print_thought(thought)
+                for thought in thoughts:
+                    self.ui.print_thought(thought)
 
-            if command:
-                active_loop = False
-                if command.get("before_execution"):
-                    self.ui.print_plan(command['before_execution'])
+                if command:
+                    active_loop = False
+                    if command.get("before_execution"):
+                        self.ui.print_plan(command['before_execution'])
+                    
+                    status_msg = command.get("during_execution", "Processing...")
+                    self.ui.start_action(status_msg)
+                    
+                    result = self.processor.process_single_action(command)
+                    
+                    if command.get("after_execution") and result.get("status") != "failed":
+                        self.ui.print_confirmation(command['after_execution'])
+                    
+                    if result.get("status") == "failed" or command.get("return_control") is True:
+                        active_loop = True
+                        current_query = f"SYSTEM RESULT:\n{result.get('output')}"
+                        self.ui.print_command_result(result.get('output'))
+                        self.history.add_message("system", current_query)
                 
-                # In TUI, permission is handled differently, maybe via a dialog.
-                # For now, we assume policy is checked by UI component that calls this.
-                # Or we can make this async and await user confirmation.
-                # The old policy check is blocking, so we remove it from the processor.
-                
-                result = self.processor.process_single_action(command)
-                
-                if command.get("after_execution") and result.get("status") != "failed":
-                    self.ui.print_confirmation(command['after_execution'])
-                
-                if result.get("status") == "failed" or command.get("return_control") is True:
-                    active_loop = True
-                    current_query = f"SYSTEM RESULT:\n{result.get('output')}"
-                    self.ui.print_command_result(result.get('output'))
-                    self.history.add_message("system", current_query)
-            
-            elif plain_text.strip():
-                self.ui.print_message(plain_text, role="assistant")
-                active_loop = False
+                elif plain_text.strip():
+                    self.ui.print_message(plain_text, role="assistant")
+                    active_loop = False
 
-        self.history.check_and_summarize(self.ui)
+            self.history.check_and_summarize(self.ui)
+        finally:
+            self.ui.stop_loading()
