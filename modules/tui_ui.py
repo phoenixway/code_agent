@@ -88,22 +88,18 @@ class TuiUI:
             return await self.app.call_from_thread(func, *args, **kwargs)
 
     def _add_message(self, renderable=None, classes="chat-message", widget=None):
-        """Цей метод виконується в головному потоці (Main Thread)"""
-        
-        # Add a separator before the message, but only if history is not empty
+        """Додає повідомлення в історію."""
         if self.history.children:
             separator = Static(classes="message-separator")
             self.history.mount(separator)
 
         if widget is None:
-            # Створюємо віджет з явним розширенням
-            widget = Static(renderable, classes=classes, expand=True)
+            # ЗМІНЕНО: expand=False дозволяє віджету займати лише потрібне місце.
+            # can_focus=False гарантує, що віджет не перехоплює фокус клавіатури.
+            widget = Static(renderable, classes=classes, expand=False)
+            widget.can_focus = False 
         
-        # Монтуємо в контейнер
         self.history.mount(widget)
-        
-        # Важливо: прокручуємо до кінця саме контейнер історії
-        # scroll_end гарантує, що ми побачимо нове повідомлення
         self.history.scroll_end(animate=False)
 
 
