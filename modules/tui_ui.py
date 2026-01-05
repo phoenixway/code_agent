@@ -122,33 +122,38 @@ class TuiUI:
         """Asks the user for confirmation for a sensitive action."""
         return await self._call_ui(self._confirm_action_main_thread, action_details)
 
-    def print_system(self, text):
-        self._call_ui(self._add_message, f"[bold blue]ℹ[/] {text}")
+    async def print_system(self, text):
+        await self._call_ui(self._add_message, f"[bold blue]ℹ[/] {text}")
+
 
     def print_error(self, text):
         self._call_ui(self._add_message, f"[bold red]✘ Error:[/] {text}")
 
-    def print_message(self, text, role="assistant"):
+    async def print_message(self, text, role="assistant"):
         if role == "assistant":
             renderable = Group(
                 Text.from_markup("[bold white]🤖 Angelica:[/bold white]"),
                 Markdown(text)
             )
-            self._call_ui(self._add_message, renderable)
-        else: # user
-            self._call_ui(self._add_message, f"[bold green]👤 You:[/bold green] {text}")
+            await self._call_ui(self._add_message, renderable)
+        else:
+            await self._call_ui(self._add_message, f"[bold green]👤 You:[/bold green] {text}")
 
-    def print_thought(self, text):
-        if text.strip():
-            self._call_ui(self._add_message, 
-                          f"[grey37][italic]💭 {text.strip()}[/italic][/grey37]", 
-                          classes="chat-message thought-message")
-
-    def print_plan(self, text):
-        self._call_ui(self._add_message, f"\n[bold cyan]🤖 Plan:[/] {text}")
     
-    def print_command_result(self, text):
-        self._call_ui(self._add_message, f"SYSTEM RESULT:\n{text}")
+    async def print_thought(self, text):
+        if text.strip():
+            await self._call_ui(self._add_message, 
+                                f"[grey37][italic]💭 {text.strip()}[/italic][/grey37]", 
+                                classes="chat-message thought-message")
 
-    def print_confirmation(self, text):
-        self._call_ui(self._add_message, f"[bold green]✅ {text}[/]")
+    async def print_plan(self, text):
+        await self._call_ui(self._add_message, f"\n[bold cyan]🤖 Plan:[/] {text}")
+
+    async def print_command_result(self, text):
+        await self._call_ui(self._add_message, f"SYSTEM RESULT:\n{text}")
+    
+    async def print_command_result(self, text):
+        await self._call_ui(self._add_message, f"SYSTEM RESULT:\n{text}")
+
+    async def print_confirmation(self, text):
+        await self._call_ui(self._add_message, f"[bold green]✅ {text}[/]")
