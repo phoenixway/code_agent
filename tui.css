@@ -30,7 +30,7 @@ Screen {
 .chat-message {
     padding: 0 1; /* Лівий та правий відступи для тексту */
     max-width: 100%; 
-    margin: 0;    /* Переконуємося, що немає зовнішніх вертикальних відступів */
+    margin: 1 0;
 }
 
 .assistant-message {
@@ -51,7 +51,6 @@ Screen {
     text-style: bold;
     margin: 0;
     padding: 0 1;
-    border-top: ascii $info;
 }
 
 /* БЛОК ЗАВАНТАЖЕННЯ ТА СТАТУСУ */

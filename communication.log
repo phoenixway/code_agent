@@ -84,3 +84,83 @@ Testing successful.
 2026-01-05 13:51:23,125 - LOG_PROCESS_USER_INPUT_PRE_HISTORY: '"<think> I am Angelica-AI, a coding agent designed to operate autonomously in Linux (Fedora/Desktop) and Android (Termux) environments. My primary function is to solve coding problems and execute technical tasks as instructed. \n\nI will analyze the user's requests, plan my actions, and communicate my reasoning before executing any commands.  My responses will strictly adhere to the defined format: <think>reasoning</think> JSON or text.</think>\ntest"'
 2026-01-05 13:51:23,125 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=assistant, Content='"<think> I am Angelica-AI, a coding agent designed to operate autonomously in Linux (Fedora/Desktop) and Android (Termux) environments. My primary function is to solve coding problems and execute technical tasks as instructed. \n\nI will analyze the user's requests, plan my actions, and communicate my reasoning before executing any commands.  My responses will strictly adhere to the defined format: <think>reasoning</think> JSON or text.</think>\ntest"'
 2026-01-05 13:51:23,125 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=assistant, Content='"<think> I am Angelica-AI, a coding agent designed to operate autonomously in Linux (Fedora/Desktop) and Android (Termux) environments. My primary function is to solve coding problems and execute technical tasks as instructed. \n\nI will analyze the user's requests, plan my actions, and communicate my reasoning before executing any commands.  My responses will strictly adhere to the defined format: <think>reasoning</think> JSON or text.</think>\ntest"'
+2026-01-05 13:53:08,254 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=user, Content=''test''
+2026-01-05 13:53:08,254 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=user, Content=''test''
+2026-01-05 13:53:08,254 - OUTGOING TO AI:
+
+2026-01-05 13:53:13,003 - INCOMING FROM AI (RAW): '"<think>\nI am Angelica-AI, a coding agent designed to operate in Linux (Fedora/Desktop) and Android (Termux) environments. My primary function is to autonomously solve programming problems. I will analyze the user's requests and execute the necessary commands or provide informative responses. </think>\ntest \n\n\n"'
+2026-01-05 13:53:13,003 - LOG_PROCESS_USER_INPUT_PRE_HISTORY: '"<think>\nI am Angelica-AI, a coding agent designed to operate in Linux (Fedora/Desktop) and Android (Termux) environments. My primary function is to autonomously solve programming problems. I will analyze the user's requests and execute the necessary commands or provide informative responses. </think>\ntest \n\n\n"'
+2026-01-05 13:53:13,003 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=assistant, Content='"<think>\nI am Angelica-AI, a coding agent designed to operate in Linux (Fedora/Desktop) and Android (Termux) environments. My primary function is to autonomously solve programming problems. I will analyze the user's requests and execute the necessary commands or provide informative responses. </think>\ntest \n\n\n"'
+2026-01-05 13:53:13,003 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=assistant, Content='"<think>\nI am Angelica-AI, a coding agent designed to operate in Linux (Fedora/Desktop) and Android (Termux) environments. My primary function is to autonomously solve programming problems. I will analyze the user's requests and execute the necessary commands or provide informative responses. </think>\ntest"'
+2026-01-05 14:03:21,440 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=user, Content=''еуіе''
+2026-01-05 14:03:21,440 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=user, Content=''еуіе''
+2026-01-05 14:03:21,440 - OUTGOING TO AI:
+еуіе
+2026-01-05 14:04:01,993 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=user, Content=''test''
+2026-01-05 14:04:01,993 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=user, Content=''test''
+2026-01-05 14:04:01,994 - OUTGOING TO AI:
+test
+2026-01-05 14:05:27,220 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=user, Content=''test''
+2026-01-05 14:05:27,220 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=user, Content=''test''
+2026-01-05 14:05:27,220 - OUTGOING TO AI:
+test
+2026-01-05 14:06:32,326 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=user, Content=''test''
+2026-01-05 14:06:32,326 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=user, Content=''test''
+2026-01-05 14:06:32,326 - OUTGOING TO AI:
+test
+2026-01-05 14:07:29,407 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=user, Content=''test''
+2026-01-05 14:07:29,407 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=user, Content=''test''
+2026-01-05 14:07:29,407 - OUTGOING TO AI:
+test
+2026-01-05 14:11:15,662 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=user, Content=''еуіе''
+2026-01-05 14:11:15,662 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=user, Content=''еуіе''
+2026-01-05 14:11:15,662 - OUTGOING TO AI:
+еуіе
+2026-01-05 14:11:43,014 - INCOMING FROM AI (RAW): ''<think>\nI am Angelica-AI, a coding agent optimized for Linux (Fedora/Desktop) and Android (Termux). I will follow the provided instructions carefully to solve problems autonomously. My current state is unknown; I require further information to begin processing.  </think>test \n\n\n''
+2026-01-05 14:11:43,014 - LOG_PROCESS_USER_INPUT_PRE_HISTORY: ''<think>\nI am Angelica-AI, a coding agent optimized for Linux (Fedora/Desktop) and Android (Termux). I will follow the provided instructions carefully to solve problems autonomously. My current state is unknown; I require further information to begin processing.  </think>test \n\n\n''
+2026-01-05 14:11:43,014 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=assistant, Content=''<think>\nI am Angelica-AI, a coding agent optimized for Linux (Fedora/Desktop) and Android (Termux). I will follow the provided instructions carefully to solve problems autonomously. My current state is unknown; I require further information to begin processing.  </think>test \n\n\n''
+2026-01-05 14:11:43,014 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=assistant, Content=''<think>\nI am Angelica-AI, a coding agent optimized for Linux (Fedora/Desktop) and Android (Termux). I will follow the provided instructions carefully to solve problems autonomously. My current state is unknown; I require further information to begin processing.  </think>test''
+2026-01-05 14:17:54,393 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=user, Content=''/model''
+2026-01-05 14:17:54,394 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=user, Content=''/model''
+2026-01-05 14:17:54,394 - OUTGOING TO AI:
+/model
+2026-01-05 14:17:59,555 - INCOMING FROM AI (RAW): ''<think> I am Angelica-AI, a coding agent designed to operate autonomously in Linux (Fedora/Desktop) and Android (Termux) environments. My primary function is to solve coding problems presented to me. To begin, I need to understand the current context.  What task or problem should I address? </think> \n''
+2026-01-05 14:17:59,555 - LOG_PROCESS_USER_INPUT_PRE_HISTORY: ''<think> I am Angelica-AI, a coding agent designed to operate autonomously in Linux (Fedora/Desktop) and Android (Termux) environments. My primary function is to solve coding problems presented to me. To begin, I need to understand the current context.  What task or problem should I address? </think> \n''
+2026-01-05 14:17:59,555 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=assistant, Content=''<think> I am Angelica-AI, a coding agent designed to operate autonomously in Linux (Fedora/Desktop) and Android (Termux) environments. My primary function is to solve coding problems presented to me. To begin, I need to understand the current context.  What task or problem should I address? </think> \n''
+2026-01-05 14:17:59,555 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=assistant, Content=''<think> I am Angelica-AI, a coding agent designed to operate autonomously in Linux (Fedora/Desktop) and Android (Termux) environments. My primary function is to solve coding problems presented to me. To begin, I need to understand the current context.  What task or problem should I address? </think>''
+2026-01-05 14:17:59,556 - OUTGOING TO AI:
+/model
+2026-01-05 14:18:02,802 - INCOMING FROM AI (RAW): ''<think>\nThe user has provided an empty input. To proceed, I need further instructions. \n\nI will wait for a specific coding problem or task from the user. \n</think>\n\n\n\n''
+2026-01-05 14:18:02,802 - LOG_PROCESS_USER_INPUT_PRE_HISTORY: ''<think>\nThe user has provided an empty input. To proceed, I need further instructions. \n\nI will wait for a specific coding problem or task from the user. \n</think>\n\n\n\n''
+2026-01-05 14:18:02,802 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=assistant, Content=''<think>\nThe user has provided an empty input. To proceed, I need further instructions. \n\nI will wait for a specific coding problem or task from the user. \n</think>\n\n\n\n''
+2026-01-05 14:18:02,802 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=assistant, Content=''<think>\nThe user has provided an empty input. To proceed, I need further instructions. \n\nI will wait for a specific coding problem or task from the user. \n</think>''
+2026-01-05 14:18:02,803 - OUTGOING TO AI:
+/model
+2026-01-05 14:18:06,015 - INCOMING FROM AI (RAW): ''<think> The user did not provide any context or coding problem. It appears they are testing my responsiveness.  I will acknowledge their input. </think>\nUnderstood. Awaiting your instructions. \n\n\n\n''
+2026-01-05 14:18:06,015 - LOG_PROCESS_USER_INPUT_PRE_HISTORY: ''<think> The user did not provide any context or coding problem. It appears they are testing my responsiveness.  I will acknowledge their input. </think>\nUnderstood. Awaiting your instructions. \n\n\n\n''
+2026-01-05 14:18:06,015 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=assistant, Content=''<think> The user did not provide any context or coding problem. It appears they are testing my responsiveness.  I will acknowledge their input. </think>\nUnderstood. Awaiting your instructions. \n\n\n\n''
+2026-01-05 14:18:06,015 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=assistant, Content=''<think> The user did not provide any context or coding problem. It appears they are testing my responsiveness.  I will acknowledge their input. </think>\nUnderstood. Awaiting your instructions.''
+2026-01-05 14:19:20,156 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=user, Content=''test''
+2026-01-05 14:19:20,156 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=user, Content=''test''
+2026-01-05 14:19:20,156 - OUTGOING TO AI:
+test
+2026-01-05 14:19:23,333 - INCOMING FROM AI (RAW): '"<think>\nThe user has provided a simple 'test' command. This suggests they are verifying if I am operational and responding correctly. I will acknowledge their input.</think>\nTest successful. \n\n\n\n"'
+2026-01-05 14:19:23,333 - LOG_PROCESS_USER_INPUT_PRE_HISTORY: '"<think>\nThe user has provided a simple 'test' command. This suggests they are verifying if I am operational and responding correctly. I will acknowledge their input.</think>\nTest successful. \n\n\n\n"'
+2026-01-05 14:19:23,333 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=assistant, Content='"<think>\nThe user has provided a simple 'test' command. This suggests they are verifying if I am operational and responding correctly. I will acknowledge their input.</think>\nTest successful. \n\n\n\n"'
+2026-01-05 14:19:23,333 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=assistant, Content='"<think>\nThe user has provided a simple 'test' command. This suggests they are verifying if I am operational and responding correctly. I will acknowledge their input.</think>\nTest successful."'
+2026-01-05 14:19:43,261 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=user, Content=''test''
+2026-01-05 14:19:43,261 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=user, Content=''test''
+2026-01-05 14:19:43,261 - OUTGOING TO AI:
+test
+2026-01-05 14:19:46,099 - INCOMING FROM AI (RAW): ''<think>\nThe user has repeated the "test" command.  I will continue to respond affirmatively as a confirmation of functionality.</think>\nTest successful. \n\n\n\n''
+2026-01-05 14:19:46,099 - LOG_PROCESS_USER_INPUT_PRE_HISTORY: ''<think>\nThe user has repeated the "test" command.  I will continue to respond affirmatively as a confirmation of functionality.</think>\nTest successful. \n\n\n\n''
+2026-01-05 14:19:46,100 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=assistant, Content=''<think>\nThe user has repeated the "test" command.  I will continue to respond affirmatively as a confirmation of functionality.</think>\nTest successful. \n\n\n\n''
+2026-01-05 14:19:46,100 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=assistant, Content=''<think>\nThe user has repeated the "test" command.  I will continue to respond affirmatively as a confirmation of functionality.</think>\nTest successful.''
+2026-01-05 14:22:50,011 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=user, Content=''test''
+2026-01-05 14:22:50,012 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=user, Content=''test''
+2026-01-05 14:22:50,012 - OUTGOING TO AI:
+test
+2026-01-05 14:22:52,355 - INCOMING FROM AI (RAW): ''<think> \nThe input "test" is a simple verification string. I will confirm reception to proceed. </think>\ntest \n\n\n''
+2026-01-05 14:22:52,355 - LOG_PROCESS_USER_INPUT_PRE_HISTORY: ''<think> \nThe input "test" is a simple verification string. I will confirm reception to proceed. </think>\ntest \n\n\n''
+2026-01-05 14:22:52,355 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=assistant, Content=''<think> \nThe input "test" is a simple verification string. I will confirm reception to proceed. </think>\ntest \n\n\n''
+2026-01-05 14:22:52,355 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=assistant, Content=''<think> \nThe input "test" is a simple verification string. I will confirm reception to proceed. </think>\ntest''

@@ -13,7 +13,17 @@ def load_settings():
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     
     if not CONFIG_FILE.exists():
-        default = {"default_model": "gemini-1.5-pro", "permission_policy": "ask", "max_history_tokens": 4000}
+        default = {
+            "default_model": "gemini-1.5-pro",
+            "available_models": [
+                "gemini-1.5-pro",
+                "ollama/qwen:4b",
+                "claude-3-opus-20240229",
+                "gpt-4"
+            ],
+            "permission_policy": "ask", 
+            "max_history_tokens": 4000
+        }
         with open(CONFIG_FILE, 'w') as f:
             yaml.dump(default, f)
             

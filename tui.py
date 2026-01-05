@@ -11,6 +11,7 @@ class TUI(App):
     BINDINGS = [
         ("d", "toggle_dark", "Toggle dark mode"),
         ("q", "quit", "Quit"),
+        ("escape", "interrupt_agent", "Interrupt"),
     ]
     VERSION = "0.1.0" # Define version here
 
@@ -57,18 +58,30 @@ class TUI(App):
     async def on_input_submitted(self, message: Input.Submitted) -> None:
         """Called when the user submits a message."""
         user_input = message.value.strip()
+        message.input.value = "" # Clear input immediately
+
         if not user_input:
             return
 
-        # ВИПРАВЛЕНО: Додано await. Тепер ваше повідомлення з'явиться!
-        await self.ui.print_message(user_input, role="user")
-        
-        # Очищуємо поле вводу через об'єкт повідомлення (це надійніше)
-        message.input.value = ""
-        
-        # Запускаємо обробку агентом у фоновому режимі
-        # Тут await не потрібен, бо run_worker сам керує корутиною
-        self.run_worker(self.agent.process_user_input(user_input), exclusive=True)
+        if user_input == "/models":
+            available_models = self.agent.settings.get("available_models", [])
+            if not available_models:
+                await self.ui.print_error("No available models configured.")
+                return
+            
+            current_model = self.agent.chat.model_name
+            selected_model = await self.ui.select_model(available_models, current_model)
+            
+            if selected_model and selected_model != current_model:
+                # Run the model switching in a worker to avoid blocking the UI
+                self.run_worker(self.agent.switch_model(selected_model), exclusive=True)
+        else:
+            await self.ui.print_message(user_input, role="user")
+            self.run_worker(self.agent.process_user_input(user_input), exclusive=True)
+
+    async def action_interrupt_agent(self) -> None:
+        """Interrupts the agent's current operation."""
+        await self.agent.interrupt()
 
 if __name__ == "__main__":
     agent = AngelicaAgent() # Instantiate agent without ui

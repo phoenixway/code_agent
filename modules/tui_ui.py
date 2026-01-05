@@ -67,6 +67,46 @@ class ContinueConfirmationScreen(Screen[bool]):
         elif event.button.id == "stop_button":
             self.dismiss(False)
 
+
+class ModelSelectionScreen(Screen[str]):
+    """A screen to allow the user to select a model."""
+    def __init__(self, models: list[str], current_model: str, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.models = models
+        self.current_model = current_model
+
+    def compose(self) -> ComposeResult:
+        yield Vertical(
+            Static("[bold cyan]Select a Model[/bold cyan]", classes="confirmation-title"),
+            *[
+                Button(
+                    f"{'>> ' if model == self.current_model else ''}{model}{' <<' if model == self.current_model else ''}",
+                    id=f"model_{model.replace('/', '_').replace(':', '__').replace('-', '_')}", # Sanitize ID for Textual
+                    variant="primary" if model == self.current_model else "default"
+                ) for model in self.models
+            ],
+            Button("Cancel", id="cancel_button", variant="error"),
+            classes="confirmation-panel"
+        )
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "cancel_button":
+            self.dismiss("")
+        else:
+            # We need to map the button ID back to the original model name
+            # The simplest way is to find the model name from the list
+            # A more robust solution might involve storing a map, but for now this is fine.
+            # Assuming button.id starts with "model_"
+            selected_id_prefix = "model_"
+            if event.button.id.startswith(selected_id_prefix):
+                # Reverse the sanitization
+                original_model_candidate = event.button.id[len(selected_id_prefix):].replace('__', ':').replace('_', '/')
+                # Find the actual model from the list
+                selected_model = next((m for m in self.models if m == original_model_candidate), "")
+                self.dismiss(selected_model)
+            else:
+                self.dismiss("") # Should not happen for model buttons
+
 class TuiUI:
     def __init__(self, app, history_widget: VerticalScroll, loading_container: Container, loading_label: Static):
         self.app = app
@@ -79,23 +119,15 @@ class TuiUI:
         """Безпечний виклик оновлення UI з будь-якого потоку."""
         if threading.current_thread() is self.main_thread:
             result = func(*args, **kwargs)
-            # Якщо функція асинхронна (як _confirm_action_main_thread), чекаємо її
             if asyncio.iscoroutine(result):
                 return await result
             return result
         else:
-            # З іншого потоку плануємо в головному циклі Textual
             return await self.app.call_from_thread(func, *args, **kwargs)
 
     def _add_message(self, renderable=None, classes="chat-message", widget=None):
         """Додає повідомлення в історію."""
-        if self.history.children:
-            separator = Static(classes="message-separator")
-            self.history.mount(separator)
-
         if widget is None:
-            # ЗМІНЕНО: expand=False дозволяє віджету займати лише потрібне місце.
-            # can_focus=False гарантує, що віджет не перехоплює фокус клавіатури.
             widget = Static(renderable, classes=classes, expand=False)
             widget.can_focus = False 
         
@@ -104,17 +136,16 @@ class TuiUI:
 
 
     def _start_thinking(self):
-        self.loading_label.update("Thinking...") # Оновлюємо текст
-        self.loading_container.display = True   # Показуємо весь блок
+        self.loading_label.update("Thinking...")
+        self.loading_container.display = True
 
     def _start_action(self, text: str):
-        # Якщо тексту немає, ставимо стандартний статус
         status_text = text if text else "Processing..."
-        self.loading_label.update(status_text)   # Оновлюємо текст на статус операції
-        self.loading_container.display = True    # Показуємо блок
+        self.loading_label.update(status_text)
+        self.loading_container.display = True
 
     def _stop_loading(self):
-        self.loading_container.display = False   # Ховаємо блок, коли операцію завершено
+        self.loading_container.display = False
 
     async def _confirm_action_main_thread(self, action_details: dict) -> bool:
         return await self.app.push_screen(ConfirmationScreen(action_details))
@@ -122,7 +153,13 @@ class TuiUI:
     async def _confirm_continue_main_thread(self, prompt: str) -> bool:
         return await self.app.push_screen(ContinueConfirmationScreen(prompt))
 
-    # --- Публічні методи для агента (всі ASYNC) ---
+    async def _select_model_main_thread(self, models: list[str], current_model: str) -> str:
+        return await self.app.push_screen(ModelSelectionScreen(models, current_model))
+
+    # --- Public methods for the agent ---
+
+    async def select_model(self, models: list[str], current_model: str) -> str:
+        return await self._call_ui(self._select_model_main_thread, models, current_model)
 
     async def start_thinking(self):
         await self._call_ui(self._start_thinking)
@@ -144,40 +181,30 @@ class TuiUI:
 
 
     async def print_error(self, text):
-        # ВИПРАВЛЕНО: додано async та await
         await self._call_ui(self._add_message, f"[bold red]✘ Error:[/] {text}")
-
-   # modules/tui_ui.py
 
     async def print_message(self, text, role="assistant"):
         if role == "assistant":
-            # ВИПРАВЛЕНО: замість MarkdownWidget використовуємо Static + RichMarkdown
-            # Це прибирає порожні рядки, які додає стандартний віджет Textual
             clean_text = text.strip()
             markdown_renderable = RichMarkdown(clean_text)
             await self._call_ui(self._add_message, markdown_renderable, classes="chat-message assistant-message")
         else:
-            # For User, just the text with a '>' prefix
             renderable = Text(f"> {text.strip()}", style="rgb(100,200,100)")
             await self._call_ui(self._add_message, renderable, classes="chat-message user-message")
 
 
     async def print_thought(self, text):
         if text.strip():
-            # Додаємо .strip() для впевненості
             await self._call_ui(self._add_message, 
                                 f"[grey37][italic]💭 {text.strip()}[/italic][/grey37]", 
                                 classes="chat-message thought-message")
 
     async def print_plan(self, text):
-        # ВИПРАВЛЕНО: видалено \n перед текстом
         await self._call_ui(self._add_message, f"[bold cyan]🤖 Plan:[/] {text.strip()}")
 
-        async def print_command_result(self, text):
-
-            # Додано пробіл після "RESULT:" для кращого вигляду
-
-            await self._call_ui(self._add_message, f"[bold white]SYSTEM RESULT:[/] {text.strip()}")
+    async def print_command_result(self, text):
+        await self._call_ui(self._add_message, f"[bold white]SYSTEM RESULT:[/] {text.strip()}")
 
     async def print_confirmation(self, text):
         await self._call_ui(self._add_message, f"[bold green]✅ {text.strip()}[/]")
+

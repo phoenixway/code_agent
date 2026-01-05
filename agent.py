@@ -22,6 +22,7 @@ class AngelicaAgent:
         self.files = FileModule()
         self.context_manager = ContextManager(self.files)
         self.MAX_CONSECUTIVE_CALLS = 3 # Safeguard against loops
+        self.current_task = None # To hold the current running task
         
         # Setup communication logger
         self.comm_log = logging.getLogger('communication')
@@ -51,39 +52,57 @@ class AngelicaAgent:
         self.policy = PermissionPolicy(self.ui, policy_mode)
         self.processor = ResponseProcessor(self.ui, self.files, self.chat, self.policy)
 
-    def _parse_output(self, text):
+    def _parse_output(self, text: str):
         thoughts = []
         command = None
         
-        # 1. Extract and parse command (JSON)
-        json_match = re.search(r'```json\s*(\{.*?\})\s*```|(\{.*?\})', text, re.DOTALL)
-        if json_match:
-            potential_json = json_match.group(1) or json_match.group(2)
-            try:
-                data = json.loads(potential_json)
-                if isinstance(data, dict) and "type" in data:
-                    command = data
-                    text = text.replace(json_match.group(0), '', 1)
-            except json.JSONDecodeError:
-                pass
-
-        # 2. Extract thoughts
+        # 1. Extract thoughts first to isolate them
         thought_end_pattern = r'</(?:think|thought|thinking)>'
         last_match = None
+        # Find the last thought tag to handle multiple thought blocks
         for match in re.finditer(thought_end_pattern, text, re.IGNORECASE | re.DOTALL):
             last_match = match
         
         if last_match:
             end_pos = last_match.end()
             thought_block = text[:end_pos]
-            text = text[end_pos:]
+            text = text[end_pos:] # The rest of the text after the last thought
 
             cleaned_thought = re.sub(r'</?(?:think|thought|thinking)>', '', thought_block, flags=re.IGNORECASE).strip()
             if cleaned_thought:
                 thoughts.append(cleaned_thought)
 
-        # 3. Clean up plain text
-        plain_text = re.sub(r'</?(?:think|thought|thinking|tool_code|tool_call|json|code|text|message)\b.*?>', '', text, flags=re.IGNORECASE)
+        # The remaining text is now either a command, plain text, or both.
+        remaining_text = text.strip()
+
+        # 2. Look for a command, prioritizing explicit ```json blocks
+        json_block_match = re.search(r'```json\s*(\{.*?\})\s*```', remaining_text, re.DOTALL)
+        if json_block_match:
+            json_str = json_block_match.group(1).strip()
+            try:
+                data = json.loads(json_str)
+                if isinstance(data, dict) and "type" in data:
+                    command = data
+                    # Remove the JSON block for the final plain text
+                    remaining_text = remaining_text.replace(json_block_match.group(0), '', 1).strip()
+            except json.JSONDecodeError:
+                # If it's a malformed JSON block, treat it as plain text
+                pass
+        
+        # 3. If no command yet, check if the entire remaining text is a JSON object
+        if not command and remaining_text.startswith('{') and remaining_text.endswith('}'):
+            try:
+                data = json.loads(remaining_text)
+                if isinstance(data, dict) and "type" in data:
+                    command = data
+                    # The entire text was a command, so there's no plain text left
+                    remaining_text = ""
+            except json.JSONDecodeError:
+                # It looked like JSON but wasn't valid, so treat it as plain text
+                pass
+
+        # 4. Whatever is left is plain text; clean it up.
+        plain_text = re.sub(r'</?(?:think|thought|thinking|tool_code|tool_call|json|code|text|message)\b.*?>', '', remaining_text, flags=re.IGNORECASE)
         plain_text = re.sub(r'^Text Message:\s*', '', plain_text, flags=re.IGNORECASE).strip()
         
         return thoughts, command, plain_text
@@ -109,11 +128,35 @@ class AngelicaAgent:
         self.comm_log.info(f"INCOMING FROM AI (RAW): '{repr(full_text)}'")
         return full_text
 
+    async def switch_model(self, model_name: str):
+        """Switches the chat model and re-initializes the history."""
+        await self.ui.print_system(f"Switching to model: {model_name}...")
+        
+        new_chat_provider = get_chat_provider(model_name)
+        
+        if new_chat_provider is None:
+            error_message = f"Failed to initialize chat provider for model: {model_name}. Please check your configuration and API keys."
+            await self.ui.print_error(error_message)
+            await self.ui.print_system(f"Reverting to previous model: {self.chat.model_name}")
+        else:
+            self.chat = new_chat_provider
+            # We create a new history manager to reset the conversation context
+            self.history = HistoryManager(self.chat, logger=self.comm_log, max_tokens=self.settings.get("max_history_tokens", 4000))
+            # Also update the processor with the new chat instance
+            self.processor.chat = self.chat
+            await self.ui.print_system(f"✅ Switched to model: {self.chat.model_name}")
+
+    async def interrupt(self):
+        """Cancels the current running task."""
+        if self.current_task and not self.current_task.done():
+            self.current_task.cancel()
+
     async def process_user_input(self, user_input):
         self.history.add_message("user", user_input)
         
         context_info = self.context_manager.get_context_prompt()
-        current_query = context_info if context_info else ""
+        current_query = user_input + ("\n\n" + context_info if context_info else "")
+
 
         active_loop = True
         consecutive_ai_calls = 0 # Initialize counter
@@ -135,7 +178,10 @@ class AngelicaAgent:
                         consecutive_ai_calls = 1 # Reset counter and continue
                         await self.ui.start_thinking()
                 
-                response = await self.get_response(current_query)
+                # Create a task to be able to cancel it
+                self.current_task = asyncio.create_task(self.get_response(current_query))
+                response = await self.current_task
+                
                 self.comm_log.info(f"LOG_PROCESS_USER_INPUT_PRE_HISTORY: '{repr(response)}'")
                 if not response: 
                     active_loop = False
@@ -169,13 +215,17 @@ class AngelicaAgent:
                         await self.ui.print_command_result(output_text)
                         self.history.add_message("system", system_msg)
                         
-                        # ВАЖЛИВО: Очищаємо current_query, щоб не дублювати його в наступному виклику API
-                        current_query = "" 
+                        current_query = system_msg # Set query for the next loop
                 
                 elif plain_text.strip():
                     await self.ui.print_message(plain_text.strip(), role="assistant")
                     active_loop = False
 
             await self.history.check_and_summarize(self.ui)
+        except asyncio.CancelledError:
+            # This is expected when the task is cancelled, so we don't need to re-raise
+            # The interrupt() method already printed a message.
+            pass
         finally:
+            self.current_task = None # Clear the task reference
             await self.ui.stop_loading()
