@@ -1,73 +1,42 @@
-# modules/tui_ui.py
-
 import threading
 import asyncio
-from textual.widgets import Static, Button, Markdown as MarkdownWidget
-from textual.containers import Horizontal, Vertical, VerticalScroll, Container
-from textual.screen import Screen
+from textual.widgets import Static
+from textual.containers import Vertical, VerticalScroll, Container, Horizontal
 from textual.app import ComposeResult
-from textual.events import Key # Import Key event
-from rich.markdown import Markdown, Markdown as RichMarkdown
+from rich.markdown import Markdown as RichMarkdown
 from rich.text import Text
-from rich.console import Group
-from rich.table import Table
 
-class ConfirmationScreen(Screen[bool]):
-    """Екран підтвердження для небезпечних дій."""
-    def __init__(self, action_details: dict, **kwargs) -> None:
-        super().__init__(**kwargs)
-        self.action_details = action_details
-
-    def compose(self) -> ComposeResult:
-        action_type = self.action_details.get("type", "Unknown")
-        details = ""
-        if action_type == "run_command":
-            details = self.action_details.get("command", "")
-        elif action_type in ["write_file", "create_file", "edit_file"]:
-            details = self.action_details.get("path") or self.action_details.get("file_path", "")
-
-        yield Vertical(
-            Static(f"[bold yellow]⚠️  ALLOW this action? ⚠️[/bold yellow]", classes="confirmation-title"),
-            Static(f"   - Type: [bold cyan]{action_type}[/bold cyan]", classes="confirmation-detail"),
-            Static(f"   - Details: [bold red]{details}[/bold red]", classes="confirmation-detail"),
-            Horizontal(
-                Button("Allow", id="allow_button", variant="success"),
-                Button("Deny", id="deny_button", variant="error"),
-                classes="confirmation-buttons"
-            ),
-            classes="confirmation-panel"
-        )
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "allow_button":
-            self.dismiss(True)
-        elif event.button.id == "deny_button":
-            self.dismiss(False)
-
-class ContinueConfirmationScreen(Screen[bool]):
-    """A generic confirmation screen."""
-    def __init__(self, prompt: str, **kwargs) -> None:
-        super().__init__(**kwargs)
+class MiniPicker(Static, can_focus=True):
+    """Мінімалістичний CLI-пайкер для підтвердження."""
+    def __init__(self, prompt: str, options: list, future: asyncio.Future):
+        super().__init__()
         self.prompt = prompt
+        self.options = options
+        self.future = future
+        self.index = 0 
 
-    def compose(self) -> ComposeResult:
-        yield Vertical(
-            Static(f"[bold yellow]⚠️  Confirmation Required ⚠️[/bold yellow]", classes="confirmation-title"),
-            Static(self.prompt, classes="confirmation-detail"),
-            Horizontal(
-                Button("Continue", id="continue_button", variant="success"),
-                Button("Stop", id="stop_button", variant="error"),
-                classes="confirmation-buttons"
-            ),
-            classes="confirmation-panel"
-        )
+    def render(self) -> Text:
+        lines = [Text(f"{self.prompt}", style="bold yellow")]
+        for i, opt in enumerate(self.options):
+            if i == self.index:
+                lines.append(Text(f" > {opt}", style="bold cyan"))
+            else:
+                lines.append(Text(f"   {opt}", style="dim"))
+        return Text("\n").join(lines)
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "continue_button":
-            self.dismiss(True)
-        elif event.button.id == "stop_button":
-            self.dismiss(False)
-
+    def on_key(self, event) -> None:
+        if event.key in ("up", "k"):
+            self.index = (self.index - 1) % len(self.options)
+            self.refresh()
+        elif event.key in ("down", "j"):
+            self.index = (self.index + 1) % len(self.options)
+            self.refresh()
+        elif event.key == "enter":
+            self.future.set_result(self.index == 0)
+        elif event.key == "y":
+            self.future.set_result(True)
+        elif event.key == "n":
+            self.future.set_result(False)
 
 class TuiUI:
     def __init__(self, app, history_widget: VerticalScroll, loading_container: Container, loading_label: Static):
@@ -78,88 +47,92 @@ class TuiUI:
         self.main_thread = threading.main_thread()
 
     async def _call_ui(self, func, *args, **kwargs):
-        """Безпечний виклик оновлення UI з будь-якого потоку."""
         if threading.current_thread() is self.main_thread:
-            result = func(*args, **kwargs)
-            if asyncio.iscoroutine(result):
-                return await result
-            return result
+            res = func(*args, **kwargs)
+            return await res if asyncio.iscoroutine(res) else res
         else:
             return await self.app.call_from_thread(func, *args, **kwargs)
 
-    def _add_message(self, renderable=None, classes="chat-message", widget=None):
-        """Додає повідомлення в історію."""
-        if widget is None:
-            widget = Static(renderable, classes=classes, expand=False)
-            widget.can_focus = False 
-        
-        self.history.mount(widget)
-        self.history.scroll_end(animate=False)
-
+    # --- Методи керування станом індикатора ---
 
     def _start_thinking(self):
         self.loading_label.update("Thinking...")
         self.loading_container.display = True
 
     def _start_action(self, text: str):
-        status_text = text if text else "Processing..."
-        self.loading_label.update(status_text)
+        self.loading_label.update(text if text else "Processing...")
         self.loading_container.display = True
 
     def _stop_loading(self):
         self.loading_container.display = False
 
-    async def _confirm_action_main_thread(self, action_details: dict) -> bool:
-        return await self.app.push_screen(ConfirmationScreen(action_details))
-
-    async def _confirm_continue_main_thread(self, prompt: str) -> bool:
-        return await self.app.push_screen(ContinueConfirmationScreen(prompt))
-
     def _update_header_main_thread(self, text: str):
         self.app.title = text
 
-    # --- Public methods for the agent ---
+    # --- Методи виклику Picker ---
 
-    async def update_header(self, text: str):
-        await self._call_ui(self._update_header_main_thread, text)
+    async def _show_picker_main_thread(self, prompt: str, options: list) -> bool:
+        loop = asyncio.get_running_loop()
+        future = loop.create_future()
+        picker = MiniPicker(prompt, options, future)
+
+        input_container = self.app.query_one("#input-container")
+        await self.app.mount(picker, before=input_container)
+        
+        picker.focus()
+        try:
+            return await future
+        finally:
+            await picker.remove()
+            self.app.query_one("#input").focus()
+
+    # --- Public API для Agent ---
 
     async def start_thinking(self):
         await self._call_ui(self._start_thinking)
-        
+
     async def start_action(self, text: str):
         await self._call_ui(self._start_action, text)
 
     async def stop_loading(self):
         await self._call_ui(self._stop_loading)
 
+    async def update_header(self, text: str):
+        await self._call_ui(self._update_header_main_thread, text)
+
     async def confirm_action(self, action_details: dict) -> bool:
-        return await self._call_ui(self._confirm_action_main_thread, action_details)
+        action_type = action_details.get("type", "action")
+        target = action_details.get("path") or action_details.get("command") or ""
+        prompt = f"Allow {action_type} on {target}?"
+        return await self._call_ui(self._show_picker_main_thread, prompt, ["y (Allow)", "n (Deny)"])
 
     async def confirm_continue(self, prompt: str) -> bool:
-        return await self._call_ui(self._confirm_continue_main_thread, prompt)
+        return await self._call_ui(self._show_picker_main_thread, prompt, ["Continue", "Stop"])
+
+    # --- Методи друку ---
+
+    def _add_message(self, renderable=None, classes="chat-message", widget=None):
+        if widget is None:
+            widget = Static(renderable, classes=classes, expand=False)
+            widget.can_focus = False 
+        self.history.mount(widget)
+        self.history.scroll_end(animate=False)
 
     async def print_system(self, text):
         await self._call_ui(self._add_message, f" {text} ", classes="chat-message system-message")
-
 
     async def print_error(self, text):
         await self._call_ui(self._add_message, f"[bold red]✘ Error:[/] {text}")
 
     async def print_message(self, text, role="assistant"):
         if role == "assistant":
-            clean_text = text.strip()
-            markdown_renderable = RichMarkdown(clean_text)
-            await self._call_ui(self._add_message, markdown_renderable, classes="chat-message assistant-message")
+            await self._call_ui(self._add_message, RichMarkdown(text.strip()), classes="chat-message assistant-message")
         else:
-            renderable = Text(f"> {text.strip()}", style="rgb(100,200,100)")
-            await self._call_ui(self._add_message, renderable, classes="chat-message user-message")
-
+            await self._call_ui(self._add_message, Text(f"> {text.strip()}", style="rgb(100,200,100)"), classes="chat-message user-message")
 
     async def print_thought(self, text):
         if text.strip():
-            await self._call_ui(self._add_message, 
-                                f"[grey37][italic]{text.strip()}[/italic][/grey37]", 
-                                classes="chat-message thought-message")
+            await self._call_ui(self._add_message, f"[grey37][italic]{text.strip()}[/italic][/grey37]", classes="chat-message thought-message")
 
     async def print_plan(self, text):
         await self._call_ui(self._add_message, f"[bold cyan]🤖 Plan:[/] {text.strip()}")
@@ -169,4 +142,3 @@ class TuiUI:
 
     async def print_confirmation(self, text):
         await self._call_ui(self._add_message, f"[bold green]✅ {text.strip()}[/]")
-

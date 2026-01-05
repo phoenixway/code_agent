@@ -2,8 +2,9 @@ import json
 import re
 import logging
 import asyncio
+import os
 
-# Імпорт нових та стандартних модулів
+# Імпорт системних та кастомних модулів
 from modules.defaults import DEFAULT_SYSTEM_PROMPT
 from modules.tools.manager import ToolManager
 from modules.config_loader import load_settings, CONFIG_DIR
@@ -13,47 +14,59 @@ from modules.session import SessionManager
 from modules.processor import ResponseProcessor
 from modules.policy import PermissionPolicy
 from modules.chat import get_chat_provider, ProviderAPIError
-from modules.tui_ui import TuiUI
 
 class AngelicaAgent:
     def __init__(self, ui=None):
-        self.ui = ui
+        self._ui = ui
         self.settings = load_settings()
         
-        # 1. Нова архітектура інструментів
+        # Стан та запобіжники для TUI
+        self.is_awaiting_model_selection = False 
+        self.current_task = None
+        self.MAX_CONSECUTIVE_CALLS = 5
+
+        # Налаштування логування комунікації
+        self.comm_log = self._setup_logger()
+
+        # 1. Ініціалізація ToolManager та завантаження інструментів
         self.tool_manager = ToolManager()
         self.tool_manager.load_tools()
         
-        # 2. Твої менеджери (зберігаємо FileModule для ContextManager, якщо треба)
+        # 2. Менеджери даних (ContextManager використовує старий FileModule для читання)
         from modules.files import FileModule
         self.files = FileModule()
         self.context_manager = ContextManager(self.files)
         
-        # 3. Твої запобіжники та стан
-        self.MAX_CONSECUTIVE_CALLS = 3
-        self.current_task = None
-        
-        # 4. AI Provider
+        # 3. Налаштування AI Провайдера
         model_name = self.settings.get("default_model", "ollama/qwen2.5-coder:7b")
         self.chat = get_chat_provider(model_name)
         
-        # 5. History & Session
-        self.comm_log = self._setup_logger()
+        # 4. Управління історією та сесіями
         self.history = HistoryManager(self.chat, logger=self.comm_log, max_tokens=self.settings.get("max_history_tokens", 4000))
-        self.session_manager = SessionManager(CONFIG_DIR, self.history, self.context_manager, self.ui)
+        self.session_manager = SessionManager(CONFIG_DIR, self.history, self.context_manager, self._ui)
         
-        # 6. Policy & Processor (Нова версія)
+        # 5. Політика безпеки та Процесор дій
         policy_mode = self.settings.get("permission_policy", "ask")
-        if isinstance(ui, TuiUI) and policy_mode == "ask":
-            policy_mode = "always" 
-            
-        self.policy = PermissionPolicy(self.ui, policy_mode)
+        self.policy = PermissionPolicy(self._ui, policy_mode)
+        
         self.processor = ResponseProcessor(
-            ui=self.ui, 
+            ui=self._ui, 
             tool_manager=self.tool_manager, 
             chat=self.chat, 
             policy=self.policy
         )
+
+    @property
+    def ui(self):
+        return self._ui
+
+    @ui.setter
+    def ui(self, value):
+        """Синхронізує посилання на UI у всіх залежних модулях при підключенні TUI."""
+        self._ui = value
+        if hasattr(self, 'processor'): self.processor.ui = value
+        if hasattr(self, 'policy'): self.policy.ui = value
+        if hasattr(self, 'session_manager'): self.session_manager.ui = value
 
     def _setup_logger(self):
         logger = logging.getLogger('communication')
@@ -65,57 +78,64 @@ class AngelicaAgent:
         return logger
 
     def _parse_output(self, text: str):
-        """Покращений парсер: розуміє <think> та JSON (як в блоках, так і сирий)."""
+        """
+        Суворий парсинг: 
+        1. Думки витягуються з <think>...</think>.
+        2. Після думок шукається АБО JSON (type/command), АБО звичайний текст.
+        """
         thoughts = []
         command = None
         
-        # Витягуємо думки
+        # Витягуємо блок роздумів
         thought_match = re.search(r'<think>(.*?)</think>', text, re.DOTALL | re.IGNORECASE)
         if thought_match:
             thoughts.append(thought_match.group(1).strip())
-            text = text.replace(thought_match.group(0), "")
+            payload = text[thought_match.end():].strip()
+        else:
+            payload = text.strip()
 
-        remaining_text = text.strip()
+        if not payload:
+            return thoughts, None, ""
 
-        # Шукаємо JSON: спочатку в markdown блоках, потім просто в тексті
-        json_match = re.search(r'```json\s*(\{.*?\})\s*```', remaining_text, re.DOTALL)
-        if not json_match:
-            json_match = re.search(r'(\{.*?\})', remaining_text, re.DOTALL)
-
+        # Пошук JSON (підтримує raw JSON або блоки ```json)
+        json_pattern = r'(?:```json\s*)?(\{.*?\})(?:\s*```)?'
+        json_match = re.search(json_pattern, payload, re.DOTALL)
+        
         if json_match:
             try:
-                command = json.loads(json_match.group(1))
-                remaining_text = remaining_text.replace(json_match.group(0), "").strip()
+                json_str = json_match.group(1).strip()
+                parsed = json.loads(json_str)
+                # Перевіряємо наявність ключів команди (дозволяємо 'type' або 'command')
+                if isinstance(parsed, dict) and ("type" in parsed or "command" in parsed):
+                    return thoughts, parsed, ""
             except json.JSONDecodeError:
                 pass
         
-        return thoughts, command, remaining_text
+        # Якщо JSON не знайдено або він невалідний — повертаємо як текст
+        return thoughts, None, payload
 
     async def get_response(self, query):
+        """Отримує стрімінгову відповідь від ШІ."""
         full_text = ""
-        self.comm_log.info(f"OUTGOING TO AI:\n{query}")
+        self.comm_log.info(f"OUTGOING:\n{query}")
         try:
             async for chunk in self.chat.get_streaming_response(query, self.history.get_history_for_api()):
                 full_text += chunk
         except Exception as e:
             self.comm_log.error(f"Chat error: {e}")
             return f"Error: {e}"
+        
+        self.comm_log.info(f"INCOMING:\n{full_text}")
         return full_text
 
-    async def interrupt(self):
-        if self.current_task and not self.current_task.done():
-            self.current_task.cancel()
-            await self.ui.print_system("🛑 Перервано.")
-
     async def process_user_input(self, user_input):
-        # ГЕНЕРУЄМО ПРОМПТ: вставляємо описи інструментів у шаблон
+        """Головний цикл обробки вводу: Промпт -> ШІ -> Дія -> Результат -> ШІ."""
+        # Підготовка контексту та інструментів
         tools_desc = self.tool_manager.get_tools_prompt()
         system_prompt = DEFAULT_SYSTEM_PROMPT.format(tools_description=tools_desc)
-        
-        # ОТРИМУЄМО КОНТЕКСТ: дерево проекту з .gitignore + відкриті файли
         context_info = self.context_manager.get_context_prompt()
         
-        # Оновлюємо історію для ШІ
+        # Додаємо в історію актуальні дані про проект
         self.history.add_message("system", f"{system_prompt}\n\n{context_info}")
         self.history.add_message("user", user_input)
         
@@ -124,54 +144,85 @@ class AngelicaAgent:
         current_query = user_input
 
         try:
-            await self.ui.start_thinking()
             while active_loop:
                 consecutive_calls += 1
                 if consecutive_calls > self.MAX_CONSECUTIVE_CALLS:
                     await self.ui.stop_loading()
-                    if not await self.ui.confirm_continue("Агент зробив забагато кроків. Продовжити?"):
+                    if not await self.ui.confirm_continue("Агент виконав багато кроків. Продовжити?"):
                         break
-                    await self.ui.start_thinking()
 
-                # Запускаємо як задачу для можливості переривання
+                await self.ui.start_thinking()
+                
+                # Запускаємо задачу з можливістю переривання
                 self.current_task = asyncio.create_task(self.get_response(current_query))
                 response = await self.current_task
                 
-                if not response: break
-                self.history.add_message("assistant", response)
+                if not response or response.startswith("Error:"): 
+                    break
                 
+                self.history.add_message("assistant", response)
                 thoughts, command, plain_text = self._parse_output(response)
 
+                # Відображення думок в UI
                 for thought in thoughts:
                     await self.ui.print_thought(thought)
 
+                # ВИБІР: АБО Команда, АБО Текстова відповідь
                 if command:
                     if command.get("before_execution"):
                         await self.ui.print_plan(command['before_execution'])
                     
-                    await self.ui.start_action(command.get("during_execution", "Виконую..."))
+                    await self.ui.start_action(command.get("during_execution", "Processing..."))
                     
-                    # Виконання через новий процесор (з підтримкою PermissionPolicy)
+                    # Виконання дії (тут може з'явитися MiniPicker)
                     result = await self.processor.process_single_action(command)
                     
                     if result.get("status") == "success" and command.get("after_execution"):
                         await self.ui.print_confirmation(command['after_execution'])
                     
-                    await self.ui.print_command_result(result.get('output', ''))
+                    # Друкуємо результат в історії
+                    output_text = result.get('output', '')
+                    await self.ui.print_command_result(output_text)
 
+                    # Якщо ШІ потрібен результат для наступного кроку (loop)
                     if command.get("return_control") is True:
-                        current_query = f"SYSTEM RESULT: {result.get('output')}"
-                        self.history.add_message("system", current_query)
+                        res_msg = f"SYSTEM RESULT: {output_text}"
+                        self.history.add_message("system", res_msg)
+                        current_query = res_msg # Передаємо результат на наступну ітерацію
                     else:
                         active_loop = False
                 
                 elif plain_text:
                     await self.ui.print_message(plain_text, role="assistant")
                     active_loop = False
+                else:
+                    active_loop = False
 
             await self.history.check_and_summarize(self.ui)
         except asyncio.CancelledError:
-            pass
+            pass # Переривання вже оброблене в interrupt()
         finally:
             self.current_task = None
             await self.ui.stop_loading()
+
+    async def interrupt(self):
+        """Перериває поточну асинхронну задачу агента."""
+        if self.current_task and not self.current_task.done():
+            self.current_task.cancel()
+            await self.ui.print_system("🛑 Операцію перервано.")
+
+    async def switch_model(self, model_name: str):
+        """Гаряче перемикання моделі ШІ з оновленням історії та процесора."""
+        if hasattr(self.chat, 'model_name') and self.chat.model_name == model_name:
+            await self.ui.print_system(f"Модель {model_name} вже активна.")
+            return
+
+        await self.ui.print_system(f"Перемикаюсь на {model_name}...")
+        new_chat_provider = get_chat_provider(model_name)
+        
+        if new_chat_provider:
+            self.chat = new_chat_provider
+            self.history = HistoryManager(self.chat, logger=self.comm_log, max_tokens=self.settings.get("max_history_tokens", 4000))
+            self.processor.chat = self.chat
+            await self.ui.update_header(f"Angelica-AI (Model: {self.chat.model_name})")
+            await self.ui.print_system(f"✅ Модель змінено на {model_name}")

@@ -1,25 +1,46 @@
+import asyncio
+
+# modules/processor.py
+
 class ResponseProcessor:
     def __init__(self, ui, tool_manager, chat, policy):
         self.ui = ui
         self.tools = tool_manager
-        self.chat = chat     # Може знадобитися інструментам для "розумних" операцій
-        self.policy = policy # Твій механізм підтвердження дій (ask/always/never)
+        self.chat = chat
+        self.policy = policy
 
     async def process_single_action(self, command: dict) -> dict:
-        action_type = command.get("type")
-        if not action_type:
-            return {"status": "failed", "output": "Missing 'type' in JSON."}
-
-        # --- КРИТИЧНИЙ МОМЕНТ: ПЕРЕВІРКА ПРАВ ---
-        # Викликаємо твій PermissionPolicy перед тим, як лізти у файлову систему
-        if not await self.policy.check(command):
-            return {"status": "failed", "output": "Action denied by user policy."}
-
-        # Витягуємо аргументи
-        args = {k: v for k, v in command.items() if k != "type"}
+        # ШІ може помилитися і замість 'type' надіслати 'command'
+        # Робимо обробку обох варіантів
+        action_type = command.get("type") or command.get("command")
         
-        # Виконуємо інструмент через менеджер
+        if not action_type:
+            return {
+                "status": "failed", 
+                "output": "Error: No action type found in JSON (expected 'type' or 'command')."
+            }
+
+        # Створюємо нормалізовану копію для policy, щоб вона завжди бачила 'type'
+        normalized_command = command.copy()
+        normalized_command["type"] = action_type
+
+        # 1. КРИТИЧНО: Перевірка дозволу (твій MiniPicker)
+        if not await self.policy.check(normalized_command):
+            return {
+                "status": "failed", 
+                "output": "Action denied by user."
+            }
+
+        # 2. Підготовка аргументів (все, крім службових полів)
+        service_fields = {"type", "command", "before_execution", "during_execution", "after_execution", "return_control"}
+        args = {k: v for k, v in command.items() if k not in service_fields}
+        
+        # 3. Виклик інструмента через ToolManager
+        # Метод call тепер має бути в ToolManager (ми його виправили минулого разу)
         result = await self.tools.call(action_type, **args)
         
-        status = "success" if result["status"] == "success" else "failed"
-        return {"status": status, "output": result["output"]}
+        # Повертаємо уніфікований результат
+        if result.get("status") == "success":
+            return {"status": "success", "output": result.get("output", "")}
+        else:
+            return {"status": "failed", "output": result.get("output", "Unknown tool error.")}

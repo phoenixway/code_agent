@@ -122,3 +122,41 @@ ConfirmationScreen {
     margin-top: 1;
     align-horizontal: center;
 }
+
+/* tui.css */
+
+.inline-conf-box {
+    background: $panel;
+    border: tall $warning;
+    margin: 1 4;
+    padding: 1 2;
+    height: auto;
+    color: $text;
+}
+
+.inline-conf-buttons {
+    margin-top: 1;
+    height: 3;
+    align-horizontal: center;
+}
+
+.inline-conf-buttons Button {
+    margin: 0 2;
+    min-width: 12;
+}
+
+/* Додатково: щоб історія автоматично фокусувалася при появі кнопок */
+#history {
+    scrollbar-gutter: stable;
+}
+
+MiniPicker {
+    background: $surface;
+    color: $text;
+    padding: 1 2;
+    height: auto;
+    border-top: solid $primary;
+    dock: bottom; /* Це притисне його до низу над інпутом */
+}
+
+/* Прибираємо старі стилі inline-conf-box, вони більше не потрібні */

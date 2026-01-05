@@ -1,3 +1,5 @@
+import asyncio
+
 from rich.prompt import Confirm
 from modules.tui_ui import TuiUI # Import TuiUI
 
