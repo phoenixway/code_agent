@@ -1187,9 +1187,11 @@ class TuiUI:
         # ВИПРАВЛЕНО: видалено \n перед текстом
         await self._call_ui(self._add_message, f"[bold cyan]🤖 Plan:[/] {text.strip()}")
 
-    async def print_command_result(self, text):
-        # ВИПРАВЛЕНО: видалено \n після двокрапки
-        await self._call_ui(self._add_message, f"[bold white]SYSTEM RESULT:[/]{text.strip()}")
+        async def print_command_result(self, text):
+
+            # Додано пробіл після "RESULT:" для кращого вигляду
+
+            await self._call_ui(self._add_message, f"[bold white]SYSTEM RESULT:[/] {text.strip()}")
 
     async def print_confirmation(self, text):
         await self._call_ui(self._add_message, f"[bold green]✅ {text.strip()}[/]")
@@ -1240,13 +1242,15 @@ Screen {
     overflow-y: scroll;
 }
 
-.chat-message {
-    padding: 0 1;
-    width: 100%;
+.message-separator {
+    height: 1; /* Встановлюємо рівно 1 рядок відступу */
+    background: transparent;
 }
 
-.message-separator {
-    height: 0;
+.chat-message {
+    padding: 0 1; /* Лівий та правий відступи для тексту */
+    width: 100%;
+    margin: 0;    /* Переконуємося, що немає зовнішніх вертикальних відступів */
 }
 
 .assistant-message {
