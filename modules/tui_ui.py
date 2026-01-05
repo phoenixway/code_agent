@@ -87,14 +87,14 @@ class TuiUI:
             # З іншого потоку плануємо в головному циклі Textual
             return await self.app.call_from_thread(func, *args, **kwargs)
 
-    def _add_message(self, renderable, classes="chat-message"):
+    def _add_message(self, renderable=None, classes="chat-message", widget=None):
         """Цей метод виконується в головному потоці (Main Thread)"""
-        # Створюємо віджет з явним розширенням
-        new_message = Static(renderable, classes=classes, expand=True)
-        new_message.can_focus = True
+        if widget is None:
+            # Створюємо віджет з явним розширенням
+            widget = Static(renderable, classes=classes, expand=True)
         
         # Монтуємо в контейнер
-        self.history.mount(new_message)
+        self.history.mount(widget)
         
         # Важливо: прокручуємо до кінця саме контейнер історії
         # scroll_end гарантує, що ми побачимо нове повідомлення
@@ -149,9 +149,9 @@ class TuiUI:
 
     async def print_message(self, text, role="assistant"):
         if role == "assistant":
-            # Styling is now handled by the .assistant-message class in tui.css
-            renderable = Markdown(text, style="rgb(255,255,255)")
-            await self._call_ui(self._add_message, renderable, classes="chat-message assistant-message")
+            # Use the textual.widgets.Markdown widget for better selection
+            md_widget = MarkdownWidget(text.strip(), classes="chat-message assistant-message")
+            await self._call_ui(self._add_message, widget=md_widget)
         else:
             # For User, just the text with a '>' prefix
             renderable = Text(f"> {text}", style="rgb(100,200,100)")
