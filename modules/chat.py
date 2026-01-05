@@ -3,6 +3,10 @@ import httpx
 import json
 from modules.defaults import DEFAULT_SYSTEM_PROMPT
 
+class ProviderAPIError(Exception):
+    """Custom exception for API errors from chat providers."""
+    pass
+
 class BaseChat:
     """Базовий клас для всіх провайдерів."""
     def __init__(self, model_name):
@@ -22,6 +26,8 @@ class OpenAICompatibleChat(BaseChat):
         super().__init__(model_name)
         self.base_url = base_url
         self.api_key = os.getenv(api_key_env)
+        if not self.api_key:
+            raise ValueError(f"Missing API key for {model_name}. Please set the {api_key_env} environment variable.")
 
     async def get_streaming_response(self, prompt, history):
         headers = {
@@ -51,7 +57,7 @@ class OpenAICompatibleChat(BaseChat):
                             except json.JSONDecodeError:
                                 continue
         except Exception as e:
-            yield f"Error: {str(e)}"
+            raise ProviderAPIError(f"OpenAICompatibleChat Error: {str(e)}")
 
 class OllamaChat(BaseChat):
     """Для локального запуску через Ollama."""
@@ -77,13 +83,15 @@ class OllamaChat(BaseChat):
                             if data.get('done'):
                                 break
         except Exception as e:
-            yield f"Ollama Connection Error: {str(e)}"
+            raise ProviderAPIError(f"Ollama Connection Error: {str(e)}")
 
 class GeminiRestChat(BaseChat):
     """Полегшена версія Gemini з підтримкою стрімінгу через REST."""
     def __init__(self, model_name):
         super().__init__(model_name)
         self.api_key = os.getenv("GEMINI_API_KEY")
+        if not self.api_key:
+            raise ValueError(f"Missing API key for Gemini. Please set the GEMINI_API_KEY environment variable.")
         self.url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:streamGenerateContent?key={self.api_key}"
 
     async def get_streaming_response(self, prompt, history):
@@ -112,7 +120,7 @@ class GeminiRestChat(BaseChat):
                             except (json.JSONDecodeError, KeyError, IndexError):
                                 continue
         except Exception as e:
-            yield f"Gemini Stream Error: {str(e)}"
+            raise ProviderAPIError(f"Gemini Stream Error: {str(e)}")
 
 # A dictionary to map model name keywords to provider classes and their arguments
 PROVIDERS = {
@@ -129,10 +137,18 @@ def get_chat_provider(model_name):
     
     for keyword, (provider_class, args) in PROVIDERS.items():
         if keyword in m_lower:
-            if keyword in ["ollama", "qwen"]:
-                clean_name = model_name.split('/')[-1] if '/' in model_name else model_name
-                return provider_class(clean_name)
-            return provider_class(model_name, *args)
+            try:
+                if keyword in ["ollama", "qwen"]:
+                    clean_name = model_name.split('/')[-1] if '/' in model_name else model_name
+                    return provider_class(clean_name)
+                return provider_class(model_name, *args)
+            except ValueError as e:
+                print(f"Error initializing chat provider for {model_name}: {e}")
+                return None
             
     # Default fallback provider
-    return GeminiRestChat("gemini-1.5-pro")
+    try:
+        return GeminiRestChat("gemini-1.5-pro")
+    except ValueError as e:
+        print(f"Error initializing default Gemini chat provider: {e}")
+        return None

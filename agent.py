@@ -33,6 +33,12 @@ class AngelicaAgent:
         model_name = self.settings.get("default_model", "ollama/qwen:4b")
         self.chat = get_chat_provider(model_name)
         
+        if self.chat is None:
+            # Handle the case where provider initialization failed
+            error_message = f"Failed to initialize chat provider for model: {model_name}. Please check your API keys and configuration."
+            self.ui.print_message(error_message, role="system")
+            return # Exit __init__ if chat provider is not available
+        
         self.history = HistoryManager(self.chat, max_tokens=self.settings.get("max_history_tokens", 4000))
         self.session_manager = SessionManager(CONFIG_DIR, self.history, self.context_manager, self.ui)
         
@@ -85,8 +91,19 @@ class AngelicaAgent:
         full_text = ""
         self.comm_log.info(f"OUTGOING TO AI:\n{query}")
         
-        async for chunk in self.chat.get_streaming_response(query, self.history.get_history_for_api()):
-            full_text += chunk
+        if self.chat is None:
+            error_message = "Chat provider is not initialized. Cannot get response."
+            await self.ui.print_message(error_message, role="system")
+            return error_message # Return error message to indicate failure
+
+        try:
+            async for chunk in self.chat.get_streaming_response(query, self.history.get_history_for_api()):
+                full_text += chunk
+        except ProviderAPIError as e:
+            error_message = f"System Message: Chat provider error: {e}"
+            await self.ui.print_message(error_message, role="system")
+            self.comm_log.error(f"Chat provider error: {e}")
+            return error_message # Return error message to indicate failure
             
         self.comm_log.info(f"INCOMING FROM AI:\n{full_text}")
         return full_text
