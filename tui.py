@@ -30,7 +30,7 @@ class TUI(App):
                 ),
                 id="loading-container",
             )
-            yield Input(placeholder="Your message...", id="input")
+            yield Input(placeholder="> Your message...", id="input")
         yield Footer()
 
     async def on_mount(self) -> None:
@@ -48,6 +48,7 @@ class TUI(App):
             f"Directory: {current_directory}"
         )
         await self.ui.print_system(startup_message)
+        self.query_one("#input", Input).focus()
 
     async def on_input_submitted(self, message: Input.Submitted) -> None:
         """Called when the user submits a message."""
