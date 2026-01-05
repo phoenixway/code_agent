@@ -135,6 +135,6 @@ class AngelicaAgent:
                     await self.ui.print_message(plain_text, role="assistant")
                     active_loop = False
 
-            self.history.check_and_summarize(self.ui)
+            await self.history.check_and_summarize(self.ui)
         finally:
             await self.ui.stop_loading()

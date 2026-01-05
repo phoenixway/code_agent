@@ -1,5 +1,9 @@
-/* tui.css */
+/* Константи для сумісності */
+$info: #3498db;
+$text-muted: #888888;
+
 Screen {
+    background: $surface;
     overflow: hidden;
 }
 
@@ -8,63 +12,87 @@ Screen {
     height: 100%;
 }
 
+/* ІСТОРІЯ: Максимальна економія місця */
 #history {
     height: 1fr;
-    margin: 1 0 0 0;
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: $surface;
+    overflow-y: scroll;
 }
 
+.chat-message {
+    margin-bottom: 0;
+    padding: 0 1;
+    width: 100%;
+}
+
+.thought-message {
+    color: $text-muted;
+    text-style: italic;
+    margin-left: 1; 
+    border-left: tall $accent; 
+    padding-left: 1;
+}
+
+.system-message {
+    color: $info;
+    text-style: bold;
+    margin: 0;
+    padding: 0 1;
+    border-top: ascii $info;
+}
+
+/* БЛОК ЗАВАНТАЖЕННЯ ТА СТАТУСУ */
 #loading-container {
     display: none;
     height: 1;
     layout: horizontal;
-    margin: 0 0 1 2; /* Same horizontal margin as input */
+    margin: 0;
+    padding: 0 1;
+    background: $accent-darken-3;
+    color: $accent;
+}
+
+LoadingIndicator {
+    width: 4;
+    height: 1;
 }
 
 #loading-label {
     margin-left: 1;
+    height: 1;
+    content-align: left middle;
+    text-style: italic;
+    width: auto;
 }
 
+/* ПОЛЕ ВВОДУ: Впритул до країв */
 #input {
     height: 3;
-    border: round green;
-    margin: 0 2 1 2;
+    border: round $success;
+    margin: 0;
+    background: $surface;
 }
 
-.chat-message {
-    margin-bottom: 1;
+#input:focus {
+    border: double $success;
 }
 
-.thought-message {
-    margin-bottom: 2;
-}
-
-/* Confirmation Screen Styles */
+/* ЕКРАН ПІДТВЕРДЖЕННЯ */
 ConfirmationScreen {
     align: center middle;
 }
 
 .confirmation-panel {
-    width: 80%;
-    max-width: 80;
-    height: auto;
+    width: 98%;
     background: $panel;
-    border: heavy $accent;
-    padding: 1 2;
-}
-
-.confirmation-title {
-    text-align: center;
-    margin-bottom: 1;
-}
-
-.confirmation-detail {
-    margin-left: 2;
+    border: heavy $warning;
+    padding: 0 1;
 }
 
 .confirmation-buttons {
-    margin-top: 2;
+    margin-top: 1;
     align-horizontal: center;
-    & Button {
-        margin: 0 1;
-    }
 }
