@@ -8,13 +8,63 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.text import Text
 from rich.console import Group
+import threading
+import asyncio
+from textual.widgets import ListView, Static, Button
+from textual.containers import Container, Horizontal, Vertical
+from textual.containers import VerticalScroll
+from textual.screen import Screen
+from textual.app import ComposeResult
 
 # Import ConfirmationScreen - this will create a circular import, but Textual handles it
-from tui import ConfirmationScreen
+# from tui import ConfirmationScreen
+
+# ВИДАЛІТЬ ЦЕЙ РЯДОК: from tui import ConfirmationScreen
+
+class ConfirmationScreen(Screen[bool]):
+    """Screen to ask the user for confirmation for sensitive actions."""
+    def __init__(self, action_details: dict, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.action_details = action_details
+
+    def compose(self) -> ComposeResult:
+        action_type = self.action_details.get("type", "Unknown")
+        details = ""
+        if action_type == "run_command":
+            details = self.action_details.get("command", "")
+        elif action_type in ["write_file", "create_file", "edit_file"]:
+            details = self.action_details.get("path") or self.action_details.get("file_path", "")
+
+        yield Vertical(
+            Static(f"[bold yellow]⚠️  ALLOW this action? ⚠️[/bold yellow]", classes="confirmation-title"),
+            Static(f"   - Type: [bold cyan]{action_type}[/bold cyan]", classes="confirmation-detail"),
+            Static(f"   - Details: [bold red]{details}[/bold red]", classes="confirmation-detail"),
+            Horizontal(
+                Button("Allow", id="allow_button", variant="success"),
+                Button("Deny", id="deny_button", variant="error"),
+                classes="confirmation-buttons"
+            ),
+            classes="confirmation-panel"
+        )
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "allow_button":
+            self.dismiss(True)
+        elif event.button.id == "deny_button":
+            self.dismiss(False)
+
+class TuiUI:
+    # ... (весь інший код TuiUI залишається без змін) ...
+    async def _confirm_action_main_thread(self, action_details: dict) -> bool:
+        """Pushes the confirmation screen on the main thread and awaits result."""
+        # Тепер ConfirmationScreen знаходиться в цьому ж файлі
+        result = await self.app.push_screen(ConfirmationScreen(action_details))
+        return result
+    # ...
 
 
 class TuiUI:
-    def __init__(self, app, history_widget: ListView, loading_container: Container, loading_label: Static):
+    def __init__(self, app, history_widget: VerticalScroll, loading_container: Container, loading_label: Static):
         self.app = app
         self.history = history_widget
         self.loading_container = loading_container
@@ -34,8 +84,12 @@ class TuiUI:
     # --- Private methods for actual UI updates (always run on main thread) ---
 
     def _add_message(self, renderable, classes="chat-message"):
-        self.history.mount(Static(renderable, classes=classes))
-        self.history.scroll_end(animate=False)
+        # Створюємо новий віджет
+        new_message = Static(renderable, classes=classes)
+        # Монтуємо його в контейнер історії
+        self.history.mount(new_message)
+        # Прокручуємо до кінця (з невеликою затримкою, щоб Textual встиг обробити новий віджет)
+        new_message.scroll_visible() 
 
     def _start_thinking(self):
         self.loading_label.update("Thinking...")
