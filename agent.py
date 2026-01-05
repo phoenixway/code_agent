@@ -11,16 +11,17 @@ from modules.history import HistoryManager
 from modules.session import SessionManager
 from modules.processor import ResponseProcessor
 from modules.policy import PermissionPolicy
-from modules.chat import get_chat_provider
+from modules.chat import get_chat_provider, ProviderAPIError
 from modules.tui_ui import TuiUI
 
 class AngelicaAgent:
-    def __init__(self, ui):
+    def __init__(self, ui=None):
         """Initializes the agent with settings and necessary managers."""
         self.ui = ui
         self.settings = load_settings()
         self.files = FileModule()
         self.context_manager = ContextManager(self.files)
+        self.MAX_CONSECUTIVE_CALLS = 3 # Safeguard against loops
         
         # Setup communication logger
         self.comm_log = logging.getLogger('communication')
@@ -115,9 +116,25 @@ class AngelicaAgent:
         current_query = context_info if context_info else ""
 
         active_loop = True
+        consecutive_ai_calls = 0 # Initialize counter
+
         try:
             await self.ui.start_thinking()
             while active_loop:
+                consecutive_ai_calls += 1 # Increment for each loop turn
+                if consecutive_ai_calls > self.MAX_CONSECUTIVE_CALLS:
+                    await self.ui.stop_loading()
+                    should_continue = await self.ui.confirm_continue(
+                        "The agent has performed several actions in a row.\nDo you want to continue?"
+                    )
+                    if not should_continue:
+                        await self.ui.print_system("🛑 Operation stopped by user.")
+                        active_loop = False
+                        break
+                    else:
+                        consecutive_ai_calls = 1 # Reset counter and continue
+                        await self.ui.start_thinking()
+                
                 response = await self.get_response(current_query)
                 if not response: 
                     active_loop = False

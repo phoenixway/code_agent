@@ -1,51 +1,53 @@
+import os
 import asyncio
 from textual.app import App, ComposeResult
-from textual.widgets import Header, Footer, Input, Static, LoadingIndicator, Button
-from textual.containers import Container, Horizontal, Vertical, VerticalScroll
-from textual.screen import Screen
-from textual.worker import Worker, WorkerState
-
+from textual.widgets import Header, Footer, Input, Static, LoadingIndicator
+from textual.containers import Container, VerticalScroll, Horizontal
 from agent import AngelicaAgent
 from modules.tui_ui import TuiUI
 
-class InputBox(Input):
-    """A custom input box for user messages."""
-    pass
-
 class TUI(App):
-    """The main Textual application for Angelica-AI."""
-
     CSS_PATH = "tui.css"
-    BINDINGS = [("q", "quit", "Quit")]
+    BINDINGS = [
+        ("d", "toggle_dark", "Toggle dark mode"),
+        ("q", "quit", "Quit"),
+    ]
+    VERSION = "0.1.0" # Define version here
 
-    # tui.py
+    def __init__(self, agent: AngelicaAgent):
+        super().__init__()
+        self.agent = agent
 
     def compose(self) -> ComposeResult:
         yield Header()
-        yield Container(
-            VerticalScroll(id="history"),
-            Horizontal(
-                LoadingIndicator(),
-                Static("", id="loading-label"), # Лейбл для тексту статусу
-                id="loading-container"
-            ),
-            InputBox(id="input", placeholder="Type your message..."),
-            id="app-grid"
-        )
+        with Container():
+            yield VerticalScroll(id="history")
+            yield Container(
+                Horizontal(
+                    LoadingIndicator(),
+                    Static("Thinking...", id="loading-label"),
+                    classes="loading-spinner-container"
+                ),
+                id="loading-container",
+            )
+            yield Input(placeholder="Your message...", id="input")
         yield Footer()
 
-
     async def on_mount(self) -> None:
-        history_widget = self.query_one("#history", VerticalScroll)
-        loading_container = self.query_one("#loading-container")
-        loading_label = self.query_one("#loading-label", Static)
+        self.ui = TuiUI(self, self.query_one("#history", VerticalScroll), self.query_one("#loading-container"), self.query_one("#loading-label"))
+        self.agent.ui = self.ui # Передаємо UI до агента
         
-        # Використовуємо self.ui, щоб мати доступ з усіх методів класу
-        self.ui = TuiUI(self, history_widget, loading_container, loading_label)
-        self.agent = AngelicaAgent(self.ui)
+        # Construct the new startup message
+        # Check if self.agent.chat is None, if so, get_chat_provider failed during agent init
+        model_name = self.agent.chat.model_name if self.agent.chat else "N/A (Provider initialization failed)"
+        current_directory = os.getcwd()
         
-        self.query_one(InputBox).focus()
-        await self.ui.print_system("✨ Angelica-AI TUI is ready.")
+        startup_message = (
+            f"✨ Angelica-AI (v{self.VERSION})\n"
+            f"Model: {model_name}\n"
+            f"Directory: {current_directory}"
+        )
+        await self.ui.print_system(startup_message)
 
     async def on_input_submitted(self, message: Input.Submitted) -> None:
         """Called when the user submits a message."""
@@ -64,5 +66,6 @@ class TUI(App):
         self.run_worker(self.agent.process_user_input(user_input), exclusive=True)
 
 if __name__ == "__main__":
-    app = TUI()
+    agent = AngelicaAgent() # Instantiate agent without ui
+    app = TUI(agent) # Pass the agent to TUI
     app.run()

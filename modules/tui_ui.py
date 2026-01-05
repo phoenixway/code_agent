@@ -2,13 +2,14 @@
 
 import threading
 import asyncio
-from textual.widgets import Static, Button
+from textual.widgets import Static, Button, Markdown as MarkdownWidget
 from textual.containers import Horizontal, Vertical, VerticalScroll, Container
 from textual.screen import Screen
 from textual.app import ComposeResult
 from rich.markdown import Markdown
 from rich.text import Text
 from rich.console import Group
+from rich.table import Table
 
 class ConfirmationScreen(Screen[bool]):
     """Екран підтвердження для небезпечних дій."""
@@ -42,6 +43,30 @@ class ConfirmationScreen(Screen[bool]):
         elif event.button.id == "deny_button":
             self.dismiss(False)
 
+class ContinueConfirmationScreen(Screen[bool]):
+    """A generic confirmation screen."""
+    def __init__(self, prompt: str, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.prompt = prompt
+
+    def compose(self) -> ComposeResult:
+        yield Vertical(
+            Static(f"[bold yellow]⚠️  Confirmation Required ⚠️[/bold yellow]", classes="confirmation-title"),
+            Static(self.prompt, classes="confirmation-detail"),
+            Horizontal(
+                Button("Continue", id="continue_button", variant="success"),
+                Button("Stop", id="stop_button", variant="error"),
+                classes="confirmation-buttons"
+            ),
+            classes="confirmation-panel"
+        )
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "continue_button":
+            self.dismiss(True)
+        elif event.button.id == "stop_button":
+            self.dismiss(False)
+
 class TuiUI:
     def __init__(self, app, history_widget: VerticalScroll, loading_container: Container, loading_label: Static):
         self.app = app
@@ -66,6 +91,7 @@ class TuiUI:
         """Цей метод виконується в головному потоці (Main Thread)"""
         # Створюємо віджет з явним розширенням
         new_message = Static(renderable, classes=classes, expand=True)
+        new_message.can_focus = True
         
         # Монтуємо в контейнер
         self.history.mount(new_message)
@@ -91,6 +117,9 @@ class TuiUI:
     async def _confirm_action_main_thread(self, action_details: dict) -> bool:
         return await self.app.push_screen(ConfirmationScreen(action_details))
 
+    async def _confirm_continue_main_thread(self, prompt: str) -> bool:
+        return await self.app.push_screen(ContinueConfirmationScreen(prompt))
+
     # --- Публічні методи для агента (всі ASYNC) ---
 
     async def start_thinking(self):
@@ -105,6 +134,9 @@ class TuiUI:
     async def confirm_action(self, action_details: dict) -> bool:
         return await self._call_ui(self._confirm_action_main_thread, action_details)
 
+    async def confirm_continue(self, prompt: str) -> bool:
+        return await self._call_ui(self._confirm_continue_main_thread, prompt)
+
     async def print_system(self, text):
         await self._call_ui(self._add_message, f" {text} ", classes="chat-message system-message")
 
@@ -117,15 +149,12 @@ class TuiUI:
 
     async def print_message(self, text, role="assistant"):
         if role == "assistant":
-            renderable = Group(
-                Text.from_markup("[bold cyan]🤖 Angelica:[/bold cyan]"),
-                Markdown(text)
-            )
-            # Додаємо клас бота
+            # Styling is now handled by the .assistant-message class in tui.css
+            renderable = Markdown(text, style="rgb(255,255,255)")
             await self._call_ui(self._add_message, renderable, classes="chat-message assistant-message")
         else:
-            # Додаємо клас користувача
-            renderable = f"[bold green]👤 You:[/bold green] {text}"
+            # For User, just the text with a '>' prefix
+            renderable = Text(f"> {text}", style="rgb(100,200,100)")
             await self._call_ui(self._add_message, renderable, classes="chat-message user-message")
 
 
