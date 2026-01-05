@@ -23,9 +23,12 @@ Screen {
 }
 
 .chat-message {
-    margin: 1 0 0 0;
     padding: 0 1;
     width: 100%;
+}
+
+.message-separator {
+    height: 1;
 }
 
 .assistant-message {
@@ -36,7 +39,6 @@ Screen {
 .thought-message {
     color: $text-muted;
     text-style: italic;
-    margin-top: 1;
     margin-left: 1; 
     border-left: tall $accent; 
     padding-left: 1;

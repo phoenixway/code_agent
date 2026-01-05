@@ -89,6 +89,12 @@ class TuiUI:
 
     def _add_message(self, renderable=None, classes="chat-message", widget=None):
         """Цей метод виконується в головному потоці (Main Thread)"""
+        
+        # Add a separator before the message, but only if history is not empty
+        if self.history.children:
+            separator = Static(classes="message-separator")
+            self.history.mount(separator)
+
         if widget is None:
             # Створюємо віджет з явним розширенням
             widget = Static(renderable, classes=classes, expand=True)
