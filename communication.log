@@ -203,3 +203,18 @@ test
 2026-01-05 15:09:10,293 - `/models` command received. Opening selection screen.
 2026-01-05 15:09:10,317 - Model selection result: 'None' (type: <class 'NoneType'>)
 2026-01-05 15:09:10,317 - Model selection cancelled (None returned).
+2026-01-05 15:14:19,142 - `/models` command received. Displaying list.
+2026-01-05 15:14:28,694 - User selected model choice 2 -> 'deepseek-coder'.
+2026-01-05 15:14:28,694 - --- Attempting to switch model to: deepseek-coder ---
+2026-01-05 15:14:28,695 - Calling get_chat_provider for 'deepseek-coder'.
+2026-01-05 15:14:28,695 - Successfully initialized new provider: deepseek-coder.
+2026-01-05 15:14:28,695 - Agent's chat, history, and processor have been updated.
+2026-01-05 15:14:49,327 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=user, Content=''test''
+2026-01-05 15:14:49,327 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=user, Content=''test''
+2026-01-05 15:14:49,328 - OUTGOING TO AI:
+test
+2026-01-05 15:14:52,956 - INCOMING FROM AI (RAW): ''<think>\nThe user input is simply "test". According to the instructions, if the input is \'test\', I should respond with a simple text confirmation. No technical action is needed.\n</think>\nTest confirmed. Ready for tasks.''
+2026-01-05 15:14:52,957 - LOG_PROCESS_USER_INPUT_PRE_HISTORY: ''<think>\nThe user input is simply "test". According to the instructions, if the input is \'test\', I should respond with a simple text confirmation. No technical action is needed.\n</think>\nTest confirmed. Ready for tasks.''
+2026-01-05 15:14:52,957 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=assistant, Content=''<think>\nThe user input is simply "test". According to the instructions, if the input is \'test\', I should respond with a simple text confirmation. No technical action is needed.\n</think>\nTest confirmed. Ready for tasks.''
+2026-01-05 15:14:52,957 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=assistant, Content=''<think>\nThe user input is simply "test". According to the instructions, if the input is \'test\', I should respond with a simple text confirmation. No technical action is needed.\n</think>\nTest confirmed. Ready for tasks.''
+2026-01-05 15:14:59,409 - `/models` command received. Displaying list.

@@ -58,47 +58,55 @@ class TUI(App):
     async def on_input_submitted(self, message: Input.Submitted) -> None:
         """Called when the user submits a message."""
         user_input = message.value.strip()
-        message.input.value = "" # Clear input immediately
+        message.input.value = ""
 
         if not user_input:
             return
+        
+        # Check if we are in the middle of a model selection
+        if self.agent.is_awaiting_model_selection:
+            available_models = self.agent.settings.get("available_models", [])
+            try:
+                choice_index = int(user_input) - 1
+                if 0 <= choice_index < len(available_models):
+                    selected_model = available_models[choice_index]
+                    self.agent.comm_log.info(f"User selected model choice {user_input} -> '{selected_model}'.")
+                    self.run_worker(self.agent.switch_model(selected_model), exclusive=True)
+                else:
+                    await self.ui.print_error("Invalid selection. Please try again.")
+                    self.agent.comm_log.warning(f"Invalid model selection index: {choice_index}")
+            except ValueError:
+                await self.ui.print_error(f"Invalid input. Please enter a number or 'cancel'.")
+                self.agent.comm_log.warning(f"Non-integer input received for model selection: '{user_input}'")
+
+            # Always reset the state after an attempt
+            if user_input.lower() == 'cancel' or 'c':
+                self.agent.is_awaiting_model_selection = False
+                await self.ui.print_system("Model selection cancelled.")
+            return
 
         if user_input == "/models":
-            self.agent.comm_log.info("`/models` command received. Opening selection screen.")
+            self.agent.comm_log.info("`/models` command received. Displaying list.")
             available_models = self.agent.settings.get("available_models", [])
             if not available_models:
                 self.agent.comm_log.error("No available models found in settings.")
                 await self.ui.print_error("No available models configured.")
                 return
-            
-            current_model = self.agent.chat.model_name if self.agent.chat else "unknown"
-            selected_model = await self.ui.select_model(available_models, current_model)
-            
-            # Corrected checking logic
-            self.agent.comm_log.info(f"Model selection result: '{selected_model}' (type: {type(selected_model)})")
-            
-            if selected_model is None:
-                self.agent.comm_log.info("Model selection cancelled (None returned).")
-                await self.ui.print_system("Model selection cancelled.")
-                return
 
-            if selected_model == "":
-                self.agent.comm_log.info("Model selection cancelled (empty string returned).")
-                await self.ui.print_system("Model selection cancelled.")
-                return
-
-            # Normalize current model name for comparison (e.g. qwen:4b from ollama/qwen:4b)
-            current_model_normalized = current_model.split('/')[-1] if '/' in current_model else current_model
-            selected_model_normalized = selected_model.split('/')[-1] if '/' in selected_model else selected_model
-
-            if selected_model_normalized == current_model_normalized:
-                self.agent.comm_log.info(f"Selected model '{selected_model}' is already active.")
-                await self.ui.print_system(f"Model {selected_model} is already active.")
-            else:
-                self.agent.comm_log.info(f"Switching to new model: '{selected_model}'")
-                self.run_worker(self.agent.switch_model(selected_model), exclusive=True)
+            # Build the message to show the user
+            message_lines = ["Available models:"]
+            for i, model in enumerate(available_models):
+                is_current = model.split('/')[-1] == self.agent.chat.model_name.split('/')[-1]
+                message_lines.append(f"  {i+1}: {model} {'(current)' if is_current else ''}")
+            message_lines.append("\nEnter the number of the model to switch to, or 'cancel' to abort.")
+            
+            await self.ui.print_system("\n".join(message_lines))
+            
+            # Set the state to wait for the user's choice
+            self.agent.is_awaiting_model_selection = True
             return
-        
+
+        # Default behavior: process as a prompt
         await self.ui.print_message(user_input, role="user")
         self.run_worker(self.agent.process_user_input(user_input), exclusive=True)
 

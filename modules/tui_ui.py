@@ -69,45 +69,6 @@ class ContinueConfirmationScreen(Screen[bool]):
             self.dismiss(False)
 
 
-class ModelSelectionScreen(Screen[str]):
-    """A screen to allow the user to select a model."""
-    def __init__(self, models: list[str], current_model: str, **kwargs) -> None:
-        super().__init__(**kwargs)
-        self.models = models
-        self.current_model = current_model
-
-    def compose(self) -> ComposeResult:
-        yield Vertical(
-            Static("[bold cyan]Select a Model[/bold cyan]", classes="confirmation-title"),
-            *[
-                Button(
-                    f"{'>> ' if model == self.current_model else ''}{model}",
-                    name=model,  # Store the model name in 'name' attribute
-                    id=f"model_{i}", # Keep a simple ID for CSS/DOM
-                    variant="primary" if model == self.current_model else "default"
-                ) for i, model in enumerate(self.models)
-            ],
-            Button("Cancel", id="cancel_button", variant="error"),
-            classes="confirmation-panel"
-        )
-
-    def on_key(self, event: Key) -> None:
-        """Handle key presses."""
-        if event.key == "escape":
-            event.stop()
-            self.dismiss(None)  # Return None on Escape
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Handle button presses."""
-        if event.button.id == "cancel_button":
-            self.dismiss(None)  # Return None on Cancel
-        elif hasattr(event.button, 'name') and event.button.name in self.models:
-            # Use name attribute directly
-            self.dismiss(event.button.name)
-        else:
-            # Fallback: model not found or invalid button pressed
-            self.dismiss(None)
-
 class TuiUI:
     def __init__(self, app, history_widget: VerticalScroll, loading_container: Container, loading_label: Static):
         self.app = app
@@ -154,9 +115,6 @@ class TuiUI:
     async def _confirm_continue_main_thread(self, prompt: str) -> bool:
         return await self.app.push_screen(ContinueConfirmationScreen(prompt))
 
-    async def _select_model_main_thread(self, models: list[str], current_model: str) -> str:
-        return await self.app.push_screen(ModelSelectionScreen(models, current_model))
-
     def _update_header_main_thread(self, text: str):
         self.app.query_one("Header").sub_title = text
 
@@ -164,9 +122,6 @@ class TuiUI:
 
     async def update_header(self, text: str):
         await self._call_ui(self._update_header_main_thread, text)
-
-    async def select_model(self, models: list[str], current_model: str) -> str:
-        return await self._call_ui(self._select_model_main_thread, models, current_model)
 
     async def start_thinking(self):
         await self._call_ui(self._start_thinking)
