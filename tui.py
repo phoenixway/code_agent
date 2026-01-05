@@ -30,7 +30,11 @@ class TUI(App):
                 ),
                 id="loading-container",
             )
-            yield Input(placeholder="> Your message...", id="input")
+            yield Horizontal(
+                Static("> "),
+                Input(placeholder="Your message...", id="input"),
+                id="input-container"
+            )
         yield Footer()
 
     async def on_mount(self) -> None:
