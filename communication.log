@@ -164,3 +164,42 @@ test
 2026-01-05 14:22:52,355 - LOG_PROCESS_USER_INPUT_PRE_HISTORY: ''<think> \nThe input "test" is a simple verification string. I will confirm reception to proceed. </think>\ntest \n\n\n''
 2026-01-05 14:22:52,355 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=assistant, Content=''<think> \nThe input "test" is a simple verification string. I will confirm reception to proceed. </think>\ntest \n\n\n''
 2026-01-05 14:22:52,355 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=assistant, Content=''<think> \nThe input "test" is a simple verification string. I will confirm reception to proceed. </think>\ntest''
+2026-01-05 14:30:41,601 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=user, Content=''test''
+2026-01-05 14:30:41,601 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=user, Content=''test''
+2026-01-05 14:30:41,601 - OUTGOING TO AI:
+test
+2026-01-05 14:30:51,844 - INCOMING FROM AI (RAW): ''<think>\nI am Angelica-AI, a coding agent optimized for Linux (Fedora/Desktop) and Android (Termux) environments. My primary function is to autonomously solve coding problems presented to me.  I will begin by confirming my current environment. \n</think>\n\n{\n  "type": "run_command",\n  "command": "echo \\"Angelica-AI is running\\" && echo \\$(uname -a)",\n  "before_execution": "Checking system information.",\n  "during_execution": "Retrieving system details...",\n  "after_execution": "System information retrieved.",\n  "return_control": true \n} \n\n\n\n\n''
+2026-01-05 14:30:51,844 - LOG_PROCESS_USER_INPUT_PRE_HISTORY: ''<think>\nI am Angelica-AI, a coding agent optimized for Linux (Fedora/Desktop) and Android (Termux) environments. My primary function is to autonomously solve coding problems presented to me.  I will begin by confirming my current environment. \n</think>\n\n{\n  "type": "run_command",\n  "command": "echo \\"Angelica-AI is running\\" && echo \\$(uname -a)",\n  "before_execution": "Checking system information.",\n  "during_execution": "Retrieving system details...",\n  "after_execution": "System information retrieved.",\n  "return_control": true \n} \n\n\n\n\n''
+2026-01-05 14:30:51,845 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=assistant, Content=''<think>\nI am Angelica-AI, a coding agent optimized for Linux (Fedora/Desktop) and Android (Termux) environments. My primary function is to autonomously solve coding problems presented to me.  I will begin by confirming my current environment. \n</think>\n\n{\n  "type": "run_command",\n  "command": "echo \\"Angelica-AI is running\\" && echo \\$(uname -a)",\n  "before_execution": "Checking system information.",\n  "during_execution": "Retrieving system details...",\n  "after_execution": "System information retrieved.",\n  "return_control": true \n} \n\n\n\n\n''
+2026-01-05 14:30:51,845 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=assistant, Content=''<think>\nI am Angelica-AI, a coding agent optimized for Linux (Fedora/Desktop) and Android (Termux) environments. My primary function is to autonomously solve coding problems presented to me.  I will begin by confirming my current environment. \n</think>\n\n{\n  "type": "run_command",\n  "command": "echo \\"Angelica-AI is running\\" && echo \\$(uname -a)",\n  "before_execution": "Checking system information.",\n  "during_execution": "Retrieving system details...",\n  "after_execution": "System information retrieved.",\n  "return_control": true \n}''
+2026-01-05 14:43:30,375 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=user, Content=''тест''
+2026-01-05 14:43:30,375 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=user, Content=''тест''
+2026-01-05 14:43:30,375 - OUTGOING TO AI:
+тест
+2026-01-05 14:43:39,128 - INCOMING FROM AI (RAW): ''<think>I am Angelica-AI, a coding agent designed for Linux and Android environments. My purpose is to assist with autonomous problem-solving tasks involving code analysis, modification, and execution. I will analyze user requests, determine the necessary actions, and execute them within the provided environment. </think>  \n''
+2026-01-05 14:43:39,128 - LOG_PROCESS_USER_INPUT_PRE_HISTORY: ''<think>I am Angelica-AI, a coding agent designed for Linux and Android environments. My purpose is to assist with autonomous problem-solving tasks involving code analysis, modification, and execution. I will analyze user requests, determine the necessary actions, and execute them within the provided environment. </think>  \n''
+2026-01-05 14:43:39,128 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=assistant, Content=''<think>I am Angelica-AI, a coding agent designed for Linux and Android environments. My purpose is to assist with autonomous problem-solving tasks involving code analysis, modification, and execution. I will analyze user requests, determine the necessary actions, and execute them within the provided environment. </think>  \n''
+2026-01-05 14:43:39,128 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=assistant, Content=''<think>I am Angelica-AI, a coding agent designed for Linux and Android environments. My purpose is to assist with autonomous problem-solving tasks involving code analysis, modification, and execution. I will analyze user requests, determine the necessary actions, and execute them within the provided environment. </think>''
+2026-01-05 14:43:39,129 - OUTGOING TO AI:
+тест
+2026-01-05 14:43:39,663 - INCOMING FROM AI (RAW): ''test \n\n\n''
+2026-01-05 14:43:39,663 - LOG_PROCESS_USER_INPUT_PRE_HISTORY: ''test \n\n\n''
+2026-01-05 14:43:39,663 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=assistant, Content=''test \n\n\n''
+2026-01-05 14:43:39,663 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=assistant, Content=''test''
+2026-01-05 14:52:40,615 - `/models` command received. Opening selection screen.
+2026-01-05 14:52:40,642 - Model selection screen closed. Selected model: 'None'
+2026-01-05 14:52:40,643 - Model selection cancelled or unchanged.
+2026-01-05 14:54:39,875 - `/models` command received. Opening selection screen.
+2026-01-05 14:54:39,901 - Model selection screen closed. Selected model: 'None'
+2026-01-05 14:54:39,901 - Model selection cancelled or unchanged.
+2026-01-05 14:56:18,845 - `/models` command received. Opening selection screen.
+2026-01-05 14:56:18,873 - Model selection screen closed. Selected model: 'None'
+2026-01-05 14:56:18,873 - Model selection cancelled or unchanged.
+2026-01-05 14:58:11,921 - `/models` command received. Opening selection screen.
+2026-01-05 14:58:11,948 - Model selection screen closed. Selected model: 'None'
+2026-01-05 14:58:11,948 - Model selection cancelled or unchanged.
+2026-01-05 15:01:19,849 - Selected: 'None', Current: 'gemma2:9b'
+2026-01-05 15:04:53,669 - ModelSelectionScreen returned None, which is a bug.
+2026-01-05 15:09:10,293 - `/models` command received. Opening selection screen.
+2026-01-05 15:09:10,317 - Model selection result: 'None' (type: <class 'NoneType'>)
+2026-01-05 15:09:10,317 - Model selection cancelled (None returned).

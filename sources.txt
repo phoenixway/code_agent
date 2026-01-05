@@ -50,6 +50,7 @@ class AngelicaAgent:
         self.files = FileModule()
         self.context_manager = ContextManager(self.files)
         self.MAX_CONSECUTIVE_CALLS = 3 # Safeguard against loops
+        self.current_task = None # To hold the current running task
         
         # Setup communication logger
         self.comm_log = logging.getLogger('communication')
@@ -79,39 +80,57 @@ class AngelicaAgent:
         self.policy = PermissionPolicy(self.ui, policy_mode)
         self.processor = ResponseProcessor(self.ui, self.files, self.chat, self.policy)
 
-    def _parse_output(self, text):
+    def _parse_output(self, text: str):
         thoughts = []
         command = None
         
-        # 1. Extract and parse command (JSON)
-        json_match = re.search(r'```json\s*(\{.*?\})\s*```|(\{.*?\})', text, re.DOTALL)
-        if json_match:
-            potential_json = json_match.group(1) or json_match.group(2)
-            try:
-                data = json.loads(potential_json)
-                if isinstance(data, dict) and "type" in data:
-                    command = data
-                    text = text.replace(json_match.group(0), '', 1)
-            except json.JSONDecodeError:
-                pass
-
-        # 2. Extract thoughts
+        # 1. Extract thoughts first to isolate them
         thought_end_pattern = r'</(?:think|thought|thinking)>'
         last_match = None
+        # Find the last thought tag to handle multiple thought blocks
         for match in re.finditer(thought_end_pattern, text, re.IGNORECASE | re.DOTALL):
             last_match = match
         
         if last_match:
             end_pos = last_match.end()
             thought_block = text[:end_pos]
-            text = text[end_pos:]
+            text = text[end_pos:] # The rest of the text after the last thought
 
             cleaned_thought = re.sub(r'</?(?:think|thought|thinking)>', '', thought_block, flags=re.IGNORECASE).strip()
             if cleaned_thought:
                 thoughts.append(cleaned_thought)
 
-        # 3. Clean up plain text
-        plain_text = re.sub(r'</?(?:think|thought|thinking|tool_code|tool_call|json|code|text|message)\b.*?>', '', text, flags=re.IGNORECASE)
+        # The remaining text is now either a command, plain text, or both.
+        remaining_text = text.strip()
+
+        # 2. Look for a command, prioritizing explicit ```json blocks
+        json_block_match = re.search(r'```json\s*(\{.*?\})\s*```', remaining_text, re.DOTALL)
+        if json_block_match:
+            json_str = json_block_match.group(1).strip()
+            try:
+                data = json.loads(json_str)
+                if isinstance(data, dict) and "type" in data:
+                    command = data
+                    # Remove the JSON block for the final plain text
+                    remaining_text = remaining_text.replace(json_block_match.group(0), '', 1).strip()
+            except json.JSONDecodeError:
+                # If it's a malformed JSON block, treat it as plain text
+                pass
+        
+        # 3. If no command yet, check if the entire remaining text is a JSON object
+        if not command and remaining_text.startswith('{') and remaining_text.endswith('}'):
+            try:
+                data = json.loads(remaining_text)
+                if isinstance(data, dict) and "type" in data:
+                    command = data
+                    # The entire text was a command, so there's no plain text left
+                    remaining_text = ""
+            except json.JSONDecodeError:
+                # It looked like JSON but wasn't valid, so treat it as plain text
+                pass
+
+        # 4. Whatever is left is plain text; clean it up.
+        plain_text = re.sub(r'</?(?:think|thought|thinking|tool_code|tool_call|json|code|text|message)\b.*?>', '', remaining_text, flags=re.IGNORECASE)
         plain_text = re.sub(r'^Text Message:\s*', '', plain_text, flags=re.IGNORECASE).strip()
         
         return thoughts, command, plain_text
@@ -137,11 +156,42 @@ class AngelicaAgent:
         self.comm_log.info(f"INCOMING FROM AI (RAW): '{repr(full_text)}'")
         return full_text
 
+    async def switch_model(self, model_name: str):
+        """Switches the chat model and re-initializes the history."""
+        self.comm_log.info(f"--- Attempting to switch model to: {model_name} ---")
+        await self.ui.print_system(f"Switching to model: {model_name}...")
+        
+        self.comm_log.info(f"Calling get_chat_provider for '{model_name}'.")
+        new_chat_provider = get_chat_provider(model_name)
+        
+        if new_chat_provider is None:
+            self.comm_log.error(f"Failed to initialize chat provider for '{model_name}'.")
+            error_message = f"Failed to initialize chat provider for model: {model_name}. Please check your configuration and API keys."
+            await self.ui.print_error(error_message)
+            await self.ui.print_system(f"Reverting to previous model: {self.chat.model_name}")
+            await self.ui.update_header(f"Model: {self.chat.model_name}")
+        else:
+            self.comm_log.info(f"Successfully initialized new provider: {new_chat_provider.model_name}.")
+            self.chat = new_chat_provider
+            # We create a new history manager to reset the conversation context
+            self.history = HistoryManager(self.chat, logger=self.comm_log, max_tokens=self.settings.get("max_history_tokens", 4000))
+            # Also update the processor with the new chat instance
+            self.processor.chat = self.chat
+            self.comm_log.info("Agent's chat, history, and processor have been updated.")
+            await self.ui.print_system(f"✅ Switched to model: {self.chat.model_name}")
+            await self.ui.update_header(f"Model: {self.chat.model_name}")
+
+    async def interrupt(self):
+        """Cancels the current running task."""
+        if self.current_task and not self.current_task.done():
+            self.current_task.cancel()
+
     async def process_user_input(self, user_input):
         self.history.add_message("user", user_input)
         
         context_info = self.context_manager.get_context_prompt()
-        current_query = context_info if context_info else ""
+        current_query = user_input + ("\n\n" + context_info if context_info else "")
+
 
         active_loop = True
         consecutive_ai_calls = 0 # Initialize counter
@@ -163,7 +213,10 @@ class AngelicaAgent:
                         consecutive_ai_calls = 1 # Reset counter and continue
                         await self.ui.start_thinking()
                 
-                response = await self.get_response(current_query)
+                # Create a task to be able to cancel it
+                self.current_task = asyncio.create_task(self.get_response(current_query))
+                response = await self.current_task
+                
                 self.comm_log.info(f"LOG_PROCESS_USER_INPUT_PRE_HISTORY: '{repr(response)}'")
                 if not response: 
                     active_loop = False
@@ -197,15 +250,19 @@ class AngelicaAgent:
                         await self.ui.print_command_result(output_text)
                         self.history.add_message("system", system_msg)
                         
-                        # ВАЖЛИВО: Очищаємо current_query, щоб не дублювати його в наступному виклику API
-                        current_query = "" 
+                        current_query = system_msg # Set query for the next loop
                 
                 elif plain_text.strip():
                     await self.ui.print_message(plain_text.strip(), role="assistant")
                     active_loop = False
 
             await self.history.check_and_summarize(self.ui)
+        except asyncio.CancelledError:
+            # This is expected when the task is cancelled, so we don't need to re-raise
+            # The interrupt() method already printed a message.
+            pass
         finally:
+            self.current_task = None # Clear the task reference
             await self.ui.stop_loading()
 
 ================================================================================
@@ -404,7 +461,17 @@ def load_settings():
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     
     if not CONFIG_FILE.exists():
-        default = {"default_model": "gemini-1.5-pro", "permission_policy": "ask", "max_history_tokens": 4000}
+        default = {
+            "default_model": "gemini-1.5-pro",
+            "available_models": [
+                "gemini-1.5-pro",
+                "ollama/qwen:4b",
+                "claude-3-opus-20240229",
+                "gpt-4"
+            ],
+            "permission_policy": "ask", 
+            "max_history_tokens": 4000
+        }
         with open(CONFIG_FILE, 'w') as f:
             yaml.dump(default, f)
             
@@ -1016,6 +1083,7 @@ from textual.widgets import Static, Button, Markdown as MarkdownWidget
 from textual.containers import Horizontal, Vertical, VerticalScroll, Container
 from textual.screen import Screen
 from textual.app import ComposeResult
+from textual.events import Key # Import Key event
 from rich.markdown import Markdown, Markdown as RichMarkdown
 from rich.text import Text
 from rich.console import Group
@@ -1077,6 +1145,46 @@ class ContinueConfirmationScreen(Screen[bool]):
         elif event.button.id == "stop_button":
             self.dismiss(False)
 
+
+class ModelSelectionScreen(Screen[str]):
+    """A screen to allow the user to select a model."""
+    def __init__(self, models: list[str], current_model: str, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.models = models
+        self.current_model = current_model
+        # Create a map: sanitized_id -> original_name
+        self.model_map = {f"model_{i}": m for i, m in enumerate(models)}
+
+    def compose(self) -> ComposeResult:
+        yield Vertical(
+            Static("[bold cyan]Select a Model[/bold cyan]", classes="confirmation-title"),
+            *[
+                Button(
+                    f"{'>> ' if model == self.current_model else ''}{model}",
+                    # Use index for ID
+                    id=f"model_{i}", 
+                    variant="primary" if model == self.current_model else "default"
+                ) for i, model in enumerate(self.models)
+            ],
+            Button("Cancel", id="cancel_button", variant="error"),
+            classes="confirmation-panel"
+        )
+
+    def on_key(self, event: Key) -> None:
+        """Handle key presses."""
+        if event.key == "escape":
+            event.stop()
+            self.dismiss("")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "cancel_button":
+            self.dismiss("")
+        elif event.button.id in self.model_map:
+            # Get the original name from the button ID
+            self.dismiss(self.model_map[event.button.id])
+        else:
+            self.dismiss("")
+
 class TuiUI:
     def __init__(self, app, history_widget: VerticalScroll, loading_container: Container, loading_label: Static):
         self.app = app
@@ -1089,23 +1197,15 @@ class TuiUI:
         """Безпечний виклик оновлення UI з будь-якого потоку."""
         if threading.current_thread() is self.main_thread:
             result = func(*args, **kwargs)
-            # Якщо функція асинхронна (як _confirm_action_main_thread), чекаємо її
             if asyncio.iscoroutine(result):
                 return await result
             return result
         else:
-            # З іншого потоку плануємо в головному циклі Textual
             return await self.app.call_from_thread(func, *args, **kwargs)
 
     def _add_message(self, renderable=None, classes="chat-message", widget=None):
         """Додає повідомлення в історію."""
-        if self.history.children:
-            separator = Static(classes="message-separator")
-            self.history.mount(separator)
-
         if widget is None:
-            # ЗМІНЕНО: expand=False дозволяє віджету займати лише потрібне місце.
-            # can_focus=False гарантує, що віджет не перехоплює фокус клавіатури.
             widget = Static(renderable, classes=classes, expand=False)
             widget.can_focus = False 
         
@@ -1114,17 +1214,16 @@ class TuiUI:
 
 
     def _start_thinking(self):
-        self.loading_label.update("Thinking...") # Оновлюємо текст
-        self.loading_container.display = True   # Показуємо весь блок
+        self.loading_label.update("Thinking...")
+        self.loading_container.display = True
 
     def _start_action(self, text: str):
-        # Якщо тексту немає, ставимо стандартний статус
         status_text = text if text else "Processing..."
-        self.loading_label.update(status_text)   # Оновлюємо текст на статус операції
-        self.loading_container.display = True    # Показуємо блок
+        self.loading_label.update(status_text)
+        self.loading_container.display = True
 
     def _stop_loading(self):
-        self.loading_container.display = False   # Ховаємо блок, коли операцію завершено
+        self.loading_container.display = False
 
     async def _confirm_action_main_thread(self, action_details: dict) -> bool:
         return await self.app.push_screen(ConfirmationScreen(action_details))
@@ -1132,7 +1231,19 @@ class TuiUI:
     async def _confirm_continue_main_thread(self, prompt: str) -> bool:
         return await self.app.push_screen(ContinueConfirmationScreen(prompt))
 
-    # --- Публічні методи для агента (всі ASYNC) ---
+    async def _select_model_main_thread(self, models: list[str], current_model: str) -> str:
+        return await self.app.push_screen(ModelSelectionScreen(models, current_model))
+
+    def _update_header_main_thread(self, text: str):
+        self.app.query_one("Header").sub_title = text
+
+    # --- Public methods for the agent ---
+
+    async def update_header(self, text: str):
+        await self._call_ui(self._update_header_main_thread, text)
+
+    async def select_model(self, models: list[str], current_model: str) -> str:
+        return await self._call_ui(self._select_model_main_thread, models, current_model)
 
     async def start_thinking(self):
         await self._call_ui(self._start_thinking)
@@ -1154,43 +1265,33 @@ class TuiUI:
 
 
     async def print_error(self, text):
-        # ВИПРАВЛЕНО: додано async та await
         await self._call_ui(self._add_message, f"[bold red]✘ Error:[/] {text}")
-
-   # modules/tui_ui.py
 
     async def print_message(self, text, role="assistant"):
         if role == "assistant":
-            # ВИПРАВЛЕНО: замість MarkdownWidget використовуємо Static + RichMarkdown
-            # Це прибирає порожні рядки, які додає стандартний віджет Textual
             clean_text = text.strip()
             markdown_renderable = RichMarkdown(clean_text)
             await self._call_ui(self._add_message, markdown_renderable, classes="chat-message assistant-message")
         else:
-            # For User, just the text with a '>' prefix
             renderable = Text(f"> {text.strip()}", style="rgb(100,200,100)")
             await self._call_ui(self._add_message, renderable, classes="chat-message user-message")
 
 
     async def print_thought(self, text):
         if text.strip():
-            # Додаємо .strip() для впевненості
             await self._call_ui(self._add_message, 
                                 f"[grey37][italic]💭 {text.strip()}[/italic][/grey37]", 
                                 classes="chat-message thought-message")
 
     async def print_plan(self, text):
-        # ВИПРАВЛЕНО: видалено \n перед текстом
         await self._call_ui(self._add_message, f"[bold cyan]🤖 Plan:[/] {text.strip()}")
 
-        async def print_command_result(self, text):
-
-            # Додано пробіл після "RESULT:" для кращого вигляду
-
-            await self._call_ui(self._add_message, f"[bold white]SYSTEM RESULT:[/] {text.strip()}")
+    async def print_command_result(self, text):
+        await self._call_ui(self._add_message, f"[bold white]SYSTEM RESULT:[/] {text.strip()}")
 
     async def print_confirmation(self, text):
         await self._call_ui(self._add_message, f"[bold green]✅ {text.strip()}[/]")
+
 
 
 ================================================================================
@@ -1246,7 +1347,7 @@ Screen {
 .chat-message {
     padding: 0 1; /* Лівий та правий відступи для тексту */
     max-width: 100%; 
-    margin: 0;    /* Переконуємося, що немає зовнішніх вертикальних відступів */
+    margin: 1 0;
 }
 
 .assistant-message {
@@ -1267,7 +1368,6 @@ Screen {
     text-style: bold;
     margin: 0;
     padding: 0 1;
-    border-top: ascii $info;
 }
 
 /* БЛОК ЗАВАНТАЖЕННЯ ТА СТАТУСУ */
@@ -1363,6 +1463,7 @@ class TUI(App):
     BINDINGS = [
         ("d", "toggle_dark", "Toggle dark mode"),
         ("q", "quit", "Quit"),
+        ("escape", "interrupt_agent", "Interrupt"),
     ]
     VERSION = "0.1.0" # Define version here
 
@@ -1396,11 +1497,11 @@ class TUI(App):
         # Construct the new startup message
         # Check if self.agent.chat is None, if so, get_chat_provider failed during agent init
         model_name = self.agent.chat.model_name if self.agent.chat else "N/A (Provider initialization failed)"
+        self.query_one("Header").sub_title = f"Model: {model_name}"
         current_directory = os.getcwd()
         
         startup_message = (
             f"✨ Angelica-AI (v{self.VERSION})\n"
-            f"Model: {model_name}\n"
             f"Directory: {current_directory}"
         )
         await self.ui.print_system(startup_message)
@@ -1409,18 +1510,35 @@ class TUI(App):
     async def on_input_submitted(self, message: Input.Submitted) -> None:
         """Called when the user submits a message."""
         user_input = message.value.strip()
+        message.input.value = "" # Clear input immediately
+
         if not user_input:
             return
 
-        # ВИПРАВЛЕНО: Додано await. Тепер ваше повідомлення з'явиться!
-        await self.ui.print_message(user_input, role="user")
-        
-        # Очищуємо поле вводу через об'єкт повідомлення (це надійніше)
-        message.input.value = ""
-        
-        # Запускаємо обробку агентом у фоновому режимі
-        # Тут await не потрібен, бо run_worker сам керує корутиною
-        self.run_worker(self.agent.process_user_input(user_input), exclusive=True)
+        if user_input == "/models":
+            self.agent.comm_log.info("`/models` command received. Opening selection screen.")
+            available_models = self.agent.settings.get("available_models", [])
+            if not available_models:
+                self.agent.comm_log.error("No available models found in settings.")
+                await self.ui.print_error("No available models configured.")
+                return
+            
+            current_model = self.agent.chat.model_name
+            selected_model = await self.ui.select_model(available_models, current_model)
+            self.agent.comm_log.info(f"Model selection screen closed. Selected model: '{selected_model}'")
+            
+            if selected_model and selected_model != current_model:
+                self.agent.comm_log.info(f"New model selected. Calling `switch_model` with '{selected_model}'.")
+                self.run_worker(self.agent.switch_model(selected_model), exclusive=True)
+            else:
+                self.agent.comm_log.info("Model selection cancelled or unchanged.")
+        else:
+            await self.ui.print_message(user_input, role="user")
+            self.run_worker(self.agent.process_user_input(user_input), exclusive=True)
+
+    async def action_interrupt_agent(self) -> None:
+        """Interrupts the agent's current operation."""
+        await self.agent.interrupt()
 
 if __name__ == "__main__":
     agent = AngelicaAgent() # Instantiate agent without ui

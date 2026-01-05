@@ -23,6 +23,7 @@ class AngelicaAgent:
         self.context_manager = ContextManager(self.files)
         self.MAX_CONSECUTIVE_CALLS = 3 # Safeguard against loops
         self.current_task = None # To hold the current running task
+        self.is_awaiting_model_selection = False # State for model selection UI
         
         # Setup communication logger
         self.comm_log = logging.getLogger('communication')
@@ -130,21 +131,38 @@ class AngelicaAgent:
 
     async def switch_model(self, model_name: str):
         """Switches the chat model and re-initializes the history."""
+        self.comm_log.info(f"--- Attempting to switch model to: {model_name} ---")
+
+        # Normalize names for comparison (e.g., "ollama/qwen:4b" vs "qwen:4b")
+        current_normalized = self.chat.model_name.split('/')[-1]
+        selected_normalized = model_name.split('/')[-1]
+
+        if current_normalized == selected_normalized:
+            self.comm_log.info(f"Model '{model_name}' is already active. Aborting switch.")
+            await self.ui.print_system(f"Model {model_name} is already active.")
+            return
+
         await self.ui.print_system(f"Switching to model: {model_name}...")
         
+        self.comm_log.info(f"Calling get_chat_provider for '{model_name}'.")
         new_chat_provider = get_chat_provider(model_name)
         
         if new_chat_provider is None:
-            error_message = f"Failed to initialize chat provider for model: {model_name}. Please check your configuration and API keys."
-            await self.ui.print_error(error_message)
-            await self.ui.print_system(f"Reverting to previous model: {self.chat.model_name}")
+            self.comm_log.error(f"Failed to initialize chat provider for '{model_name}'.")
+            await self.ui.print_error(f"Failed to initialize model: {model_name}")
+            await self.ui.update_header(f"Model: {self.chat.model_name}")
         else:
+            self.comm_log.info(f"Successfully initialized new provider: {new_chat_provider.model_name}.")
             self.chat = new_chat_provider
-            # We create a new history manager to reset the conversation context
             self.history = HistoryManager(self.chat, logger=self.comm_log, max_tokens=self.settings.get("max_history_tokens", 4000))
-            # Also update the processor with the new chat instance
+            
+            # CRITICAL: Update references in the processor
             self.processor.chat = self.chat
+            self.processor.ui = self.ui
+            
+            self.comm_log.info("Agent's chat, history, and processor have been updated.")
             await self.ui.print_system(f"✅ Switched to model: {self.chat.model_name}")
+            await self.ui.update_header(f"Model: {self.chat.model_name}")
 
     async def interrupt(self):
         """Cancels the current running task."""

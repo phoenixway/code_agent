@@ -6,6 +6,7 @@ from textual.widgets import Static, Button, Markdown as MarkdownWidget
 from textual.containers import Horizontal, Vertical, VerticalScroll, Container
 from textual.screen import Screen
 from textual.app import ComposeResult
+from textual.events import Key # Import Key event
 from rich.markdown import Markdown, Markdown as RichMarkdown
 from rich.text import Text
 from rich.console import Group
@@ -80,32 +81,32 @@ class ModelSelectionScreen(Screen[str]):
             Static("[bold cyan]Select a Model[/bold cyan]", classes="confirmation-title"),
             *[
                 Button(
-                    f"{'>> ' if model == self.current_model else ''}{model}{' <<' if model == self.current_model else ''}",
-                    id=f"model_{model.replace('/', '_').replace(':', '__').replace('-', '_')}", # Sanitize ID for Textual
+                    f"{'>> ' if model == self.current_model else ''}{model}",
+                    name=model,  # Store the model name in 'name' attribute
+                    id=f"model_{i}", # Keep a simple ID for CSS/DOM
                     variant="primary" if model == self.current_model else "default"
-                ) for model in self.models
+                ) for i, model in enumerate(self.models)
             ],
             Button("Cancel", id="cancel_button", variant="error"),
             classes="confirmation-panel"
         )
 
+    def on_key(self, event: Key) -> None:
+        """Handle key presses."""
+        if event.key == "escape":
+            event.stop()
+            self.dismiss(None)  # Return None on Escape
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle button presses."""
         if event.button.id == "cancel_button":
-            self.dismiss("")
+            self.dismiss(None)  # Return None on Cancel
+        elif hasattr(event.button, 'name') and event.button.name in self.models:
+            # Use name attribute directly
+            self.dismiss(event.button.name)
         else:
-            # We need to map the button ID back to the original model name
-            # The simplest way is to find the model name from the list
-            # A more robust solution might involve storing a map, but for now this is fine.
-            # Assuming button.id starts with "model_"
-            selected_id_prefix = "model_"
-            if event.button.id.startswith(selected_id_prefix):
-                # Reverse the sanitization
-                original_model_candidate = event.button.id[len(selected_id_prefix):].replace('__', ':').replace('_', '/')
-                # Find the actual model from the list
-                selected_model = next((m for m in self.models if m == original_model_candidate), "")
-                self.dismiss(selected_model)
-            else:
-                self.dismiss("") # Should not happen for model buttons
+            # Fallback: model not found or invalid button pressed
+            self.dismiss(None)
 
 class TuiUI:
     def __init__(self, app, history_widget: VerticalScroll, loading_container: Container, loading_label: Static):
@@ -156,7 +157,13 @@ class TuiUI:
     async def _select_model_main_thread(self, models: list[str], current_model: str) -> str:
         return await self.app.push_screen(ModelSelectionScreen(models, current_model))
 
+    def _update_header_main_thread(self, text: str):
+        self.app.query_one("Header").sub_title = text
+
     # --- Public methods for the agent ---
+
+    async def update_header(self, text: str):
+        await self._call_ui(self._update_header_main_thread, text)
 
     async def select_model(self, models: list[str], current_model: str) -> str:
         return await self._call_ui(self._select_model_main_thread, models, current_model)
