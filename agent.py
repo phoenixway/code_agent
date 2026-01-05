@@ -40,7 +40,7 @@ class AngelicaAgent:
             self.ui.print_message(error_message, role="system")
             return # Exit __init__ if chat provider is not available
         
-        self.history = HistoryManager(self.chat, max_tokens=self.settings.get("max_history_tokens", 4000))
+        self.history = HistoryManager(self.chat, logger=self.comm_log, max_tokens=self.settings.get("max_history_tokens", 4000))
         self.session_manager = SessionManager(CONFIG_DIR, self.history, self.context_manager, self.ui)
         
         # HACK: Disable 'ask' policy in TUI mode for now, as it's blocking.
@@ -106,7 +106,7 @@ class AngelicaAgent:
             self.comm_log.error(f"Chat provider error: {e}")
             return error_message # Return error message to indicate failure
             
-        self.comm_log.info(f"INCOMING FROM AI:\n{full_text}")
+        self.comm_log.info(f"INCOMING FROM AI (RAW): '{repr(full_text)}'")
         return full_text
 
     async def process_user_input(self, user_input):
@@ -136,6 +136,7 @@ class AngelicaAgent:
                         await self.ui.start_thinking()
                 
                 response = await self.get_response(current_query)
+                self.comm_log.info(f"LOG_PROCESS_USER_INPUT_PRE_HISTORY: '{repr(response)}'")
                 if not response: 
                     active_loop = False
                     break
@@ -161,12 +162,18 @@ class AngelicaAgent:
                     
                     if result.get("status") == "failed" or command.get("return_control") is True:
                         active_loop = True
-                        current_query = f"SYSTEM RESULT:\n{result.get('output')}"
-                        await self.ui.print_command_result(result.get('output'))
-                        self.history.add_message("system", current_query)
+                        # Прибираємо \n після двокрапки
+                        output_text = result.get('output', '').strip()
+                        system_msg = f"SYSTEM RESULT: {output_text}"
+                        
+                        await self.ui.print_command_result(output_text)
+                        self.history.add_message("system", system_msg)
+                        
+                        # ВАЖЛИВО: Очищаємо current_query, щоб не дублювати його в наступному виклику API
+                        current_query = "" 
                 
                 elif plain_text.strip():
-                    await self.ui.print_message(plain_text, role="assistant")
+                    await self.ui.print_message(plain_text.strip(), role="assistant")
                     active_loop = False
 
             await self.history.check_and_summarize(self.ui)

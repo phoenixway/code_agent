@@ -1,12 +1,23 @@
 # modules/history.py
 class HistoryManager:
-    def __init__(self, chat_provider, max_tokens=4000):
+    def __init__(self, chat_provider, logger=None, max_tokens=4000):
         self.messages = []
         self.chat = chat_provider
         self.max_tokens = max_tokens
+        self.logger = logger
 
     def add_message(self, role, content):
-        self.messages.append({"role": role, "content": content})
+        if self.logger:
+            self.logger.info(f"LOG_HISTORY_ADD_MESSAGE_RAW: Role={role}, Content='{repr(content)}'")
+        
+        if content and isinstance(content, str):
+            cleaned = content.strip()
+            
+            if self.logger:
+                self.logger.info(f"LOG_HISTORY_ADD_MESSAGE_CLEANED: Role={role}, Content='{repr(cleaned)}'")
+
+            if cleaned:
+                self.messages.append({"role": role, "content": cleaned})
 
     def get_history_for_api(self):
         return self.messages

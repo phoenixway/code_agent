@@ -13,11 +13,19 @@ class BaseChat:
         self.model_name = model_name
 
     def _prepare_messages(self, prompt, history):
-        """Уніфікована підготовка історії повідомлень."""
         messages = [{"role": "system", "content": DEFAULT_SYSTEM_PROMPT}]
-        messages.extend(history)
-        if prompt: # Don't add an empty user prompt
-            messages.append({"role": "user", "content": prompt})
+        
+        # Додаємо лише непусті повідомлення та обрізаємо їх
+        for msg in history:
+            print(f"LOG_PREPARE_MESSAGES: Processing history message: '{repr(msg)}'")
+            content = msg.get("content", "").strip()
+            if content:
+                messages.append({"role": msg["role"], "content": content})
+                
+        # Додаємо поточний запит, якщо він не порожній і його ще немає в історії
+        if prompt and prompt.strip():
+            messages.append({"role": "user", "content": prompt.strip()})
+            
         return messages
 
 class OpenAICompatibleChat(BaseChat):

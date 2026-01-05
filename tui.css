@@ -22,13 +22,15 @@ Screen {
     overflow-y: scroll;
 }
 
-.chat-message {
-    padding: 0 1;
-    width: 100%;
+.message-separator {
+    height: 1; /* Встановлюємо рівно 1 рядок відступу */
+    background: transparent;
 }
 
-.message-separator {
-    height: 1;
+.chat-message {
+    padding: 0 1; /* Лівий та правий відступи для тексту */
+    width: 100%;
+    margin: 0;    /* Переконуємося, що немає зовнішніх вертикальних відступів */
 }
 
 .assistant-message {

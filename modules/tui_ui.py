@@ -6,7 +6,7 @@ from textual.widgets import Static, Button, Markdown as MarkdownWidget
 from textual.containers import Horizontal, Vertical, VerticalScroll, Container
 from textual.screen import Screen
 from textual.app import ComposeResult
-from rich.markdown import Markdown
+from rich.markdown import Markdown, Markdown as RichMarkdown
 from rich.text import Text
 from rich.console import Group
 from rich.table import Table
@@ -155,26 +155,33 @@ class TuiUI:
 
     async def print_message(self, text, role="assistant"):
         if role == "assistant":
-            # Use the textual.widgets.Markdown widget for better selection
-            md_widget = MarkdownWidget(text.strip(), classes="chat-message assistant-message")
-            await self._call_ui(self._add_message, widget=md_widget)
+            # ВИПРАВЛЕНО: замість MarkdownWidget використовуємо Static + RichMarkdown
+            # Це прибирає порожні рядки, які додає стандартний віджет Textual
+            clean_text = text.strip()
+            markdown_renderable = RichMarkdown(clean_text)
+            await self._call_ui(self._add_message, markdown_renderable, classes="chat-message assistant-message")
         else:
             # For User, just the text with a '>' prefix
-            renderable = Text(f"> {text}", style="rgb(100,200,100)")
+            renderable = Text(f"> {text.strip()}", style="rgb(100,200,100)")
             await self._call_ui(self._add_message, renderable, classes="chat-message user-message")
 
 
     async def print_thought(self, text):
         if text.strip():
+            # Додаємо .strip() для впевненості
             await self._call_ui(self._add_message, 
                                 f"[grey37][italic]💭 {text.strip()}[/italic][/grey37]", 
                                 classes="chat-message thought-message")
 
     async def print_plan(self, text):
-        await self._call_ui(self._add_message, f"\n[bold cyan]🤖 Plan:[/] {text}")
+        # ВИПРАВЛЕНО: видалено \n перед текстом
+        await self._call_ui(self._add_message, f"[bold cyan]🤖 Plan:[/] {text.strip()}")
 
-    async def print_command_result(self, text):
-        await self._call_ui(self._add_message, f"[bold white]SYSTEM RESULT:[/]\n{text}")
+        async def print_command_result(self, text):
+
+            # Додано пробіл після "RESULT:" для кращого вигляду
+
+            await self._call_ui(self._add_message, f"[bold white]SYSTEM RESULT:[/] {text.strip()}")
 
     async def print_confirmation(self, text):
-        await self._call_ui(self._add_message, f"[bold green]✅ {text}[/]")
+        await self._call_ui(self._add_message, f"[bold green]✅ {text.strip()}[/]")
