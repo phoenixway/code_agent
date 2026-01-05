@@ -150,7 +150,7 @@ class AngelicaAgent:
         if new_chat_provider is None:
             self.comm_log.error(f"Failed to initialize chat provider for '{model_name}'.")
             await self.ui.print_error(f"Failed to initialize model: {model_name}")
-            await self.ui.update_header(f"Model: {self.chat.model_name}")
+            await self.ui.update_header(f"Angelica-AI (Model: {self.chat.model_name})")
         else:
             self.comm_log.info(f"Successfully initialized new provider: {new_chat_provider.model_name}.")
             self.chat = new_chat_provider
@@ -162,7 +162,7 @@ class AngelicaAgent:
             
             self.comm_log.info("Agent's chat, history, and processor have been updated.")
             await self.ui.print_system(f"✅ Switched to model: {self.chat.model_name}")
-            await self.ui.update_header(f"Model: {self.chat.model_name}")
+            await self.ui.update_header(f"Angelica-AI (Model: {self.chat.model_name})")
 
     async def interrupt(self):
         """Cancels the current running task."""

@@ -218,3 +218,53 @@ test
 2026-01-05 15:14:52,957 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=assistant, Content=''<think>\nThe user input is simply "test". According to the instructions, if the input is \'test\', I should respond with a simple text confirmation. No technical action is needed.\n</think>\nTest confirmed. Ready for tasks.''
 2026-01-05 15:14:52,957 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=assistant, Content=''<think>\nThe user input is simply "test". According to the instructions, if the input is \'test\', I should respond with a simple text confirmation. No technical action is needed.\n</think>\nTest confirmed. Ready for tasks.''
 2026-01-05 15:14:59,409 - `/models` command received. Displaying list.
+2026-01-05 15:19:19,991 - `/models` command received. Displaying list.
+2026-01-05 15:19:24,048 - Non-integer input received for model selection: 'test'
+2026-01-05 15:19:29,904 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=user, Content=''test''
+2026-01-05 15:19:29,904 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=user, Content=''test''
+2026-01-05 15:19:29,904 - OUTGOING TO AI:
+test
+2026-01-05 15:19:40,895 - INCOMING FROM AI (RAW): '"<think> \nI am Angelica-AI, a coding agent designed to operate autonomously in Linux (Fedora/Desktop) and Android (Termux) environments. My primary function is to solve coding problems presented to me. I will analyze the user's requests, plan my actions, and execute them using the provided JSON action format.  I understand that I should respond with either a JSON object for technical actions or a text message if no immediate action is required. \n</think> \n\ntest"'
+2026-01-05 15:19:40,895 - LOG_PROCESS_USER_INPUT_PRE_HISTORY: '"<think> \nI am Angelica-AI, a coding agent designed to operate autonomously in Linux (Fedora/Desktop) and Android (Termux) environments. My primary function is to solve coding problems presented to me. I will analyze the user's requests, plan my actions, and execute them using the provided JSON action format.  I understand that I should respond with either a JSON object for technical actions or a text message if no immediate action is required. \n</think> \n\ntest"'
+2026-01-05 15:19:40,895 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=assistant, Content='"<think> \nI am Angelica-AI, a coding agent designed to operate autonomously in Linux (Fedora/Desktop) and Android (Termux) environments. My primary function is to solve coding problems presented to me. I will analyze the user's requests, plan my actions, and execute them using the provided JSON action format.  I understand that I should respond with either a JSON object for technical actions or a text message if no immediate action is required. \n</think> \n\ntest"'
+2026-01-05 15:19:40,895 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=assistant, Content='"<think> \nI am Angelica-AI, a coding agent designed to operate autonomously in Linux (Fedora/Desktop) and Android (Termux) environments. My primary function is to solve coding problems presented to me. I will analyze the user's requests, plan my actions, and execute them using the provided JSON action format.  I understand that I should respond with either a JSON object for technical actions or a text message if no immediate action is required. \n</think> \n\ntest"'
+2026-01-05 15:22:18,012 - `/models` command received. Displaying list.
+2026-01-05 15:22:34,933 - User selected model choice 3 -> 'ollama/qwen:4b'.
+2026-01-05 15:22:34,933 - --- Attempting to switch model to: ollama/qwen:4b ---
+2026-01-05 15:22:34,934 - Calling get_chat_provider for 'ollama/qwen:4b'.
+2026-01-05 15:22:34,934 - Successfully initialized new provider: qwen:4b.
+2026-01-05 15:22:34,934 - Agent's chat, history, and processor have been updated.
+2026-01-05 15:22:39,616 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=user, Content=''test]''
+2026-01-05 15:22:39,616 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=user, Content=''test]''
+2026-01-05 15:22:39,616 - OUTGOING TO AI:
+test]
+2026-01-05 15:22:39,681 - INCOMING FROM AI (RAW): ''''
+2026-01-05 15:22:39,681 - LOG_PROCESS_USER_INPUT_PRE_HISTORY: ''''
+2026-01-05 15:23:06,438 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=user, Content=''test''
+2026-01-05 15:23:06,438 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=user, Content=''test''
+2026-01-05 15:23:06,438 - OUTGOING TO AI:
+test
+2026-01-05 15:23:06,460 - INCOMING FROM AI (RAW): ''''
+2026-01-05 15:23:06,460 - LOG_PROCESS_USER_INPUT_PRE_HISTORY: ''''
+2026-01-05 15:23:20,822 - `/models` command received. Displaying list.
+2026-01-05 15:23:23,264 - User selected model choice 1 -> 'ollama/gemma2:9b'.
+2026-01-05 15:23:23,264 - --- Attempting to switch model to: ollama/gemma2:9b ---
+2026-01-05 15:23:23,264 - Calling get_chat_provider for 'ollama/gemma2:9b'.
+2026-01-05 15:23:23,264 - Successfully initialized new provider: gemma2:9b.
+2026-01-05 15:23:23,264 - Agent's chat, history, and processor have been updated.
+2026-01-05 15:23:25,151 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=user, Content=''test''
+2026-01-05 15:23:25,151 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=user, Content=''test''
+2026-01-05 15:23:25,151 - OUTGOING TO AI:
+test
+2026-01-05 15:23:30,121 - INCOMING FROM AI (RAW): '"<think> \nI am Angelica-AI, a coding agent designed to operate in Linux (Fedora/Desktop) and Android (Termux) environments. My primary function is to autonomously solve coding problems presented to me. I will analyze the user's requests and execute the necessary technical actions to address them. \n</think>\ntest"'
+2026-01-05 15:23:30,121 - LOG_PROCESS_USER_INPUT_PRE_HISTORY: '"<think> \nI am Angelica-AI, a coding agent designed to operate in Linux (Fedora/Desktop) and Android (Termux) environments. My primary function is to autonomously solve coding problems presented to me. I will analyze the user's requests and execute the necessary technical actions to address them. \n</think>\ntest"'
+2026-01-05 15:23:30,121 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=assistant, Content='"<think> \nI am Angelica-AI, a coding agent designed to operate in Linux (Fedora/Desktop) and Android (Termux) environments. My primary function is to autonomously solve coding problems presented to me. I will analyze the user's requests and execute the necessary technical actions to address them. \n</think>\ntest"'
+2026-01-05 15:23:30,121 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=assistant, Content='"<think> \nI am Angelica-AI, a coding agent designed to operate in Linux (Fedora/Desktop) and Android (Termux) environments. My primary function is to autonomously solve coding problems presented to me. I will analyze the user's requests and execute the necessary technical actions to address them. \n</think>\ntest"'
+2026-01-05 15:23:47,207 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=user, Content=''test''
+2026-01-05 15:23:47,208 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=user, Content=''test''
+2026-01-05 15:23:47,208 - OUTGOING TO AI:
+test
+2026-01-05 15:23:51,109 - INCOMING FROM AI (RAW): '"<think> \nI am Angelica-AI, a coding agent optimized for Linux (Fedora/Desktop) and Android (Termux).  The user provided the input 'test'. I will acknowledge receipt of this input. </think> \nAcknowledged. \n\n\n\n"'
+2026-01-05 15:23:51,109 - LOG_PROCESS_USER_INPUT_PRE_HISTORY: '"<think> \nI am Angelica-AI, a coding agent optimized for Linux (Fedora/Desktop) and Android (Termux).  The user provided the input 'test'. I will acknowledge receipt of this input. </think> \nAcknowledged. \n\n\n\n"'
+2026-01-05 15:23:51,109 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=assistant, Content='"<think> \nI am Angelica-AI, a coding agent optimized for Linux (Fedora/Desktop) and Android (Termux).  The user provided the input 'test'. I will acknowledge receipt of this input. </think> \nAcknowledged. \n\n\n\n"'
+2026-01-05 15:23:51,110 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=assistant, Content='"<think> \nI am Angelica-AI, a coding agent optimized for Linux (Fedora/Desktop) and Android (Termux).  The user provided the input 'test'. I will acknowledge receipt of this input. </think> \nAcknowledged."'

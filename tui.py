@@ -42,17 +42,18 @@ class TUI(App):
         self.ui = TuiUI(self, self.query_one("#history", VerticalScroll), self.query_one("#loading-container"), self.query_one("#loading-label"))
         self.agent.ui = self.ui # Передаємо UI до агента
         
-        # Construct the new startup message
         # Check if self.agent.chat is None, if so, get_chat_provider failed during agent init
         model_name = self.agent.chat.model_name if self.agent.chat else "N/A (Provider initialization failed)"
-        self.query_one("Header").sub_title = f"Model: {model_name}"
+        # Set the full title including the model name
+        await self.ui.update_header(f"Angelica-AI (Model: {model_name})")
         current_directory = os.getcwd()
         
         startup_message = (
             f"✨ Angelica-AI (v{self.VERSION})\n"
-            f"Directory: {current_directory}"
+            f"Working Directory: {current_directory}"
         )
         await self.ui.print_system(startup_message)
+        await self.ui.print_system("") # Add an empty line after the startup message
         self.query_one("#input", Input).focus()
 
     async def on_input_submitted(self, message: Input.Submitted) -> None:

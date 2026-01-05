@@ -116,7 +116,7 @@ class TuiUI:
         return await self.app.push_screen(ContinueConfirmationScreen(prompt))
 
     def _update_header_main_thread(self, text: str):
-        self.app.query_one("Header").sub_title = text
+        self.app.title = text
 
     # --- Public methods for the agent ---
 
@@ -158,7 +158,7 @@ class TuiUI:
     async def print_thought(self, text):
         if text.strip():
             await self._call_ui(self._add_message, 
-                                f"[grey37][italic]💭 {text.strip()}[/italic][/grey37]", 
+                                f"[grey37][italic]{text.strip()}[/italic][/grey37]", 
                                 classes="chat-message thought-message")
 
     async def print_plan(self, text):
