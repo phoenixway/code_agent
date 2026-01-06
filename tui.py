@@ -86,45 +86,37 @@ class TUI(App):
         if not user_input:
             return
         
-        # Check if we are in the middle of a model selection
-        if self.agent.is_awaiting_model_selection:
-            # ... (keep existing logic) ...
-            available_models = self.agent.settings.get("available_models", [])
-            try:
-                choice_index = int(user_input) - 1
-                if 0 <= choice_index < len(available_models):
-                    selected_model = available_models[choice_index]
-                    self.agent.comm_log.info(f"User selected model choice {user_input} -> '{selected_model}'.")
-                    self.run_worker(self.agent.switch_model(selected_model), exclusive=True)
-                else:
-                    await self.ui.print_error("Invalid selection. Please try again.")
-                    self.agent.comm_log.warning(f"Invalid model selection index: {choice_index}")
-            except ValueError:
-                await self.ui.print_error(f"Invalid input. Please enter a number or 'cancel'.")
-                self.agent.comm_log.warning(f"Non-integer input received for model selection: '{user_input}'")
-
-            if user_input.lower() == 'cancel' or 'c':
-                self.agent.is_awaiting_model_selection = False
-                await self.ui.print_system("Model selection cancelled.")
-            return
+        # --- COMMANDS ---
 
         if user_input == "/models":
-            # ... (keep existing logic) ...
-            self.agent.comm_log.info("`/models` command received. Displaying list.")
+            self.agent.comm_log.info("`/models` command received.")
+            
+            # Fetch models
             available_models = self.agent.settings.get("available_models", [])
             if not available_models:
-                self.agent.comm_log.error("No available models found in settings.")
-                await self.ui.print_error("No available models configured.")
+                await self.ui.print_error("No available models configured in settings.")
                 return
 
-            message_lines = ["Available models:"]
-            for i, model in enumerate(available_models):
-                is_current = model.split('/')[-1] == self.agent.chat.model_name.split('/')[-1]
-                message_lines.append(f"  {i+1}: {model} {'(current)' if is_current else ''}")
-            message_lines.append("\nEnter the number of the model to switch to, or 'cancel' to abort.")
-            
-            await self.ui.print_system("\n".join(message_lines))
-            self.agent.is_awaiting_model_selection = True
+            # Helper to run model selection in a worker
+            async def _select_model_worker():
+                self.log("DEBUG: Starting model selection worker")
+                # Identify current model to maybe highlight it (optional, logic not in Screen yet)
+                current = self.agent.chat.model_name
+                
+                # Show picker
+                selection = await self.ui.pick_option(
+                    f"Select AI Model (Current: {current})", 
+                    available_models
+                )
+                
+                if selection:
+                    # Switch model
+                    await self.agent.switch_model(selection)
+                else:
+                    await self.ui.print_system("Model selection cancelled.")
+
+            # Run in worker to avoid blocking
+            self.run_worker(_select_model_worker(), exclusive=True)
             return
 
         if user_input == "/context":
@@ -132,7 +124,7 @@ class TUI(App):
             self.run_worker(self._handle_context_command(), exclusive=True)
             return
 
-        # Default behavior: process as a prompt
+        # --- DEFAULT: CHAT PROMPT ---
         await self.ui.print_message(user_input, role="user")
         self.run_worker(self.agent.process_user_input(user_input), exclusive=True)
 
