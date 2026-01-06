@@ -1,0 +1,19 @@
+/* 
+   Angelica-AI Theme Definitions 
+   Theme: Cyberpunk / VS Code Dark+ 
+*/
+
+$bg-main: #1e1e1e;
+$bg-card: #252526;
+$bg-input: #3c3c3c;
+
+$accent: #007acc;           /* Blue */
+$accent-secondary: #c586c0; /* Purple/Pink */
+
+$text-main: #d4d4d4;
+$text-bright: #ffffff;
+$text-muted: #858585;
+
+$success: #4ec9b0;          /* Teal/Green */
+$warning: #cca700;          /* Gold */
+$error: #f48771;            /* Salmon */

@@ -1,17 +1,23 @@
-/* Modern Dark Theme for Angelica-AI */
+/* Retro Linux/Hacker Green Theme for Angelica-AI */
 
-/* --- GLOBAL VARS --- */
-/* Palette inspired by VS Code Dark+ & Cyberpunk */
-$bg-main: #1e1e1e;
-$bg-card: #252526;
-$bg-input: #3c3c3c;
-$accent: #007acc;
-$accent-secondary: #c586c0; /* Pink/Purple */
-$text-main: #d4d4d4;
-$text-muted: #858585;
-$success: #4ec9b0;
-$warning: #cca700;
-$error: #f48771;
+/* --- THEME VARIABLES --- */
+$bg-main: #050505;          /* Almost Pure Black */
+$bg-card: #0d110d;          /* Very dark green-black */
+$bg-input: #1a1a1a;
+
+$accent: #00ff41;           /* Matrix Green / Primary */
+$accent-user: #adff2f;      /* Green-Yellow / Lime */
+$accent-secondary: #008f11; /* Darker Green */
+
+$text-main: #e0ffe0;        /* Pale Greenish White */
+$text-bright: #ffffff;
+$text-muted: #446644;       /* Dim Green */
+
+$success: #00ff41;
+$warning: #dfff00;          /* Chartreuse */
+$error: #ff4444;            /* Soft Red */
+
+/* --- STYLES --- */
 
 Screen {
     background: $bg-main;
@@ -32,21 +38,23 @@ Screen {
     padding: 1 2;
     margin-bottom: 1;
     border: none;
-    background: $bg-main; /* Default transparent-ish */
+    background: $bg-main;
 }
 
 /* User Message */
 .user-message {
-    background: #2b3a42;
-    color: #e0f7fa;
-    border-left: wide #00bcd4; /* Cyan accent */
+    background: #0f1a0f; /* Slight green tint */
+    color: $text-main;
+    /* User Accent: Lime Green #adff2f */
+    border-left: wide #adff2f;
     margin-right: 2;
 }
 
 /* Assistant Message */
 .assistant-message {
     background: $bg-card;
-    border-left: wide $accent-secondary; /* Purple accent */
+    /* Secondary Accent: Darker Green #008f11 */
+    border-left: wide #008f11;
     margin-left: 0;
 }
 
@@ -54,17 +62,18 @@ Screen {
 .thought-message {
     color: $text-muted;
     text-style: italic;
-    background: #181818;
-    border-left: wide #858585;
+    background: $bg-main;
+    /* Muted Green #446644 */
+    border-left: wide #446644;
     padding: 0 1;
-    margin: 1 2 1 2; /* 1 line top margin, indented sides, 1 line bottom margin */
+    margin: 1 2 1 2;
 }
 
 /* System / Logs */
 .system-message {
     color: $warning;
     text-style: bold;
-    border-bottom: solid $bg-input;
+    /* Removed border-bottom as requested */
     padding: 0 1;
 }
 
@@ -76,17 +85,18 @@ Screen {
 
 /* Command Results */
 .result-message {
-    background: #1e2a1e; /* Dark green-ish tint */
-    border-left: wide $success;
-    color: #a0ffa0;
+    background: #001100; /* Very dark green */
+    /* Success Green #00ff41 */
+    border-left: wide #00ff41;
+    color: $success;
     margin: 1 4;
     padding: 0 1;
 }
 
 /* --- STATUS BAR --- */
 #loading-container {
-    background: $bg-main; /* Same as history background */
-    color: $accent; /* Text in accent color for visibility */
+    background: $bg-main;
+    color: $accent;
     height: 1;
     margin-top: 1;
     padding: 0 1;
@@ -95,7 +105,7 @@ Screen {
 }
 
 LoadingIndicator {
-    color: $accent; /* Spinner in accent color */
+    color: $accent;
     width: 4;
     height: 1;
 }
@@ -110,15 +120,17 @@ LoadingIndicator {
 /* --- INPUT AREA --- */
 #input-container {
     height: 3;
-    background: $bg-main; /* Same as history background */
-    border: solid $bg-input; /* Full border */
+    background: $bg-main;
+    /* Muted Green Border #334433 */
+    border: solid #334433;
     padding: 0 1;
     align-vertical: middle;
 }
 
 #input-container:focus-within {
-    border: solid $accent; /* Full border highlight */
     background: $bg-main;
+    /* Slightly brighter green #448844 */
+    border: solid #448844;
 }
 
 #input-container > Static {
@@ -132,7 +144,7 @@ LoadingIndicator {
     width: 1fr;
     background: transparent;
     border: none;
-    color: #ffffff; /* Explicit white for visibility */
+    color: $text-bright;
     padding: 0;
 }
 
@@ -142,8 +154,8 @@ LoadingIndicator {
 
 /* --- HEADER & FOOTER --- */
 Header {
-    background: #333333;
-    color: white;
+    background: #111111;
+    color: $accent;
     text-style: bold;
 }
 
@@ -155,26 +167,28 @@ Footer {
 /* --- MODALS / SELECTION --- */
 SelectionScreen {
     align: center middle;
-    background: rgba(0,0,0,0.7);
+    background: rgba(0,0,0,0.8);
 }
 
 SelectionScreen > Container {
     width: 60;
     height: auto;
-    background: $bg-card;
-    border: solid $accent;
+    background: #0d110d;
+    /* Bright Green #00ff41 */
+    border: solid #00ff41;
     padding: 1 2;
 }
 
 ConfirmationScreen {
     align: center middle;
-    background: rgba(0,0,0,0.8);
+    background: rgba(0,0,0,0.9);
 }
 
 .confirmation-box {
     width: 50;
     height: auto;
-    background: $bg-card;
-    border: double $error;
+    background: #0d110d;
+    /* Red Error #ff4444 */
+    border: double #ff4444;
     padding: 1 2;
 }

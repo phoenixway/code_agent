@@ -49,7 +49,7 @@ class TUI(App):
             f"Working Directory: {current_directory}"
         )
         await self.ui.print_system(startup_message)
-        await self.ui.print_system("") # Add an empty line after the startup message
+        # await self.ui.print_system("") # Removed extra empty line
         self.query_one("#input", HistoryInput).focus()
 
     async def _handle_context_command(self):

@@ -2232,3 +2232,765 @@ The provided project structure hints at a command-line, text-based application p
 2026-01-06 15:16:59,923 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=assistant, Content='"<think>\nThe provided project structure hints at a command-line, text-based application potentially focused on AI interactions or scripting. Here's a breakdown and potential development directions:\n\n**Strengths:**\n\n* **Modular Design:**  The `modules/` directory suggests well-organized code, allowing for independent development and testing of features.\n* **Configuration Handling (`config_loader.py`)**: Indicates flexibility in adapting to different user settings or environments.\n* **Session Management (`sessions/`, `history.py`)**:  Implies a history-aware application, possibly supporting conversational interactions or task workflows.\n\n**Areas for Expansion:**\n\n1. **Core Functionality:**\n    * **Define the Application's Purpose:** What is the primary goal of this project? Is it a chatbot, a scripting environment, a tool for automating tasks, or something else entirely?  A clear purpose will guide development decisions.\n2. **User Interface (UI):**\n    * **Enhance the Text-Based UI:** Consider using a more advanced library like `rich` to create richer text-based interfaces with better formatting and interactivity.\n    * **Explore Graphical User Interfaces (GUIs):**  For broader appeal, investigate using frameworks like PyQt or Tkinter to build a graphical interface alongside the existing text-based one.\n\n3. **AI Integration:**\n    * **Expand AI Capabilities:** If the focus is on AI interactions, explore integrating with more advanced language models (e.g., GPT-3) or implementing custom machine learning algorithms for natural language understanding and generation. \n\n4. **Networking & Collaboration:**\n    * **Enable Remote Sessions:** Allow users to connect to each other or shared workspaces within the application.\n    * **Cloud Integration:**  Store sessions, configurations, and data on cloud platforms for accessibility and synchronization.\n\n5. **Testing & Documentation:**\n    * **Improve Testing Coverage:** Add unit tests and integration tests to ensure code quality and prevent regressions.\n    * **Create Comprehensive Documentation:**  Document the application's features, usage instructions, and API for better user understanding and maintainability.\n\n\n\n</think>"'
 2026-01-06 15:16:59,923 - DEBUG: _add_message called with classes: chat-message thought-message
 2026-01-06 15:16:59,924 - DEBUG: Message mounted and scrolled
+2026-01-06 15:18:14,956 - DEBUG: print_system: '✨ Angelica-AI (v0.1.0)
+Model: gemma2:9b
+Working Directory: /home/romankozak/studio/public/code_agent'
+2026-01-06 15:18:14,956 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-06 15:18:14,956 - DEBUG: Message mounted and scrolled
+2026-01-06 15:18:14,956 - DEBUG: print_system: ''
+2026-01-06 15:18:14,956 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-06 15:18:14,957 - DEBUG: Message mounted and scrolled
+2026-01-06 15:18:17,580 - DEBUG: on_input_submitted called with: 'оціни як далі розвивати проект в папці'
+2026-01-06 15:18:17,580 - DEBUG: Processing regular prompt: 'оціни як далі розвивати проект в папці'
+2026-01-06 15:18:17,580 - DEBUG: print_message (role=user): 'оціни як далі розвивати проект в папці...'
+2026-01-06 15:18:17,580 - DEBUG: _add_message called with classes: chat-message user-message
+2026-01-06 15:18:17,581 - DEBUG: Message mounted and scrolled
+2026-01-06 15:18:17,581 - DEBUG: print_message completed
+2026-01-06 15:18:17,581 - DEBUG: Message printed to UI, starting agent worker
+2026-01-06 15:18:17,583 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=system, Content=''You are Angelica-AI, a professional coding agent optimized for autonomous problem-solving in Linux (Fedora/Desktop) and Android (Termux).\n\n## RESPONSE FORMAT\n1. **Reasoning (<think>)**: Start with a `<think>` block for internal analysis and planning.\n2. **Action (Raw JSON)**: After `</think>`, if an action is needed, provide EXACTLY ONE raw JSON object. \n   - **CRITICAL**: Do NOT use markdown code blocks (e.g., no ```json). Provide the raw string.\n3. **Text Message**: If no action is needed, provide a concise text response after `</think>`.\n\n## COMMAND STRUCTURE\nAll actions must include:\n- "before_execution": Explain what you are doing.\n- "during_execution": Status message (e.g. "Editing...").\n- "after_execution": Message on success.\n- "return_control": (boolean) Set to \'true\' if you need the output of the command to continue.\n\nIMPORTANT: When calling a tool, you MUST include the "type" field with the tool\'s name. Example for shell: {"type": "run_shell", "command": "ls"}. DO NOT just send {"command": "ls"} without a type.\n\n## FILE EDITING STRATEGY\n- For NEW files: Use `create_file`.\n- For EXISTING files: Prefer `edit_file` to replace specific blocks. This saves tokens and prevents overwriting large files.\n- Before editing: Always `read_file` to ensure you have the correct `search_text`.\n\n## ENVIRONMENT\nYou have a full shell (Termux/Linux). You can use `grep`, `sed`, `git`, `kotlinc`, etc., via `run_shell`.\n\n---\nAVAILABLE TOOLS:\n- create_file: Creates a NEW file with content. Fails if file exists. Params: \'path\' (str), \'content\' (str)\n- edit_file: Surgically edits an existing file by replacing a specific block of text. Params: \'path\' (str), \'search_text\' (str), \'replace_text\' (str). The \'search_text\' must exactly match a part of the file.\n- read_file: Reads the full content of a file. Use this before editing. Params: \'path\' (str)\n- run_shell: Executes a shell command in the current environment. Params: \'command\' (str)\n\n---\n\nBegin your response with an analysis of the task in <think> tags.\n\nProject Structure:\n├── .crush/\n│   ├── logs/\n│   │   └── crush.log\n│   ├── .gitignore\n│   ├── crush.db\n│   ├── crush.db-shm\n│   ├── crush.db-wal\n│   └── init\n├── modules/\n│   ├── tools/\n│   │   ├── definitions/\n│   │   ├── base.py\n│   │   └── manager.py\n│   ├── ui_components/\n│   │   ├── __init__.py\n│   │   ├── history_input.py\n│   │   ├── selection_widget.py\n│   │   └── status_bar.py\n│   ├── __init__.py\n│   ├── chat.py\n│   ├── config_loader.py\n│   ├── context.py\n│   ├── defaults.py\n│   ├── files.py\n│   ├── healer.py\n│   ├── history.py\n│   ├── policy.py\n│   ├── processor.py\n│   ├── project.py\n│   ├── screens.py\n│   ├── session.py\n│   ├── storage.py\n│   └── tui_ui.py\n├── sessions/\n│   ├── session_20260102_153229.json\n│   ├── session_20260102_154041.json\n│   ├── session_20260102_154149.json\n│   ├── session_20260102_154258.json\n│   ├── session_20260102_154410.json\n│   ├── session_20260102_154550.json\n│   ├── session_20260102_154718.json\n│   ├── session_20260102_155011.json\n│   ├── session_20260102_155124.json\n│   ├── session_20260102_155309.json\n│   ├── session_20260102_155425.json\n│   ├── session_20260102_155612.json\n│   ├── session_20260102_160026.json\n│   ├── session_20260102_160157.json\n│   ├── session_20260102_160443.json\n│   ├── session_20260102_160837.json\n│   ├── session_20260102_161302.json\n│   ├── session_20260102_161349.json\n│   ├── session_20260102_161535.json\n│   ├── session_20260102_161833.json\n│   ├── session_20260102_162024.json\n│   ├── session_20260102_162316.json\n│   ├── session_20260102_162547.json\n│   ├── session_20260102_162753.json\n│   ├── session_20260102_163051.json\n│   ├── session_20260102_163331.json\n│   ├── session_20260102_164057.json\n│   ├── session_20260102_164244.json\n│   ├── session_20260102_164538.json\n│   ├── session_20260102_165026.json\n│   ├── session_20260102_165114.json\n│   ├── session_20260102_165201.json\n│   ├── session_20260102_165502.json\n│   ├── session_20260102_165724.json\n│   ├── session_20260102_165803.json\n│   ├── session_20260102_170058.json\n│   ├── session_20260102_170238.json\n│   ├── session_20260102_170300.json\n│   ├── session_20260102_171203.json\n│   ├── session_20260102_171226.json\n│   ├── session_20260102_171252.json\n│   ├── session_20260102_171330.json\n│   ├── session_20260102_171704.json\n│   ├── session_20260102_171756.json\n│   ├── session_20260102_171841.json\n│   ├── session_20260102_171931.json\n│   ├── session_20260102_172031.json\n│   ├── session_20260102_172109.json\n│   ├── session_20260102_172212.json\n│   ├── session_20260102_172312.json\n│   ├── session_20260102_172812.json\n│   ├── session_20260102_173720.json\n│   ├── session_20260102_174050.json\n│   ├── session_20260103_110517.json\n│   ├── session_20260103_122923.json\n│   ├── session_20260103_123014.json\n│   └── session_20260103_123517.json\n├── tests/\n│   └── test_modules.py\n├── .gitignore\n├── AGENTS.md\n├── README.md\n├── agent.py\n├── app.py\n├── communication.log\n├── hello.py\n├── interval_notifier.py\n├── message.sh\n├── path.txt\n├── requirements.txt\n├── screens.py\n├── sources.txt\n├── tui.css\n└── tui.py''
+2026-01-06 15:18:17,583 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=system, Content=''You are Angelica-AI, a professional coding agent optimized for autonomous problem-solving in Linux (Fedora/Desktop) and Android (Termux).\n\n## RESPONSE FORMAT\n1. **Reasoning (<think>)**: Start with a `<think>` block for internal analysis and planning.\n2. **Action (Raw JSON)**: After `</think>`, if an action is needed, provide EXACTLY ONE raw JSON object. \n   - **CRITICAL**: Do NOT use markdown code blocks (e.g., no ```json). Provide the raw string.\n3. **Text Message**: If no action is needed, provide a concise text response after `</think>`.\n\n## COMMAND STRUCTURE\nAll actions must include:\n- "before_execution": Explain what you are doing.\n- "during_execution": Status message (e.g. "Editing...").\n- "after_execution": Message on success.\n- "return_control": (boolean) Set to \'true\' if you need the output of the command to continue.\n\nIMPORTANT: When calling a tool, you MUST include the "type" field with the tool\'s name. Example for shell: {"type": "run_shell", "command": "ls"}. DO NOT just send {"command": "ls"} without a type.\n\n## FILE EDITING STRATEGY\n- For NEW files: Use `create_file`.\n- For EXISTING files: Prefer `edit_file` to replace specific blocks. This saves tokens and prevents overwriting large files.\n- Before editing: Always `read_file` to ensure you have the correct `search_text`.\n\n## ENVIRONMENT\nYou have a full shell (Termux/Linux). You can use `grep`, `sed`, `git`, `kotlinc`, etc., via `run_shell`.\n\n---\nAVAILABLE TOOLS:\n- create_file: Creates a NEW file with content. Fails if file exists. Params: \'path\' (str), \'content\' (str)\n- edit_file: Surgically edits an existing file by replacing a specific block of text. Params: \'path\' (str), \'search_text\' (str), \'replace_text\' (str). The \'search_text\' must exactly match a part of the file.\n- read_file: Reads the full content of a file. Use this before editing. Params: \'path\' (str)\n- run_shell: Executes a shell command in the current environment. Params: \'command\' (str)\n\n---\n\nBegin your response with an analysis of the task in <think> tags.\n\nProject Structure:\n├── .crush/\n│   ├── logs/\n│   │   └── crush.log\n│   ├── .gitignore\n│   ├── crush.db\n│   ├── crush.db-shm\n│   ├── crush.db-wal\n│   └── init\n├── modules/\n│   ├── tools/\n│   │   ├── definitions/\n│   │   ├── base.py\n│   │   └── manager.py\n│   ├── ui_components/\n│   │   ├── __init__.py\n│   │   ├── history_input.py\n│   │   ├── selection_widget.py\n│   │   └── status_bar.py\n│   ├── __init__.py\n│   ├── chat.py\n│   ├── config_loader.py\n│   ├── context.py\n│   ├── defaults.py\n│   ├── files.py\n│   ├── healer.py\n│   ├── history.py\n│   ├── policy.py\n│   ├── processor.py\n│   ├── project.py\n│   ├── screens.py\n│   ├── session.py\n│   ├── storage.py\n│   └── tui_ui.py\n├── sessions/\n│   ├── session_20260102_153229.json\n│   ├── session_20260102_154041.json\n│   ├── session_20260102_154149.json\n│   ├── session_20260102_154258.json\n│   ├── session_20260102_154410.json\n│   ├── session_20260102_154550.json\n│   ├── session_20260102_154718.json\n│   ├── session_20260102_155011.json\n│   ├── session_20260102_155124.json\n│   ├── session_20260102_155309.json\n│   ├── session_20260102_155425.json\n│   ├── session_20260102_155612.json\n│   ├── session_20260102_160026.json\n│   ├── session_20260102_160157.json\n│   ├── session_20260102_160443.json\n│   ├── session_20260102_160837.json\n│   ├── session_20260102_161302.json\n│   ├── session_20260102_161349.json\n│   ├── session_20260102_161535.json\n│   ├── session_20260102_161833.json\n│   ├── session_20260102_162024.json\n│   ├── session_20260102_162316.json\n│   ├── session_20260102_162547.json\n│   ├── session_20260102_162753.json\n│   ├── session_20260102_163051.json\n│   ├── session_20260102_163331.json\n│   ├── session_20260102_164057.json\n│   ├── session_20260102_164244.json\n│   ├── session_20260102_164538.json\n│   ├── session_20260102_165026.json\n│   ├── session_20260102_165114.json\n│   ├── session_20260102_165201.json\n│   ├── session_20260102_165502.json\n│   ├── session_20260102_165724.json\n│   ├── session_20260102_165803.json\n│   ├── session_20260102_170058.json\n│   ├── session_20260102_170238.json\n│   ├── session_20260102_170300.json\n│   ├── session_20260102_171203.json\n│   ├── session_20260102_171226.json\n│   ├── session_20260102_171252.json\n│   ├── session_20260102_171330.json\n│   ├── session_20260102_171704.json\n│   ├── session_20260102_171756.json\n│   ├── session_20260102_171841.json\n│   ├── session_20260102_171931.json\n│   ├── session_20260102_172031.json\n│   ├── session_20260102_172109.json\n│   ├── session_20260102_172212.json\n│   ├── session_20260102_172312.json\n│   ├── session_20260102_172812.json\n│   ├── session_20260102_173720.json\n│   ├── session_20260102_174050.json\n│   ├── session_20260103_110517.json\n│   ├── session_20260103_122923.json\n│   ├── session_20260103_123014.json\n│   └── session_20260103_123517.json\n├── tests/\n│   └── test_modules.py\n├── .gitignore\n├── AGENTS.md\n├── README.md\n├── agent.py\n├── app.py\n├── communication.log\n├── hello.py\n├── interval_notifier.py\n├── message.sh\n├── path.txt\n├── requirements.txt\n├── screens.py\n├── sources.txt\n├── tui.css\n└── tui.py''
+2026-01-06 15:18:17,583 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=user, Content=''оціни як далі розвивати проект в папці''
+2026-01-06 15:18:17,583 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=user, Content=''оціни як далі розвивати проект в папці''
+2026-01-06 15:18:17,583 - OUTGOING:
+оціни як далі розвивати проект в папці
+2026-01-06 15:18:17,636 - DEBUG: Agent worker scheduled
+2026-01-06 15:18:47,139 - INCOMING:
+<think> 
+This project appears to be a command-line AI assistant ('Crush') with text-based interface and potentially some file interaction capabilities. The provided structure suggests several areas for development:
+
+**1. Functionality Expansion:**
+    * **Core AI Engine:** Determine what kind of tasks 'Crush' should perform. This could range from simple question answering and text generation to more complex tasks like code generation, summarization, or even creative writing. 
+    * **Modules & Tools:** The `modules` directory indicates a modular design. Develop new modules for:
+        *  **File Manipulation:** Implement robust functions for reading, editing, creating, and managing files.
+        * **Web Interaction:** Allow 'Crush' to fetch information from the web, potentially using APIs.
+        * **Database Integration:** If storing user data or interactions is needed, integrate with a database like SQLite.
+
+**2. User Experience Improvement:**
+    * **Interactive Interface:**  The current interface seems text-based. Explore using libraries like `prompt_toolkit` for a more interactive and user-friendly experience. 
+    * **History & Context:** Implement a robust history system to remember past interactions and use context for better responses.
+
+**3. Testing & Debugging:**
+    * **Unit Tests:** Write thorough unit tests for each module and function to ensure reliability. 
+    * **Integration Tests:** Test how different modules work together. The existing `test_modules.py` file is a good starting point.
+
+**4. Documentation & Maintenance:**
+    * **README.md:** Improve the README with clear instructions on installation, usage, and contributing.
+    * **AGENTS.md:** Explain the purpose and capabilities of 'Crush' agents.
+
+
+
+</think>
+
+
+It seems like a promising project with potential for growth. Focus on defining its core functionalities, improving the user experience, and ensuring robust testing practices.
+2026-01-06 15:18:47,140 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=assistant, Content='"<think> \nThis project appears to be a command-line AI assistant ('Crush') with text-based interface and potentially some file interaction capabilities. The provided structure suggests several areas for development:\n\n**1. Functionality Expansion:**\n    * **Core AI Engine:** Determine what kind of tasks 'Crush' should perform. This could range from simple question answering and text generation to more complex tasks like code generation, summarization, or even creative writing. \n    * **Modules & Tools:** The `modules` directory indicates a modular design. Develop new modules for:\n        *  **File Manipulation:** Implement robust functions for reading, editing, creating, and managing files.\n        * **Web Interaction:** Allow 'Crush' to fetch information from the web, potentially using APIs.\n        * **Database Integration:** If storing user data or interactions is needed, integrate with a database like SQLite.\n\n**2. User Experience Improvement:**\n    * **Interactive Interface:**  The current interface seems text-based. Explore using libraries like `prompt_toolkit` for a more interactive and user-friendly experience. \n    * **History & Context:** Implement a robust history system to remember past interactions and use context for better responses.\n\n**3. Testing & Debugging:**\n    * **Unit Tests:** Write thorough unit tests for each module and function to ensure reliability. \n    * **Integration Tests:** Test how different modules work together. The existing `test_modules.py` file is a good starting point.\n\n**4. Documentation & Maintenance:**\n    * **README.md:** Improve the README with clear instructions on installation, usage, and contributing.\n    * **AGENTS.md:** Explain the purpose and capabilities of 'Crush' agents.\n\n\n\n</think>\n\n\nIt seems like a promising project with potential for growth. Focus on defining its core functionalities, improving the user experience, and ensuring robust testing practices."'
+2026-01-06 15:18:47,140 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=assistant, Content='"<think> \nThis project appears to be a command-line AI assistant ('Crush') with text-based interface and potentially some file interaction capabilities. The provided structure suggests several areas for development:\n\n**1. Functionality Expansion:**\n    * **Core AI Engine:** Determine what kind of tasks 'Crush' should perform. This could range from simple question answering and text generation to more complex tasks like code generation, summarization, or even creative writing. \n    * **Modules & Tools:** The `modules` directory indicates a modular design. Develop new modules for:\n        *  **File Manipulation:** Implement robust functions for reading, editing, creating, and managing files.\n        * **Web Interaction:** Allow 'Crush' to fetch information from the web, potentially using APIs.\n        * **Database Integration:** If storing user data or interactions is needed, integrate with a database like SQLite.\n\n**2. User Experience Improvement:**\n    * **Interactive Interface:**  The current interface seems text-based. Explore using libraries like `prompt_toolkit` for a more interactive and user-friendly experience. \n    * **History & Context:** Implement a robust history system to remember past interactions and use context for better responses.\n\n**3. Testing & Debugging:**\n    * **Unit Tests:** Write thorough unit tests for each module and function to ensure reliability. \n    * **Integration Tests:** Test how different modules work together. The existing `test_modules.py` file is a good starting point.\n\n**4. Documentation & Maintenance:**\n    * **README.md:** Improve the README with clear instructions on installation, usage, and contributing.\n    * **AGENTS.md:** Explain the purpose and capabilities of 'Crush' agents.\n\n\n\n</think>\n\n\nIt seems like a promising project with potential for growth. Focus on defining its core functionalities, improving the user experience, and ensuring robust testing practices."'
+2026-01-06 15:18:47,140 - DEBUG: _add_message called with classes: chat-message thought-message
+2026-01-06 15:18:47,140 - DEBUG: Message mounted and scrolled
+2026-01-06 15:18:47,140 - DEBUG: print_message (role=assistant): 'It seems like a promising project with potential f...'
+2026-01-06 15:18:47,141 - DEBUG: _add_message called with classes: chat-message assistant-message
+2026-01-06 15:18:47,142 - DEBUG: Message mounted and scrolled
+2026-01-06 15:18:47,142 - DEBUG: print_message completed
+2026-01-06 15:22:08,949 - DEBUG: print_system: '✨ Angelica-AI (v0.1.0)
+Model: gemma2:9b
+Working Directory: /home/romankozak/studio/public/code_agent'
+2026-01-06 15:22:08,949 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-06 15:22:08,949 - DEBUG: Message mounted and scrolled
+2026-01-06 15:22:08,949 - DEBUG: print_system: ''
+2026-01-06 15:22:08,949 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-06 15:22:08,950 - DEBUG: Message mounted and scrolled
+2026-01-06 15:22:11,379 - DEBUG: on_input_submitted called with: 'еуіе'
+2026-01-06 15:22:11,379 - DEBUG: Processing regular prompt: 'еуіе'
+2026-01-06 15:22:11,379 - DEBUG: print_message (role=user): 'еуіе...'
+2026-01-06 15:22:11,379 - DEBUG: _add_message called with classes: chat-message user-message
+2026-01-06 15:22:11,380 - DEBUG: Message mounted and scrolled
+2026-01-06 15:22:11,380 - DEBUG: print_message completed
+2026-01-06 15:22:11,380 - DEBUG: Message printed to UI, starting agent worker
+2026-01-06 15:22:11,382 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=system, Content=''You are Angelica-AI, a professional coding agent optimized for autonomous problem-solving in Linux (Fedora/Desktop) and Android (Termux).\n\n## RESPONSE FORMAT\n1. **Reasoning (<think>)**: Start with a `<think>` block for internal analysis and planning.\n2. **Action (Raw JSON)**: After `</think>`, if an action is needed, provide EXACTLY ONE raw JSON object. \n   - **CRITICAL**: Do NOT use markdown code blocks (e.g., no ```json). Provide the raw string.\n3. **Text Message**: If no action is needed, provide a concise text response after `</think>`.\n\n## COMMAND STRUCTURE\nAll actions must include:\n- "before_execution": Explain what you are doing.\n- "during_execution": Status message (e.g. "Editing...").\n- "after_execution": Message on success.\n- "return_control": (boolean) Set to \'true\' if you need the output of the command to continue.\n\nIMPORTANT: When calling a tool, you MUST include the "type" field with the tool\'s name. Example for shell: {"type": "run_shell", "command": "ls"}. DO NOT just send {"command": "ls"} without a type.\n\n## FILE EDITING STRATEGY\n- For NEW files: Use `create_file`.\n- For EXISTING files: Prefer `edit_file` to replace specific blocks. This saves tokens and prevents overwriting large files.\n- Before editing: Always `read_file` to ensure you have the correct `search_text`.\n\n## ENVIRONMENT\nYou have a full shell (Termux/Linux). You can use `grep`, `sed`, `git`, `kotlinc`, etc., via `run_shell`.\n\n---\nAVAILABLE TOOLS:\n- create_file: Creates a NEW file with content. Fails if file exists. Params: \'path\' (str), \'content\' (str)\n- edit_file: Surgically edits an existing file by replacing a specific block of text. Params: \'path\' (str), \'search_text\' (str), \'replace_text\' (str). The \'search_text\' must exactly match a part of the file.\n- read_file: Reads the full content of a file. Use this before editing. Params: \'path\' (str)\n- run_shell: Executes a shell command in the current environment. Params: \'command\' (str)\n\n---\n\nBegin your response with an analysis of the task in <think> tags.\n\nProject Structure:\n├── .crush/\n│   ├── logs/\n│   │   └── crush.log\n│   ├── .gitignore\n│   ├── crush.db\n│   ├── crush.db-shm\n│   ├── crush.db-wal\n│   └── init\n├── modules/\n│   ├── tools/\n│   │   ├── definitions/\n│   │   ├── base.py\n│   │   └── manager.py\n│   ├── ui_components/\n│   │   ├── __init__.py\n│   │   ├── history_input.py\n│   │   ├── selection_widget.py\n│   │   └── status_bar.py\n│   ├── __init__.py\n│   ├── chat.py\n│   ├── config_loader.py\n│   ├── context.py\n│   ├── defaults.py\n│   ├── files.py\n│   ├── healer.py\n│   ├── history.py\n│   ├── policy.py\n│   ├── processor.py\n│   ├── project.py\n│   ├── screens.py\n│   ├── session.py\n│   ├── storage.py\n│   └── tui_ui.py\n├── sessions/\n│   ├── session_20260102_153229.json\n│   ├── session_20260102_154041.json\n│   ├── session_20260102_154149.json\n│   ├── session_20260102_154258.json\n│   ├── session_20260102_154410.json\n│   ├── session_20260102_154550.json\n│   ├── session_20260102_154718.json\n│   ├── session_20260102_155011.json\n│   ├── session_20260102_155124.json\n│   ├── session_20260102_155309.json\n│   ├── session_20260102_155425.json\n│   ├── session_20260102_155612.json\n│   ├── session_20260102_160026.json\n│   ├── session_20260102_160157.json\n│   ├── session_20260102_160443.json\n│   ├── session_20260102_160837.json\n│   ├── session_20260102_161302.json\n│   ├── session_20260102_161349.json\n│   ├── session_20260102_161535.json\n│   ├── session_20260102_161833.json\n│   ├── session_20260102_162024.json\n│   ├── session_20260102_162316.json\n│   ├── session_20260102_162547.json\n│   ├── session_20260102_162753.json\n│   ├── session_20260102_163051.json\n│   ├── session_20260102_163331.json\n│   ├── session_20260102_164057.json\n│   ├── session_20260102_164244.json\n│   ├── session_20260102_164538.json\n│   ├── session_20260102_165026.json\n│   ├── session_20260102_165114.json\n│   ├── session_20260102_165201.json\n│   ├── session_20260102_165502.json\n│   ├── session_20260102_165724.json\n│   ├── session_20260102_165803.json\n│   ├── session_20260102_170058.json\n│   ├── session_20260102_170238.json\n│   ├── session_20260102_170300.json\n│   ├── session_20260102_171203.json\n│   ├── session_20260102_171226.json\n│   ├── session_20260102_171252.json\n│   ├── session_20260102_171330.json\n│   ├── session_20260102_171704.json\n│   ├── session_20260102_171756.json\n│   ├── session_20260102_171841.json\n│   ├── session_20260102_171931.json\n│   ├── session_20260102_172031.json\n│   ├── session_20260102_172109.json\n│   ├── session_20260102_172212.json\n│   ├── session_20260102_172312.json\n│   ├── session_20260102_172812.json\n│   ├── session_20260102_173720.json\n│   ├── session_20260102_174050.json\n│   ├── session_20260103_110517.json\n│   ├── session_20260103_122923.json\n│   ├── session_20260103_123014.json\n│   └── session_20260103_123517.json\n├── tests/\n│   └── test_modules.py\n├── .gitignore\n├── AGENTS.md\n├── README.md\n├── agent.py\n├── app.py\n├── communication.log\n├── hello.py\n├── interval_notifier.py\n├── message.sh\n├── path.txt\n├── requirements.txt\n├── screens.py\n├── sources.txt\n├── tui.css\n└── tui.py''
+2026-01-06 15:22:11,382 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=system, Content=''You are Angelica-AI, a professional coding agent optimized for autonomous problem-solving in Linux (Fedora/Desktop) and Android (Termux).\n\n## RESPONSE FORMAT\n1. **Reasoning (<think>)**: Start with a `<think>` block for internal analysis and planning.\n2. **Action (Raw JSON)**: After `</think>`, if an action is needed, provide EXACTLY ONE raw JSON object. \n   - **CRITICAL**: Do NOT use markdown code blocks (e.g., no ```json). Provide the raw string.\n3. **Text Message**: If no action is needed, provide a concise text response after `</think>`.\n\n## COMMAND STRUCTURE\nAll actions must include:\n- "before_execution": Explain what you are doing.\n- "during_execution": Status message (e.g. "Editing...").\n- "after_execution": Message on success.\n- "return_control": (boolean) Set to \'true\' if you need the output of the command to continue.\n\nIMPORTANT: When calling a tool, you MUST include the "type" field with the tool\'s name. Example for shell: {"type": "run_shell", "command": "ls"}. DO NOT just send {"command": "ls"} without a type.\n\n## FILE EDITING STRATEGY\n- For NEW files: Use `create_file`.\n- For EXISTING files: Prefer `edit_file` to replace specific blocks. This saves tokens and prevents overwriting large files.\n- Before editing: Always `read_file` to ensure you have the correct `search_text`.\n\n## ENVIRONMENT\nYou have a full shell (Termux/Linux). You can use `grep`, `sed`, `git`, `kotlinc`, etc., via `run_shell`.\n\n---\nAVAILABLE TOOLS:\n- create_file: Creates a NEW file with content. Fails if file exists. Params: \'path\' (str), \'content\' (str)\n- edit_file: Surgically edits an existing file by replacing a specific block of text. Params: \'path\' (str), \'search_text\' (str), \'replace_text\' (str). The \'search_text\' must exactly match a part of the file.\n- read_file: Reads the full content of a file. Use this before editing. Params: \'path\' (str)\n- run_shell: Executes a shell command in the current environment. Params: \'command\' (str)\n\n---\n\nBegin your response with an analysis of the task in <think> tags.\n\nProject Structure:\n├── .crush/\n│   ├── logs/\n│   │   └── crush.log\n│   ├── .gitignore\n│   ├── crush.db\n│   ├── crush.db-shm\n│   ├── crush.db-wal\n│   └── init\n├── modules/\n│   ├── tools/\n│   │   ├── definitions/\n│   │   ├── base.py\n│   │   └── manager.py\n│   ├── ui_components/\n│   │   ├── __init__.py\n│   │   ├── history_input.py\n│   │   ├── selection_widget.py\n│   │   └── status_bar.py\n│   ├── __init__.py\n│   ├── chat.py\n│   ├── config_loader.py\n│   ├── context.py\n│   ├── defaults.py\n│   ├── files.py\n│   ├── healer.py\n│   ├── history.py\n│   ├── policy.py\n│   ├── processor.py\n│   ├── project.py\n│   ├── screens.py\n│   ├── session.py\n│   ├── storage.py\n│   └── tui_ui.py\n├── sessions/\n│   ├── session_20260102_153229.json\n│   ├── session_20260102_154041.json\n│   ├── session_20260102_154149.json\n│   ├── session_20260102_154258.json\n│   ├── session_20260102_154410.json\n│   ├── session_20260102_154550.json\n│   ├── session_20260102_154718.json\n│   ├── session_20260102_155011.json\n│   ├── session_20260102_155124.json\n│   ├── session_20260102_155309.json\n│   ├── session_20260102_155425.json\n│   ├── session_20260102_155612.json\n│   ├── session_20260102_160026.json\n│   ├── session_20260102_160157.json\n│   ├── session_20260102_160443.json\n│   ├── session_20260102_160837.json\n│   ├── session_20260102_161302.json\n│   ├── session_20260102_161349.json\n│   ├── session_20260102_161535.json\n│   ├── session_20260102_161833.json\n│   ├── session_20260102_162024.json\n│   ├── session_20260102_162316.json\n│   ├── session_20260102_162547.json\n│   ├── session_20260102_162753.json\n│   ├── session_20260102_163051.json\n│   ├── session_20260102_163331.json\n│   ├── session_20260102_164057.json\n│   ├── session_20260102_164244.json\n│   ├── session_20260102_164538.json\n│   ├── session_20260102_165026.json\n│   ├── session_20260102_165114.json\n│   ├── session_20260102_165201.json\n│   ├── session_20260102_165502.json\n│   ├── session_20260102_165724.json\n│   ├── session_20260102_165803.json\n│   ├── session_20260102_170058.json\n│   ├── session_20260102_170238.json\n│   ├── session_20260102_170300.json\n│   ├── session_20260102_171203.json\n│   ├── session_20260102_171226.json\n│   ├── session_20260102_171252.json\n│   ├── session_20260102_171330.json\n│   ├── session_20260102_171704.json\n│   ├── session_20260102_171756.json\n│   ├── session_20260102_171841.json\n│   ├── session_20260102_171931.json\n│   ├── session_20260102_172031.json\n│   ├── session_20260102_172109.json\n│   ├── session_20260102_172212.json\n│   ├── session_20260102_172312.json\n│   ├── session_20260102_172812.json\n│   ├── session_20260102_173720.json\n│   ├── session_20260102_174050.json\n│   ├── session_20260103_110517.json\n│   ├── session_20260103_122923.json\n│   ├── session_20260103_123014.json\n│   └── session_20260103_123517.json\n├── tests/\n│   └── test_modules.py\n├── .gitignore\n├── AGENTS.md\n├── README.md\n├── agent.py\n├── app.py\n├── communication.log\n├── hello.py\n├── interval_notifier.py\n├── message.sh\n├── path.txt\n├── requirements.txt\n├── screens.py\n├── sources.txt\n├── tui.css\n└── tui.py''
+2026-01-06 15:22:11,382 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=user, Content=''еуіе''
+2026-01-06 15:22:11,382 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=user, Content=''еуіе''
+2026-01-06 15:22:11,382 - OUTGOING:
+еуіе
+2026-01-06 15:22:11,434 - DEBUG: Agent worker scheduled
+2026-01-06 15:25:10,009 - DEBUG: print_system: '✨ Angelica-AI (v0.1.0)
+Model: gemma2:9b
+Working Directory: /home/romankozak/studio/public/code_agent'
+2026-01-06 15:25:10,009 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-06 15:25:10,009 - DEBUG: Message mounted and scrolled
+2026-01-06 15:25:10,009 - DEBUG: print_system: ''
+2026-01-06 15:25:10,009 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-06 15:25:10,010 - DEBUG: Message mounted and scrolled
+2026-01-06 15:25:12,041 - DEBUG: on_input_submitted called with: 'test'
+2026-01-06 15:25:12,041 - DEBUG: Processing regular prompt: 'test'
+2026-01-06 15:25:12,041 - DEBUG: print_message (role=user): 'test...'
+2026-01-06 15:25:12,041 - DEBUG: _add_message called with classes: chat-message user-message
+2026-01-06 15:25:12,042 - DEBUG: Message mounted and scrolled
+2026-01-06 15:25:12,042 - DEBUG: print_message completed
+2026-01-06 15:25:12,042 - DEBUG: Message printed to UI, starting agent worker
+2026-01-06 15:25:12,044 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=system, Content=''You are Angelica-AI, a professional coding agent optimized for autonomous problem-solving in Linux (Fedora/Desktop) and Android (Termux).\n\n## RESPONSE FORMAT\n1. **Reasoning (<think>)**: Start with a `<think>` block for internal analysis and planning.\n2. **Action (Raw JSON)**: After `</think>`, if an action is needed, provide EXACTLY ONE raw JSON object. \n   - **CRITICAL**: Do NOT use markdown code blocks (e.g., no ```json). Provide the raw string.\n3. **Text Message**: If no action is needed, provide a concise text response after `</think>`.\n\n## COMMAND STRUCTURE\nAll actions must include:\n- "before_execution": Explain what you are doing.\n- "during_execution": Status message (e.g. "Editing...").\n- "after_execution": Message on success.\n- "return_control": (boolean) Set to \'true\' if you need the output of the command to continue.\n\nIMPORTANT: When calling a tool, you MUST include the "type" field with the tool\'s name. Example for shell: {"type": "run_shell", "command": "ls"}. DO NOT just send {"command": "ls"} without a type.\n\n## FILE EDITING STRATEGY\n- For NEW files: Use `create_file`.\n- For EXISTING files: Prefer `edit_file` to replace specific blocks. This saves tokens and prevents overwriting large files.\n- Before editing: Always `read_file` to ensure you have the correct `search_text`.\n\n## ENVIRONMENT\nYou have a full shell (Termux/Linux). You can use `grep`, `sed`, `git`, `kotlinc`, etc., via `run_shell`.\n\n---\nAVAILABLE TOOLS:\n- create_file: Creates a NEW file with content. Fails if file exists. Params: \'path\' (str), \'content\' (str)\n- edit_file: Surgically edits an existing file by replacing a specific block of text. Params: \'path\' (str), \'search_text\' (str), \'replace_text\' (str). The \'search_text\' must exactly match a part of the file.\n- read_file: Reads the full content of a file. Use this before editing. Params: \'path\' (str)\n- run_shell: Executes a shell command in the current environment. Params: \'command\' (str)\n\n---\n\nBegin your response with an analysis of the task in <think> tags.\n\nProject Structure:\n├── .crush/\n│   ├── logs/\n│   │   └── crush.log\n│   ├── .gitignore\n│   ├── crush.db\n│   ├── crush.db-shm\n│   ├── crush.db-wal\n│   └── init\n├── modules/\n│   ├── tools/\n│   │   ├── definitions/\n│   │   ├── base.py\n│   │   └── manager.py\n│   ├── ui_components/\n│   │   ├── __init__.py\n│   │   ├── history_input.py\n│   │   ├── selection_widget.py\n│   │   └── status_bar.py\n│   ├── __init__.py\n│   ├── chat.py\n│   ├── config_loader.py\n│   ├── context.py\n│   ├── defaults.py\n│   ├── files.py\n│   ├── healer.py\n│   ├── history.py\n│   ├── policy.py\n│   ├── processor.py\n│   ├── project.py\n│   ├── screens.py\n│   ├── session.py\n│   ├── storage.py\n│   ├── theme.css\n│   └── tui_ui.py\n├── sessions/\n│   ├── session_20260102_153229.json\n│   ├── session_20260102_154041.json\n│   ├── session_20260102_154149.json\n│   ├── session_20260102_154258.json\n│   ├── session_20260102_154410.json\n│   ├── session_20260102_154550.json\n│   ├── session_20260102_154718.json\n│   ├── session_20260102_155011.json\n│   ├── session_20260102_155124.json\n│   ├── session_20260102_155309.json\n│   ├── session_20260102_155425.json\n│   ├── session_20260102_155612.json\n│   ├── session_20260102_160026.json\n│   ├── session_20260102_160157.json\n│   ├── session_20260102_160443.json\n│   ├── session_20260102_160837.json\n│   ├── session_20260102_161302.json\n│   ├── session_20260102_161349.json\n│   ├── session_20260102_161535.json\n│   ├── session_20260102_161833.json\n│   ├── session_20260102_162024.json\n│   ├── session_20260102_162316.json\n│   ├── session_20260102_162547.json\n│   ├── session_20260102_162753.json\n│   ├── session_20260102_163051.json\n│   ├── session_20260102_163331.json\n│   ├── session_20260102_164057.json\n│   ├── session_20260102_164244.json\n│   ├── session_20260102_164538.json\n│   ├── session_20260102_165026.json\n│   ├── session_20260102_165114.json\n│   ├── session_20260102_165201.json\n│   ├── session_20260102_165502.json\n│   ├── session_20260102_165724.json\n│   ├── session_20260102_165803.json\n│   ├── session_20260102_170058.json\n│   ├── session_20260102_170238.json\n│   ├── session_20260102_170300.json\n│   ├── session_20260102_171203.json\n│   ├── session_20260102_171226.json\n│   ├── session_20260102_171252.json\n│   ├── session_20260102_171330.json\n│   ├── session_20260102_171704.json\n│   ├── session_20260102_171756.json\n│   ├── session_20260102_171841.json\n│   ├── session_20260102_171931.json\n│   ├── session_20260102_172031.json\n│   ├── session_20260102_172109.json\n│   ├── session_20260102_172212.json\n│   ├── session_20260102_172312.json\n│   ├── session_20260102_172812.json\n│   ├── session_20260102_173720.json\n│   ├── session_20260102_174050.json\n│   ├── session_20260103_110517.json\n│   ├── session_20260103_122923.json\n│   ├── session_20260103_123014.json\n│   └── session_20260103_123517.json\n├── tests/\n│   └── test_modules.py\n├── .gitignore\n├── AGENTS.md\n├── README.md\n├── agent.py\n├── app.py\n├── communication.log\n├── hello.py\n├── interval_notifier.py\n├── message.sh\n├── path.txt\n├── requirements.txt\n├── screens.py\n├── sources.txt\n├── tui.css\n└── tui.py''
+2026-01-06 15:25:12,044 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=system, Content=''You are Angelica-AI, a professional coding agent optimized for autonomous problem-solving in Linux (Fedora/Desktop) and Android (Termux).\n\n## RESPONSE FORMAT\n1. **Reasoning (<think>)**: Start with a `<think>` block for internal analysis and planning.\n2. **Action (Raw JSON)**: After `</think>`, if an action is needed, provide EXACTLY ONE raw JSON object. \n   - **CRITICAL**: Do NOT use markdown code blocks (e.g., no ```json). Provide the raw string.\n3. **Text Message**: If no action is needed, provide a concise text response after `</think>`.\n\n## COMMAND STRUCTURE\nAll actions must include:\n- "before_execution": Explain what you are doing.\n- "during_execution": Status message (e.g. "Editing...").\n- "after_execution": Message on success.\n- "return_control": (boolean) Set to \'true\' if you need the output of the command to continue.\n\nIMPORTANT: When calling a tool, you MUST include the "type" field with the tool\'s name. Example for shell: {"type": "run_shell", "command": "ls"}. DO NOT just send {"command": "ls"} without a type.\n\n## FILE EDITING STRATEGY\n- For NEW files: Use `create_file`.\n- For EXISTING files: Prefer `edit_file` to replace specific blocks. This saves tokens and prevents overwriting large files.\n- Before editing: Always `read_file` to ensure you have the correct `search_text`.\n\n## ENVIRONMENT\nYou have a full shell (Termux/Linux). You can use `grep`, `sed`, `git`, `kotlinc`, etc., via `run_shell`.\n\n---\nAVAILABLE TOOLS:\n- create_file: Creates a NEW file with content. Fails if file exists. Params: \'path\' (str), \'content\' (str)\n- edit_file: Surgically edits an existing file by replacing a specific block of text. Params: \'path\' (str), \'search_text\' (str), \'replace_text\' (str). The \'search_text\' must exactly match a part of the file.\n- read_file: Reads the full content of a file. Use this before editing. Params: \'path\' (str)\n- run_shell: Executes a shell command in the current environment. Params: \'command\' (str)\n\n---\n\nBegin your response with an analysis of the task in <think> tags.\n\nProject Structure:\n├── .crush/\n│   ├── logs/\n│   │   └── crush.log\n│   ├── .gitignore\n│   ├── crush.db\n│   ├── crush.db-shm\n│   ├── crush.db-wal\n│   └── init\n├── modules/\n│   ├── tools/\n│   │   ├── definitions/\n│   │   ├── base.py\n│   │   └── manager.py\n│   ├── ui_components/\n│   │   ├── __init__.py\n│   │   ├── history_input.py\n│   │   ├── selection_widget.py\n│   │   └── status_bar.py\n│   ├── __init__.py\n│   ├── chat.py\n│   ├── config_loader.py\n│   ├── context.py\n│   ├── defaults.py\n│   ├── files.py\n│   ├── healer.py\n│   ├── history.py\n│   ├── policy.py\n│   ├── processor.py\n│   ├── project.py\n│   ├── screens.py\n│   ├── session.py\n│   ├── storage.py\n│   ├── theme.css\n│   └── tui_ui.py\n├── sessions/\n│   ├── session_20260102_153229.json\n│   ├── session_20260102_154041.json\n│   ├── session_20260102_154149.json\n│   ├── session_20260102_154258.json\n│   ├── session_20260102_154410.json\n│   ├── session_20260102_154550.json\n│   ├── session_20260102_154718.json\n│   ├── session_20260102_155011.json\n│   ├── session_20260102_155124.json\n│   ├── session_20260102_155309.json\n│   ├── session_20260102_155425.json\n│   ├── session_20260102_155612.json\n│   ├── session_20260102_160026.json\n│   ├── session_20260102_160157.json\n│   ├── session_20260102_160443.json\n│   ├── session_20260102_160837.json\n│   ├── session_20260102_161302.json\n│   ├── session_20260102_161349.json\n│   ├── session_20260102_161535.json\n│   ├── session_20260102_161833.json\n│   ├── session_20260102_162024.json\n│   ├── session_20260102_162316.json\n│   ├── session_20260102_162547.json\n│   ├── session_20260102_162753.json\n│   ├── session_20260102_163051.json\n│   ├── session_20260102_163331.json\n│   ├── session_20260102_164057.json\n│   ├── session_20260102_164244.json\n│   ├── session_20260102_164538.json\n│   ├── session_20260102_165026.json\n│   ├── session_20260102_165114.json\n│   ├── session_20260102_165201.json\n│   ├── session_20260102_165502.json\n│   ├── session_20260102_165724.json\n│   ├── session_20260102_165803.json\n│   ├── session_20260102_170058.json\n│   ├── session_20260102_170238.json\n│   ├── session_20260102_170300.json\n│   ├── session_20260102_171203.json\n│   ├── session_20260102_171226.json\n│   ├── session_20260102_171252.json\n│   ├── session_20260102_171330.json\n│   ├── session_20260102_171704.json\n│   ├── session_20260102_171756.json\n│   ├── session_20260102_171841.json\n│   ├── session_20260102_171931.json\n│   ├── session_20260102_172031.json\n│   ├── session_20260102_172109.json\n│   ├── session_20260102_172212.json\n│   ├── session_20260102_172312.json\n│   ├── session_20260102_172812.json\n│   ├── session_20260102_173720.json\n│   ├── session_20260102_174050.json\n│   ├── session_20260103_110517.json\n│   ├── session_20260103_122923.json\n│   ├── session_20260103_123014.json\n│   └── session_20260103_123517.json\n├── tests/\n│   └── test_modules.py\n├── .gitignore\n├── AGENTS.md\n├── README.md\n├── agent.py\n├── app.py\n├── communication.log\n├── hello.py\n├── interval_notifier.py\n├── message.sh\n├── path.txt\n├── requirements.txt\n├── screens.py\n├── sources.txt\n├── tui.css\n└── tui.py''
+2026-01-06 15:25:12,044 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=user, Content=''test''
+2026-01-06 15:25:12,044 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=user, Content=''test''
+2026-01-06 15:25:12,044 - OUTGOING:
+test
+2026-01-06 15:25:12,097 - DEBUG: Agent worker scheduled
+2026-01-06 15:25:28,916 - INCOMING:
+<think> 
+The provided context describes the structure of a software project. It appears to be a chat-based application named "Crush" based on the file names and directory structure.  There are various Python files (e.g., `chat.py`, `processor.py`, `screens.py`), configuration files (`config_loader.py`, `defaults.py`), UI components (`history_input.py`, `selection_widget.py`), and test files (`test_modules.py`). The project also has a `.gitignore` file and README documentation.  To give you a helpful response, I need more context about what you want to do with this project structure. 
+
+For example, are you looking for:
+* A list of Python modules within the project?
+* Information about specific files or directories?
+* Help understanding the purpose of certain files based on their names? 
+* Guidance on how to build or run the application? </think>
+
+
+
+2026-01-06 15:25:28,916 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=assistant, Content=''<think> \nThe provided context describes the structure of a software project. It appears to be a chat-based application named "Crush" based on the file names and directory structure.  There are various Python files (e.g., `chat.py`, `processor.py`, `screens.py`), configuration files (`config_loader.py`, `defaults.py`), UI components (`history_input.py`, `selection_widget.py`), and test files (`test_modules.py`). The project also has a `.gitignore` file and README documentation.  To give you a helpful response, I need more context about what you want to do with this project structure. \n\nFor example, are you looking for:\n* A list of Python modules within the project?\n* Information about specific files or directories?\n* Help understanding the purpose of certain files based on their names? \n* Guidance on how to build or run the application? </think>\n\n\n''
+2026-01-06 15:25:28,916 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=assistant, Content=''<think> \nThe provided context describes the structure of a software project. It appears to be a chat-based application named "Crush" based on the file names and directory structure.  There are various Python files (e.g., `chat.py`, `processor.py`, `screens.py`), configuration files (`config_loader.py`, `defaults.py`), UI components (`history_input.py`, `selection_widget.py`), and test files (`test_modules.py`). The project also has a `.gitignore` file and README documentation.  To give you a helpful response, I need more context about what you want to do with this project structure. \n\nFor example, are you looking for:\n* A list of Python modules within the project?\n* Information about specific files or directories?\n* Help understanding the purpose of certain files based on their names? \n* Guidance on how to build or run the application? </think>''
+2026-01-06 15:25:28,916 - DEBUG: _add_message called with classes: chat-message thought-message
+2026-01-06 15:25:28,917 - DEBUG: Message mounted and scrolled
+2026-01-06 15:26:56,642 - DEBUG: print_system: '✨ Angelica-AI (v0.1.0)
+Model: gemma2:9b
+Working Directory: /home/romankozak/studio/public/code_agent'
+2026-01-06 15:26:56,642 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-06 15:26:56,642 - DEBUG: Message mounted and scrolled
+2026-01-06 15:26:56,642 - DEBUG: print_system: ''
+2026-01-06 15:26:56,642 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-06 15:26:56,643 - DEBUG: Message mounted and scrolled
+2026-01-06 15:27:03,628 - DEBUG: on_input_submitted called with: 'test'
+2026-01-06 15:27:03,628 - DEBUG: Processing regular prompt: 'test'
+2026-01-06 15:27:03,628 - DEBUG: print_message (role=user): 'test...'
+2026-01-06 15:27:03,628 - DEBUG: _add_message called with classes: chat-message user-message
+2026-01-06 15:27:03,629 - DEBUG: Message mounted and scrolled
+2026-01-06 15:27:03,629 - DEBUG: print_message completed
+2026-01-06 15:27:03,629 - DEBUG: Message printed to UI, starting agent worker
+2026-01-06 15:27:03,631 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=system, Content=''You are Angelica-AI, a professional coding agent optimized for autonomous problem-solving in Linux (Fedora/Desktop) and Android (Termux).\n\n## RESPONSE FORMAT\n1. **Reasoning (<think>)**: Start with a `<think>` block for internal analysis and planning.\n2. **Action (Raw JSON)**: After `</think>`, if an action is needed, provide EXACTLY ONE raw JSON object. \n   - **CRITICAL**: Do NOT use markdown code blocks (e.g., no ```json). Provide the raw string.\n3. **Text Message**: If no action is needed, provide a concise text response after `</think>`.\n\n## COMMAND STRUCTURE\nAll actions must include:\n- "before_execution": Explain what you are doing.\n- "during_execution": Status message (e.g. "Editing...").\n- "after_execution": Message on success.\n- "return_control": (boolean) Set to \'true\' if you need the output of the command to continue.\n\nIMPORTANT: When calling a tool, you MUST include the "type" field with the tool\'s name. Example for shell: {"type": "run_shell", "command": "ls"}. DO NOT just send {"command": "ls"} without a type.\n\n## FILE EDITING STRATEGY\n- For NEW files: Use `create_file`.\n- For EXISTING files: Prefer `edit_file` to replace specific blocks. This saves tokens and prevents overwriting large files.\n- Before editing: Always `read_file` to ensure you have the correct `search_text`.\n\n## ENVIRONMENT\nYou have a full shell (Termux/Linux). You can use `grep`, `sed`, `git`, `kotlinc`, etc., via `run_shell`.\n\n---\nAVAILABLE TOOLS:\n- create_file: Creates a NEW file with content. Fails if file exists. Params: \'path\' (str), \'content\' (str)\n- edit_file: Surgically edits an existing file by replacing a specific block of text. Params: \'path\' (str), \'search_text\' (str), \'replace_text\' (str). The \'search_text\' must exactly match a part of the file.\n- read_file: Reads the full content of a file. Use this before editing. Params: \'path\' (str)\n- run_shell: Executes a shell command in the current environment. Params: \'command\' (str)\n\n---\n\nBegin your response with an analysis of the task in <think> tags.\n\nProject Structure:\n├── .crush/\n│   ├── logs/\n│   │   └── crush.log\n│   ├── .gitignore\n│   ├── crush.db\n│   ├── crush.db-shm\n│   ├── crush.db-wal\n│   └── init\n├── modules/\n│   ├── tools/\n│   │   ├── definitions/\n│   │   ├── base.py\n│   │   └── manager.py\n│   ├── ui_components/\n│   │   ├── __init__.py\n│   │   ├── history_input.py\n│   │   ├── selection_widget.py\n│   │   └── status_bar.py\n│   ├── __init__.py\n│   ├── chat.py\n│   ├── config_loader.py\n│   ├── context.py\n│   ├── defaults.py\n│   ├── files.py\n│   ├── healer.py\n│   ├── history.py\n│   ├── policy.py\n│   ├── processor.py\n│   ├── project.py\n│   ├── screens.py\n│   ├── session.py\n│   ├── storage.py\n│   ├── theme.css\n│   └── tui_ui.py\n├── sessions/\n│   ├── session_20260102_153229.json\n│   ├── session_20260102_154041.json\n│   ├── session_20260102_154149.json\n│   ├── session_20260102_154258.json\n│   ├── session_20260102_154410.json\n│   ├── session_20260102_154550.json\n│   ├── session_20260102_154718.json\n│   ├── session_20260102_155011.json\n│   ├── session_20260102_155124.json\n│   ├── session_20260102_155309.json\n│   ├── session_20260102_155425.json\n│   ├── session_20260102_155612.json\n│   ├── session_20260102_160026.json\n│   ├── session_20260102_160157.json\n│   ├── session_20260102_160443.json\n│   ├── session_20260102_160837.json\n│   ├── session_20260102_161302.json\n│   ├── session_20260102_161349.json\n│   ├── session_20260102_161535.json\n│   ├── session_20260102_161833.json\n│   ├── session_20260102_162024.json\n│   ├── session_20260102_162316.json\n│   ├── session_20260102_162547.json\n│   ├── session_20260102_162753.json\n│   ├── session_20260102_163051.json\n│   ├── session_20260102_163331.json\n│   ├── session_20260102_164057.json\n│   ├── session_20260102_164244.json\n│   ├── session_20260102_164538.json\n│   ├── session_20260102_165026.json\n│   ├── session_20260102_165114.json\n│   ├── session_20260102_165201.json\n│   ├── session_20260102_165502.json\n│   ├── session_20260102_165724.json\n│   ├── session_20260102_165803.json\n│   ├── session_20260102_170058.json\n│   ├── session_20260102_170238.json\n│   ├── session_20260102_170300.json\n│   ├── session_20260102_171203.json\n│   ├── session_20260102_171226.json\n│   ├── session_20260102_171252.json\n│   ├── session_20260102_171330.json\n│   ├── session_20260102_171704.json\n│   ├── session_20260102_171756.json\n│   ├── session_20260102_171841.json\n│   ├── session_20260102_171931.json\n│   ├── session_20260102_172031.json\n│   ├── session_20260102_172109.json\n│   ├── session_20260102_172212.json\n│   ├── session_20260102_172312.json\n│   ├── session_20260102_172812.json\n│   ├── session_20260102_173720.json\n│   ├── session_20260102_174050.json\n│   ├── session_20260103_110517.json\n│   ├── session_20260103_122923.json\n│   ├── session_20260103_123014.json\n│   └── session_20260103_123517.json\n├── tests/\n│   └── test_modules.py\n├── .gitignore\n├── AGENTS.md\n├── README.md\n├── agent.py\n├── app.py\n├── communication.log\n├── hello.py\n├── interval_notifier.py\n├── message.sh\n├── path.txt\n├── requirements.txt\n├── screens.py\n├── sources.txt\n├── tui.css\n└── tui.py''
+2026-01-06 15:27:03,631 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=system, Content=''You are Angelica-AI, a professional coding agent optimized for autonomous problem-solving in Linux (Fedora/Desktop) and Android (Termux).\n\n## RESPONSE FORMAT\n1. **Reasoning (<think>)**: Start with a `<think>` block for internal analysis and planning.\n2. **Action (Raw JSON)**: After `</think>`, if an action is needed, provide EXACTLY ONE raw JSON object. \n   - **CRITICAL**: Do NOT use markdown code blocks (e.g., no ```json). Provide the raw string.\n3. **Text Message**: If no action is needed, provide a concise text response after `</think>`.\n\n## COMMAND STRUCTURE\nAll actions must include:\n- "before_execution": Explain what you are doing.\n- "during_execution": Status message (e.g. "Editing...").\n- "after_execution": Message on success.\n- "return_control": (boolean) Set to \'true\' if you need the output of the command to continue.\n\nIMPORTANT: When calling a tool, you MUST include the "type" field with the tool\'s name. Example for shell: {"type": "run_shell", "command": "ls"}. DO NOT just send {"command": "ls"} without a type.\n\n## FILE EDITING STRATEGY\n- For NEW files: Use `create_file`.\n- For EXISTING files: Prefer `edit_file` to replace specific blocks. This saves tokens and prevents overwriting large files.\n- Before editing: Always `read_file` to ensure you have the correct `search_text`.\n\n## ENVIRONMENT\nYou have a full shell (Termux/Linux). You can use `grep`, `sed`, `git`, `kotlinc`, etc., via `run_shell`.\n\n---\nAVAILABLE TOOLS:\n- create_file: Creates a NEW file with content. Fails if file exists. Params: \'path\' (str), \'content\' (str)\n- edit_file: Surgically edits an existing file by replacing a specific block of text. Params: \'path\' (str), \'search_text\' (str), \'replace_text\' (str). The \'search_text\' must exactly match a part of the file.\n- read_file: Reads the full content of a file. Use this before editing. Params: \'path\' (str)\n- run_shell: Executes a shell command in the current environment. Params: \'command\' (str)\n\n---\n\nBegin your response with an analysis of the task in <think> tags.\n\nProject Structure:\n├── .crush/\n│   ├── logs/\n│   │   └── crush.log\n│   ├── .gitignore\n│   ├── crush.db\n│   ├── crush.db-shm\n│   ├── crush.db-wal\n│   └── init\n├── modules/\n│   ├── tools/\n│   │   ├── definitions/\n│   │   ├── base.py\n│   │   └── manager.py\n│   ├── ui_components/\n│   │   ├── __init__.py\n│   │   ├── history_input.py\n│   │   ├── selection_widget.py\n│   │   └── status_bar.py\n│   ├── __init__.py\n│   ├── chat.py\n│   ├── config_loader.py\n│   ├── context.py\n│   ├── defaults.py\n│   ├── files.py\n│   ├── healer.py\n│   ├── history.py\n│   ├── policy.py\n│   ├── processor.py\n│   ├── project.py\n│   ├── screens.py\n│   ├── session.py\n│   ├── storage.py\n│   ├── theme.css\n│   └── tui_ui.py\n├── sessions/\n│   ├── session_20260102_153229.json\n│   ├── session_20260102_154041.json\n│   ├── session_20260102_154149.json\n│   ├── session_20260102_154258.json\n│   ├── session_20260102_154410.json\n│   ├── session_20260102_154550.json\n│   ├── session_20260102_154718.json\n│   ├── session_20260102_155011.json\n│   ├── session_20260102_155124.json\n│   ├── session_20260102_155309.json\n│   ├── session_20260102_155425.json\n│   ├── session_20260102_155612.json\n│   ├── session_20260102_160026.json\n│   ├── session_20260102_160157.json\n│   ├── session_20260102_160443.json\n│   ├── session_20260102_160837.json\n│   ├── session_20260102_161302.json\n│   ├── session_20260102_161349.json\n│   ├── session_20260102_161535.json\n│   ├── session_20260102_161833.json\n│   ├── session_20260102_162024.json\n│   ├── session_20260102_162316.json\n│   ├── session_20260102_162547.json\n│   ├── session_20260102_162753.json\n│   ├── session_20260102_163051.json\n│   ├── session_20260102_163331.json\n│   ├── session_20260102_164057.json\n│   ├── session_20260102_164244.json\n│   ├── session_20260102_164538.json\n│   ├── session_20260102_165026.json\n│   ├── session_20260102_165114.json\n│   ├── session_20260102_165201.json\n│   ├── session_20260102_165502.json\n│   ├── session_20260102_165724.json\n│   ├── session_20260102_165803.json\n│   ├── session_20260102_170058.json\n│   ├── session_20260102_170238.json\n│   ├── session_20260102_170300.json\n│   ├── session_20260102_171203.json\n│   ├── session_20260102_171226.json\n│   ├── session_20260102_171252.json\n│   ├── session_20260102_171330.json\n│   ├── session_20260102_171704.json\n│   ├── session_20260102_171756.json\n│   ├── session_20260102_171841.json\n│   ├── session_20260102_171931.json\n│   ├── session_20260102_172031.json\n│   ├── session_20260102_172109.json\n│   ├── session_20260102_172212.json\n│   ├── session_20260102_172312.json\n│   ├── session_20260102_172812.json\n│   ├── session_20260102_173720.json\n│   ├── session_20260102_174050.json\n│   ├── session_20260103_110517.json\n│   ├── session_20260103_122923.json\n│   ├── session_20260103_123014.json\n│   └── session_20260103_123517.json\n├── tests/\n│   └── test_modules.py\n├── .gitignore\n├── AGENTS.md\n├── README.md\n├── agent.py\n├── app.py\n├── communication.log\n├── hello.py\n├── interval_notifier.py\n├── message.sh\n├── path.txt\n├── requirements.txt\n├── screens.py\n├── sources.txt\n├── tui.css\n└── tui.py''
+2026-01-06 15:27:03,631 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=user, Content=''test''
+2026-01-06 15:27:03,631 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=user, Content=''test''
+2026-01-06 15:27:03,631 - OUTGOING:
+test
+2026-01-06 15:27:03,684 - DEBUG: Agent worker scheduled
+2026-01-06 15:27:18,898 - INCOMING:
+<think> 
+The task is to understand the structure of a project based on the provided file list. I need to identify key components and potential relationships between them.  
+
+For example:
+
+- **modules/:** Seems to be the core logic of the project. "chat.py", "config_loader.py", "processor.py" suggest functionalities related to communication, configuration, and processing.
+- **sessions/:** Contains files likely representing individual user sessions or interactions with the application.  
+- **tests/:** Indicates the presence of tests for the project's code. 
+- **.crush/:** Could be a dedicated folder for specific project data or logs. </think>
+
+The provided file list gives me a good understanding of the basic project structure. To provide more in-depth insights, I might need additional context like:
+
+- Project description or purpose
+- Technologies used (e.g., Python, JavaScript)
+- Any documentation available
+
+
+
+
+2026-01-06 15:27:18,898 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=assistant, Content=''<think> \nThe task is to understand the structure of a project based on the provided file list. I need to identify key components and potential relationships between them.  \n\nFor example:\n\n- **modules/:** Seems to be the core logic of the project. "chat.py", "config_loader.py", "processor.py" suggest functionalities related to communication, configuration, and processing.\n- **sessions/:** Contains files likely representing individual user sessions or interactions with the application.  \n- **tests/:** Indicates the presence of tests for the project\'s code. \n- **.crush/:** Could be a dedicated folder for specific project data or logs. </think>\n\nThe provided file list gives me a good understanding of the basic project structure. To provide more in-depth insights, I might need additional context like:\n\n- Project description or purpose\n- Technologies used (e.g., Python, JavaScript)\n- Any documentation available\n\n\n\n''
+2026-01-06 15:27:18,898 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=assistant, Content=''<think> \nThe task is to understand the structure of a project based on the provided file list. I need to identify key components and potential relationships between them.  \n\nFor example:\n\n- **modules/:** Seems to be the core logic of the project. "chat.py", "config_loader.py", "processor.py" suggest functionalities related to communication, configuration, and processing.\n- **sessions/:** Contains files likely representing individual user sessions or interactions with the application.  \n- **tests/:** Indicates the presence of tests for the project\'s code. \n- **.crush/:** Could be a dedicated folder for specific project data or logs. </think>\n\nThe provided file list gives me a good understanding of the basic project structure. To provide more in-depth insights, I might need additional context like:\n\n- Project description or purpose\n- Technologies used (e.g., Python, JavaScript)\n- Any documentation available''
+2026-01-06 15:27:18,898 - DEBUG: _add_message called with classes: chat-message thought-message
+2026-01-06 15:27:18,899 - DEBUG: Message mounted and scrolled
+2026-01-06 15:27:18,899 - DEBUG: print_message (role=assistant): 'The provided file list gives me a good understandi...'
+2026-01-06 15:27:18,900 - DEBUG: _add_message called with classes: chat-message assistant-message
+2026-01-06 15:27:18,900 - DEBUG: Message mounted and scrolled
+2026-01-06 15:27:18,900 - DEBUG: print_message completed
+2026-01-06 15:28:31,497 - DEBUG: print_system: '✨ Angelica-AI (v0.1.0)
+Model: gemma2:9b
+Working Directory: /home/romankozak/studio/public/code_agent'
+2026-01-06 15:28:31,497 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-06 15:28:31,498 - DEBUG: Message mounted and scrolled
+2026-01-06 15:28:31,498 - DEBUG: print_system: ''
+2026-01-06 15:28:31,498 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-06 15:28:31,498 - DEBUG: Message mounted and scrolled
+2026-01-06 15:29:52,982 - DEBUG: print_system: '✨ Angelica-AI (v0.1.0)
+Model: gemma2:9b
+Working Directory: /home/romankozak/studio/public/code_agent'
+2026-01-06 15:29:52,982 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-06 15:29:52,983 - DEBUG: Message mounted and scrolled
+2026-01-06 15:29:52,983 - DEBUG: print_system: ''
+2026-01-06 15:29:52,983 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-06 15:29:52,983 - DEBUG: Message mounted and scrolled
+2026-01-06 15:31:31,092 - DEBUG: on_input_submitted called with: '/models'
+2026-01-06 15:31:31,092 - `/models` command received.
+2026-01-06 15:31:31,093 - DEBUG: Starting model selection worker
+2026-01-06 15:31:31,093 - DEBUG: pick_option called with prompt: 'Select AI Model (Current: gemma2:9b)'
+2026-01-06 15:31:31,093 - DEBUG: Entering _pick_screen_main_thread with screen: SelectionScreen()
+2026-01-06 15:31:31,115 - DEBUG: Screen pushed, awaiting future
+2026-01-06 15:31:31,119 - DEBUG: SelectionScreen mounted
+2026-01-06 15:31:31,120 - DEBUG: Highlighting current_value: gemma2:9b
+2026-01-06 15:31:31,120 - DEBUG: current_value 'gemma2:9b' not found in options
+2026-01-06 15:31:40,252 - DEBUG: ListItem selected at index: 3
+2026-01-06 15:31:40,252 - DEBUG: Dismissing SelectionScreen with value: deepseek-chat
+2026-01-06 15:31:40,253 - DEBUG: Screen callback triggered with result: deepseek-chat
+2026-01-06 15:31:40,260 - DEBUG: Future resolved in _pick_screen_main_thread: deepseek-chat
+2026-01-06 15:31:40,261 - DEBUG: print_system: 'Перемикаюсь на deepseek-chat...'
+2026-01-06 15:31:40,261 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-06 15:31:40,261 - DEBUG: Message mounted and scrolled
+2026-01-06 15:31:40,261 - DEBUG: print_system: '✅ Модель змінено на deepseek-chat'
+2026-01-06 15:31:40,261 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-06 15:31:40,262 - DEBUG: Message mounted and scrolled
+2026-01-06 15:31:51,117 - DEBUG: on_input_submitted called with: 'як покращити проект?'
+2026-01-06 15:31:51,118 - DEBUG: Processing regular prompt: 'як покращити проект?'
+2026-01-06 15:31:51,118 - DEBUG: print_message (role=user): 'як покращити проект?...'
+2026-01-06 15:31:51,118 - DEBUG: _add_message called with classes: chat-message user-message
+2026-01-06 15:31:51,119 - DEBUG: Message mounted and scrolled
+2026-01-06 15:31:51,119 - DEBUG: print_message completed
+2026-01-06 15:31:51,119 - DEBUG: Message printed to UI, starting agent worker
+2026-01-06 15:31:51,121 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=system, Content=''You are Angelica-AI, a professional coding agent optimized for autonomous problem-solving in Linux (Fedora/Desktop) and Android (Termux).\n\n## RESPONSE FORMAT\n1. **Reasoning (<think>)**: Start with a `<think>` block for internal analysis and planning.\n2. **Action (Raw JSON)**: After `</think>`, if an action is needed, provide EXACTLY ONE raw JSON object. \n   - **CRITICAL**: Do NOT use markdown code blocks (e.g., no ```json). Provide the raw string.\n3. **Text Message**: If no action is needed, provide a concise text response after `</think>`.\n\n## COMMAND STRUCTURE\nAll actions must include:\n- "before_execution": Explain what you are doing.\n- "during_execution": Status message (e.g. "Editing...").\n- "after_execution": Message on success.\n- "return_control": (boolean) Set to \'true\' if you need the output of the command to continue.\n\nIMPORTANT: When calling a tool, you MUST include the "type" field with the tool\'s name. Example for shell: {"type": "run_shell", "command": "ls"}. DO NOT just send {"command": "ls"} without a type.\n\n## FILE EDITING STRATEGY\n- For NEW files: Use `create_file`.\n- For EXISTING files: Prefer `edit_file` to replace specific blocks. This saves tokens and prevents overwriting large files.\n- Before editing: Always `read_file` to ensure you have the correct `search_text`.\n\n## ENVIRONMENT\nYou have a full shell (Termux/Linux). You can use `grep`, `sed`, `git`, `kotlinc`, etc., via `run_shell`.\n\n---\nAVAILABLE TOOLS:\n- create_file: Creates a NEW file with content. Fails if file exists. Params: \'path\' (str), \'content\' (str)\n- edit_file: Surgically edits an existing file by replacing a specific block of text. Params: \'path\' (str), \'search_text\' (str), \'replace_text\' (str). The \'search_text\' must exactly match a part of the file.\n- read_file: Reads the full content of a file. Use this before editing. Params: \'path\' (str)\n- run_shell: Executes a shell command in the current environment. Params: \'command\' (str)\n\n---\n\nBegin your response with an analysis of the task in <think> tags.\n\nProject Structure:\n├── .crush/\n│   ├── logs/\n│   │   └── crush.log\n│   ├── .gitignore\n│   ├── crush.db\n│   ├── crush.db-shm\n│   ├── crush.db-wal\n│   └── init\n├── modules/\n│   ├── tools/\n│   │   ├── definitions/\n│   │   ├── base.py\n│   │   └── manager.py\n│   ├── ui_components/\n│   │   ├── __init__.py\n│   │   ├── history_input.py\n│   │   ├── selection_widget.py\n│   │   └── status_bar.py\n│   ├── __init__.py\n│   ├── chat.py\n│   ├── config_loader.py\n│   ├── context.py\n│   ├── defaults.py\n│   ├── files.py\n│   ├── healer.py\n│   ├── history.py\n│   ├── policy.py\n│   ├── processor.py\n│   ├── project.py\n│   ├── screens.py\n│   ├── session.py\n│   ├── storage.py\n│   ├── theme.css\n│   └── tui_ui.py\n├── sessions/\n│   ├── session_20260102_153229.json\n│   ├── session_20260102_154041.json\n│   ├── session_20260102_154149.json\n│   ├── session_20260102_154258.json\n│   ├── session_20260102_154410.json\n│   ├── session_20260102_154550.json\n│   ├── session_20260102_154718.json\n│   ├── session_20260102_155011.json\n│   ├── session_20260102_155124.json\n│   ├── session_20260102_155309.json\n│   ├── session_20260102_155425.json\n│   ├── session_20260102_155612.json\n│   ├── session_20260102_160026.json\n│   ├── session_20260102_160157.json\n│   ├── session_20260102_160443.json\n│   ├── session_20260102_160837.json\n│   ├── session_20260102_161302.json\n│   ├── session_20260102_161349.json\n│   ├── session_20260102_161535.json\n│   ├── session_20260102_161833.json\n│   ├── session_20260102_162024.json\n│   ├── session_20260102_162316.json\n│   ├── session_20260102_162547.json\n│   ├── session_20260102_162753.json\n│   ├── session_20260102_163051.json\n│   ├── session_20260102_163331.json\n│   ├── session_20260102_164057.json\n│   ├── session_20260102_164244.json\n│   ├── session_20260102_164538.json\n│   ├── session_20260102_165026.json\n│   ├── session_20260102_165114.json\n│   ├── session_20260102_165201.json\n│   ├── session_20260102_165502.json\n│   ├── session_20260102_165724.json\n│   ├── session_20260102_165803.json\n│   ├── session_20260102_170058.json\n│   ├── session_20260102_170238.json\n│   ├── session_20260102_170300.json\n│   ├── session_20260102_171203.json\n│   ├── session_20260102_171226.json\n│   ├── session_20260102_171252.json\n│   ├── session_20260102_171330.json\n│   ├── session_20260102_171704.json\n│   ├── session_20260102_171756.json\n│   ├── session_20260102_171841.json\n│   ├── session_20260102_171931.json\n│   ├── session_20260102_172031.json\n│   ├── session_20260102_172109.json\n│   ├── session_20260102_172212.json\n│   ├── session_20260102_172312.json\n│   ├── session_20260102_172812.json\n│   ├── session_20260102_173720.json\n│   ├── session_20260102_174050.json\n│   ├── session_20260103_110517.json\n│   ├── session_20260103_122923.json\n│   ├── session_20260103_123014.json\n│   └── session_20260103_123517.json\n├── tests/\n│   └── test_modules.py\n├── .gitignore\n├── AGENTS.md\n├── README.md\n├── agent.py\n├── app.py\n├── communication.log\n├── hello.py\n├── interval_notifier.py\n├── message.sh\n├── path.txt\n├── requirements.txt\n├── screens.py\n├── sources.txt\n├── tui.css\n└── tui.py''
+2026-01-06 15:31:51,121 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=system, Content=''You are Angelica-AI, a professional coding agent optimized for autonomous problem-solving in Linux (Fedora/Desktop) and Android (Termux).\n\n## RESPONSE FORMAT\n1. **Reasoning (<think>)**: Start with a `<think>` block for internal analysis and planning.\n2. **Action (Raw JSON)**: After `</think>`, if an action is needed, provide EXACTLY ONE raw JSON object. \n   - **CRITICAL**: Do NOT use markdown code blocks (e.g., no ```json). Provide the raw string.\n3. **Text Message**: If no action is needed, provide a concise text response after `</think>`.\n\n## COMMAND STRUCTURE\nAll actions must include:\n- "before_execution": Explain what you are doing.\n- "during_execution": Status message (e.g. "Editing...").\n- "after_execution": Message on success.\n- "return_control": (boolean) Set to \'true\' if you need the output of the command to continue.\n\nIMPORTANT: When calling a tool, you MUST include the "type" field with the tool\'s name. Example for shell: {"type": "run_shell", "command": "ls"}. DO NOT just send {"command": "ls"} without a type.\n\n## FILE EDITING STRATEGY\n- For NEW files: Use `create_file`.\n- For EXISTING files: Prefer `edit_file` to replace specific blocks. This saves tokens and prevents overwriting large files.\n- Before editing: Always `read_file` to ensure you have the correct `search_text`.\n\n## ENVIRONMENT\nYou have a full shell (Termux/Linux). You can use `grep`, `sed`, `git`, `kotlinc`, etc., via `run_shell`.\n\n---\nAVAILABLE TOOLS:\n- create_file: Creates a NEW file with content. Fails if file exists. Params: \'path\' (str), \'content\' (str)\n- edit_file: Surgically edits an existing file by replacing a specific block of text. Params: \'path\' (str), \'search_text\' (str), \'replace_text\' (str). The \'search_text\' must exactly match a part of the file.\n- read_file: Reads the full content of a file. Use this before editing. Params: \'path\' (str)\n- run_shell: Executes a shell command in the current environment. Params: \'command\' (str)\n\n---\n\nBegin your response with an analysis of the task in <think> tags.\n\nProject Structure:\n├── .crush/\n│   ├── logs/\n│   │   └── crush.log\n│   ├── .gitignore\n│   ├── crush.db\n│   ├── crush.db-shm\n│   ├── crush.db-wal\n│   └── init\n├── modules/\n│   ├── tools/\n│   │   ├── definitions/\n│   │   ├── base.py\n│   │   └── manager.py\n│   ├── ui_components/\n│   │   ├── __init__.py\n│   │   ├── history_input.py\n│   │   ├── selection_widget.py\n│   │   └── status_bar.py\n│   ├── __init__.py\n│   ├── chat.py\n│   ├── config_loader.py\n│   ├── context.py\n│   ├── defaults.py\n│   ├── files.py\n│   ├── healer.py\n│   ├── history.py\n│   ├── policy.py\n│   ├── processor.py\n│   ├── project.py\n│   ├── screens.py\n│   ├── session.py\n│   ├── storage.py\n│   ├── theme.css\n│   └── tui_ui.py\n├── sessions/\n│   ├── session_20260102_153229.json\n│   ├── session_20260102_154041.json\n│   ├── session_20260102_154149.json\n│   ├── session_20260102_154258.json\n│   ├── session_20260102_154410.json\n│   ├── session_20260102_154550.json\n│   ├── session_20260102_154718.json\n│   ├── session_20260102_155011.json\n│   ├── session_20260102_155124.json\n│   ├── session_20260102_155309.json\n│   ├── session_20260102_155425.json\n│   ├── session_20260102_155612.json\n│   ├── session_20260102_160026.json\n│   ├── session_20260102_160157.json\n│   ├── session_20260102_160443.json\n│   ├── session_20260102_160837.json\n│   ├── session_20260102_161302.json\n│   ├── session_20260102_161349.json\n│   ├── session_20260102_161535.json\n│   ├── session_20260102_161833.json\n│   ├── session_20260102_162024.json\n│   ├── session_20260102_162316.json\n│   ├── session_20260102_162547.json\n│   ├── session_20260102_162753.json\n│   ├── session_20260102_163051.json\n│   ├── session_20260102_163331.json\n│   ├── session_20260102_164057.json\n│   ├── session_20260102_164244.json\n│   ├── session_20260102_164538.json\n│   ├── session_20260102_165026.json\n│   ├── session_20260102_165114.json\n│   ├── session_20260102_165201.json\n│   ├── session_20260102_165502.json\n│   ├── session_20260102_165724.json\n│   ├── session_20260102_165803.json\n│   ├── session_20260102_170058.json\n│   ├── session_20260102_170238.json\n│   ├── session_20260102_170300.json\n│   ├── session_20260102_171203.json\n│   ├── session_20260102_171226.json\n│   ├── session_20260102_171252.json\n│   ├── session_20260102_171330.json\n│   ├── session_20260102_171704.json\n│   ├── session_20260102_171756.json\n│   ├── session_20260102_171841.json\n│   ├── session_20260102_171931.json\n│   ├── session_20260102_172031.json\n│   ├── session_20260102_172109.json\n│   ├── session_20260102_172212.json\n│   ├── session_20260102_172312.json\n│   ├── session_20260102_172812.json\n│   ├── session_20260102_173720.json\n│   ├── session_20260102_174050.json\n│   ├── session_20260103_110517.json\n│   ├── session_20260103_122923.json\n│   ├── session_20260103_123014.json\n│   └── session_20260103_123517.json\n├── tests/\n│   └── test_modules.py\n├── .gitignore\n├── AGENTS.md\n├── README.md\n├── agent.py\n├── app.py\n├── communication.log\n├── hello.py\n├── interval_notifier.py\n├── message.sh\n├── path.txt\n├── requirements.txt\n├── screens.py\n├── sources.txt\n├── tui.css\n└── tui.py''
+2026-01-06 15:31:51,121 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=user, Content=''як покращити проект?''
+2026-01-06 15:31:51,121 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=user, Content=''як покращити проект?''
+2026-01-06 15:31:51,121 - OUTGOING:
+як покращити проект?
+2026-01-06 15:31:51,166 - DEBUG: Agent worker scheduled
+2026-01-06 15:32:13,131 - INCOMING:
+<think>Користувач запитує, як покращити проект. Потрібно проаналізувати поточну структуру проекту та визначити потенційні області для вдосконалення. 
+
+Спочатку перегляну поточну структуру проекту, яка вже надана. Це Python-проект з модульною структурою, що включає TUI (Text User Interface), роботу з сесіями, базу даних, інструменти тощо.
+
+Потенційні напрямки покращення:
+1. **Документація**: README.md може бути розширений, додати документацію по модулях.
+2. **Тестування**: В папці tests є лише один файл test_modules.py. Можна розширити тестове покриття.
+3. **Кодова якість**: Перевірити наявність type hints, docstrings, відповідність PEP 8.
+4. **Архітектура**: Можливо, деякі модулі можна рефакторити для кращої відокремленості.
+5. **Логування**: В .crush/logs є лог-файл, але потрібно перевірити систему логування.
+6. **Конфігурація**: Можна додати конфігураційні файли для гнучкості.
+7. **Залежності**: Перевірити requirements.txt на актуальність.
+8. **CI/CD**: Можна додати автоматизоване тестування, linting.
+
+Спочатку перевірю вміст ключових файлів, щоб зрозуміти поточний стан проекту.
+
+Перевірю:
+1. README.md
+2. requirements.txt
+3. Основні модулі (наприклад, modules/__init__.py, modules/chat.py)
+4. Головний файл app.py або tui.py
+
+Після аналізу можу запропонувати конкретні покращення.</think>
+
+{"type": "read_file", "path": "README.md", "before_execution": "Читаю README.md для розуміння поточного стану проекту", "during_execution": "Читання файлу...", "after_execution": "README.md прочитано", "return_control": true}
+2026-01-06 15:32:13,131 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=assistant, Content=''<think>Користувач запитує, як покращити проект. Потрібно проаналізувати поточну структуру проекту та визначити потенційні області для вдосконалення. \n\nСпочатку перегляну поточну структуру проекту, яка вже надана. Це Python-проект з модульною структурою, що включає TUI (Text User Interface), роботу з сесіями, базу даних, інструменти тощо.\n\nПотенційні напрямки покращення:\n1. **Документація**: README.md може бути розширений, додати документацію по модулях.\n2. **Тестування**: В папці tests є лише один файл test_modules.py. Можна розширити тестове покриття.\n3. **Кодова якість**: Перевірити наявність type hints, docstrings, відповідність PEP 8.\n4. **Архітектура**: Можливо, деякі модулі можна рефакторити для кращої відокремленості.\n5. **Логування**: В .crush/logs є лог-файл, але потрібно перевірити систему логування.\n6. **Конфігурація**: Можна додати конфігураційні файли для гнучкості.\n7. **Залежності**: Перевірити requirements.txt на актуальність.\n8. **CI/CD**: Можна додати автоматизоване тестування, linting.\n\nСпочатку перевірю вміст ключових файлів, щоб зрозуміти поточний стан проекту.\n\nПеревірю:\n1. README.md\n2. requirements.txt\n3. Основні модулі (наприклад, modules/__init__.py, modules/chat.py)\n4. Головний файл app.py або tui.py\n\nПісля аналізу можу запропонувати конкретні покращення.</think>\n\n{"type": "read_file", "path": "README.md", "before_execution": "Читаю README.md для розуміння поточного стану проекту", "during_execution": "Читання файлу...", "after_execution": "README.md прочитано", "return_control": true}''
+2026-01-06 15:32:13,132 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=assistant, Content=''<think>Користувач запитує, як покращити проект. Потрібно проаналізувати поточну структуру проекту та визначити потенційні області для вдосконалення. \n\nСпочатку перегляну поточну структуру проекту, яка вже надана. Це Python-проект з модульною структурою, що включає TUI (Text User Interface), роботу з сесіями, базу даних, інструменти тощо.\n\nПотенційні напрямки покращення:\n1. **Документація**: README.md може бути розширений, додати документацію по модулях.\n2. **Тестування**: В папці tests є лише один файл test_modules.py. Можна розширити тестове покриття.\n3. **Кодова якість**: Перевірити наявність type hints, docstrings, відповідність PEP 8.\n4. **Архітектура**: Можливо, деякі модулі можна рефакторити для кращої відокремленості.\n5. **Логування**: В .crush/logs є лог-файл, але потрібно перевірити систему логування.\n6. **Конфігурація**: Можна додати конфігураційні файли для гнучкості.\n7. **Залежності**: Перевірити requirements.txt на актуальність.\n8. **CI/CD**: Можна додати автоматизоване тестування, linting.\n\nСпочатку перевірю вміст ключових файлів, щоб зрозуміти поточний стан проекту.\n\nПеревірю:\n1. README.md\n2. requirements.txt\n3. Основні модулі (наприклад, modules/__init__.py, modules/chat.py)\n4. Головний файл app.py або tui.py\n\nПісля аналізу можу запропонувати конкретні покращення.</think>\n\n{"type": "read_file", "path": "README.md", "before_execution": "Читаю README.md для розуміння поточного стану проекту", "during_execution": "Читання файлу...", "after_execution": "README.md прочитано", "return_control": true}''
+2026-01-06 15:32:13,132 - DEBUG: _add_message called with classes: chat-message thought-message
+2026-01-06 15:32:13,133 - DEBUG: Message mounted and scrolled
+2026-01-06 15:32:13,133 - DEBUG: _add_message called with classes: chat-message
+2026-01-06 15:32:13,133 - DEBUG: Message mounted and scrolled
+2026-01-06 15:32:13,133 - DEBUG: confirm_action called for: read_file
+2026-01-06 15:32:13,133 - DEBUG: Entering _pick_screen_main_thread with screen: ConfirmationScreen()
+2026-01-06 15:32:13,160 - DEBUG: Screen pushed, awaiting future
+2026-01-06 15:32:15,871 - DEBUG: Screen callback triggered with result: True
+2026-01-06 15:32:15,876 - DEBUG: Future resolved in _pick_screen_main_thread: True
+2026-01-06 15:32:15,876 - DEBUG: _add_message called with classes: chat-message
+2026-01-06 15:32:15,877 - DEBUG: Message mounted and scrolled
+2026-01-06 15:32:15,877 - DEBUG: _add_message called with classes: chat-message result-message
+2026-01-06 15:32:15,877 - DEBUG: Message mounted and scrolled
+2026-01-06 15:32:15,877 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=system, Content=''SYSTEM RESULT: # Angelica-AI Agent\n\nAngelica-AI is a Python-based AI agent that can perform various tasks based on user commands. It is designed to be extensible, with a modular architecture that allows for easy addition of new functionalities.\n\n## Features\n\n-   **Modular Architecture**: The agent is divided into several modules, each responsible for a specific functionality. This makes the code easy to understand, maintain, and extend.\n-   **Multiple AI Providers**: The agent can be configured to use different AI providers, such as OpenAI, DeepSeek, Ollama, and Gemini.\n-   **File Operations**: The agent can read, write, create, and edit files on the local filesystem.\n-   **Command Execution**: The agent can execute shell commands and return the output.\n-   **Permission Policy**: The agent has a permission policy that can be configured to "ask", "always", or "never" allow sensitive operations.\n-   **Session Management**: The agent can save and load sessions, allowing to continue a conversation from where you left off.\n-   **Context Management**: The agent can keep track of the files in the current context, which is provided to the AI model with each request.\n\n## Installation\n\n1.  Clone the repository:\n    ```bash\n    git clone https://github.com/your-username/angelica-ai.git\n    cd angelica-ai\n    ```\n2.  Create a virtual environment:\n    ```bash\n    python3 -m venv venv\n    source venv/bin/activate\n    ```\n3.  Install the dependencies:\n    ```bash\n    pip install -r requirements.txt\n    ```\n\n## Configuration\n\nThe agent is configured using a `config.yaml` file located in the `~/.config/angelica-ai` directory. You need to create this file and add the necessary configuration.\n\n1.  Create the configuration directory:\n    ```bash\n    mkdir -p ~/.config/angelica-ai\n    ```\n2.  Create the `config.yaml` file:\n    ```bash\n    touch ~/.config/angelica-ai/config.yaml\n    ```\n3.  Add your configuration to the file. Here is an example:\n    ```yaml\n    default_model: "ollama/qwen:4b"\n    max_history_tokens: 4000\n    permission_policy: "ask" # can be "ask", "always", or "never"\n    ```\n4.  Set the required environment variables. For example, if you are using Ollama, you might need to set the `OLLAMA_BASE_URL`. If you are using OpenAI, you need to set `OPENAI_API_KEY`.\n\n## Usage\n\nTo run the agent, simply execute the `agent.py` script:\n```bash\npython3 agent.py\n```\n\n## Testing\n\nTo run the tests, execute the following command:\n```bash\npython3 -m unittest tests/test_modules.py\n```\n\n## Modules\n\n-   `agent.py`: The main entry point of the application.\n-   `modules/chat.py`: Handles the communication with the AI model.\n-   `modules/config_loader.py`: Loads the configuration from the `config.yaml` file.\n-   `modules/context.py`: Manages the files in the current context.\n-   `modules/defaults.py`: Contains the default system prompt.\n-   `modules/files.py`: Provides file operation functionalities.\n-   `modules/history.py`: Manages the conversation history.\n-   `modules/policy.py`: Handles the permission policy.\n-   `modules/processor.py`: Processes the actions received from the AI.\n-   `modules/session.py`: Manages the sessions.\n-   `modules/storage.py`: (Does not exist anymore)\n-   `modules/ui.py`: Handles the user interface.\n\n## Actions\n\nThe agent can perform the following actions:\n-   `run_command`: Executes a shell command.\n-   `read_file`: Reads the content of a file.\n-   `write_file`: Writes content to a file, overwriting it if it exists.\n-   `create_file`: Creates a new file.\n-   `edit_file`: Edits a file by searching and replacing text.\n''
+2026-01-06 15:32:15,877 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=system, Content=''SYSTEM RESULT: # Angelica-AI Agent\n\nAngelica-AI is a Python-based AI agent that can perform various tasks based on user commands. It is designed to be extensible, with a modular architecture that allows for easy addition of new functionalities.\n\n## Features\n\n-   **Modular Architecture**: The agent is divided into several modules, each responsible for a specific functionality. This makes the code easy to understand, maintain, and extend.\n-   **Multiple AI Providers**: The agent can be configured to use different AI providers, such as OpenAI, DeepSeek, Ollama, and Gemini.\n-   **File Operations**: The agent can read, write, create, and edit files on the local filesystem.\n-   **Command Execution**: The agent can execute shell commands and return the output.\n-   **Permission Policy**: The agent has a permission policy that can be configured to "ask", "always", or "never" allow sensitive operations.\n-   **Session Management**: The agent can save and load sessions, allowing to continue a conversation from where you left off.\n-   **Context Management**: The agent can keep track of the files in the current context, which is provided to the AI model with each request.\n\n## Installation\n\n1.  Clone the repository:\n    ```bash\n    git clone https://github.com/your-username/angelica-ai.git\n    cd angelica-ai\n    ```\n2.  Create a virtual environment:\n    ```bash\n    python3 -m venv venv\n    source venv/bin/activate\n    ```\n3.  Install the dependencies:\n    ```bash\n    pip install -r requirements.txt\n    ```\n\n## Configuration\n\nThe agent is configured using a `config.yaml` file located in the `~/.config/angelica-ai` directory. You need to create this file and add the necessary configuration.\n\n1.  Create the configuration directory:\n    ```bash\n    mkdir -p ~/.config/angelica-ai\n    ```\n2.  Create the `config.yaml` file:\n    ```bash\n    touch ~/.config/angelica-ai/config.yaml\n    ```\n3.  Add your configuration to the file. Here is an example:\n    ```yaml\n    default_model: "ollama/qwen:4b"\n    max_history_tokens: 4000\n    permission_policy: "ask" # can be "ask", "always", or "never"\n    ```\n4.  Set the required environment variables. For example, if you are using Ollama, you might need to set the `OLLAMA_BASE_URL`. If you are using OpenAI, you need to set `OPENAI_API_KEY`.\n\n## Usage\n\nTo run the agent, simply execute the `agent.py` script:\n```bash\npython3 agent.py\n```\n\n## Testing\n\nTo run the tests, execute the following command:\n```bash\npython3 -m unittest tests/test_modules.py\n```\n\n## Modules\n\n-   `agent.py`: The main entry point of the application.\n-   `modules/chat.py`: Handles the communication with the AI model.\n-   `modules/config_loader.py`: Loads the configuration from the `config.yaml` file.\n-   `modules/context.py`: Manages the files in the current context.\n-   `modules/defaults.py`: Contains the default system prompt.\n-   `modules/files.py`: Provides file operation functionalities.\n-   `modules/history.py`: Manages the conversation history.\n-   `modules/policy.py`: Handles the permission policy.\n-   `modules/processor.py`: Processes the actions received from the AI.\n-   `modules/session.py`: Manages the sessions.\n-   `modules/storage.py`: (Does not exist anymore)\n-   `modules/ui.py`: Handles the user interface.\n\n## Actions\n\nThe agent can perform the following actions:\n-   `run_command`: Executes a shell command.\n-   `read_file`: Reads the content of a file.\n-   `write_file`: Writes content to a file, overwriting it if it exists.\n-   `create_file`: Creates a new file.\n-   `edit_file`: Edits a file by searching and replacing text.''
+2026-01-06 15:32:15,877 - OUTGOING:
+SYSTEM RESULT: # Angelica-AI Agent
+
+Angelica-AI is a Python-based AI agent that can perform various tasks based on user commands. It is designed to be extensible, with a modular architecture that allows for easy addition of new functionalities.
+
+## Features
+
+-   **Modular Architecture**: The agent is divided into several modules, each responsible for a specific functionality. This makes the code easy to understand, maintain, and extend.
+-   **Multiple AI Providers**: The agent can be configured to use different AI providers, such as OpenAI, DeepSeek, Ollama, and Gemini.
+-   **File Operations**: The agent can read, write, create, and edit files on the local filesystem.
+-   **Command Execution**: The agent can execute shell commands and return the output.
+-   **Permission Policy**: The agent has a permission policy that can be configured to "ask", "always", or "never" allow sensitive operations.
+-   **Session Management**: The agent can save and load sessions, allowing to continue a conversation from where you left off.
+-   **Context Management**: The agent can keep track of the files in the current context, which is provided to the AI model with each request.
+
+## Installation
+
+1.  Clone the repository:
+    ```bash
+    git clone https://github.com/your-username/angelica-ai.git
+    cd angelica-ai
+    ```
+2.  Create a virtual environment:
+    ```bash
+    python3 -m venv venv
+    source venv/bin/activate
+    ```
+3.  Install the dependencies:
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+## Configuration
+
+The agent is configured using a `config.yaml` file located in the `~/.config/angelica-ai` directory. You need to create this file and add the necessary configuration.
+
+1.  Create the configuration directory:
+    ```bash
+    mkdir -p ~/.config/angelica-ai
+    ```
+2.  Create the `config.yaml` file:
+    ```bash
+    touch ~/.config/angelica-ai/config.yaml
+    ```
+3.  Add your configuration to the file. Here is an example:
+    ```yaml
+    default_model: "ollama/qwen:4b"
+    max_history_tokens: 4000
+    permission_policy: "ask" # can be "ask", "always", or "never"
+    ```
+4.  Set the required environment variables. For example, if you are using Ollama, you might need to set the `OLLAMA_BASE_URL`. If you are using OpenAI, you need to set `OPENAI_API_KEY`.
+
+## Usage
+
+To run the agent, simply execute the `agent.py` script:
+```bash
+python3 agent.py
+```
+
+## Testing
+
+To run the tests, execute the following command:
+```bash
+python3 -m unittest tests/test_modules.py
+```
+
+## Modules
+
+-   `agent.py`: The main entry point of the application.
+-   `modules/chat.py`: Handles the communication with the AI model.
+-   `modules/config_loader.py`: Loads the configuration from the `config.yaml` file.
+-   `modules/context.py`: Manages the files in the current context.
+-   `modules/defaults.py`: Contains the default system prompt.
+-   `modules/files.py`: Provides file operation functionalities.
+-   `modules/history.py`: Manages the conversation history.
+-   `modules/policy.py`: Handles the permission policy.
+-   `modules/processor.py`: Processes the actions received from the AI.
+-   `modules/session.py`: Manages the sessions.
+-   `modules/storage.py`: (Does not exist anymore)
+-   `modules/ui.py`: Handles the user interface.
+
+## Actions
+
+The agent can perform the following actions:
+-   `run_command`: Executes a shell command.
+-   `read_file`: Reads the content of a file.
+-   `write_file`: Writes content to a file, overwriting it if it exists.
+-   `create_file`: Creates a new file.
+-   `edit_file`: Edits a file by searching and replacing text.
+
+2026-01-06 15:32:24,440 - INCOMING:
+<think>README.md досить детальний, але є деякі невідповідності з фактичною структурою проекту. Наприклад, він згадує modules/ui.py, але в структурі є modules/tui_ui.py. Також згадує modules/storage.py, якого немає. Можна оновити документацію.
+
+Тепер перевірю requirements.txt, щоб зрозуміти залежності.</think>
+
+{"type": "read_file", "path": "requirements.txt", "before_execution": "Читаю requirements.txt для перевірки залежностей", "during_execution": "Читання файлу...", "after_execution": "requirements.txt прочитано", "return_control": true}
+2026-01-06 15:32:24,440 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=assistant, Content=''<think>README.md досить детальний, але є деякі невідповідності з фактичною структурою проекту. Наприклад, він згадує modules/ui.py, але в структурі є modules/tui_ui.py. Також згадує modules/storage.py, якого немає. Можна оновити документацію.\n\nТепер перевірю requirements.txt, щоб зрозуміти залежності.</think>\n\n{"type": "read_file", "path": "requirements.txt", "before_execution": "Читаю requirements.txt для перевірки залежностей", "during_execution": "Читання файлу...", "after_execution": "requirements.txt прочитано", "return_control": true}''
+2026-01-06 15:32:24,440 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=assistant, Content=''<think>README.md досить детальний, але є деякі невідповідності з фактичною структурою проекту. Наприклад, він згадує modules/ui.py, але в структурі є modules/tui_ui.py. Також згадує modules/storage.py, якого немає. Можна оновити документацію.\n\nТепер перевірю requirements.txt, щоб зрозуміти залежності.</think>\n\n{"type": "read_file", "path": "requirements.txt", "before_execution": "Читаю requirements.txt для перевірки залежностей", "during_execution": "Читання файлу...", "after_execution": "requirements.txt прочитано", "return_control": true}''
+2026-01-06 15:32:24,440 - DEBUG: _add_message called with classes: chat-message thought-message
+2026-01-06 15:32:24,441 - DEBUG: Message mounted and scrolled
+2026-01-06 15:32:24,441 - DEBUG: _add_message called with classes: chat-message
+2026-01-06 15:32:24,442 - DEBUG: Message mounted and scrolled
+2026-01-06 15:32:24,442 - DEBUG: confirm_action called for: read_file
+2026-01-06 15:32:24,442 - DEBUG: Entering _pick_screen_main_thread with screen: ConfirmationScreen()
+2026-01-06 15:32:24,448 - DEBUG: Screen pushed, awaiting future
+2026-01-06 15:32:25,885 - DEBUG: Screen callback triggered with result: True
+2026-01-06 15:32:25,891 - DEBUG: Future resolved in _pick_screen_main_thread: True
+2026-01-06 15:32:25,892 - DEBUG: _add_message called with classes: chat-message
+2026-01-06 15:32:25,892 - DEBUG: Message mounted and scrolled
+2026-01-06 15:32:25,892 - DEBUG: _add_message called with classes: chat-message result-message
+2026-01-06 15:32:25,893 - DEBUG: Message mounted and scrolled
+2026-01-06 15:32:25,893 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=system, Content=''SYSTEM RESULT: rich\npygments\nopenai\nPyYAML \nollama\npython-dotenv\ntextual\n''
+2026-01-06 15:32:25,893 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=system, Content=''SYSTEM RESULT: rich\npygments\nopenai\nPyYAML \nollama\npython-dotenv\ntextual''
+2026-01-06 15:32:25,893 - OUTGOING:
+SYSTEM RESULT: rich
+pygments
+openai
+PyYAML 
+ollama
+python-dotenv
+textual
+
+2026-01-06 15:32:34,838 - INCOMING:
+<think>requirements.txt містить базові залежності, але немає версій. Можна додати версії для відтворюваності. Також можна додати dev-залежності для тестування та linting (наприклад, pytest, black, flake8, mypy).
+
+Тепер перевірю головний файл проекту. Судячи зі структури, є app.py та tui.py. Перевірю app.py.</think>
+
+{"type": "read_file", "path": "app.py", "before_execution": "Читаю app.py для розуміння головного файлу проекту", "during_execution": "Читання файлу...", "after_execution": "app.py прочитано", "return_control": true}
+2026-01-06 15:32:34,838 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=assistant, Content=''<think>requirements.txt містить базові залежності, але немає версій. Можна додати версії для відтворюваності. Також можна додати dev-залежності для тестування та linting (наприклад, pytest, black, flake8, mypy).\n\nТепер перевірю головний файл проекту. Судячи зі структури, є app.py та tui.py. Перевірю app.py.</think>\n\n{"type": "read_file", "path": "app.py", "before_execution": "Читаю app.py для розуміння головного файлу проекту", "during_execution": "Читання файлу...", "after_execution": "app.py прочитано", "return_control": true}''
+2026-01-06 15:32:34,838 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=assistant, Content=''<think>requirements.txt містить базові залежності, але немає версій. Можна додати версії для відтворюваності. Також можна додати dev-залежності для тестування та linting (наприклад, pytest, black, flake8, mypy).\n\nТепер перевірю головний файл проекту. Судячи зі структури, є app.py та tui.py. Перевірю app.py.</think>\n\n{"type": "read_file", "path": "app.py", "before_execution": "Читаю app.py для розуміння головного файлу проекту", "during_execution": "Читання файлу...", "after_execution": "app.py прочитано", "return_control": true}''
+2026-01-06 15:32:34,838 - DEBUG: _add_message called with classes: chat-message thought-message
+2026-01-06 15:32:34,839 - DEBUG: Message mounted and scrolled
+2026-01-06 15:32:34,839 - DEBUG: _add_message called with classes: chat-message
+2026-01-06 15:32:34,839 - DEBUG: Message mounted and scrolled
+2026-01-06 15:32:34,839 - DEBUG: confirm_action called for: read_file
+2026-01-06 15:32:34,840 - DEBUG: Entering _pick_screen_main_thread with screen: ConfirmationScreen()
+2026-01-06 15:32:34,845 - DEBUG: Screen pushed, awaiting future
+2026-01-06 15:32:36,159 - DEBUG: Screen callback triggered with result: True
+2026-01-06 15:32:36,166 - DEBUG: Future resolved in _pick_screen_main_thread: True
+2026-01-06 15:32:36,166 - DEBUG: _add_message called with classes: chat-message
+2026-01-06 15:32:36,167 - DEBUG: Message mounted and scrolled
+2026-01-06 15:32:36,167 - DEBUG: _add_message called with classes: chat-message result-message
+2026-01-06 15:32:36,167 - DEBUG: Message mounted and scrolled
+2026-01-06 15:32:36,167 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=system, Content=''SYSTEM RESULT: from textual.app import App, ComposeResult\nfrom textual.containers import Vertical, Container\nfrom textual.widgets import Input, ListView, ListItem, Label\nfrom textual.reactive import reactive\n\n\nclass ContextPicker(Container):\n    visible = reactive(False)\n\n    CONTEXT_SIZES = [4096, 8192, 16384, 32768]\n\n    def compose(self) -> ComposeResult:\n        yield ListView(\n            *[\n                ListItem(Label(str(size)), id=f"ctx_{size}")\n                for size in self.CONTEXT_SIZES\n            ],\n            id="context-list",\n        )\n\n    def show(self) -> None:\n        self.styles.display = "block"\n        self.visible = True\n\n    def hide(self) -> None:\n        self.styles.display = "none"\n        self.visible = False\n\n\nclass DemoApp(App):\n    CSS = """\n    Screen {\n        layout: vertical;\n    }\n\n    #main {\n        height: 1fr;\n    }\n\n    #context-picker {\n        background: #1e1e1e;\n        border: solid #3a3a3a;\n        width: 32;\n        max-height: 6;\n        layer: overlay;\n        dock: bottom;\n        margin-bottom: 1;\n        display: none;\n    }\n\n    #command-input {\n        dock: bottom;\n    }\n    """\n\n    def compose(self) -> ComposeResult:\n        with Container(id="main"):\n            yield ContextPicker(id="context-picker")\n        yield Input(\n            placeholder="Type /context",\n            id="command-input",\n        )\n\n    def on_input_submitted(self, event: Input.Submitted) -> None:\n        if event.value.strip() == "/context":\n            self.query_one("#context-picker", ContextPicker).show()\n\n    def on_list_view_selected(self, event: ListView.Selected) -> None:\n        size = int(event.item.id.split("_")[1])\n        picker = self.query_one("#context-picker", ContextPicker)\n        picker.hide()\n        self.notify(f"Selected context: {size}")\n\n    def on_key(self, event) -> None:\n        if event.key == "escape":\n            self.query_one("#context-picker", ContextPicker).hide()\n\n\nif __name__ == "__main__":\n    DemoApp().run()\n\n''
+2026-01-06 15:32:36,167 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=system, Content=''SYSTEM RESULT: from textual.app import App, ComposeResult\nfrom textual.containers import Vertical, Container\nfrom textual.widgets import Input, ListView, ListItem, Label\nfrom textual.reactive import reactive\n\n\nclass ContextPicker(Container):\n    visible = reactive(False)\n\n    CONTEXT_SIZES = [4096, 8192, 16384, 32768]\n\n    def compose(self) -> ComposeResult:\n        yield ListView(\n            *[\n                ListItem(Label(str(size)), id=f"ctx_{size}")\n                for size in self.CONTEXT_SIZES\n            ],\n            id="context-list",\n        )\n\n    def show(self) -> None:\n        self.styles.display = "block"\n        self.visible = True\n\n    def hide(self) -> None:\n        self.styles.display = "none"\n        self.visible = False\n\n\nclass DemoApp(App):\n    CSS = """\n    Screen {\n        layout: vertical;\n    }\n\n    #main {\n        height: 1fr;\n    }\n\n    #context-picker {\n        background: #1e1e1e;\n        border: solid #3a3a3a;\n        width: 32;\n        max-height: 6;\n        layer: overlay;\n        dock: bottom;\n        margin-bottom: 1;\n        display: none;\n    }\n\n    #command-input {\n        dock: bottom;\n    }\n    """\n\n    def compose(self) -> ComposeResult:\n        with Container(id="main"):\n            yield ContextPicker(id="context-picker")\n        yield Input(\n            placeholder="Type /context",\n            id="command-input",\n        )\n\n    def on_input_submitted(self, event: Input.Submitted) -> None:\n        if event.value.strip() == "/context":\n            self.query_one("#context-picker", ContextPicker).show()\n\n    def on_list_view_selected(self, event: ListView.Selected) -> None:\n        size = int(event.item.id.split("_")[1])\n        picker = self.query_one("#context-picker", ContextPicker)\n        picker.hide()\n        self.notify(f"Selected context: {size}")\n\n    def on_key(self, event) -> None:\n        if event.key == "escape":\n            self.query_one("#context-picker", ContextPicker).hide()\n\n\nif __name__ == "__main__":\n    DemoApp().run()''
+2026-01-06 15:32:36,168 - OUTGOING:
+SYSTEM RESULT: from textual.app import App, ComposeResult
+from textual.containers import Vertical, Container
+from textual.widgets import Input, ListView, ListItem, Label
+from textual.reactive import reactive
+
+
+class ContextPicker(Container):
+    visible = reactive(False)
+
+    CONTEXT_SIZES = [4096, 8192, 16384, 32768]
+
+    def compose(self) -> ComposeResult:
+        yield ListView(
+            *[
+                ListItem(Label(str(size)), id=f"ctx_{size}")
+                for size in self.CONTEXT_SIZES
+            ],
+            id="context-list",
+        )
+
+    def show(self) -> None:
+        self.styles.display = "block"
+        self.visible = True
+
+    def hide(self) -> None:
+        self.styles.display = "none"
+        self.visible = False
+
+
+class DemoApp(App):
+    CSS = """
+    Screen {
+        layout: vertical;
+    }
+
+    #main {
+        height: 1fr;
+    }
+
+    #context-picker {
+        background: #1e1e1e;
+        border: solid #3a3a3a;
+        width: 32;
+        max-height: 6;
+        layer: overlay;
+        dock: bottom;
+        margin-bottom: 1;
+        display: none;
+    }
+
+    #command-input {
+        dock: bottom;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        with Container(id="main"):
+            yield ContextPicker(id="context-picker")
+        yield Input(
+            placeholder="Type /context",
+            id="command-input",
+        )
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.value.strip() == "/context":
+            self.query_one("#context-picker", ContextPicker).show()
+
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        size = int(event.item.id.split("_")[1])
+        picker = self.query_one("#context-picker", ContextPicker)
+        picker.hide()
+        self.notify(f"Selected context: {size}")
+
+    def on_key(self, event) -> None:
+        if event.key == "escape":
+            self.query_one("#context-picker", ContextPicker).hide()
+
+
+if __name__ == "__main__":
+    DemoApp().run()
+
+
+2026-01-06 15:32:43,353 - INCOMING:
+<think>app.py виглядає як демо-додаток для TUI, а не головний файл проекту. Можливо, це тестовий файл. Перевірю tui.py, який, ймовірно, є основним TUI додатком.</think>
+
+{"type": "read_file", "path": "tui.py", "before_execution": "Читаю tui.py, який може бути основним TUI додатком", "during_execution": "Читання файлу...", "after_execution": "tui.py прочитано", "return_control": true}
+2026-01-06 15:32:43,353 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=assistant, Content=''<think>app.py виглядає як демо-додаток для TUI, а не головний файл проекту. Можливо, це тестовий файл. Перевірю tui.py, який, ймовірно, є основним TUI додатком.</think>\n\n{"type": "read_file", "path": "tui.py", "before_execution": "Читаю tui.py, який може бути основним TUI додатком", "during_execution": "Читання файлу...", "after_execution": "tui.py прочитано", "return_control": true}''
+2026-01-06 15:32:43,353 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=assistant, Content=''<think>app.py виглядає як демо-додаток для TUI, а не головний файл проекту. Можливо, це тестовий файл. Перевірю tui.py, який, ймовірно, є основним TUI додатком.</think>\n\n{"type": "read_file", "path": "tui.py", "before_execution": "Читаю tui.py, який може бути основним TUI додатком", "during_execution": "Читання файлу...", "after_execution": "tui.py прочитано", "return_control": true}''
+2026-01-06 15:32:43,353 - DEBUG: _add_message called with classes: chat-message thought-message
+2026-01-06 15:32:43,354 - DEBUG: Message mounted and scrolled
+2026-01-06 15:32:43,354 - DEBUG: _add_message called with classes: chat-message
+2026-01-06 15:32:43,354 - DEBUG: Message mounted and scrolled
+2026-01-06 15:32:43,355 - DEBUG: confirm_action called for: read_file
+2026-01-06 15:32:43,355 - DEBUG: Entering _pick_screen_main_thread with screen: ConfirmationScreen()
+2026-01-06 15:32:43,361 - DEBUG: Screen pushed, awaiting future
+2026-01-06 15:32:44,851 - DEBUG: Screen callback triggered with result: True
+2026-01-06 15:32:44,858 - DEBUG: Future resolved in _pick_screen_main_thread: True
+2026-01-06 15:32:44,858 - DEBUG: _add_message called with classes: chat-message
+2026-01-06 15:32:44,859 - DEBUG: Message mounted and scrolled
+2026-01-06 15:32:44,859 - DEBUG: _add_message called with classes: chat-message result-message
+2026-01-06 15:32:44,859 - DEBUG: Message mounted and scrolled
+2026-01-06 15:32:44,859 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=system, Content=''SYSTEM RESULT: import os\nimport asyncio\nfrom textual.app import App, ComposeResult\nfrom textual.widgets import Header, Footer, Input, Static, LoadingIndicator\nfrom textual.containers import Container, VerticalScroll, Horizontal\nfrom agent import AngelicaAgent\nfrom modules.tui_ui import TuiUI\nfrom modules.ui_components.history_input import HistoryInput\nfrom modules.ui_components.status_bar import StatusBar\n\nclass TUI(App):\n    CSS_PATH = "tui.css"\n    BINDINGS = [\n        ("d", "toggle_dark", "Toggle dark mode"),\n        ("q", "quit", "Quit"),\n        ("escape", "interrupt_agent", "Interrupt"),\n    ]\n    VERSION = "0.1.0" # Define version here\n\n    def __init__(self, agent: AngelicaAgent):\n        super().__init__()\n        self.agent = agent\n\n    def compose(self) -> ComposeResult:\n        yield Header()\n        with Container():\n            yield VerticalScroll(id="history")\n            yield StatusBar(id="loading-container")\n            yield Horizontal(\n                Static("> "),\n                HistoryInput(placeholder="Your message...", id="input"),\n                id="input-container"\n            )\n        yield Footer()\n\n    async def on_mount(self) -> None:\n        self.ui = TuiUI(self, self.query_one("#history", VerticalScroll), self.query_one(StatusBar))\n        self.agent.ui = self.ui # Передаємо UI до агента\n        \n        # Check if self.agent.chat is None, if so, get_chat_provider failed during agent init\n        model_name = self.agent.chat.model_name if self.agent.chat else "N/A (Provider initialization failed)"\n        # Set the full title including the model name\n        await self.ui.update_header(f"{model_name}")\n        current_directory = os.getcwd()\n        \n        startup_message = (\n            f"✨ Angelica-AI (v{self.VERSION})\\n"\n            f"Model: {model_name}\\n"\n            f"Working Directory: {current_directory}"\n        )\n        await self.ui.print_system(startup_message)\n        await self.ui.print_system("") # Add an empty line after the startup message\n        self.query_one("#input", HistoryInput).focus()\n\n    async def _handle_context_command(self):\n        """Handles the /context command in a worker to prevent blocking."""\n        self.agent.comm_log.info("DEBUG: Worker started for /context")\n        self.agent.comm_log.info("`/context` command received.")\n        \n        options = ["small", "medium", "large"]\n        current = self.agent.context_size\n        self.agent.comm_log.info("DEBUG: Calling ui.pick_option from worker")\n        \n        try:\n            selection = await self.ui.pick_option(\n                "Choose context size (Esc to cancel):", \n                options,\n                current_value=current\n            )\n            self.agent.comm_log.info(f"DEBUG: pick_option returned: {selection}")\n            \n            if selection:\n                self.agent.set_context_size(selection)\n            else:\n                 await self.ui.print_system("Selection cancelled.")\n        except Exception as e:\n            self.agent.comm_log.error(f"ERROR in _handle_context_command: {e}")\n\n    async def on_input_submitted(self, message: Input.Submitted) -> None:\n        """Called when the user submits a message."""\n        user_input = message.value.strip()\n        \n        self.agent.comm_log.info(f"DEBUG: on_input_submitted called with: \'{user_input}\'")\n        \n        # Add to input history if not empty\n        if user_input:\n            if hasattr(message.input, \'add_entry\'):\n                message.input.add_entry(user_input)\n            else:\n                self.agent.comm_log.warning("WARNING: Input widget does not support add_entry")\n            \n        message.input.value = ""\n\n        if not user_input:\n            return\n        \n        # --- COMMANDS ---\n\n        if user_input == "/models":\n            self.agent.comm_log.info("`/models` command received.")\n            \n            # Fetch models\n            available_models = self.agent.settings.get("available_models", [])\n            if not available_models:\n                await self.ui.print_error("No available models configured in settings.")\n                return\n\n            # Helper to run model selection in a worker\n            async def _select_model_worker():\n                self.agent.comm_log.info("DEBUG: Starting model selection worker")\n                # Identify current model\n                current = self.agent.chat.model_name\n                \n                # Show picker with current value\n                selection = await self.ui.pick_option(\n                    f"Select AI Model (Current: {current})", \n                    available_models,\n                    current_value=current\n                )\n                \n                if selection:\n                    # Switch model\n                    await self.agent.switch_model(selection)\n                else:\n                    await self.ui.print_system("Model selection cancelled.")\n\n            # Run in worker to avoid blocking\n            self.run_worker(_select_model_worker(), exclusive=True)\n            return\n\n        if user_input == "/context":\n            self.agent.comm_log.info("DEBUG: Scheduling _handle_context_command worker")\n            self.run_worker(self._handle_context_command(), exclusive=True)\n            return\n\n        # --- DEFAULT: CHAT PROMPT ---\n        try:\n            self.agent.comm_log.info(f"DEBUG: Processing regular prompt: \'{user_input}\'")\n            await self.ui.print_message(user_input, role="user")\n            self.agent.comm_log.info("DEBUG: Message printed to UI, starting agent worker")\n            self.run_worker(self.agent.process_user_input(user_input), exclusive=True)\n            self.agent.comm_log.info("DEBUG: Agent worker scheduled")\n        except Exception as e:\n            self.agent.comm_log.error(f"ERROR in prompt processing: {e}")\n            await self.ui.print_error(f"Critical error: {e}")\n\n    async def action_interrupt_agent(self) -> None:\n        """Interrupts the agent\'s current operation."""\n        await self.agent.interrupt()\n\nif __name__ == "__main__":\n    agent = AngelicaAgent() # Instantiate agent without ui\n    app = TUI(agent) # Pass the agent to TUI\n    app.run()''
+2026-01-06 15:32:44,859 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=system, Content=''SYSTEM RESULT: import os\nimport asyncio\nfrom textual.app import App, ComposeResult\nfrom textual.widgets import Header, Footer, Input, Static, LoadingIndicator\nfrom textual.containers import Container, VerticalScroll, Horizontal\nfrom agent import AngelicaAgent\nfrom modules.tui_ui import TuiUI\nfrom modules.ui_components.history_input import HistoryInput\nfrom modules.ui_components.status_bar import StatusBar\n\nclass TUI(App):\n    CSS_PATH = "tui.css"\n    BINDINGS = [\n        ("d", "toggle_dark", "Toggle dark mode"),\n        ("q", "quit", "Quit"),\n        ("escape", "interrupt_agent", "Interrupt"),\n    ]\n    VERSION = "0.1.0" # Define version here\n\n    def __init__(self, agent: AngelicaAgent):\n        super().__init__()\n        self.agent = agent\n\n    def compose(self) -> ComposeResult:\n        yield Header()\n        with Container():\n            yield VerticalScroll(id="history")\n            yield StatusBar(id="loading-container")\n            yield Horizontal(\n                Static("> "),\n                HistoryInput(placeholder="Your message...", id="input"),\n                id="input-container"\n            )\n        yield Footer()\n\n    async def on_mount(self) -> None:\n        self.ui = TuiUI(self, self.query_one("#history", VerticalScroll), self.query_one(StatusBar))\n        self.agent.ui = self.ui # Передаємо UI до агента\n        \n        # Check if self.agent.chat is None, if so, get_chat_provider failed during agent init\n        model_name = self.agent.chat.model_name if self.agent.chat else "N/A (Provider initialization failed)"\n        # Set the full title including the model name\n        await self.ui.update_header(f"{model_name}")\n        current_directory = os.getcwd()\n        \n        startup_message = (\n            f"✨ Angelica-AI (v{self.VERSION})\\n"\n            f"Model: {model_name}\\n"\n            f"Working Directory: {current_directory}"\n        )\n        await self.ui.print_system(startup_message)\n        await self.ui.print_system("") # Add an empty line after the startup message\n        self.query_one("#input", HistoryInput).focus()\n\n    async def _handle_context_command(self):\n        """Handles the /context command in a worker to prevent blocking."""\n        self.agent.comm_log.info("DEBUG: Worker started for /context")\n        self.agent.comm_log.info("`/context` command received.")\n        \n        options = ["small", "medium", "large"]\n        current = self.agent.context_size\n        self.agent.comm_log.info("DEBUG: Calling ui.pick_option from worker")\n        \n        try:\n            selection = await self.ui.pick_option(\n                "Choose context size (Esc to cancel):", \n                options,\n                current_value=current\n            )\n            self.agent.comm_log.info(f"DEBUG: pick_option returned: {selection}")\n            \n            if selection:\n                self.agent.set_context_size(selection)\n            else:\n                 await self.ui.print_system("Selection cancelled.")\n        except Exception as e:\n            self.agent.comm_log.error(f"ERROR in _handle_context_command: {e}")\n\n    async def on_input_submitted(self, message: Input.Submitted) -> None:\n        """Called when the user submits a message."""\n        user_input = message.value.strip()\n        \n        self.agent.comm_log.info(f"DEBUG: on_input_submitted called with: \'{user_input}\'")\n        \n        # Add to input history if not empty\n        if user_input:\n            if hasattr(message.input, \'add_entry\'):\n                message.input.add_entry(user_input)\n            else:\n                self.agent.comm_log.warning("WARNING: Input widget does not support add_entry")\n            \n        message.input.value = ""\n\n        if not user_input:\n            return\n        \n        # --- COMMANDS ---\n\n        if user_input == "/models":\n            self.agent.comm_log.info("`/models` command received.")\n            \n            # Fetch models\n            available_models = self.agent.settings.get("available_models", [])\n            if not available_models:\n                await self.ui.print_error("No available models configured in settings.")\n                return\n\n            # Helper to run model selection in a worker\n            async def _select_model_worker():\n                self.agent.comm_log.info("DEBUG: Starting model selection worker")\n                # Identify current model\n                current = self.agent.chat.model_name\n                \n                # Show picker with current value\n                selection = await self.ui.pick_option(\n                    f"Select AI Model (Current: {current})", \n                    available_models,\n                    current_value=current\n                )\n                \n                if selection:\n                    # Switch model\n                    await self.agent.switch_model(selection)\n                else:\n                    await self.ui.print_system("Model selection cancelled.")\n\n            # Run in worker to avoid blocking\n            self.run_worker(_select_model_worker(), exclusive=True)\n            return\n\n        if user_input == "/context":\n            self.agent.comm_log.info("DEBUG: Scheduling _handle_context_command worker")\n            self.run_worker(self._handle_context_command(), exclusive=True)\n            return\n\n        # --- DEFAULT: CHAT PROMPT ---\n        try:\n            self.agent.comm_log.info(f"DEBUG: Processing regular prompt: \'{user_input}\'")\n            await self.ui.print_message(user_input, role="user")\n            self.agent.comm_log.info("DEBUG: Message printed to UI, starting agent worker")\n            self.run_worker(self.agent.process_user_input(user_input), exclusive=True)\n            self.agent.comm_log.info("DEBUG: Agent worker scheduled")\n        except Exception as e:\n            self.agent.comm_log.error(f"ERROR in prompt processing: {e}")\n            await self.ui.print_error(f"Critical error: {e}")\n\n    async def action_interrupt_agent(self) -> None:\n        """Interrupts the agent\'s current operation."""\n        await self.agent.interrupt()\n\nif __name__ == "__main__":\n    agent = AngelicaAgent() # Instantiate agent without ui\n    app = TUI(agent) # Pass the agent to TUI\n    app.run()''
+2026-01-06 15:32:44,859 - OUTGOING:
+SYSTEM RESULT: import os
+import asyncio
+from textual.app import App, ComposeResult
+from textual.widgets import Header, Footer, Input, Static, LoadingIndicator
+from textual.containers import Container, VerticalScroll, Horizontal
+from agent import AngelicaAgent
+from modules.tui_ui import TuiUI
+from modules.ui_components.history_input import HistoryInput
+from modules.ui_components.status_bar import StatusBar
+
+class TUI(App):
+    CSS_PATH = "tui.css"
+    BINDINGS = [
+        ("d", "toggle_dark", "Toggle dark mode"),
+        ("q", "quit", "Quit"),
+        ("escape", "interrupt_agent", "Interrupt"),
+    ]
+    VERSION = "0.1.0" # Define version here
+
+    def __init__(self, agent: AngelicaAgent):
+        super().__init__()
+        self.agent = agent
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Container():
+            yield VerticalScroll(id="history")
+            yield StatusBar(id="loading-container")
+            yield Horizontal(
+                Static("> "),
+                HistoryInput(placeholder="Your message...", id="input"),
+                id="input-container"
+            )
+        yield Footer()
+
+    async def on_mount(self) -> None:
+        self.ui = TuiUI(self, self.query_one("#history", VerticalScroll), self.query_one(StatusBar))
+        self.agent.ui = self.ui # Передаємо UI до агента
+        
+        # Check if self.agent.chat is None, if so, get_chat_provider failed during agent init
+        model_name = self.agent.chat.model_name if self.agent.chat else "N/A (Provider initialization failed)"
+        # Set the full title including the model name
+        await self.ui.update_header(f"{model_name}")
+        current_directory = os.getcwd()
+        
+        startup_message = (
+            f"✨ Angelica-AI (v{self.VERSION})\n"
+            f"Model: {model_name}\n"
+            f"Working Directory: {current_directory}"
+        )
+        await self.ui.print_system(startup_message)
+        await self.ui.print_system("") # Add an empty line after the startup message
+        self.query_one("#input", HistoryInput).focus()
+
+    async def _handle_context_command(self):
+        """Handles the /context command in a worker to prevent blocking."""
+        self.agent.comm_log.info("DEBUG: Worker started for /context")
+        self.agent.comm_log.info("`/context` command received.")
+        
+        options = ["small", "medium", "large"]
+        current = self.agent.context_size
+        self.agent.comm_log.info("DEBUG: Calling ui.pick_option from worker")
+        
+        try:
+            selection = await self.ui.pick_option(
+                "Choose context size (Esc to cancel):", 
+                options,
+                current_value=current
+            )
+            self.agent.comm_log.info(f"DEBUG: pick_option returned: {selection}")
+            
+            if selection:
+                self.agent.set_context_size(selection)
+            else:
+                 await self.ui.print_system("Selection cancelled.")
+        except Exception as e:
+            self.agent.comm_log.error(f"ERROR in _handle_context_command: {e}")
+
+    async def on_input_submitted(self, message: Input.Submitted) -> None:
+        """Called when the user submits a message."""
+        user_input = message.value.strip()
+        
+        self.agent.comm_log.info(f"DEBUG: on_input_submitted called with: '{user_input}'")
+        
+        # Add to input history if not empty
+        if user_input:
+            if hasattr(message.input, 'add_entry'):
+                message.input.add_entry(user_input)
+            else:
+                self.agent.comm_log.warning("WARNING: Input widget does not support add_entry")
+            
+        message.input.value = ""
+
+        if not user_input:
+            return
+        
+        # --- COMMANDS ---
+
+        if user_input == "/models":
+            self.agent.comm_log.info("`/models` command received.")
+            
+            # Fetch models
+            available_models = self.agent.settings.get("available_models", [])
+            if not available_models:
+                await self.ui.print_error("No available models configured in settings.")
+                return
+
+            # Helper to run model selection in a worker
+            async def _select_model_worker():
+                self.agent.comm_log.info("DEBUG: Starting model selection worker")
+                # Identify current model
+                current = self.agent.chat.model_name
+                
+                # Show picker with current value
+                selection = await self.ui.pick_option(
+                    f"Select AI Model (Current: {current})", 
+                    available_models,
+                    current_value=current
+                )
+                
+                if selection:
+                    # Switch model
+                    await self.agent.switch_model(selection)
+                else:
+                    await self.ui.print_system("Model selection cancelled.")
+
+            # Run in worker to avoid blocking
+            self.run_worker(_select_model_worker(), exclusive=True)
+            return
+
+        if user_input == "/context":
+            self.agent.comm_log.info("DEBUG: Scheduling _handle_context_command worker")
+            self.run_worker(self._handle_context_command(), exclusive=True)
+            return
+
+        # --- DEFAULT: CHAT PROMPT ---
+        try:
+            self.agent.comm_log.info(f"DEBUG: Processing regular prompt: '{user_input}'")
+            await self.ui.print_message(user_input, role="user")
+            self.agent.comm_log.info("DEBUG: Message printed to UI, starting agent worker")
+            self.run_worker(self.agent.process_user_input(user_input), exclusive=True)
+            self.agent.comm_log.info("DEBUG: Agent worker scheduled")
+        except Exception as e:
+            self.agent.comm_log.error(f"ERROR in prompt processing: {e}")
+            await self.ui.print_error(f"Critical error: {e}")
+
+    async def action_interrupt_agent(self) -> None:
+        """Interrupts the agent's current operation."""
+        await self.agent.interrupt()
+
+if __name__ == "__main__":
+    agent = AngelicaAgent() # Instantiate agent without ui
+    app = TUI(agent) # Pass the agent to TUI
+    app.run()
+2026-01-06 15:33:31,660 - INCOMING:
+<think>Тепер маю розуміння структури проекту. Запропоную конкретні покращення, організовані за категоріями. Потім можу реалізувати деякі з них, якщо користувач захоче.</think>
+
+Ось список покращень для проекту Angelica-AI:
+
+## 📚 **Документація**
+1. **Оновити README.md** - виправити невідповідності (немає modules/ui.py, є modules/tui_ui.py; немає modules/storage.py)
+2. **Додати docstrings** до всіх основних класів та функцій
+3. **Створити CONTRIBUTING.md** - гайд для розробників
+4. **Додати CHANGELOG.md** - відстеження змін версій
+
+## 🧪 **Тестування**
+1. **Розширити тестове покриття** - додати тести для:
+   - Модулів (chat.py, processor.py, context.py)
+   - UI компонентів
+   - Інтеграційні тести
+2. **Додати pytest** замість unittest для більш гнучкого тестування
+3. **Додати тести для TUI** з використанням textual-dev
+
+## 🛠 **Кодова якість**
+1. **Додати type hints** до всіх функцій та методів
+2. **Налаштувати pre-commit hooks** з:
+   - black (форматування)
+   - flake8 (лінтинг)
+   - mypy (перевірка типів)
+   - isort (сортування імпортів)
+3. **Додати .editorconfig** для узгодженості коду
+4. **Виправити імпорти** - деякі можуть бути невпорядковані
+
+## 📁 **Архітектура**
+1. **Рефакторинг modules/tui_ui.py** - може бути занадто великим класом
+2. **Винести логіку команд** з tui.py в окремий модуль (наприклад, modules/commands.py)
+3. **Покращити обробку помилок** - додати централізований error handler
+4. **Додати dependency injection** для кращої тестованості
+
+## ⚙️ **Конфігурація**
+1. **Додати версії до requirements.txt** для відтворюваності
+2. **Створити pyproject.toml** для сучасного управління проектом
+3. **Додати dev-залежності** (pytest, black, mypy тощо)
+4. **Покращити config_loader.py** - додати валідацію схем конфігурації
+
+## 🔧 **Функціональність**
+1. **Додати плагін систему** для розширення функціоналу
+2. **Покращити систему логування** - додати рівні логування, ротацію логів
+3. **Додати автодоповнення команд** в TUI
+4. **Реалізувати мультимовність** (інтернаціоналізацію)
+5. **Додати режим batch processing** для обробки скриптів
+
+## 🚀 **CI/CD**
+1. **Додати GitHub Actions** для:
+   - Автоматичного тестування
+   - Лінтування коду
+   - Створення релізів
+2. **Налаштувати автоматичне розгортання** (якщо це desktop додаток)
+3. **Додати code coverage** (codecov)
+
+## 📊 **Моніторинг**
+1. **Додати метрики виконання** (час відповіді, використання пам'яті)
+2. **Реалізувати health checks** для AI провайдерів
+3. **Додати аналітику використання** (анонімну)
+
+## 🎨 **UI/UX**
+1. **Покращити тему tui.css** - додати темну/світлу тему
+2. **Додати підтримку миші** в TUI
+3. **Реалізувати складніші UI компоненти** (таблиці, графіки)
+4. **Додати конфігураційний екран** в самому TUI
+
+## 🔐 **Безпека**
+1. **Покращити обробку секретів** (API ключі)
+2. **Додати sandbox для виконання команд**
+3. **Реалізувати аудит дій** (хто що виконав)
+
+---
+
+**Найпріоритетніші покращення:**
+1. Оновити документацію (README.md)
+2. Додати type hints та docstrings
+3. Розширити тестове покриття
+4. Додати pre-commit hooks для якості коду
+
+Бажаєте, щоб я реалізував якісь з цих покращень? Можу почати з найважливіших.
+2026-01-06 15:33:31,661 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=assistant, Content='"<think>Тепер маю розуміння структури проекту. Запропоную конкретні покращення, організовані за категоріями. Потім можу реалізувати деякі з них, якщо користувач захоче.</think>\n\nОсь список покращень для проекту Angelica-AI:\n\n## 📚 **Документація**\n1. **Оновити README.md** - виправити невідповідності (немає modules/ui.py, є modules/tui_ui.py; немає modules/storage.py)\n2. **Додати docstrings** до всіх основних класів та функцій\n3. **Створити CONTRIBUTING.md** - гайд для розробників\n4. **Додати CHANGELOG.md** - відстеження змін версій\n\n## 🧪 **Тестування**\n1. **Розширити тестове покриття** - додати тести для:\n   - Модулів (chat.py, processor.py, context.py)\n   - UI компонентів\n   - Інтеграційні тести\n2. **Додати pytest** замість unittest для більш гнучкого тестування\n3. **Додати тести для TUI** з використанням textual-dev\n\n## 🛠 **Кодова якість**\n1. **Додати type hints** до всіх функцій та методів\n2. **Налаштувати pre-commit hooks** з:\n   - black (форматування)\n   - flake8 (лінтинг)\n   - mypy (перевірка типів)\n   - isort (сортування імпортів)\n3. **Додати .editorconfig** для узгодженості коду\n4. **Виправити імпорти** - деякі можуть бути невпорядковані\n\n## 📁 **Архітектура**\n1. **Рефакторинг modules/tui_ui.py** - може бути занадто великим класом\n2. **Винести логіку команд** з tui.py в окремий модуль (наприклад, modules/commands.py)\n3. **Покращити обробку помилок** - додати централізований error handler\n4. **Додати dependency injection** для кращої тестованості\n\n## ⚙️ **Конфігурація**\n1. **Додати версії до requirements.txt** для відтворюваності\n2. **Створити pyproject.toml** для сучасного управління проектом\n3. **Додати dev-залежності** (pytest, black, mypy тощо)\n4. **Покращити config_loader.py** - додати валідацію схем конфігурації\n\n## 🔧 **Функціональність**\n1. **Додати плагін систему** для розширення функціоналу\n2. **Покращити систему логування** - додати рівні логування, ротацію логів\n3. **Додати автодоповнення команд** в TUI\n4. **Реалізувати мультимовність** (інтернаціоналізацію)\n5. **Додати режим batch processing** для обробки скриптів\n\n## 🚀 **CI/CD**\n1. **Додати GitHub Actions** для:\n   - Автоматичного тестування\n   - Лінтування коду\n   - Створення релізів\n2. **Налаштувати автоматичне розгортання** (якщо це desktop додаток)\n3. **Додати code coverage** (codecov)\n\n## 📊 **Моніторинг**\n1. **Додати метрики виконання** (час відповіді, використання пам'яті)\n2. **Реалізувати health checks** для AI провайдерів\n3. **Додати аналітику використання** (анонімну)\n\n## 🎨 **UI/UX**\n1. **Покращити тему tui.css** - додати темну/світлу тему\n2. **Додати підтримку миші** в TUI\n3. **Реалізувати складніші UI компоненти** (таблиці, графіки)\n4. **Додати конфігураційний екран** в самому TUI\n\n## 🔐 **Безпека**\n1. **Покращити обробку секретів** (API ключі)\n2. **Додати sandbox для виконання команд**\n3. **Реалізувати аудит дій** (хто що виконав)\n\n---\n\n**Найпріоритетніші покращення:**\n1. Оновити документацію (README.md)\n2. Додати type hints та docstrings\n3. Розширити тестове покриття\n4. Додати pre-commit hooks для якості коду\n\nБажаєте, щоб я реалізував якісь з цих покращень? Можу почати з найважливіших."'
+2026-01-06 15:33:31,661 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=assistant, Content='"<think>Тепер маю розуміння структури проекту. Запропоную конкретні покращення, організовані за категоріями. Потім можу реалізувати деякі з них, якщо користувач захоче.</think>\n\nОсь список покращень для проекту Angelica-AI:\n\n## 📚 **Документація**\n1. **Оновити README.md** - виправити невідповідності (немає modules/ui.py, є modules/tui_ui.py; немає modules/storage.py)\n2. **Додати docstrings** до всіх основних класів та функцій\n3. **Створити CONTRIBUTING.md** - гайд для розробників\n4. **Додати CHANGELOG.md** - відстеження змін версій\n\n## 🧪 **Тестування**\n1. **Розширити тестове покриття** - додати тести для:\n   - Модулів (chat.py, processor.py, context.py)\n   - UI компонентів\n   - Інтеграційні тести\n2. **Додати pytest** замість unittest для більш гнучкого тестування\n3. **Додати тести для TUI** з використанням textual-dev\n\n## 🛠 **Кодова якість**\n1. **Додати type hints** до всіх функцій та методів\n2. **Налаштувати pre-commit hooks** з:\n   - black (форматування)\n   - flake8 (лінтинг)\n   - mypy (перевірка типів)\n   - isort (сортування імпортів)\n3. **Додати .editorconfig** для узгодженості коду\n4. **Виправити імпорти** - деякі можуть бути невпорядковані\n\n## 📁 **Архітектура**\n1. **Рефакторинг modules/tui_ui.py** - може бути занадто великим класом\n2. **Винести логіку команд** з tui.py в окремий модуль (наприклад, modules/commands.py)\n3. **Покращити обробку помилок** - додати централізований error handler\n4. **Додати dependency injection** для кращої тестованості\n\n## ⚙️ **Конфігурація**\n1. **Додати версії до requirements.txt** для відтворюваності\n2. **Створити pyproject.toml** для сучасного управління проектом\n3. **Додати dev-залежності** (pytest, black, mypy тощо)\n4. **Покращити config_loader.py** - додати валідацію схем конфігурації\n\n## 🔧 **Функціональність**\n1. **Додати плагін систему** для розширення функціоналу\n2. **Покращити систему логування** - додати рівні логування, ротацію логів\n3. **Додати автодоповнення команд** в TUI\n4. **Реалізувати мультимовність** (інтернаціоналізацію)\n5. **Додати режим batch processing** для обробки скриптів\n\n## 🚀 **CI/CD**\n1. **Додати GitHub Actions** для:\n   - Автоматичного тестування\n   - Лінтування коду\n   - Створення релізів\n2. **Налаштувати автоматичне розгортання** (якщо це desktop додаток)\n3. **Додати code coverage** (codecov)\n\n## 📊 **Моніторинг**\n1. **Додати метрики виконання** (час відповіді, використання пам'яті)\n2. **Реалізувати health checks** для AI провайдерів\n3. **Додати аналітику використання** (анонімну)\n\n## 🎨 **UI/UX**\n1. **Покращити тему tui.css** - додати темну/світлу тему\n2. **Додати підтримку миші** в TUI\n3. **Реалізувати складніші UI компоненти** (таблиці, графіки)\n4. **Додати конфігураційний екран** в самому TUI\n\n## 🔐 **Безпека**\n1. **Покращити обробку секретів** (API ключі)\n2. **Додати sandbox для виконання команд**\n3. **Реалізувати аудит дій** (хто що виконав)\n\n---\n\n**Найпріоритетніші покращення:**\n1. Оновити документацію (README.md)\n2. Додати type hints та docstrings\n3. Розширити тестове покриття\n4. Додати pre-commit hooks для якості коду\n\nБажаєте, щоб я реалізував якісь з цих покращень? Можу почати з найважливіших."'
+2026-01-06 15:33:31,661 - DEBUG: _add_message called with classes: chat-message thought-message
+2026-01-06 15:33:31,662 - DEBUG: Message mounted and scrolled
+2026-01-06 15:33:31,662 - DEBUG: print_message (role=assistant): 'Ось список покращень для проекту Angelica-AI:
+
+## ...'
+2026-01-06 15:33:31,665 - DEBUG: _add_message called with classes: chat-message assistant-message
+2026-01-06 15:33:31,666 - DEBUG: Message mounted and scrolled
+2026-01-06 15:33:31,666 - DEBUG: print_message completed
+2026-01-06 15:33:31,666 - DEBUG: print_system: 'History too long (5790 tokens). Summarizing...'
+2026-01-06 15:33:31,666 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-06 15:33:31,666 - DEBUG: Message mounted and scrolled
+2026-01-06 15:33:44,245 - DEBUG: print_system: 'History summarized successfully.'
+2026-01-06 15:33:44,245 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-06 15:33:44,246 - DEBUG: Message mounted and scrolled
