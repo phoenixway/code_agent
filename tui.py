@@ -1,5 +1,6 @@
 import os
 import asyncio
+import shlex
 from textual.app import App, ComposeResult
 from textual.widgets import Header, Footer, Input, Static, LoadingIndicator
 from textual.containers import Container, VerticalScroll, Horizontal
@@ -95,6 +96,45 @@ class TUI(App):
             return
         
         # --- COMMANDS ---
+
+        if user_input.startswith("/add"):
+            self.agent.comm_log.info(f"`/add` command received: {user_input}")
+            try:
+                parts = shlex.split(user_input)
+                paths = parts[1:]
+                if not paths:
+                    await self.ui.print_error("Usage: /add <path1> [path2 ...]")
+                    return
+                
+                total_added = 0
+                for path in paths:
+                    count = self.agent.context_manager.add_path(path)
+                    total_added += count
+                    
+                await self.ui.print_system(f"✅ Added {total_added} file(s) to context.")
+            except Exception as e:
+                await self.ui.print_error(f"Error adding paths: {e}")
+            return
+
+        if user_input.startswith("/drop"):
+            self.agent.comm_log.info(f"`/drop` command received: {user_input}")
+            try:
+                parts = shlex.split(user_input)
+                paths = parts[1:]
+                
+                if not paths:
+                    # Clear all
+                    self.agent.context_manager.clear()
+                    await self.ui.print_system("🗑️ Context cleared (all files removed).")
+                else:
+                    total_removed = 0
+                    for path in paths:
+                        count = self.agent.context_manager.remove_path(path)
+                        total_removed += count
+                    await self.ui.print_system(f"🗑️ Removed {total_removed} file(s) from context.")
+            except Exception as e:
+                await self.ui.print_error(f"Error removing paths: {e}")
+            return
 
         if user_input == "/models":
             self.agent.comm_log.info("`/models` command received.")

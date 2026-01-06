@@ -55,13 +55,44 @@ class ContextManager:
         _build_tree(root_dir, 1)
         return "\n".join(output)
 
-    def add_file(self, path):
-        # Використовуємо твій існуючий FileModule
-        content = self.files.read_file(path)
-        if content:
-            self.basket[path] = content
-            return True
-        return False
+    def add_path(self, path):
+        """Додає файл або всі файли з папки до контексту."""
+        p = Path(path)
+        if not p.exists():
+            return 0
+
+        added_count = 0
+        
+        if p.is_file():
+            content = self.files.read_file(str(p))
+            if content:
+                self.basket[str(p)] = content
+                added_count = 1
+        elif p.is_dir():
+            # Додаємо всі файли з папки (тільки перший рівень, щоб не перевантажити)
+            ignore_list = self._get_ignore_list(p)
+            for item in p.iterdir():
+                if item.is_file() and item.name not in ignore_list:
+                    content = self.files.read_file(str(item))
+                    if content:
+                        self.basket[str(item)] = content
+                        added_count += 1
+        
+        return added_count
+
+    def remove_path(self, path):
+        """Видаляє шлях з контексту. Якщо папка - видаляє всі файли, що починаються з цього шляху."""
+        # Якщо точний збіг (файл)
+        if path in self.basket:
+            del self.basket[path]
+            return 1
+            
+        # Якщо це папка або частковий шлях
+        to_remove = [k for k in self.basket.keys() if k.startswith(path)]
+        count = len(to_remove)
+        for k in to_remove:
+            del self.basket[k]
+        return count
 
     def get_context_prompt(self):
         """Збирає структуру та вміст кошика в один промпт."""
@@ -76,10 +107,6 @@ class ContextManager:
                 files_content += f"FILE: {p}\n{c}\n---\n"
         
         return f"{structure}{files_content}"
-
-    # Решта методів без змін
-    def remove_file(self, path):
-        return self.basket.pop(path, None) is not None
 
     def clear(self):
         self.basket.clear()
