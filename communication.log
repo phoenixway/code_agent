@@ -307,3 +307,558 @@ logger.info(f"Reading file: {path}")
 Would you like me to implement any of these improvements?
 2026-01-05 20:03:15,164 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=assistant, Content=''<think>Now I have the content of the file. I can analyze it and suggest improvements. The file contains three tool classes: ReadFileTool, CreateFileTool, and EditFileTool. They all inherit from BaseTool and implement async execute methods.\n\nPotential improvements:\n1. **Error handling**: The current error handling is basic. Could add more specific exception handling.\n2. **Input validation**: Check if path is a string, not empty, etc.\n3. **Security considerations**: Path traversal vulnerabilities? Should we restrict paths?\n4. **Performance**: For large files, reading entire content might be memory intensive. Could add file size checks.\n5. **Consistency**: Return format is consistent but could be standardized across all tools.\n6. **Documentation**: Add docstrings to classes and methods.\n7. **Edge cases**: \n   - For EditFileTool: What if search_text appears multiple times? Currently replaces only first occurrence (replace with count=1). This might be intentional but should be documented.\n   - For CreateFileTool: What if parent directory creation fails due to permissions?\n8. **Code quality**: Remove unused imports (os is imported but not used).\n9. **Type hints**: Could add more specific type hints.\n10. **Testing**: Could add unit tests for edge cases.\n\nLet me provide specific suggestions.</think>\n## Suggested Improvements for `modules/tools/definitions/files.py`\n\n### 1. **Remove Unused Import**\n```python\n# Remove: import os (not used)\n```\n\n### 2. **Add Input Validation**\n```python\nasync def execute(self, path: str):\n    if not isinstance(path, str) or not path.strip():\n        return {"status": "error", "output": "Path must be a non-empty string"}\n    # ... rest of code\n```\n\n### 3. **Add File Size Limits** (Optional)\nFor `ReadFileTool` and `EditFileTool`, consider adding a size check:\n```python\nMAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB\nif p.stat().st_size > MAX_FILE_SIZE:\n    return {"status": "error", "output": f"File too large: {p.stat().st_size} bytes"}\n```\n\n### 4. **Improve Error Messages**\nMake error messages more actionable:\n```python\n# In CreateFileTool when file exists:\nreturn {"status": "error", "output": f"File \'{path}\' already exists. Use \'edit_file\' to modify existing files."}\n```\n\n### 5. **Add Security Checks** (Optional)\nPrevent path traversal:\n```python\nfrom pathlib import Path\nimport os\n\ndef is_safe_path(base_path, requested_path):\n    # Resolve relative paths\n    requested = Path(requested_path).resolve()\n    base = Path(base_path).resolve()\n    # Ensure the requested path is within base\n    return base in requested.parents or base == requested\n```\n\n### 6. **Document Edge Cases**\nAdd comments about the behavior:\n```python\nclass EditFileTool(BaseTool):\n    # ... existing code ...\n    async def execute(self, path: str, search_text: str, replace_text: str):\n        """\n        Replaces the FIRST occurrence of search_text with replace_text.\n        If search_text appears multiple times, only the first match is replaced.\n        For replacing all occurrences, use run_shell with sed or implement a new tool.\n        """\n```\n\n### 7. **Add Docstrings**\n```python\nclass ReadFileTool(BaseTool):\n    """Tool for reading file contents with UTF-8 encoding."""\n    \n    name = "read_file"\n    description = "Reads the full content of a file. Use this before editing. Params: \'path\' (str)"\n    \n    async def execute(self, path: str):\n        """Execute the file reading operation."""\n        # ... implementation\n```\n\n### 8. **Consider Adding a DeleteFileTool**\nSince you have create, read, and edit, a delete tool would complete the CRUD operations.\n\n### 9. **Improve EditFileTool Logic**\nThe current implementation uses `replace(search_text, replace_text, 1)` which might not handle overlapping patterns well. Consider using regex for more complex replacements or adding a `count` parameter.\n\n### 10. **Add Backup Option for EditFileTool** (Optional)\n```python\n# Before editing, create a backup\nbackup_path = f"{path}.backup"\nimport shutil\nshutil.copy2(path, backup_path)\n```\n\n### 11. **Handle Different Encodings**\nCurrently hardcoded to UTF-8. Consider adding an optional `encoding` parameter.\n\n### 12. **Add Logging**\nLog operations for debugging:\n```python\nimport logging\nlogger = logging.getLogger(__name__)\n# In execute methods:\nlogger.info(f"Reading file: {path}")\n```\n\n### Most Critical Improvements:\n1. **Remove unused `import os`**\n2. **Add input validation** (empty paths, non-string inputs)\n3. **Add docstrings** for better documentation\n4. **Consider file size limits** for safety\n\nWould you like me to implement any of these improvements?''
 2026-01-05 20:03:15,165 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=assistant, Content=''<think>Now I have the content of the file. I can analyze it and suggest improvements. The file contains three tool classes: ReadFileTool, CreateFileTool, and EditFileTool. They all inherit from BaseTool and implement async execute methods.\n\nPotential improvements:\n1. **Error handling**: The current error handling is basic. Could add more specific exception handling.\n2. **Input validation**: Check if path is a string, not empty, etc.\n3. **Security considerations**: Path traversal vulnerabilities? Should we restrict paths?\n4. **Performance**: For large files, reading entire content might be memory intensive. Could add file size checks.\n5. **Consistency**: Return format is consistent but could be standardized across all tools.\n6. **Documentation**: Add docstrings to classes and methods.\n7. **Edge cases**: \n   - For EditFileTool: What if search_text appears multiple times? Currently replaces only first occurrence (replace with count=1). This might be intentional but should be documented.\n   - For CreateFileTool: What if parent directory creation fails due to permissions?\n8. **Code quality**: Remove unused imports (os is imported but not used).\n9. **Type hints**: Could add more specific type hints.\n10. **Testing**: Could add unit tests for edge cases.\n\nLet me provide specific suggestions.</think>\n## Suggested Improvements for `modules/tools/definitions/files.py`\n\n### 1. **Remove Unused Import**\n```python\n# Remove: import os (not used)\n```\n\n### 2. **Add Input Validation**\n```python\nasync def execute(self, path: str):\n    if not isinstance(path, str) or not path.strip():\n        return {"status": "error", "output": "Path must be a non-empty string"}\n    # ... rest of code\n```\n\n### 3. **Add File Size Limits** (Optional)\nFor `ReadFileTool` and `EditFileTool`, consider adding a size check:\n```python\nMAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB\nif p.stat().st_size > MAX_FILE_SIZE:\n    return {"status": "error", "output": f"File too large: {p.stat().st_size} bytes"}\n```\n\n### 4. **Improve Error Messages**\nMake error messages more actionable:\n```python\n# In CreateFileTool when file exists:\nreturn {"status": "error", "output": f"File \'{path}\' already exists. Use \'edit_file\' to modify existing files."}\n```\n\n### 5. **Add Security Checks** (Optional)\nPrevent path traversal:\n```python\nfrom pathlib import Path\nimport os\n\ndef is_safe_path(base_path, requested_path):\n    # Resolve relative paths\n    requested = Path(requested_path).resolve()\n    base = Path(base_path).resolve()\n    # Ensure the requested path is within base\n    return base in requested.parents or base == requested\n```\n\n### 6. **Document Edge Cases**\nAdd comments about the behavior:\n```python\nclass EditFileTool(BaseTool):\n    # ... existing code ...\n    async def execute(self, path: str, search_text: str, replace_text: str):\n        """\n        Replaces the FIRST occurrence of search_text with replace_text.\n        If search_text appears multiple times, only the first match is replaced.\n        For replacing all occurrences, use run_shell with sed or implement a new tool.\n        """\n```\n\n### 7. **Add Docstrings**\n```python\nclass ReadFileTool(BaseTool):\n    """Tool for reading file contents with UTF-8 encoding."""\n    \n    name = "read_file"\n    description = "Reads the full content of a file. Use this before editing. Params: \'path\' (str)"\n    \n    async def execute(self, path: str):\n        """Execute the file reading operation."""\n        # ... implementation\n```\n\n### 8. **Consider Adding a DeleteFileTool**\nSince you have create, read, and edit, a delete tool would complete the CRUD operations.\n\n### 9. **Improve EditFileTool Logic**\nThe current implementation uses `replace(search_text, replace_text, 1)` which might not handle overlapping patterns well. Consider using regex for more complex replacements or adding a `count` parameter.\n\n### 10. **Add Backup Option for EditFileTool** (Optional)\n```python\n# Before editing, create a backup\nbackup_path = f"{path}.backup"\nimport shutil\nshutil.copy2(path, backup_path)\n```\n\n### 11. **Handle Different Encodings**\nCurrently hardcoded to UTF-8. Consider adding an optional `encoding` parameter.\n\n### 12. **Add Logging**\nLog operations for debugging:\n```python\nimport logging\nlogger = logging.getLogger(__name__)\n# In execute methods:\nlogger.info(f"Reading file: {path}")\n```\n\n### Most Critical Improvements:\n1. **Remove unused `import os`**\n2. **Add input validation** (empty paths, non-string inputs)\n3. **Add docstrings** for better documentation\n4. **Consider file size limits** for safety\n\nWould you like me to implement any of these improvements?''
+2026-01-05 20:28:27,840 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=system, Content=''You are Angelica-AI, a professional coding agent optimized for autonomous problem-solving in Linux (Fedora/Desktop) and Android (Termux).\n\n## RESPONSE FORMAT\n1. **Reasoning (<think>)**: Start with a `<think>` block for internal analysis and planning.\n2. **Action (Raw JSON)**: After `</think>`, if an action is needed, provide EXACTLY ONE raw JSON object. \n   - **CRITICAL**: Do NOT use markdown code blocks (e.g., no ```json). Provide the raw string.\n3. **Text Message**: If no action is needed, provide a concise text response after `</think>`.\n\n## COMMAND STRUCTURE\nAll actions must include:\n- "before_execution": Explain what you are doing.\n- "during_execution": Status message (e.g. "Editing...").\n- "after_execution": Message on success.\n- "return_control": (boolean) Set to \'true\' if you need the output of the command to continue.\n\n## FILE EDITING STRATEGY\n- For NEW files: Use `create_file`.\n- For EXISTING files: Prefer `edit_file` to replace specific blocks. This saves tokens and prevents overwriting large files.\n- Before editing: Always `read_file` to ensure you have the correct `search_text`.\n\n## ENVIRONMENT\nYou have a full shell (Termux/Linux). You can use `grep`, `sed`, `git`, `kotlinc`, etc., via `run_shell`.\n\n---\nAVAILABLE TOOLS:\n- create_file: Creates a NEW file with content. Fails if file exists. Params: \'path\' (str), \'content\' (str)\n- edit_file: Surgically edits an existing file by replacing a specific block of text. Params: \'path\' (str), \'search_text\' (str), \'replace_text\' (str). The \'search_text\' must exactly match a part of the file.\n- read_file: Reads the full content of a file. Use this before editing. Params: \'path\' (str)\n- run_shell: Executes a shell command in the terminal. Params: \'command\' (str). Returns stdout and stderr.\n\n---\n\nBegin your response with an analysis of the task in <think> tags.\n\nProject Structure:\n├── modules/\n│   ├── tools/\n│   │   ├── definitions/\n│   │   ├── base.py\n│   │   └── manager.py\n│   ├── __init__.py\n│   ├── chat.py\n│   ├── config_loader.py\n│   ├── context.py\n│   ├── defaults.py\n│   ├── files.py\n│   ├── healer.py\n│   ├── history.py\n│   ├── policy.py\n│   ├── processor.py\n│   ├── project.py\n│   ├── screens.py\n│   ├── session.py\n│   ├── storage.py\n│   └── tui_ui.py\n├── sessions/\n│   ├── session_20260104_105547.json\n│   └── session_20260104_151051.json\n├── tests/\n│   └── test_modules.py\n├── .gitignore\n├── README.md\n├── agent.py\n├── communication.log\n├── hello.py\n├── interval_notifier.py\n├── message.sh\n├── path.txt\n├── requirements.txt\n├── sources.txt\n├── tui.css\n└── tui.py''
+2026-01-05 20:28:27,840 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=system, Content=''You are Angelica-AI, a professional coding agent optimized for autonomous problem-solving in Linux (Fedora/Desktop) and Android (Termux).\n\n## RESPONSE FORMAT\n1. **Reasoning (<think>)**: Start with a `<think>` block for internal analysis and planning.\n2. **Action (Raw JSON)**: After `</think>`, if an action is needed, provide EXACTLY ONE raw JSON object. \n   - **CRITICAL**: Do NOT use markdown code blocks (e.g., no ```json). Provide the raw string.\n3. **Text Message**: If no action is needed, provide a concise text response after `</think>`.\n\n## COMMAND STRUCTURE\nAll actions must include:\n- "before_execution": Explain what you are doing.\n- "during_execution": Status message (e.g. "Editing...").\n- "after_execution": Message on success.\n- "return_control": (boolean) Set to \'true\' if you need the output of the command to continue.\n\n## FILE EDITING STRATEGY\n- For NEW files: Use `create_file`.\n- For EXISTING files: Prefer `edit_file` to replace specific blocks. This saves tokens and prevents overwriting large files.\n- Before editing: Always `read_file` to ensure you have the correct `search_text`.\n\n## ENVIRONMENT\nYou have a full shell (Termux/Linux). You can use `grep`, `sed`, `git`, `kotlinc`, etc., via `run_shell`.\n\n---\nAVAILABLE TOOLS:\n- create_file: Creates a NEW file with content. Fails if file exists. Params: \'path\' (str), \'content\' (str)\n- edit_file: Surgically edits an existing file by replacing a specific block of text. Params: \'path\' (str), \'search_text\' (str), \'replace_text\' (str). The \'search_text\' must exactly match a part of the file.\n- read_file: Reads the full content of a file. Use this before editing. Params: \'path\' (str)\n- run_shell: Executes a shell command in the terminal. Params: \'command\' (str). Returns stdout and stderr.\n\n---\n\nBegin your response with an analysis of the task in <think> tags.\n\nProject Structure:\n├── modules/\n│   ├── tools/\n│   │   ├── definitions/\n│   │   ├── base.py\n│   │   └── manager.py\n│   ├── __init__.py\n│   ├── chat.py\n│   ├── config_loader.py\n│   ├── context.py\n│   ├── defaults.py\n│   ├── files.py\n│   ├── healer.py\n│   ├── history.py\n│   ├── policy.py\n│   ├── processor.py\n│   ├── project.py\n│   ├── screens.py\n│   ├── session.py\n│   ├── storage.py\n│   └── tui_ui.py\n├── sessions/\n│   ├── session_20260104_105547.json\n│   └── session_20260104_151051.json\n├── tests/\n│   └── test_modules.py\n├── .gitignore\n├── README.md\n├── agent.py\n├── communication.log\n├── hello.py\n├── interval_notifier.py\n├── message.sh\n├── path.txt\n├── requirements.txt\n├── sources.txt\n├── tui.css\n└── tui.py''
+2026-01-05 20:28:27,841 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=user, Content=''Зроби огляд проекту і запропонуй як можна його розвинути''
+2026-01-05 20:28:27,841 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=user, Content=''Зроби огляд проекту і запропонуй як можна його розвинути''
+2026-01-05 20:28:27,842 - OUTGOING:
+Зроби огляд проекту і запропонуй як можна його розвинути
+2026-01-05 20:28:39,561 - INCOMING:
+<think>Мені потрібно зробити огляд проекту та запропонувати шляхи розвитку. Спочатку я перегляну структуру проекту, прочитаю ключові файли, щоб зрозуміти його функціональність, а потім проаналізую можливі напрямки вдосконалення.
+
+Давайте почнемо з перегляду структури проекту та ключових файлів:
+
+1. Спочатку перевірю README.md для загального опису проекту
+2. Потім перегляну agent.py - головний файл
+3. Перевірю модулі, особливо modules/tools/ для розуміння архітектури
+4. Перегляну requirements.txt для залежностей
+5. Проаналізую tui.py для інтерфейсу користувача
+
+Після цього зможу запропонувати конкретні шляхи розвитку.</think>
+
+{
+  "before_execution": "Читаю README.md для розуміння загального опису проекту",
+  "during_execution": "Читання файлу README.md...",
+  "after_execution": "README.md прочитано",
+  "return_control": true,
+  "command": "read_file",
+  "path": "README.md"
+}
+2026-01-05 20:28:39,562 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=assistant, Content=''<think>Мені потрібно зробити огляд проекту та запропонувати шляхи розвитку. Спочатку я перегляну структуру проекту, прочитаю ключові файли, щоб зрозуміти його функціональність, а потім проаналізую можливі напрямки вдосконалення.\n\nДавайте почнемо з перегляду структури проекту та ключових файлів:\n\n1. Спочатку перевірю README.md для загального опису проекту\n2. Потім перегляну agent.py - головний файл\n3. Перевірю модулі, особливо modules/tools/ для розуміння архітектури\n4. Перегляну requirements.txt для залежностей\n5. Проаналізую tui.py для інтерфейсу користувача\n\nПісля цього зможу запропонувати конкретні шляхи розвитку.</think>\n\n{\n  "before_execution": "Читаю README.md для розуміння загального опису проекту",\n  "during_execution": "Читання файлу README.md...",\n  "after_execution": "README.md прочитано",\n  "return_control": true,\n  "command": "read_file",\n  "path": "README.md"\n}''
+2026-01-05 20:28:39,562 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=assistant, Content=''<think>Мені потрібно зробити огляд проекту та запропонувати шляхи розвитку. Спочатку я перегляну структуру проекту, прочитаю ключові файли, щоб зрозуміти його функціональність, а потім проаналізую можливі напрямки вдосконалення.\n\nДавайте почнемо з перегляду структури проекту та ключових файлів:\n\n1. Спочатку перевірю README.md для загального опису проекту\n2. Потім перегляну agent.py - головний файл\n3. Перевірю модулі, особливо modules/tools/ для розуміння архітектури\n4. Перегляну requirements.txt для залежностей\n5. Проаналізую tui.py для інтерфейсу користувача\n\nПісля цього зможу запропонувати конкретні шляхи розвитку.</think>\n\n{\n  "before_execution": "Читаю README.md для розуміння загального опису проекту",\n  "during_execution": "Читання файлу README.md...",\n  "after_execution": "README.md прочитано",\n  "return_control": true,\n  "command": "read_file",\n  "path": "README.md"\n}''
+2026-01-05 20:28:49,894 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=system, Content=''SYSTEM RESULT: # Angelica-AI Agent\n\nAngelica-AI is a Python-based AI agent that can perform various tasks based on user commands. It is designed to be extensible, with a modular architecture that allows for easy addition of new functionalities.\n\n## Features\n\n-   **Modular Architecture**: The agent is divided into several modules, each responsible for a specific functionality. This makes the code easy to understand, maintain, and extend.\n-   **Multiple AI Providers**: The agent can be configured to use different AI providers, such as OpenAI, DeepSeek, Ollama, and Gemini.\n-   **File Operations**: The agent can read, write, create, and edit files on the local filesystem.\n-   **Command Execution**: The agent can execute shell commands and return the output.\n-   **Permission Policy**: The agent has a permission policy that can be configured to "ask", "always", or "never" allow sensitive operations.\n-   **Session Management**: The agent can save and load sessions, allowing to continue a conversation from where you left off.\n-   **Context Management**: The agent can keep track of the files in the current context, which is provided to the AI model with each request.\n\n## Installation\n\n1.  Clone the repository:\n    ```bash\n    git clone https://github.com/your-username/angelica-ai.git\n    cd angelica-ai\n    ```\n2.  Create a virtual environment:\n    ```bash\n    python3 -m venv venv\n    source venv/bin/activate\n    ```\n3.  Install the dependencies:\n    ```bash\n    pip install -r requirements.txt\n    ```\n\n## Configuration\n\nThe agent is configured using a `config.yaml` file located in the `~/.config/angelica-ai` directory. You need to create this file and add the necessary configuration.\n\n1.  Create the configuration directory:\n    ```bash\n    mkdir -p ~/.config/angelica-ai\n    ```\n2.  Create the `config.yaml` file:\n    ```bash\n    touch ~/.config/angelica-ai/config.yaml\n    ```\n3.  Add your configuration to the file. Here is an example:\n    ```yaml\n    default_model: "ollama/qwen:4b"\n    max_history_tokens: 4000\n    permission_policy: "ask" # can be "ask", "always", or "never"\n    ```\n4.  Set the required environment variables. For example, if you are using Ollama, you might need to set the `OLLAMA_BASE_URL`. If you are using OpenAI, you need to set `OPENAI_API_KEY`.\n\n## Usage\n\nTo run the agent, simply execute the `agent.py` script:\n```bash\npython3 agent.py\n```\n\n## Testing\n\nTo run the tests, execute the following command:\n```bash\npython3 -m unittest tests/test_modules.py\n```\n\n## Modules\n\n-   `agent.py`: The main entry point of the application.\n-   `modules/chat.py`: Handles the communication with the AI model.\n-   `modules/config_loader.py`: Loads the configuration from the `config.yaml` file.\n-   `modules/context.py`: Manages the files in the current context.\n-   `modules/defaults.py`: Contains the default system prompt.\n-   `modules/files.py`: Provides file operation functionalities.\n-   `modules/history.py`: Manages the conversation history.\n-   `modules/policy.py`: Handles the permission policy.\n-   `modules/processor.py`: Processes the actions received from the AI.\n-   `modules/session.py`: Manages the sessions.\n-   `modules/storage.py`: (Does not exist anymore)\n-   `modules/ui.py`: Handles the user interface.\n\n## Actions\n\nThe agent can perform the following actions:\n-   `run_command`: Executes a shell command.\n-   `read_file`: Reads the content of a file.\n-   `write_file`: Writes content to a file, overwriting it if it exists.\n-   `create_file`: Creates a new file.\n-   `edit_file`: Edits a file by searching and replacing text.\n''
+2026-01-05 20:28:49,895 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=system, Content=''SYSTEM RESULT: # Angelica-AI Agent\n\nAngelica-AI is a Python-based AI agent that can perform various tasks based on user commands. It is designed to be extensible, with a modular architecture that allows for easy addition of new functionalities.\n\n## Features\n\n-   **Modular Architecture**: The agent is divided into several modules, each responsible for a specific functionality. This makes the code easy to understand, maintain, and extend.\n-   **Multiple AI Providers**: The agent can be configured to use different AI providers, such as OpenAI, DeepSeek, Ollama, and Gemini.\n-   **File Operations**: The agent can read, write, create, and edit files on the local filesystem.\n-   **Command Execution**: The agent can execute shell commands and return the output.\n-   **Permission Policy**: The agent has a permission policy that can be configured to "ask", "always", or "never" allow sensitive operations.\n-   **Session Management**: The agent can save and load sessions, allowing to continue a conversation from where you left off.\n-   **Context Management**: The agent can keep track of the files in the current context, which is provided to the AI model with each request.\n\n## Installation\n\n1.  Clone the repository:\n    ```bash\n    git clone https://github.com/your-username/angelica-ai.git\n    cd angelica-ai\n    ```\n2.  Create a virtual environment:\n    ```bash\n    python3 -m venv venv\n    source venv/bin/activate\n    ```\n3.  Install the dependencies:\n    ```bash\n    pip install -r requirements.txt\n    ```\n\n## Configuration\n\nThe agent is configured using a `config.yaml` file located in the `~/.config/angelica-ai` directory. You need to create this file and add the necessary configuration.\n\n1.  Create the configuration directory:\n    ```bash\n    mkdir -p ~/.config/angelica-ai\n    ```\n2.  Create the `config.yaml` file:\n    ```bash\n    touch ~/.config/angelica-ai/config.yaml\n    ```\n3.  Add your configuration to the file. Here is an example:\n    ```yaml\n    default_model: "ollama/qwen:4b"\n    max_history_tokens: 4000\n    permission_policy: "ask" # can be "ask", "always", or "never"\n    ```\n4.  Set the required environment variables. For example, if you are using Ollama, you might need to set the `OLLAMA_BASE_URL`. If you are using OpenAI, you need to set `OPENAI_API_KEY`.\n\n## Usage\n\nTo run the agent, simply execute the `agent.py` script:\n```bash\npython3 agent.py\n```\n\n## Testing\n\nTo run the tests, execute the following command:\n```bash\npython3 -m unittest tests/test_modules.py\n```\n\n## Modules\n\n-   `agent.py`: The main entry point of the application.\n-   `modules/chat.py`: Handles the communication with the AI model.\n-   `modules/config_loader.py`: Loads the configuration from the `config.yaml` file.\n-   `modules/context.py`: Manages the files in the current context.\n-   `modules/defaults.py`: Contains the default system prompt.\n-   `modules/files.py`: Provides file operation functionalities.\n-   `modules/history.py`: Manages the conversation history.\n-   `modules/policy.py`: Handles the permission policy.\n-   `modules/processor.py`: Processes the actions received from the AI.\n-   `modules/session.py`: Manages the sessions.\n-   `modules/storage.py`: (Does not exist anymore)\n-   `modules/ui.py`: Handles the user interface.\n\n## Actions\n\nThe agent can perform the following actions:\n-   `run_command`: Executes a shell command.\n-   `read_file`: Reads the content of a file.\n-   `write_file`: Writes content to a file, overwriting it if it exists.\n-   `create_file`: Creates a new file.\n-   `edit_file`: Edits a file by searching and replacing text.''
+2026-01-05 20:28:49,895 - OUTGOING:
+SYSTEM RESULT: # Angelica-AI Agent
+
+Angelica-AI is a Python-based AI agent that can perform various tasks based on user commands. It is designed to be extensible, with a modular architecture that allows for easy addition of new functionalities.
+
+## Features
+
+-   **Modular Architecture**: The agent is divided into several modules, each responsible for a specific functionality. This makes the code easy to understand, maintain, and extend.
+-   **Multiple AI Providers**: The agent can be configured to use different AI providers, such as OpenAI, DeepSeek, Ollama, and Gemini.
+-   **File Operations**: The agent can read, write, create, and edit files on the local filesystem.
+-   **Command Execution**: The agent can execute shell commands and return the output.
+-   **Permission Policy**: The agent has a permission policy that can be configured to "ask", "always", or "never" allow sensitive operations.
+-   **Session Management**: The agent can save and load sessions, allowing to continue a conversation from where you left off.
+-   **Context Management**: The agent can keep track of the files in the current context, which is provided to the AI model with each request.
+
+## Installation
+
+1.  Clone the repository:
+    ```bash
+    git clone https://github.com/your-username/angelica-ai.git
+    cd angelica-ai
+    ```
+2.  Create a virtual environment:
+    ```bash
+    python3 -m venv venv
+    source venv/bin/activate
+    ```
+3.  Install the dependencies:
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+## Configuration
+
+The agent is configured using a `config.yaml` file located in the `~/.config/angelica-ai` directory. You need to create this file and add the necessary configuration.
+
+1.  Create the configuration directory:
+    ```bash
+    mkdir -p ~/.config/angelica-ai
+    ```
+2.  Create the `config.yaml` file:
+    ```bash
+    touch ~/.config/angelica-ai/config.yaml
+    ```
+3.  Add your configuration to the file. Here is an example:
+    ```yaml
+    default_model: "ollama/qwen:4b"
+    max_history_tokens: 4000
+    permission_policy: "ask" # can be "ask", "always", or "never"
+    ```
+4.  Set the required environment variables. For example, if you are using Ollama, you might need to set the `OLLAMA_BASE_URL`. If you are using OpenAI, you need to set `OPENAI_API_KEY`.
+
+## Usage
+
+To run the agent, simply execute the `agent.py` script:
+```bash
+python3 agent.py
+```
+
+## Testing
+
+To run the tests, execute the following command:
+```bash
+python3 -m unittest tests/test_modules.py
+```
+
+## Modules
+
+-   `agent.py`: The main entry point of the application.
+-   `modules/chat.py`: Handles the communication with the AI model.
+-   `modules/config_loader.py`: Loads the configuration from the `config.yaml` file.
+-   `modules/context.py`: Manages the files in the current context.
+-   `modules/defaults.py`: Contains the default system prompt.
+-   `modules/files.py`: Provides file operation functionalities.
+-   `modules/history.py`: Manages the conversation history.
+-   `modules/policy.py`: Handles the permission policy.
+-   `modules/processor.py`: Processes the actions received from the AI.
+-   `modules/session.py`: Manages the sessions.
+-   `modules/storage.py`: (Does not exist anymore)
+-   `modules/ui.py`: Handles the user interface.
+
+## Actions
+
+The agent can perform the following actions:
+-   `run_command`: Executes a shell command.
+-   `read_file`: Reads the content of a file.
+-   `write_file`: Writes content to a file, overwriting it if it exists.
+-   `create_file`: Creates a new file.
+-   `edit_file`: Edits a file by searching and replacing text.
+
+2026-01-05 20:28:54,626 - INCOMING:
+<think>Тепер перегляну головний файл agent.py, щоб зрозуміти архітектуру та логіку роботи.</think>
+
+{
+  "before_execution": "Читаю головний файл agent.py для розуміння архітектури проекту",
+  "during_execution": "Читання файлу agent.py...",
+  "after_execution": "agent.py прочитано",
+  "return_control": true,
+  "command": "read_file",
+  "path": "agent.py"
+}
+2026-01-05 20:28:54,627 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=assistant, Content=''<think>Тепер перегляну головний файл agent.py, щоб зрозуміти архітектуру та логіку роботи.</think>\n\n{\n  "before_execution": "Читаю головний файл agent.py для розуміння архітектури проекту",\n  "during_execution": "Читання файлу agent.py...",\n  "after_execution": "agent.py прочитано",\n  "return_control": true,\n  "command": "read_file",\n  "path": "agent.py"\n}''
+2026-01-05 20:28:54,627 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=assistant, Content=''<think>Тепер перегляну головний файл agent.py, щоб зрозуміти архітектуру та логіку роботи.</think>\n\n{\n  "before_execution": "Читаю головний файл agent.py для розуміння архітектури проекту",\n  "during_execution": "Читання файлу agent.py...",\n  "after_execution": "agent.py прочитано",\n  "return_control": true,\n  "command": "read_file",\n  "path": "agent.py"\n}''
+2026-01-05 20:28:57,457 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=system, Content=''SYSTEM RESULT: import json\nimport re\nimport logging\nimport asyncio\nimport os\n\n# Імпорт системних та кастомних модулів\nfrom modules.defaults import DEFAULT_SYSTEM_PROMPT\nfrom modules.tools.manager import ToolManager\nfrom modules.config_loader import load_settings, CONFIG_DIR\nfrom modules.context import ContextManager\nfrom modules.history import HistoryManager\nfrom modules.session import SessionManager\nfrom modules.processor import ResponseProcessor\nfrom modules.policy import PermissionPolicy\nfrom modules.chat import get_chat_provider, ProviderAPIError\n\nclass AngelicaAgent:\n    def __init__(self, ui=None):\n        self._ui = ui\n        self.settings = load_settings()\n        \n        # Стан та запобіжники для TUI\n        self.is_awaiting_model_selection = False \n        self.current_task = None\n        self.MAX_CONSECUTIVE_CALLS = 5\n\n        # Налаштування логування комунікації\n        self.comm_log = self._setup_logger()\n\n        # 1. Ініціалізація ToolManager та завантаження інструментів\n        self.tool_manager = ToolManager()\n        self.tool_manager.load_tools()\n        \n        # 2. Менеджери даних (ContextManager використовує старий FileModule для читання)\n        from modules.files import FileModule\n        self.files = FileModule()\n        self.context_manager = ContextManager(self.files)\n        \n        # 3. Налаштування AI Провайдера\n        model_name = self.settings.get("default_model", "ollama/qwen2.5-coder:7b")\n        self.chat = get_chat_provider(model_name)\n        \n        # 4. Управління історією та сесіями\n        self.history = HistoryManager(self.chat, logger=self.comm_log, max_tokens=self.settings.get("max_history_tokens", 4000))\n        self.session_manager = SessionManager(CONFIG_DIR, self.history, self.context_manager, self._ui)\n        \n        # 5. Політика безпеки та Процесор дій\n        policy_mode = self.settings.get("permission_policy", "ask")\n        self.policy = PermissionPolicy(self._ui, policy_mode)\n        \n        self.processor = ResponseProcessor(\n            ui=self._ui, \n            tool_manager=self.tool_manager, \n            chat=self.chat, \n            policy=self.policy\n        )\n\n    @property\n    def ui(self):\n        return self._ui\n\n    @ui.setter\n    def ui(self, value):\n        """Синхронізує посилання на UI у всіх залежних модулях при підключенні TUI."""\n        self._ui = value\n        if hasattr(self, \'processor\'): self.processor.ui = value\n        if hasattr(self, \'policy\'): self.policy.ui = value\n        if hasattr(self, \'session_manager\'): self.session_manager.ui = value\n\n    def _setup_logger(self):\n        logger = logging.getLogger(\'communication\')\n        logger.setLevel(logging.INFO)\n        if not logger.handlers:\n            handler = logging.FileHandler("communication.log", encoding="utf-8")\n            handler.setFormatter(logging.Formatter(\'%(asctime)s - %(message)s\'))\n            logger.addHandler(handler)\n        return logger\n\n    def _parse_output(self, text: str):\n        """\n        Суворий парсинг: \n        1. Думки витягуються з <think>...</think>.\n        2. Після думок шукається АБО JSON (type/command), АБО звичайний текст.\n        """\n        thoughts = []\n        command = None\n        \n        # Витягуємо блок роздумів\n        thought_match = re.search(r\'<think>(.*?)</think>\', text, re.DOTALL | re.IGNORECASE)\n        if thought_match:\n            thoughts.append(thought_match.group(1).strip())\n            payload = text[thought_match.end():].strip()\n        else:\n            payload = text.strip()\n\n        if not payload:\n            return thoughts, None, ""\n\n        # Пошук JSON (підтримує raw JSON або блоки ```json)\n        json_pattern = r\'(?:```json\\s*)?(\\{.*?\\})(?:\\s*```)?\'\n        json_match = re.search(json_pattern, payload, re.DOTALL)\n        \n        if json_match:\n            try:\n                json_str = json_match.group(1).strip()\n                parsed = json.loads(json_str)\n                # Перевіряємо наявність ключів команди (дозволяємо \'type\' або \'command\')\n                if isinstance(parsed, dict) and ("type" in parsed or "command" in parsed):\n                    return thoughts, parsed, ""\n            except json.JSONDecodeError:\n                pass\n        \n        # Якщо JSON не знайдено або він невалідний — повертаємо як текст\n        return thoughts, None, payload\n\n    async def get_response(self, query):\n        """Отримує стрімінгову відповідь від ШІ."""\n        full_text = ""\n        self.comm_log.info(f"OUTGOING:\\n{query}")\n        try:\n            async for chunk in self.chat.get_streaming_response(query, self.history.get_history_for_api()):\n                full_text += chunk\n        except Exception as e:\n            self.comm_log.error(f"Chat error: {e}")\n            return f"Error: {e}"\n        \n        self.comm_log.info(f"INCOMING:\\n{full_text}")\n        return full_text\n\n    async def process_user_input(self, user_input):\n        """Головний цикл обробки вводу: Промпт -> ШІ -> Дія -> Результат -> ШІ."""\n        # Підготовка контексту та інструментів\n        tools_desc = self.tool_manager.get_tools_prompt()\n        system_prompt = DEFAULT_SYSTEM_PROMPT.format(tools_description=tools_desc)\n        context_info = self.context_manager.get_context_prompt()\n        \n        # Додаємо в історію актуальні дані про проект\n        self.history.add_message("system", f"{system_prompt}\\n\\n{context_info}")\n        self.history.add_message("user", user_input)\n        \n        active_loop = True\n        consecutive_calls = 0\n        current_query = user_input\n\n        try:\n            while active_loop:\n                consecutive_calls += 1\n                if consecutive_calls > self.MAX_CONSECUTIVE_CALLS:\n                    await self.ui.stop_loading()\n                    if not await self.ui.confirm_continue("Агент виконав багато кроків. Продовжити?"):\n                        break\n\n                await self.ui.start_thinking()\n                \n                # Запускаємо задачу з можливістю переривання\n                self.current_task = asyncio.create_task(self.get_response(current_query))\n                response = await self.current_task\n                \n                if not response or response.startswith("Error:"): \n                    break\n                \n                self.history.add_message("assistant", response)\n                thoughts, command, plain_text = self._parse_output(response)\n\n                # Відображення думок в UI\n                for thought in thoughts:\n                    await self.ui.print_thought(thought)\n\n                # ВИБІР: АБО Команда, АБО Текстова відповідь\n                if command:\n                    if command.get("before_execution"):\n                        await self.ui.print_plan(command[\'before_execution\'])\n                    \n                    await self.ui.start_action(command.get("during_execution", "Processing..."))\n                    \n                    # Виконання дії (тут може з\'явитися MiniPicker)\n                    result = await self.processor.process_single_action(command)\n                    \n                    if result.get("status") == "success" and command.get("after_execution"):\n                        await self.ui.print_confirmation(command[\'after_execution\'])\n                    \n                    # Друкуємо результат в історії\n                    output_text = result.get(\'output\', \'\')\n                    await self.ui.print_command_result(output_text)\n\n                    # Якщо ШІ потрібен результат для наступного кроку (loop)\n                    if command.get("return_control") is True:\n                        res_msg = f"SYSTEM RESULT: {output_text}"\n                        self.history.add_message("system", res_msg)\n                        current_query = res_msg # Передаємо результат на наступну ітерацію\n                    else:\n                        active_loop = False\n                \n                elif plain_text:\n                    await self.ui.print_message(plain_text, role="assistant")\n                    active_loop = False\n                else:\n                    active_loop = False\n\n            await self.history.check_and_summarize(self.ui)\n        except asyncio.CancelledError:\n            pass # Переривання вже оброблене в interrupt()\n        finally:\n            self.current_task = None\n            await self.ui.stop_loading()\n\n    async def interrupt(self):\n        """Перериває поточну асинхронну задачу агента."""\n        if self.current_task and not self.current_task.done():\n            self.current_task.cancel()\n            await self.ui.print_system("🛑 Операцію перервано.")\n\n    async def switch_model(self, model_name: str):\n        """Гаряче перемикання моделі ШІ з оновленням історії та процесора."""\n        if hasattr(self.chat, \'model_name\') and self.chat.model_name == model_name:\n            await self.ui.print_system(f"Модель {model_name} вже активна.")\n            return\n\n        await self.ui.print_system(f"Перемикаюсь на {model_name}...")\n        new_chat_provider = get_chat_provider(model_name)\n        \n        if new_chat_provider:\n            self.chat = new_chat_provider\n            self.history = HistoryManager(self.chat, logger=self.comm_log, max_tokens=self.settings.get("max_history_tokens", 4000))\n            self.processor.chat = self.chat\n            await self.ui.update_header(f"Angelica-AI (Model: {self.chat.model_name})")\n            await self.ui.print_system(f"✅ Модель змінено на {model_name}")\n''
+2026-01-05 20:28:57,458 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=system, Content=''SYSTEM RESULT: import json\nimport re\nimport logging\nimport asyncio\nimport os\n\n# Імпорт системних та кастомних модулів\nfrom modules.defaults import DEFAULT_SYSTEM_PROMPT\nfrom modules.tools.manager import ToolManager\nfrom modules.config_loader import load_settings, CONFIG_DIR\nfrom modules.context import ContextManager\nfrom modules.history import HistoryManager\nfrom modules.session import SessionManager\nfrom modules.processor import ResponseProcessor\nfrom modules.policy import PermissionPolicy\nfrom modules.chat import get_chat_provider, ProviderAPIError\n\nclass AngelicaAgent:\n    def __init__(self, ui=None):\n        self._ui = ui\n        self.settings = load_settings()\n        \n        # Стан та запобіжники для TUI\n        self.is_awaiting_model_selection = False \n        self.current_task = None\n        self.MAX_CONSECUTIVE_CALLS = 5\n\n        # Налаштування логування комунікації\n        self.comm_log = self._setup_logger()\n\n        # 1. Ініціалізація ToolManager та завантаження інструментів\n        self.tool_manager = ToolManager()\n        self.tool_manager.load_tools()\n        \n        # 2. Менеджери даних (ContextManager використовує старий FileModule для читання)\n        from modules.files import FileModule\n        self.files = FileModule()\n        self.context_manager = ContextManager(self.files)\n        \n        # 3. Налаштування AI Провайдера\n        model_name = self.settings.get("default_model", "ollama/qwen2.5-coder:7b")\n        self.chat = get_chat_provider(model_name)\n        \n        # 4. Управління історією та сесіями\n        self.history = HistoryManager(self.chat, logger=self.comm_log, max_tokens=self.settings.get("max_history_tokens", 4000))\n        self.session_manager = SessionManager(CONFIG_DIR, self.history, self.context_manager, self._ui)\n        \n        # 5. Політика безпеки та Процесор дій\n        policy_mode = self.settings.get("permission_policy", "ask")\n        self.policy = PermissionPolicy(self._ui, policy_mode)\n        \n        self.processor = ResponseProcessor(\n            ui=self._ui, \n            tool_manager=self.tool_manager, \n            chat=self.chat, \n            policy=self.policy\n        )\n\n    @property\n    def ui(self):\n        return self._ui\n\n    @ui.setter\n    def ui(self, value):\n        """Синхронізує посилання на UI у всіх залежних модулях при підключенні TUI."""\n        self._ui = value\n        if hasattr(self, \'processor\'): self.processor.ui = value\n        if hasattr(self, \'policy\'): self.policy.ui = value\n        if hasattr(self, \'session_manager\'): self.session_manager.ui = value\n\n    def _setup_logger(self):\n        logger = logging.getLogger(\'communication\')\n        logger.setLevel(logging.INFO)\n        if not logger.handlers:\n            handler = logging.FileHandler("communication.log", encoding="utf-8")\n            handler.setFormatter(logging.Formatter(\'%(asctime)s - %(message)s\'))\n            logger.addHandler(handler)\n        return logger\n\n    def _parse_output(self, text: str):\n        """\n        Суворий парсинг: \n        1. Думки витягуються з <think>...</think>.\n        2. Після думок шукається АБО JSON (type/command), АБО звичайний текст.\n        """\n        thoughts = []\n        command = None\n        \n        # Витягуємо блок роздумів\n        thought_match = re.search(r\'<think>(.*?)</think>\', text, re.DOTALL | re.IGNORECASE)\n        if thought_match:\n            thoughts.append(thought_match.group(1).strip())\n            payload = text[thought_match.end():].strip()\n        else:\n            payload = text.strip()\n\n        if not payload:\n            return thoughts, None, ""\n\n        # Пошук JSON (підтримує raw JSON або блоки ```json)\n        json_pattern = r\'(?:```json\\s*)?(\\{.*?\\})(?:\\s*```)?\'\n        json_match = re.search(json_pattern, payload, re.DOTALL)\n        \n        if json_match:\n            try:\n                json_str = json_match.group(1).strip()\n                parsed = json.loads(json_str)\n                # Перевіряємо наявність ключів команди (дозволяємо \'type\' або \'command\')\n                if isinstance(parsed, dict) and ("type" in parsed or "command" in parsed):\n                    return thoughts, parsed, ""\n            except json.JSONDecodeError:\n                pass\n        \n        # Якщо JSON не знайдено або він невалідний — повертаємо як текст\n        return thoughts, None, payload\n\n    async def get_response(self, query):\n        """Отримує стрімінгову відповідь від ШІ."""\n        full_text = ""\n        self.comm_log.info(f"OUTGOING:\\n{query}")\n        try:\n            async for chunk in self.chat.get_streaming_response(query, self.history.get_history_for_api()):\n                full_text += chunk\n        except Exception as e:\n            self.comm_log.error(f"Chat error: {e}")\n            return f"Error: {e}"\n        \n        self.comm_log.info(f"INCOMING:\\n{full_text}")\n        return full_text\n\n    async def process_user_input(self, user_input):\n        """Головний цикл обробки вводу: Промпт -> ШІ -> Дія -> Результат -> ШІ."""\n        # Підготовка контексту та інструментів\n        tools_desc = self.tool_manager.get_tools_prompt()\n        system_prompt = DEFAULT_SYSTEM_PROMPT.format(tools_description=tools_desc)\n        context_info = self.context_manager.get_context_prompt()\n        \n        # Додаємо в історію актуальні дані про проект\n        self.history.add_message("system", f"{system_prompt}\\n\\n{context_info}")\n        self.history.add_message("user", user_input)\n        \n        active_loop = True\n        consecutive_calls = 0\n        current_query = user_input\n\n        try:\n            while active_loop:\n                consecutive_calls += 1\n                if consecutive_calls > self.MAX_CONSECUTIVE_CALLS:\n                    await self.ui.stop_loading()\n                    if not await self.ui.confirm_continue("Агент виконав багато кроків. Продовжити?"):\n                        break\n\n                await self.ui.start_thinking()\n                \n                # Запускаємо задачу з можливістю переривання\n                self.current_task = asyncio.create_task(self.get_response(current_query))\n                response = await self.current_task\n                \n                if not response or response.startswith("Error:"): \n                    break\n                \n                self.history.add_message("assistant", response)\n                thoughts, command, plain_text = self._parse_output(response)\n\n                # Відображення думок в UI\n                for thought in thoughts:\n                    await self.ui.print_thought(thought)\n\n                # ВИБІР: АБО Команда, АБО Текстова відповідь\n                if command:\n                    if command.get("before_execution"):\n                        await self.ui.print_plan(command[\'before_execution\'])\n                    \n                    await self.ui.start_action(command.get("during_execution", "Processing..."))\n                    \n                    # Виконання дії (тут може з\'явитися MiniPicker)\n                    result = await self.processor.process_single_action(command)\n                    \n                    if result.get("status") == "success" and command.get("after_execution"):\n                        await self.ui.print_confirmation(command[\'after_execution\'])\n                    \n                    # Друкуємо результат в історії\n                    output_text = result.get(\'output\', \'\')\n                    await self.ui.print_command_result(output_text)\n\n                    # Якщо ШІ потрібен результат для наступного кроку (loop)\n                    if command.get("return_control") is True:\n                        res_msg = f"SYSTEM RESULT: {output_text}"\n                        self.history.add_message("system", res_msg)\n                        current_query = res_msg # Передаємо результат на наступну ітерацію\n                    else:\n                        active_loop = False\n                \n                elif plain_text:\n                    await self.ui.print_message(plain_text, role="assistant")\n                    active_loop = False\n                else:\n                    active_loop = False\n\n            await self.history.check_and_summarize(self.ui)\n        except asyncio.CancelledError:\n            pass # Переривання вже оброблене в interrupt()\n        finally:\n            self.current_task = None\n            await self.ui.stop_loading()\n\n    async def interrupt(self):\n        """Перериває поточну асинхронну задачу агента."""\n        if self.current_task and not self.current_task.done():\n            self.current_task.cancel()\n            await self.ui.print_system("🛑 Операцію перервано.")\n\n    async def switch_model(self, model_name: str):\n        """Гаряче перемикання моделі ШІ з оновленням історії та процесора."""\n        if hasattr(self.chat, \'model_name\') and self.chat.model_name == model_name:\n            await self.ui.print_system(f"Модель {model_name} вже активна.")\n            return\n\n        await self.ui.print_system(f"Перемикаюсь на {model_name}...")\n        new_chat_provider = get_chat_provider(model_name)\n        \n        if new_chat_provider:\n            self.chat = new_chat_provider\n            self.history = HistoryManager(self.chat, logger=self.comm_log, max_tokens=self.settings.get("max_history_tokens", 4000))\n            self.processor.chat = self.chat\n            await self.ui.update_header(f"Angelica-AI (Model: {self.chat.model_name})")\n            await self.ui.print_system(f"✅ Модель змінено на {model_name}")''
+2026-01-05 20:28:57,458 - OUTGOING:
+SYSTEM RESULT: import json
+import re
+import logging
+import asyncio
+import os
+
+# Імпорт системних та кастомних модулів
+from modules.defaults import DEFAULT_SYSTEM_PROMPT
+from modules.tools.manager import ToolManager
+from modules.config_loader import load_settings, CONFIG_DIR
+from modules.context import ContextManager
+from modules.history import HistoryManager
+from modules.session import SessionManager
+from modules.processor import ResponseProcessor
+from modules.policy import PermissionPolicy
+from modules.chat import get_chat_provider, ProviderAPIError
+
+class AngelicaAgent:
+    def __init__(self, ui=None):
+        self._ui = ui
+        self.settings = load_settings()
+        
+        # Стан та запобіжники для TUI
+        self.is_awaiting_model_selection = False 
+        self.current_task = None
+        self.MAX_CONSECUTIVE_CALLS = 5
+
+        # Налаштування логування комунікації
+        self.comm_log = self._setup_logger()
+
+        # 1. Ініціалізація ToolManager та завантаження інструментів
+        self.tool_manager = ToolManager()
+        self.tool_manager.load_tools()
+        
+        # 2. Менеджери даних (ContextManager використовує старий FileModule для читання)
+        from modules.files import FileModule
+        self.files = FileModule()
+        self.context_manager = ContextManager(self.files)
+        
+        # 3. Налаштування AI Провайдера
+        model_name = self.settings.get("default_model", "ollama/qwen2.5-coder:7b")
+        self.chat = get_chat_provider(model_name)
+        
+        # 4. Управління історією та сесіями
+        self.history = HistoryManager(self.chat, logger=self.comm_log, max_tokens=self.settings.get("max_history_tokens", 4000))
+        self.session_manager = SessionManager(CONFIG_DIR, self.history, self.context_manager, self._ui)
+        
+        # 5. Політика безпеки та Процесор дій
+        policy_mode = self.settings.get("permission_policy", "ask")
+        self.policy = PermissionPolicy(self._ui, policy_mode)
+        
+        self.processor = ResponseProcessor(
+            ui=self._ui, 
+            tool_manager=self.tool_manager, 
+            chat=self.chat, 
+            policy=self.policy
+        )
+
+    @property
+    def ui(self):
+        return self._ui
+
+    @ui.setter
+    def ui(self, value):
+        """Синхронізує посилання на UI у всіх залежних модулях при підключенні TUI."""
+        self._ui = value
+        if hasattr(self, 'processor'): self.processor.ui = value
+        if hasattr(self, 'policy'): self.policy.ui = value
+        if hasattr(self, 'session_manager'): self.session_manager.ui = value
+
+    def _setup_logger(self):
+        logger = logging.getLogger('communication')
+        logger.setLevel(logging.INFO)
+        if not logger.handlers:
+            handler = logging.FileHandler("communication.log", encoding="utf-8")
+            handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
+            logger.addHandler(handler)
+        return logger
+
+    def _parse_output(self, text: str):
+        """
+        Суворий парсинг: 
+        1. Думки витягуються з <think>...</think>.
+        2. Після думок шукається АБО JSON (type/command), АБО звичайний текст.
+        """
+        thoughts = []
+        command = None
+        
+        # Витягуємо блок роздумів
+        thought_match = re.search(r'<think>(.*?)</think>', text, re.DOTALL | re.IGNORECASE)
+        if thought_match:
+            thoughts.append(thought_match.group(1).strip())
+            payload = text[thought_match.end():].strip()
+        else:
+            payload = text.strip()
+
+        if not payload:
+            return thoughts, None, ""
+
+        # Пошук JSON (підтримує raw JSON або блоки ```json)
+        json_pattern = r'(?:```json\s*)?(\{.*?\})(?:\s*```)?'
+        json_match = re.search(json_pattern, payload, re.DOTALL)
+        
+        if json_match:
+            try:
+                json_str = json_match.group(1).strip()
+                parsed = json.loads(json_str)
+                # Перевіряємо наявність ключів команди (дозволяємо 'type' або 'command')
+                if isinstance(parsed, dict) and ("type" in parsed or "command" in parsed):
+                    return thoughts, parsed, ""
+            except json.JSONDecodeError:
+                pass
+        
+        # Якщо JSON не знайдено або він невалідний — повертаємо як текст
+        return thoughts, None, payload
+
+    async def get_response(self, query):
+        """Отримує стрімінгову відповідь від ШІ."""
+        full_text = ""
+        self.comm_log.info(f"OUTGOING:\n{query}")
+        try:
+            async for chunk in self.chat.get_streaming_response(query, self.history.get_history_for_api()):
+                full_text += chunk
+        except Exception as e:
+            self.comm_log.error(f"Chat error: {e}")
+            return f"Error: {e}"
+        
+        self.comm_log.info(f"INCOMING:\n{full_text}")
+        return full_text
+
+    async def process_user_input(self, user_input):
+        """Головний цикл обробки вводу: Промпт -> ШІ -> Дія -> Результат -> ШІ."""
+        # Підготовка контексту та інструментів
+        tools_desc = self.tool_manager.get_tools_prompt()
+        system_prompt = DEFAULT_SYSTEM_PROMPT.format(tools_description=tools_desc)
+        context_info = self.context_manager.get_context_prompt()
+        
+        # Додаємо в історію актуальні дані про проект
+        self.history.add_message("system", f"{system_prompt}\n\n{context_info}")
+        self.history.add_message("user", user_input)
+        
+        active_loop = True
+        consecutive_calls = 0
+        current_query = user_input
+
+        try:
+            while active_loop:
+                consecutive_calls += 1
+                if consecutive_calls > self.MAX_CONSECUTIVE_CALLS:
+                    await self.ui.stop_loading()
+                    if not await self.ui.confirm_continue("Агент виконав багато кроків. Продовжити?"):
+                        break
+
+                await self.ui.start_thinking()
+                
+                # Запускаємо задачу з можливістю переривання
+                self.current_task = asyncio.create_task(self.get_response(current_query))
+                response = await self.current_task
+                
+                if not response or response.startswith("Error:"): 
+                    break
+                
+                self.history.add_message("assistant", response)
+                thoughts, command, plain_text = self._parse_output(response)
+
+                # Відображення думок в UI
+                for thought in thoughts:
+                    await self.ui.print_thought(thought)
+
+                # ВИБІР: АБО Команда, АБО Текстова відповідь
+                if command:
+                    if command.get("before_execution"):
+                        await self.ui.print_plan(command['before_execution'])
+                    
+                    await self.ui.start_action(command.get("during_execution", "Processing..."))
+                    
+                    # Виконання дії (тут може з'явитися MiniPicker)
+                    result = await self.processor.process_single_action(command)
+                    
+                    if result.get("status") == "success" and command.get("after_execution"):
+                        await self.ui.print_confirmation(command['after_execution'])
+                    
+                    # Друкуємо результат в історії
+                    output_text = result.get('output', '')
+                    await self.ui.print_command_result(output_text)
+
+                    # Якщо ШІ потрібен результат для наступного кроку (loop)
+                    if command.get("return_control") is True:
+                        res_msg = f"SYSTEM RESULT: {output_text}"
+                        self.history.add_message("system", res_msg)
+                        current_query = res_msg # Передаємо результат на наступну ітерацію
+                    else:
+                        active_loop = False
+                
+                elif plain_text:
+                    await self.ui.print_message(plain_text, role="assistant")
+                    active_loop = False
+                else:
+                    active_loop = False
+
+            await self.history.check_and_summarize(self.ui)
+        except asyncio.CancelledError:
+            pass # Переривання вже оброблене в interrupt()
+        finally:
+            self.current_task = None
+            await self.ui.stop_loading()
+
+    async def interrupt(self):
+        """Перериває поточну асинхронну задачу агента."""
+        if self.current_task and not self.current_task.done():
+            self.current_task.cancel()
+            await self.ui.print_system("🛑 Операцію перервано.")
+
+    async def switch_model(self, model_name: str):
+        """Гаряче перемикання моделі ШІ з оновленням історії та процесора."""
+        if hasattr(self.chat, 'model_name') and self.chat.model_name == model_name:
+            await self.ui.print_system(f"Модель {model_name} вже активна.")
+            return
+
+        await self.ui.print_system(f"Перемикаюсь на {model_name}...")
+        new_chat_provider = get_chat_provider(model_name)
+        
+        if new_chat_provider:
+            self.chat = new_chat_provider
+            self.history = HistoryManager(self.chat, logger=self.comm_log, max_tokens=self.settings.get("max_history_tokens", 4000))
+            self.processor.chat = self.chat
+            await self.ui.update_header(f"Angelica-AI (Model: {self.chat.model_name})")
+            await self.ui.print_system(f"✅ Модель змінено на {model_name}")
+
+2026-01-05 20:29:03,642 - INCOMING:
+<think>Тепер перегляну модулі, щоб зрозуміти архітектуру. Спочатку перевірю modules/tools/manager.py, оскільки це ключовий компонент для інструментів.</think>
+
+{
+  "before_execution": "Читаю modules/tools/manager.py для розуміння системи інструментів",
+  "during_execution": "Читання файлу manager.py...",
+  "after_execution": "manager.py прочитано",
+  "return_control": true,
+  "command": "read_file",
+  "path": "modules/tools/manager.py"
+}
+2026-01-05 20:29:03,642 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=assistant, Content=''<think>Тепер перегляну модулі, щоб зрозуміти архітектуру. Спочатку перевірю modules/tools/manager.py, оскільки це ключовий компонент для інструментів.</think>\n\n{\n  "before_execution": "Читаю modules/tools/manager.py для розуміння системи інструментів",\n  "during_execution": "Читання файлу manager.py...",\n  "after_execution": "manager.py прочитано",\n  "return_control": true,\n  "command": "read_file",\n  "path": "modules/tools/manager.py"\n}''
+2026-01-05 20:29:03,642 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=assistant, Content=''<think>Тепер перегляну модулі, щоб зрозуміти архітектуру. Спочатку перевірю modules/tools/manager.py, оскільки це ключовий компонент для інструментів.</think>\n\n{\n  "before_execution": "Читаю modules/tools/manager.py для розуміння системи інструментів",\n  "during_execution": "Читання файлу manager.py...",\n  "after_execution": "manager.py прочитано",\n  "return_control": true,\n  "command": "read_file",\n  "path": "modules/tools/manager.py"\n}''
+2026-01-05 20:29:08,694 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=system, Content=''SYSTEM RESULT: # modules/tools/manager.py\nimport importlib\nimport inspect\nimport pkgutil\nfrom typing import Dict\nfrom .base import BaseTool\n\nclass ToolManager:\n    def __init__(self, definitions_pkg="modules.tools.definitions"):\n        self.tools: Dict[str, BaseTool] = {}\n        self._pkg = definitions_pkg\n\n    def load_tools(self):\n        """Динамічно завантажує всі класи інструментів."""\n        self.tools.clear()\n        try:\n            package = importlib.import_module(self._pkg)\n            for _, name, _ in pkgutil.iter_modules(package.__path__):\n                mod = importlib.import_module(f"{self._pkg}.{name}")\n                for _, obj in inspect.getmembers(mod):\n                    if inspect.isclass(obj) and issubclass(obj, BaseTool) and obj is not BaseTool:\n                        t = obj()\n                        self.tools[t.name] = t\n            return list(self.tools.keys())\n        except Exception as e:\n            print(f"Error loading tools: {e}")\n            return []\n\n    def get_tools_prompt(self) -> str:\n        """Генерує опис інструментів для ШІ."""\n        if not self.tools:\n            return "No tools available."\n        prompt = "AVAILABLE TOOLS:\\n"\n        for name, tool in self.tools.items():\n            prompt += f"- {name}: {tool.description}\\n"\n        return prompt\n\n    async def call(self, name: str, **kwargs):\n        """ВИПРАВЛЕНО: Метод тепер називається \'call\'"""\n        tool = self.tools.get(name)\n        if not tool:\n            return {"status": "error", "output": f"Unknown tool: {name}"}\n        try:\n            return await tool.execute(**kwargs)\n        except Exception as e:\n            return {"status": "error", "output": f"Tool execution failed: {str(e)}"}\n''
+2026-01-05 20:29:08,694 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=system, Content=''SYSTEM RESULT: # modules/tools/manager.py\nimport importlib\nimport inspect\nimport pkgutil\nfrom typing import Dict\nfrom .base import BaseTool\n\nclass ToolManager:\n    def __init__(self, definitions_pkg="modules.tools.definitions"):\n        self.tools: Dict[str, BaseTool] = {}\n        self._pkg = definitions_pkg\n\n    def load_tools(self):\n        """Динамічно завантажує всі класи інструментів."""\n        self.tools.clear()\n        try:\n            package = importlib.import_module(self._pkg)\n            for _, name, _ in pkgutil.iter_modules(package.__path__):\n                mod = importlib.import_module(f"{self._pkg}.{name}")\n                for _, obj in inspect.getmembers(mod):\n                    if inspect.isclass(obj) and issubclass(obj, BaseTool) and obj is not BaseTool:\n                        t = obj()\n                        self.tools[t.name] = t\n            return list(self.tools.keys())\n        except Exception as e:\n            print(f"Error loading tools: {e}")\n            return []\n\n    def get_tools_prompt(self) -> str:\n        """Генерує опис інструментів для ШІ."""\n        if not self.tools:\n            return "No tools available."\n        prompt = "AVAILABLE TOOLS:\\n"\n        for name, tool in self.tools.items():\n            prompt += f"- {name}: {tool.description}\\n"\n        return prompt\n\n    async def call(self, name: str, **kwargs):\n        """ВИПРАВЛЕНО: Метод тепер називається \'call\'"""\n        tool = self.tools.get(name)\n        if not tool:\n            return {"status": "error", "output": f"Unknown tool: {name}"}\n        try:\n            return await tool.execute(**kwargs)\n        except Exception as e:\n            return {"status": "error", "output": f"Tool execution failed: {str(e)}"}''
+2026-01-05 20:29:08,695 - OUTGOING:
+SYSTEM RESULT: # modules/tools/manager.py
+import importlib
+import inspect
+import pkgutil
+from typing import Dict
+from .base import BaseTool
+
+class ToolManager:
+    def __init__(self, definitions_pkg="modules.tools.definitions"):
+        self.tools: Dict[str, BaseTool] = {}
+        self._pkg = definitions_pkg
+
+    def load_tools(self):
+        """Динамічно завантажує всі класи інструментів."""
+        self.tools.clear()
+        try:
+            package = importlib.import_module(self._pkg)
+            for _, name, _ in pkgutil.iter_modules(package.__path__):
+                mod = importlib.import_module(f"{self._pkg}.{name}")
+                for _, obj in inspect.getmembers(mod):
+                    if inspect.isclass(obj) and issubclass(obj, BaseTool) and obj is not BaseTool:
+                        t = obj()
+                        self.tools[t.name] = t
+            return list(self.tools.keys())
+        except Exception as e:
+            print(f"Error loading tools: {e}")
+            return []
+
+    def get_tools_prompt(self) -> str:
+        """Генерує опис інструментів для ШІ."""
+        if not self.tools:
+            return "No tools available."
+        prompt = "AVAILABLE TOOLS:\n"
+        for name, tool in self.tools.items():
+            prompt += f"- {name}: {tool.description}\n"
+        return prompt
+
+    async def call(self, name: str, **kwargs):
+        """ВИПРАВЛЕНО: Метод тепер називається 'call'"""
+        tool = self.tools.get(name)
+        if not tool:
+            return {"status": "error", "output": f"Unknown tool: {name}"}
+        try:
+            return await tool.execute(**kwargs)
+        except Exception as e:
+            return {"status": "error", "output": f"Tool execution failed: {str(e)}"}
+
+2026-01-05 20:29:18,527 - INCOMING:
+<think>Тепер перевірю, які інструменти доступні в definitions, щоб зрозуміти функціональність. Також перегляну requirements.txt для залежностей та tui.py для інтерфейсу.</think>
+
+{
+  "before_execution": "Перевіряю вміст каталогу modules/tools/definitions для розуміння доступних інструментів",
+  "during_execution": "Перегляд вмісту каталогу definitions...",
+  "after_execution": "Каталог definitions переглянуто",
+  "return_control": true,
+  "command": "run_shell",
+  "command": "ls -la modules/tools/definitions/"
+}
+
+<think>Тепер перегляну один з файлів інструментів, щоб зрозуміти їх структуру. Також перевірю requirements.txt та tui.py.</think>
+
+{
+  "before_execution": "Читаю requirements.txt для розуміння залежностей проекту",
+  "during_execution": "Читання файлу requirements.txt...",
+  "after_execution": "requirements.txt прочитано",
+  "return_control": true,
+  "command": "read_file",
+  "path": "requirements.txt"
+}
+2026-01-05 20:29:18,528 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=assistant, Content=''<think>Тепер перевірю, які інструменти доступні в definitions, щоб зрозуміти функціональність. Також перегляну requirements.txt для залежностей та tui.py для інтерфейсу.</think>\n\n{\n  "before_execution": "Перевіряю вміст каталогу modules/tools/definitions для розуміння доступних інструментів",\n  "during_execution": "Перегляд вмісту каталогу definitions...",\n  "after_execution": "Каталог definitions переглянуто",\n  "return_control": true,\n  "command": "run_shell",\n  "command": "ls -la modules/tools/definitions/"\n}\n\n<think>Тепер перегляну один з файлів інструментів, щоб зрозуміти їх структуру. Також перевірю requirements.txt та tui.py.</think>\n\n{\n  "before_execution": "Читаю requirements.txt для розуміння залежностей проекту",\n  "during_execution": "Читання файлу requirements.txt...",\n  "after_execution": "requirements.txt прочитано",\n  "return_control": true,\n  "command": "read_file",\n  "path": "requirements.txt"\n}''
+2026-01-05 20:29:18,528 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=assistant, Content=''<think>Тепер перевірю, які інструменти доступні в definitions, щоб зрозуміти функціональність. Також перегляну requirements.txt для залежностей та tui.py для інтерфейсу.</think>\n\n{\n  "before_execution": "Перевіряю вміст каталогу modules/tools/definitions для розуміння доступних інструментів",\n  "during_execution": "Перегляд вмісту каталогу definitions...",\n  "after_execution": "Каталог definitions переглянуто",\n  "return_control": true,\n  "command": "run_shell",\n  "command": "ls -la modules/tools/definitions/"\n}\n\n<think>Тепер перегляну один з файлів інструментів, щоб зрозуміти їх структуру. Також перевірю requirements.txt та tui.py.</think>\n\n{\n  "before_execution": "Читаю requirements.txt для розуміння залежностей проекту",\n  "during_execution": "Читання файлу requirements.txt...",\n  "after_execution": "requirements.txt прочитано",\n  "return_control": true,\n  "command": "read_file",\n  "path": "requirements.txt"\n}''
+2026-01-05 20:29:36,215 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=system, Content=''SYSTEM RESULT: Unknown tool: ls -la modules/tools/definitions/''
+2026-01-05 20:29:36,215 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=system, Content=''SYSTEM RESULT: Unknown tool: ls -la modules/tools/definitions/''
+2026-01-05 20:29:36,215 - OUTGOING:
+SYSTEM RESULT: Unknown tool: ls -la modules/tools/definitions/
+2026-01-05 20:29:42,503 - INCOMING:
+<think>Виникла помилка через неправильний формат команди. Потрібно виправити - у JSON має бути лише один ключ "command". Давайте спочатку перевіримо вміст каталогу definitions правильною командою.</think>
+
+{
+  "before_execution": "Перевіряю вміст каталогу modules/tools/definitions для розуміння доступних інструментів",
+  "during_execution": "Перегляд вмісту каталогу definitions...",
+  "after_execution": "Каталог definitions переглянуто",
+  "return_control": true,
+  "command": "run_shell",
+  "command": "ls -la modules/tools/definitions/"
+}
+2026-01-05 20:29:42,504 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=assistant, Content=''<think>Виникла помилка через неправильний формат команди. Потрібно виправити - у JSON має бути лише один ключ "command". Давайте спочатку перевіримо вміст каталогу definitions правильною командою.</think>\n\n{\n  "before_execution": "Перевіряю вміст каталогу modules/tools/definitions для розуміння доступних інструментів",\n  "during_execution": "Перегляд вмісту каталогу definitions...",\n  "after_execution": "Каталог definitions переглянуто",\n  "return_control": true,\n  "command": "run_shell",\n  "command": "ls -la modules/tools/definitions/"\n}''
+2026-01-05 20:29:42,504 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=assistant, Content=''<think>Виникла помилка через неправильний формат команди. Потрібно виправити - у JSON має бути лише один ключ "command". Давайте спочатку перевіримо вміст каталогу definitions правильною командою.</think>\n\n{\n  "before_execution": "Перевіряю вміст каталогу modules/tools/definitions для розуміння доступних інструментів",\n  "during_execution": "Перегляд вмісту каталогу definitions...",\n  "after_execution": "Каталог definitions переглянуто",\n  "return_control": true,\n  "command": "run_shell",\n  "command": "ls -la modules/tools/definitions/"\n}''
+2026-01-05 20:29:47,698 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=system, Content=''SYSTEM RESULT: Unknown tool: ls -la modules/tools/definitions/''
+2026-01-05 20:29:47,699 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=system, Content=''SYSTEM RESULT: Unknown tool: ls -la modules/tools/definitions/''
+2026-01-05 20:30:13,328 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=system, Content=''You are Angelica-AI, a professional coding agent optimized for autonomous problem-solving in Linux (Fedora/Desktop) and Android (Termux).\n\n## RESPONSE FORMAT\n1. **Reasoning (<think>)**: Start with a `<think>` block for internal analysis and planning.\n2. **Action (Raw JSON)**: After `</think>`, if an action is needed, provide EXACTLY ONE raw JSON object. \n   - **CRITICAL**: Do NOT use markdown code blocks (e.g., no ```json). Provide the raw string.\n3. **Text Message**: If no action is needed, provide a concise text response after `</think>`.\n\n## COMMAND STRUCTURE\nAll actions must include:\n- "before_execution": Explain what you are doing.\n- "during_execution": Status message (e.g. "Editing...").\n- "after_execution": Message on success.\n- "return_control": (boolean) Set to \'true\' if you need the output of the command to continue.\n\n## FILE EDITING STRATEGY\n- For NEW files: Use `create_file`.\n- For EXISTING files: Prefer `edit_file` to replace specific blocks. This saves tokens and prevents overwriting large files.\n- Before editing: Always `read_file` to ensure you have the correct `search_text`.\n\n## ENVIRONMENT\nYou have a full shell (Termux/Linux). You can use `grep`, `sed`, `git`, `kotlinc`, etc., via `run_shell`.\n\n---\nAVAILABLE TOOLS:\n- create_file: Creates a NEW file with content. Fails if file exists. Params: \'path\' (str), \'content\' (str)\n- edit_file: Surgically edits an existing file by replacing a specific block of text. Params: \'path\' (str), \'search_text\' (str), \'replace_text\' (str). The \'search_text\' must exactly match a part of the file.\n- read_file: Reads the full content of a file. Use this before editing. Params: \'path\' (str)\n- run_shell: Executes a shell command in the terminal. Params: \'command\' (str). Returns stdout and stderr.\n\n---\n\nBegin your response with an analysis of the task in <think> tags.\n\nProject Structure:\n├── modules/\n│   ├── tools/\n│   │   ├── definitions/\n│   │   ├── base.py\n│   │   └── manager.py\n│   ├── __init__.py\n│   ├── chat.py\n│   ├── config_loader.py\n│   ├── context.py\n│   ├── defaults.py\n│   ├── files.py\n│   ├── healer.py\n│   ├── history.py\n│   ├── policy.py\n│   ├── processor.py\n│   ├── project.py\n│   ├── screens.py\n│   ├── session.py\n│   ├── storage.py\n│   └── tui_ui.py\n├── sessions/\n│   ├── session_20260104_105547.json\n│   └── session_20260104_151051.json\n├── tests/\n│   └── test_modules.py\n├── .gitignore\n├── README.md\n├── agent.py\n├── communication.log\n├── hello.py\n├── interval_notifier.py\n├── message.sh\n├── path.txt\n├── requirements.txt\n├── sources.txt\n├── tui.css\n└── tui.py''
+2026-01-05 20:30:13,329 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=system, Content=''You are Angelica-AI, a professional coding agent optimized for autonomous problem-solving in Linux (Fedora/Desktop) and Android (Termux).\n\n## RESPONSE FORMAT\n1. **Reasoning (<think>)**: Start with a `<think>` block for internal analysis and planning.\n2. **Action (Raw JSON)**: After `</think>`, if an action is needed, provide EXACTLY ONE raw JSON object. \n   - **CRITICAL**: Do NOT use markdown code blocks (e.g., no ```json). Provide the raw string.\n3. **Text Message**: If no action is needed, provide a concise text response after `</think>`.\n\n## COMMAND STRUCTURE\nAll actions must include:\n- "before_execution": Explain what you are doing.\n- "during_execution": Status message (e.g. "Editing...").\n- "after_execution": Message on success.\n- "return_control": (boolean) Set to \'true\' if you need the output of the command to continue.\n\n## FILE EDITING STRATEGY\n- For NEW files: Use `create_file`.\n- For EXISTING files: Prefer `edit_file` to replace specific blocks. This saves tokens and prevents overwriting large files.\n- Before editing: Always `read_file` to ensure you have the correct `search_text`.\n\n## ENVIRONMENT\nYou have a full shell (Termux/Linux). You can use `grep`, `sed`, `git`, `kotlinc`, etc., via `run_shell`.\n\n---\nAVAILABLE TOOLS:\n- create_file: Creates a NEW file with content. Fails if file exists. Params: \'path\' (str), \'content\' (str)\n- edit_file: Surgically edits an existing file by replacing a specific block of text. Params: \'path\' (str), \'search_text\' (str), \'replace_text\' (str). The \'search_text\' must exactly match a part of the file.\n- read_file: Reads the full content of a file. Use this before editing. Params: \'path\' (str)\n- run_shell: Executes a shell command in the terminal. Params: \'command\' (str). Returns stdout and stderr.\n\n---\n\nBegin your response with an analysis of the task in <think> tags.\n\nProject Structure:\n├── modules/\n│   ├── tools/\n│   │   ├── definitions/\n│   │   ├── base.py\n│   │   └── manager.py\n│   ├── __init__.py\n│   ├── chat.py\n│   ├── config_loader.py\n│   ├── context.py\n│   ├── defaults.py\n│   ├── files.py\n│   ├── healer.py\n│   ├── history.py\n│   ├── policy.py\n│   ├── processor.py\n│   ├── project.py\n│   ├── screens.py\n│   ├── session.py\n│   ├── storage.py\n│   └── tui_ui.py\n├── sessions/\n│   ├── session_20260104_105547.json\n│   └── session_20260104_151051.json\n├── tests/\n│   └── test_modules.py\n├── .gitignore\n├── README.md\n├── agent.py\n├── communication.log\n├── hello.py\n├── interval_notifier.py\n├── message.sh\n├── path.txt\n├── requirements.txt\n├── sources.txt\n├── tui.css\n└── tui.py''
+2026-01-05 20:30:13,329 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=user, Content=''запропонуй покращення''
+2026-01-05 20:30:13,329 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=user, Content=''запропонуй покращення''
+2026-01-05 20:30:13,330 - OUTGOING:
+запропонуй покращення
+2026-01-05 20:30:22,488 - INCOMING:
+<think>Користувач просить запропонути покращення для проекту. Оскільки я не знаю конкретної області покращення, мені потрібно спочатку проаналізувати поточну структуру проекту та код, щоб зрозуміти, що можна покращити.
+
+Давайте переглянемо:
+1. Основні файли проекту
+2. Модулі tools/definitions для розуміння інструментів
+3. Поточний код деяких ключових модулів
+
+Спочатку перевірю вміст каталогу definitions, щоб зрозуміти, які інструменти вже визначені.</think>
+
+{
+  "before_execution": "Перевіряю вміст каталогу modules/tools/definitions для розуміння доступних інструментів",
+  "during_execution": "Перегляд вмісту каталогу definitions...",
+  "after_execution": "Каталог definitions переглянуто",
+  "return_control": true,
+  "command": "ls -la modules/tools/definitions/"
+}
+2026-01-05 20:30:22,489 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=assistant, Content=''<think>Користувач просить запропонути покращення для проекту. Оскільки я не знаю конкретної області покращення, мені потрібно спочатку проаналізувати поточну структуру проекту та код, щоб зрозуміти, що можна покращити.\n\nДавайте переглянемо:\n1. Основні файли проекту\n2. Модулі tools/definitions для розуміння інструментів\n3. Поточний код деяких ключових модулів\n\nСпочатку перевірю вміст каталогу definitions, щоб зрозуміти, які інструменти вже визначені.</think>\n\n{\n  "before_execution": "Перевіряю вміст каталогу modules/tools/definitions для розуміння доступних інструментів",\n  "during_execution": "Перегляд вмісту каталогу definitions...",\n  "after_execution": "Каталог definitions переглянуто",\n  "return_control": true,\n  "command": "ls -la modules/tools/definitions/"\n}''
+2026-01-05 20:30:22,489 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=assistant, Content=''<think>Користувач просить запропонути покращення для проекту. Оскільки я не знаю конкретної області покращення, мені потрібно спочатку проаналізувати поточну структуру проекту та код, щоб зрозуміти, що можна покращити.\n\nДавайте переглянемо:\n1. Основні файли проекту\n2. Модулі tools/definitions для розуміння інструментів\n3. Поточний код деяких ключових модулів\n\nСпочатку перевірю вміст каталогу definitions, щоб зрозуміти, які інструменти вже визначені.</think>\n\n{\n  "before_execution": "Перевіряю вміст каталогу modules/tools/definitions для розуміння доступних інструментів",\n  "during_execution": "Перегляд вмісту каталогу definitions...",\n  "after_execution": "Каталог definitions переглянуто",\n  "return_control": true,\n  "command": "ls -la modules/tools/definitions/"\n}''
+2026-01-05 20:30:25,889 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=system, Content=''SYSTEM RESULT: Unknown tool: ls -la modules/tools/definitions/''
+2026-01-05 20:30:25,890 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=system, Content=''SYSTEM RESULT: Unknown tool: ls -la modules/tools/definitions/''
+2026-01-05 20:30:25,890 - OUTGOING:
+SYSTEM RESULT: Unknown tool: ls -la modules/tools/definitions/
+2026-01-05 20:30:31,842 - INCOMING:
+<think>Вибачте, я використав неправильний формат. У попередньому повідомленні було два ключі "command". Потрібно виправити це. Давайте правильно виконаємо команду через run_shell.</think>
+
+{
+  "before_execution": "Перевіряю вміст каталогу modules/tools/definitions для розуміння доступних інструментів",
+  "during_execution": "Перегляд вмісту каталогу definitions...",
+  "after_execution": "Каталог definitions переглянуто",
+  "return_control": true,
+  "command": "ls -la modules/tools/definitions/"
+}
+2026-01-05 20:30:31,843 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=assistant, Content=''<think>Вибачте, я використав неправильний формат. У попередньому повідомленні було два ключі "command". Потрібно виправити це. Давайте правильно виконаємо команду через run_shell.</think>\n\n{\n  "before_execution": "Перевіряю вміст каталогу modules/tools/definitions для розуміння доступних інструментів",\n  "during_execution": "Перегляд вмісту каталогу definitions...",\n  "after_execution": "Каталог definitions переглянуто",\n  "return_control": true,\n  "command": "ls -la modules/tools/definitions/"\n}''
+2026-01-05 20:30:31,843 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=assistant, Content=''<think>Вибачте, я використав неправильний формат. У попередньому повідомленні було два ключі "command". Потрібно виправити це. Давайте правильно виконаємо команду через run_shell.</think>\n\n{\n  "before_execution": "Перевіряю вміст каталогу modules/tools/definitions для розуміння доступних інструментів",\n  "during_execution": "Перегляд вмісту каталогу definitions...",\n  "after_execution": "Каталог definitions переглянуто",\n  "return_control": true,\n  "command": "ls -la modules/tools/definitions/"\n}''
+2026-01-05 20:30:35,763 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=system, Content=''SYSTEM RESULT: Unknown tool: ls -la modules/tools/definitions/''
+2026-01-05 20:30:35,764 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=system, Content=''SYSTEM RESULT: Unknown tool: ls -la modules/tools/definitions/''
+2026-01-05 20:30:35,764 - OUTGOING:
+SYSTEM RESULT: Unknown tool: ls -la modules/tools/definitions/
+2026-01-05 20:30:42,314 - INCOMING:
+<think>Вибачте, я зрозумів помилку. У попередньому повідомленні я все ще використовував неправильний формат. Потрібно використовувати run_shell для виконання команди. Давайте виправимо.</think>
+
+{
+  "before_execution": "Перевіряю вміст каталогу modules/tools/definitions для розуміння доступних інструментів",
+  "during_execution": "Перегляд вмісту каталогу definitions...",
+  "after_execution": "Каталог definitions переглянуто",
+  "return_control": true,
+  "command": "run_shell",
+  "params": {
+    "command": "ls -la modules/tools/definitions/"
+  }
+}
+2026-01-05 20:30:42,314 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=assistant, Content=''<think>Вибачте, я зрозумів помилку. У попередньому повідомленні я все ще використовував неправильний формат. Потрібно використовувати run_shell для виконання команди. Давайте виправимо.</think>\n\n{\n  "before_execution": "Перевіряю вміст каталогу modules/tools/definitions для розуміння доступних інструментів",\n  "during_execution": "Перегляд вмісту каталогу definitions...",\n  "after_execution": "Каталог definitions переглянуто",\n  "return_control": true,\n  "command": "run_shell",\n  "params": {\n    "command": "ls -la modules/tools/definitions/"\n  }\n}''
+2026-01-05 20:30:42,314 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=assistant, Content=''<think>Вибачте, я зрозумів помилку. У попередньому повідомленні я все ще використовував неправильний формат. Потрібно використовувати run_shell для виконання команди. Давайте виправимо.</think>\n\n{\n  "before_execution": "Перевіряю вміст каталогу modules/tools/definitions для розуміння доступних інструментів",\n  "during_execution": "Перегляд вмісту каталогу definitions...",\n  "after_execution": "Каталог definitions переглянуто",\n  "return_control": true,\n  "command": "run_shell",\n  "params": {\n    "command": "ls -la modules/tools/definitions/"\n  }\n}''
+2026-01-05 20:34:30,094 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=system, Content=''You are Angelica-AI, a professional coding agent optimized for autonomous problem-solving in Linux (Fedora/Desktop) and Android (Termux).\n\n## RESPONSE FORMAT\n1. **Reasoning (<think>)**: Start with a `<think>` block for internal analysis and planning.\n2. **Action (Raw JSON)**: After `</think>`, if an action is needed, provide EXACTLY ONE raw JSON object. \n   - **CRITICAL**: Do NOT use markdown code blocks (e.g., no ```json). Provide the raw string.\n3. **Text Message**: If no action is needed, provide a concise text response after `</think>`.\n\n## COMMAND STRUCTURE\nAll actions must include:\n- "before_execution": Explain what you are doing.\n- "during_execution": Status message (e.g. "Editing...").\n- "after_execution": Message on success.\n- "return_control": (boolean) Set to \'true\' if you need the output of the command to continue.\n\n## FILE EDITING STRATEGY\n- For NEW files: Use `create_file`.\n- For EXISTING files: Prefer `edit_file` to replace specific blocks. This saves tokens and prevents overwriting large files.\n- Before editing: Always `read_file` to ensure you have the correct `search_text`.\n\n## ENVIRONMENT\nYou have a full shell (Termux/Linux). You can use `grep`, `sed`, `git`, `kotlinc`, etc., via `run_shell`.\n\n---\nAVAILABLE TOOLS:\n- create_file: Creates a NEW file with content. Fails if file exists. Params: \'path\' (str), \'content\' (str)\n- edit_file: Surgically edits an existing file by replacing a specific block of text. Params: \'path\' (str), \'search_text\' (str), \'replace_text\' (str). The \'search_text\' must exactly match a part of the file.\n- read_file: Reads the full content of a file. Use this before editing. Params: \'path\' (str)\n- run_shell: Executes a shell command in the terminal. Params: \'command\' (str). Returns stdout and stderr.\n\n---\n\nBegin your response with an analysis of the task in <think> tags.\n\nProject Structure:\n├── modules/\n│   ├── tools/\n│   │   ├── definitions/\n│   │   ├── base.py\n│   │   └── manager.py\n│   ├── __init__.py\n│   ├── chat.py\n│   ├── config_loader.py\n│   ├── context.py\n│   ├── defaults.py\n│   ├── files.py\n│   ├── healer.py\n│   ├── history.py\n│   ├── policy.py\n│   ├── processor.py\n│   ├── project.py\n│   ├── screens.py\n│   ├── session.py\n│   ├── storage.py\n│   └── tui_ui.py\n├── sessions/\n│   ├── session_20260104_105547.json\n│   └── session_20260104_151051.json\n├── tests/\n│   └── test_modules.py\n├── .gitignore\n├── README.md\n├── agent.py\n├── communication.log\n├── hello.py\n├── interval_notifier.py\n├── message.sh\n├── path.txt\n├── requirements.txt\n├── sources.txt\n├── tui.css\n└── tui.py''
+2026-01-05 20:34:30,095 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=system, Content=''You are Angelica-AI, a professional coding agent optimized for autonomous problem-solving in Linux (Fedora/Desktop) and Android (Termux).\n\n## RESPONSE FORMAT\n1. **Reasoning (<think>)**: Start with a `<think>` block for internal analysis and planning.\n2. **Action (Raw JSON)**: After `</think>`, if an action is needed, provide EXACTLY ONE raw JSON object. \n   - **CRITICAL**: Do NOT use markdown code blocks (e.g., no ```json). Provide the raw string.\n3. **Text Message**: If no action is needed, provide a concise text response after `</think>`.\n\n## COMMAND STRUCTURE\nAll actions must include:\n- "before_execution": Explain what you are doing.\n- "during_execution": Status message (e.g. "Editing...").\n- "after_execution": Message on success.\n- "return_control": (boolean) Set to \'true\' if you need the output of the command to continue.\n\n## FILE EDITING STRATEGY\n- For NEW files: Use `create_file`.\n- For EXISTING files: Prefer `edit_file` to replace specific blocks. This saves tokens and prevents overwriting large files.\n- Before editing: Always `read_file` to ensure you have the correct `search_text`.\n\n## ENVIRONMENT\nYou have a full shell (Termux/Linux). You can use `grep`, `sed`, `git`, `kotlinc`, etc., via `run_shell`.\n\n---\nAVAILABLE TOOLS:\n- create_file: Creates a NEW file with content. Fails if file exists. Params: \'path\' (str), \'content\' (str)\n- edit_file: Surgically edits an existing file by replacing a specific block of text. Params: \'path\' (str), \'search_text\' (str), \'replace_text\' (str). The \'search_text\' must exactly match a part of the file.\n- read_file: Reads the full content of a file. Use this before editing. Params: \'path\' (str)\n- run_shell: Executes a shell command in the terminal. Params: \'command\' (str). Returns stdout and stderr.\n\n---\n\nBegin your response with an analysis of the task in <think> tags.\n\nProject Structure:\n├── modules/\n│   ├── tools/\n│   │   ├── definitions/\n│   │   ├── base.py\n│   │   └── manager.py\n│   ├── __init__.py\n│   ├── chat.py\n│   ├── config_loader.py\n│   ├── context.py\n│   ├── defaults.py\n│   ├── files.py\n│   ├── healer.py\n│   ├── history.py\n│   ├── policy.py\n│   ├── processor.py\n│   ├── project.py\n│   ├── screens.py\n│   ├── session.py\n│   ├── storage.py\n│   └── tui_ui.py\n├── sessions/\n│   ├── session_20260104_105547.json\n│   └── session_20260104_151051.json\n├── tests/\n│   └── test_modules.py\n├── .gitignore\n├── README.md\n├── agent.py\n├── communication.log\n├── hello.py\n├── interval_notifier.py\n├── message.sh\n├── path.txt\n├── requirements.txt\n├── sources.txt\n├── tui.css\n└── tui.py''
+2026-01-05 20:34:30,095 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=user, Content=''переглянь вміст проекту''
+2026-01-05 20:34:30,095 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=user, Content=''переглянь вміст проекту''
+2026-01-05 20:34:30,096 - OUTGOING:
+переглянь вміст проекту
+2026-01-05 20:34:37,514 - INCOMING:
+<think>Користувач хоче переглянути вміст проекту. Давайте спочатку перевіримо структуру проекту більш детально, а потім переглянемо ключові файли для розуміння архітектури та можливих покращень.
+
+Спочатку перевіримо вміст кореневого каталогу та модулів.</think>
+
+{
+  "before_execution": "Перевіряю загальну структуру проекту",
+  "during_execution": "Аналізую вміст кореневого каталогу...",
+  "after_execution": "Структура проекту переглянута",
+  "return_control": true,
+  "command": "run_shell",
+  "params": {
+    "command": "find . -maxdepth 2 -type f -name '*.py' | head -20 && echo '---' && ls -la"
+  }
+}
+2026-01-05 20:34:37,515 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=assistant, Content=''<think>Користувач хоче переглянути вміст проекту. Давайте спочатку перевіримо структуру проекту більш детально, а потім переглянемо ключові файли для розуміння архітектури та можливих покращень.\n\nСпочатку перевіримо вміст кореневого каталогу та модулів.</think>\n\n{\n  "before_execution": "Перевіряю загальну структуру проекту",\n  "during_execution": "Аналізую вміст кореневого каталогу...",\n  "after_execution": "Структура проекту переглянута",\n  "return_control": true,\n  "command": "run_shell",\n  "params": {\n    "command": "find . -maxdepth 2 -type f -name \'*.py\' | head -20 && echo \'---\' && ls -la"\n  }\n}''
+2026-01-05 20:34:37,515 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=assistant, Content=''<think>Користувач хоче переглянути вміст проекту. Давайте спочатку перевіримо структуру проекту більш детально, а потім переглянемо ключові файли для розуміння архітектури та можливих покращень.\n\nСпочатку перевіримо вміст кореневого каталогу та модулів.</think>\n\n{\n  "before_execution": "Перевіряю загальну структуру проекту",\n  "during_execution": "Аналізую вміст кореневого каталогу...",\n  "after_execution": "Структура проекту переглянута",\n  "return_control": true,\n  "command": "run_shell",\n  "params": {\n    "command": "find . -maxdepth 2 -type f -name \'*.py\' | head -20 && echo \'---\' && ls -la"\n  }\n}''
