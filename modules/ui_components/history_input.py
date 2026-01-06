@@ -1,5 +1,8 @@
 from textual.widgets import Input
 from textual.binding import Binding
+from modules.config_loader import CONFIG_DIR
+
+HISTORY_FILE = CONFIG_DIR / "history.txt"
 
 class HistoryInput(Input):
     """
@@ -17,6 +20,24 @@ class HistoryInput(Input):
         self._history: list[str] = []
         self._history_index: int = -1
         self._draft: str = ""
+        self._load_history()
+
+    def _load_history(self):
+        """Завантажує історію з файлу."""
+        if HISTORY_FILE.exists():
+            try:
+                with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+                    self._history = [line.strip() for line in f if line.strip()]
+            except Exception:
+                pass # Ігноруємо помилки читання
+
+    def _append_to_file(self, text: str):
+        """Дописує нову команду у файл."""
+        try:
+            with open(HISTORY_FILE, "a", encoding="utf-8") as f:
+                f.write(text + "\n")
+        except Exception:
+            pass
 
     def add_entry(self, text: str) -> None:
         """Додає текст до історії, якщо він не пустий і не дублює останній запис."""
@@ -27,6 +48,7 @@ class HistoryInput(Input):
         # Не додаємо, якщо це те саме, що й остання команда
         if not self._history or self._history[-1] != text:
             self._history.append(text)
+            self._append_to_file(text)
         
         # Скидаємо вказівник
         self._reset_pointer()

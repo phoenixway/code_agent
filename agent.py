@@ -161,7 +161,11 @@ class AngelicaAgent:
                 self.current_task = asyncio.create_task(self.get_response(current_query))
                 response = await self.current_task
                 
-                if not response or response.startswith("Error:"): 
+                if not response:
+                    break
+                
+                if response.startswith("Error:"): 
+                    await self.ui.print_error(response)
                     break
                 
                 self.history.add_message("assistant", response)

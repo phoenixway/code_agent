@@ -1,39 +1,31 @@
+# modules/tools/definitions/shell.py
 import asyncio
-from ..base import BaseTool
+from modules.tools.base import BaseTool
 
-class ShellCommandTool(BaseTool):
-    @property
-    def name(self) -> str:
-        return "run_shell"
+class ShellTool(BaseTool):
+    name = "run_shell"
+    description = "Executes a shell command in the current environment. Params: 'command' (str)"
 
-    @property
-    def description(self) -> str:
-        return "Executes a shell command in the terminal. Params: 'command' (str). Returns stdout and stderr."
-
-    async def execute(self, command: str) -> dict:
+    async def execute(self, command: str):
+        if not command:
+            return {"status": "error", "output": "No command provided."}
+            
         try:
-            # Запускаем команду в подоболочке
+            # Виконуємо команду в підпроцесі
             process = await asyncio.create_subprocess_shell(
                 command,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-
-            # Ждем завершения и получаем вывод
             stdout, stderr = await process.communicate()
             
-            output = ""
-            if stdout:
-                output += stdout.decode(errors='replace')
-            if stderr:
-                output += f"\nSTDERR:\n{stderr.decode(errors='replace')}"
-
+            output = stdout.decode().strip() or stderr.decode().strip()
+            if not output and process.returncode == 0:
+                output = "Command executed successfully (no output)."
+                
             return {
-                "status": "success",
-                "output": output.strip() if output else "Command executed with no output."
+                "status": "success" if process.returncode == 0 else "error",
+                "output": output
             }
         except Exception as e:
-            return {
-                "status": "error",
-                "output": f"Failed to execute command: {str(e)}"
-            }
+            return {"status": "error", "output": str(e)}

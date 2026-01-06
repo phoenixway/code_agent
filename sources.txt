@@ -19,9 +19,10 @@ TABLE OF CONTENTS
 - [/home/romankozak/studio/public/code_agent/modules/tools/manager.py](##<<FILE_16>>)
 - [/home/romankozak/studio/public/code_agent/modules/tui_ui.py](##<<FILE_17>>)
 - [/home/romankozak/studio/public/code_agent/modules/ui.py](##<<FILE_18>>)
-- [/home/romankozak/studio/public/code_agent/modules/ui_components/selection_widget.py](##<<FILE_19>>)
-- [/home/romankozak/studio/public/code_agent/tui.css](##<<FILE_20>>)
-- [/home/romankozak/studio/public/code_agent/tui.py](##<<FILE_21>>)
+- [/home/romankozak/studio/public/code_agent/modules/ui_components/history_input.py](##<<FILE_19>>)
+- [/home/romankozak/studio/public/code_agent/modules/ui_components/selection_widget.py](##<<FILE_20>>)
+- [/home/romankozak/studio/public/code_agent/tui.css](##<<FILE_21>>)
+- [/home/romankozak/studio/public/code_agent/tui.py](##<<FILE_22>>)
 
 ================================================================================
 
@@ -835,8 +836,6 @@ END FILE: /home/romankozak/studio/public/code_agent/modules/policy.py
 BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/processor.py (ID: FILE_10)
 ================================================================================
 
-import asyncio
-
 # modules/processor.py
 
 class ResponseProcessor:
@@ -846,41 +845,58 @@ class ResponseProcessor:
         self.chat = chat
         self.policy = policy
 
-    async def process_single_action(self, command: dict) -> dict:
-        # ШІ може помилитися і замість 'type' надіслати 'command'
-        # Робимо обробку обох варіантів
-        action_type = command.get("type") or command.get("command")
+    async def process_single_action(self, command_dict: dict) -> dict:
+        # 1. Визначаємо назву інструмента (пріоритет: action -> type -> command)
+        # Якщо в 'command' лежить довгий текст зі пробілами - це не назва інструмента!
         
+        action_type = command_dict.get("action") or command_dict.get("type")
+        
+        # Перевіряємо ключ 'command' тільки якщо він короткий (без пробілів)
+        if not action_type:
+            potential_cmd = command_dict.get("command")
+            if potential_cmd and isinstance(potential_cmd, str) and " " not in potential_cmd.strip():
+                action_type = potential_cmd
+
         if not action_type:
             return {
                 "status": "failed", 
-                "output": "Error: No action type found in JSON (expected 'type' or 'command')."
+                "output": "Error: Could not determine tool name. Use 'action' or 'type' for tool name."
             }
 
-        # Створюємо нормалізовану копію для policy, щоб вона завжди бачила 'type'
-        normalized_command = command.copy()
-        normalized_command["type"] = action_type
-
-        # 1. КРИТИЧНО: Перевірка дозволу (твій MiniPicker)
-        if not await self.policy.check(normalized_command):
+        # 2. Захист: якщо модель все одно пхає bash-код в ім'я інструмента
+        if isinstance(action_type, str) and " " in action_type.strip():
             return {
                 "status": "failed", 
-                "output": "Action denied by user."
+                "output": f"Error: '{action_type}' looks like a shell command. Use 'run_shell' as the tool name."
             }
 
-        # 2. Підготовка аргументів (все, крім службових полів)
-        service_fields = {"type", "command", "before_execution", "during_execution", "after_execution", "return_control"}
-        args = {k: v for k, v in command.items() if k not in service_fields}
+        # 3. Збираємо аргументи
+        args = {}
+        # Якщо є вкладені параметри - розгортаємо
+        for nested in ["params", "arguments", "parameters"]:
+            if isinstance(command_dict.get(nested), dict):
+                args.update(command_dict[nested])
+            
+        # Додаємо решту полів (крім службових)
+        service_fields = {"action", "type", "command", "params", "arguments", "parameters", 
+                         "before_execution", "during_execution", "after_execution", "return_control"}
         
-        # 3. Виклик інструмента через ToolManager
-        # Метод call тепер має бути в ToolManager (ми його виправили минулого разу)
-        result = await self.tools.call(action_type, **args)
+        for k, v in command_dict.items():
+            if k not in service_fields:
+                args[k] = v
         
-        # Повертаємо уніфікований результат
-        if result.get("status") == "success":
-            return {"status": "success", "output": result.get("output", "")}
-        else:
-            return {"status": "failed", "output": result.get("output", "Unknown tool error.")}
+        # Окремий випадок для run_shell: якщо в JSON був ключ "command", 
+        # і це не була назва інструмента, то це аргумент для shell
+        if action_type == "run_shell" and "command" in command_dict and "command" not in args:
+            args["command"] = command_dict["command"]
+
+        # 4. Політика безпеки (MiniPicker)
+        normalized_cmd = {"type": action_type, **args}
+        if not await self.policy.check(normalized_cmd):
+            return {"status": "failed", "output": "Action denied by user."}
+
+        # 5. Виклик через ToolManager
+        return await self.tools.call(action_type, **args)
 
 
 ================================================================================
@@ -924,8 +940,6 @@ END FILE: /home/romankozak/studio/public/code_agent/modules/project.py
 ================================================================================
 BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/screens.py (ID: FILE_12)
 ================================================================================
-
-# modules/screens.py
 
 from textual.app import ComposeResult
 from textual.widgets import Static, Button, ListView, ListItem, Label
@@ -992,65 +1006,6 @@ class ConfirmationScreen(ModalScreen[bool]):
             self.dismiss(True)
         elif event.button.id == "deny_button":
             self.dismiss(False)
-
-class SelectionScreen(ModalScreen[str | None]):
-    """Screen for selecting an option from a list."""
-
-    CSS = """
-    SelectionScreen {
-        align: center bottom;
-    }
-    
-    .selection-panel {
-        width: 100%;
-        height: auto;
-        max-height: 50%;
-        margin-bottom: 3; /* Відступ для input-container (висота 3 рядки) */
-        border-top: thick $primary;
-        background: $surface;
-        padding: 1 2;
-    }
-    
-    .selection-prompt {
-        text-align: left;
-        padding-bottom: 1;
-        text-style: bold;
-        color: $text;
-    }
-    
-    ListView {
-        height: auto;
-        max-height: 15;
-        border: none;
-        margin-top: 1;
-    }
-    """
-
-    def __init__(self, prompt: str, options: list[str], name: str | None = None, id: str | None = None, classes: str | None = None) -> None:
-        super().__init__(name, id, classes)
-        self.prompt = prompt
-        self.options = options
-
-    def compose(self) -> ComposeResult:
-        yield Vertical(
-            Label(self.prompt, classes="selection-prompt"),
-            ListView(
-                *[ListItem(Label(opt), id=f"opt_{i}") for i, opt in enumerate(self.options)],
-                id="options_list"
-            ),
-            classes="selection-panel"
-        )
-
-    def on_list_view_selected(self, event: ListView.Selected) -> None:
-        # Get the label text from the selected item
-        label = event.item.query_one(Label)
-        self.dismiss(str(label.renderable))
-
-    def on_key(self, event) -> None:
-        if event.key == "escape":
-            self.dismiss(None)
-
-
 
 ================================================================================
 END FILE: /home/romankozak/studio/public/code_agent/modules/screens.py
@@ -1208,13 +1163,14 @@ BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/tui_ui.py (ID: FIL
 
 import threading
 import asyncio
-from textual.widgets import Static, ListItem, Label
+from textual.widgets import Static
 from textual.containers import Vertical, VerticalScroll, Container, Horizontal
 from textual.app import ComposeResult
 from rich.markdown import Markdown as RichMarkdown
 from rich.text import Text
 
-from modules.ui_components.selection_widget import SelectionWidget
+from modules.screens import ConfirmationScreen
+from modules.ui_components.selection_widget import SelectionScreen
 
 class TuiUI:
     def __init__(self, app, history_widget: VerticalScroll, loading_container: Container, loading_label: Static):
@@ -1261,71 +1217,67 @@ class TuiUI:
     async def update_header(self, text: str):
         await self._call_ui(self._update_header_main_thread, text)
 
-    async def pick_option(self, prompt: str, options: list) -> str:
-        """Показує меню вибору через SelectionWidget і повертає вибрану строку."""
-        async def _pick():
-            widget = self.app.query_one("#global-selection-widget", SelectionWidget)
-            widget.prompt = prompt
-            
-            # Оновлюємо список опцій
-            list_view = widget.query_one("#selection-list")
-            await list_view.clear()
-            for i, opt in enumerate(options):
-                await list_view.mount(ListItem(Label(opt), id=f"opt_{i}"))
-            
-            # Show and wait for selection
-            result = await widget.wait_for_selection()
-            return result
+    async def _pick_screen_main_thread(self, screen):
+        # Manually manage future to work around push_screen_wait worker requirement
+        self.app.agent.comm_log.info(f"DEBUG: Entering _pick_screen_main_thread with screen: {screen}")
+        loop = asyncio.get_running_loop()
+        future = loop.create_future()
 
-        # Get input widget
-        input_widget = self.app.query_one("#input")
-        
-        # Store original state
-        was_disabled = input_widget.disabled
-        
-        try:
-            # Disable main input during selection
-            input_widget.disabled = True
-            
-            # Run selection
-            return await self._call_ui(_pick)
-        finally:
-            # Re-enable input and restore focus
-            input_widget.disabled = was_disabled
-            if not was_disabled:
-                input_widget.focus()
+        def callback(result):
+            self.app.agent.comm_log.info(f"DEBUG: Screen callback triggered with result: {result}")
+            if not future.done():
+                future.set_result(result)
+
+        self.app.push_screen(screen, callback=callback)
+        self.app.agent.comm_log.info("DEBUG: Screen pushed, awaiting future")
+        res = await future
+        self.app.agent.comm_log.info(f"DEBUG: Future resolved in _pick_screen_main_thread: {res}")
+        return res
+
+    async def pick_option(self, prompt: str, options: list, current_value: str | None = None) -> str:
+        """Показує меню вибору і повертає вибрану строку."""
+        self.app.agent.comm_log.info(f"DEBUG: pick_option called with prompt: '{prompt}'")
+        screen = SelectionScreen(prompt, options, current_value=current_value)
+        return await self._call_ui(self._pick_screen_main_thread, screen)
 
     async def confirm_action(self, action_details: dict) -> bool:
-        action_type = action_details.get("type", "action")
-        target = action_details.get("path") or action_details.get("command") or ""
-        prompt = f"Allow {action_type} on {target}?"
-        result = await self.pick_option(prompt, ["y (Allow)", "n (Deny)"])
-        return result is not None and result.startswith("y")
+        self.app.agent.comm_log.info(f"DEBUG: confirm_action called for: {action_details.get('type')}")
+        screen = ConfirmationScreen(action_details)
+        return await self._call_ui(self._pick_screen_main_thread, screen)
 
     async def confirm_continue(self, prompt: str) -> bool:
-        result = await self.pick_option(prompt, ["Continue", "Stop"])
+        self.app.agent.comm_log.info(f"DEBUG: confirm_continue called with prompt: '{prompt}'")
+        options = ["Continue", "Stop"]
+        screen = SelectionScreen(prompt, options)
+        result = await self._call_ui(self._pick_screen_main_thread, screen)
         return result == "Continue"
 
     # --- Методи друку ---
 
     def _add_message(self, renderable=None, classes="chat-message", widget=None):
+        self.app.agent.comm_log.info(f"DEBUG: _add_message called with classes: {classes}")
         if widget is None:
             widget = Static(renderable, classes=classes, expand=False)
             widget.can_focus = False 
         self.history.mount(widget)
         self.history.scroll_end(animate=False)
+        self.app.agent.comm_log.info("DEBUG: Message mounted and scrolled")
 
     async def print_system(self, text):
+        self.app.agent.comm_log.info(f"DEBUG: print_system: '{text}'")
         await self._call_ui(self._add_message, f" {text} ", classes="chat-message system-message")
 
     async def print_error(self, text):
+        self.app.agent.comm_log.info(f"DEBUG: print_error: '{text}'")
         await self._call_ui(self._add_message, f"[bold red]✘ Error:[/] {text}")
 
     async def print_message(self, text, role="assistant"):
+        self.app.agent.comm_log.info(f"DEBUG: print_message (role={role}): '{text[:50]}...'")
         if role == "assistant":
             await self._call_ui(self._add_message, RichMarkdown(text.strip()), classes="chat-message assistant-message")
         else:
             await self._call_ui(self._add_message, Text(f"> {text.strip()}", style="rgb(100,200,100)"), classes="chat-message user-message")
+        self.app.agent.comm_log.info("DEBUG: print_message completed")
 
     async def print_thought(self, text):
         if text.strip():
@@ -1358,88 +1310,202 @@ END FILE: /home/romankozak/studio/public/code_agent/modules/ui.py
 
 ## <<FILE_19>>
 ================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/ui_components/selection_widget.py (ID: FILE_19)
+BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/ui_components/history_input.py (ID: FILE_19)
+================================================================================
+
+from textual.widgets import Input
+from textual.binding import Binding
+
+class HistoryInput(Input):
+    """
+    Розширене поле вводу з підтримкою історії команд.
+    Використовуйте Ctrl+Up / Ctrl+Down для навігації.
+    """
+    
+    BINDINGS = [
+        Binding("ctrl+up", "history_up", "Previous Command", show=False),
+        Binding("ctrl+down", "history_down", "Next Command", show=False),
+    ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._history: list[str] = []
+        self._history_index: int = -1
+        self._draft: str = ""
+
+    def add_entry(self, text: str) -> None:
+        """Додає текст до історії, якщо він не пустий і не дублює останній запис."""
+        text = text.strip()
+        if not text:
+            return
+            
+        # Не додаємо, якщо це те саме, що й остання команда
+        if not self._history or self._history[-1] != text:
+            self._history.append(text)
+        
+        # Скидаємо вказівник
+        self._reset_pointer()
+
+    def _reset_pointer(self):
+        self._history_index = -1
+        self._draft = ""
+
+    def action_history_up(self) -> None:
+        """Перехід до попередньої команди в історії."""
+        if not self._history:
+            return
+
+        # Якщо ми починаємо навігацію (були внизу), зберігаємо поточний ввід як чернетку
+        if self._history_index == -1:
+            self._draft = self.value
+            self._history_index = len(self._history) - 1
+        elif self._history_index > 0:
+            self._history_index -= 1
+        
+        # Оновлюємо значення та переміщуємо курсор в кінець
+        self.value = self._history[self._history_index]
+        self.action_end()
+
+    def action_history_down(self) -> None:
+        """Перехід до наступної команди в історії."""
+        if self._history_index == -1:
+            return # Ми вже в самому низу (на чернетці)
+
+        if self._history_index < len(self._history) - 1:
+            self._history_index += 1
+            self.value = self._history[self._history_index]
+        else:
+            # Повертаємось до чернетки
+            self._history_index = -1
+            self.value = self._draft
+        
+        self.action_end()
+
+    async def on_key(self, event) -> None:
+        if event.key == "enter":
+            event.stop()
+            self.post_message(self.Submitted(self, self.value))
+
+
+================================================================================
+END FILE: /home/romankozak/studio/public/code_agent/modules/ui_components/history_input.py
+================================================================================
+
+## <<FILE_20>>
+================================================================================
+BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/ui_components/selection_widget.py (ID: FILE_20)
 ================================================================================
 
 from textual.app import ComposeResult
-from textual.containers import Container
 from textual.widgets import ListView, ListItem, Label
-import asyncio
+from textual.containers import Vertical
+from textual.screen import ModalScreen
 
-class SelectionWidget(Container):
-    """
-    Універсальний віджет вибору, що з'являється над полем вводу.
-    """
+class SelectionScreen(ModalScreen[str | None]):
+    """Screen for selecting an option from a list, styled to look like a bottom widget."""
+
+    CSS = """
+    SelectionScreen {
+        align: center bottom;
+        background: 0%; /* Transparent background */
+    }
     
-    # Make it focusable
-    can_focus = True
+    .selection-panel {
+        width: 100%;
+        height: auto;
+        max-height: 50vh;
+        margin-bottom: 3; /* Position above the input container */
+        border-top: thick $accent;
+        background: $surface;
+        padding: 1 2;
+    }
     
-    def __init__(self, options: list[str], prompt: str = "Select an option", callback=None, **kwargs):
-        super().__init__(**kwargs)
-        self.options = options
+    .selection-prompt {
+        text-align: left;
+        padding-bottom: 1;
+        text-style: bold;
+        color: $text;
+    }
+    
+    ListView {
+        height: auto;
+        max-height: 15;
+        border: none;
+        margin-top: 1;
+        background: $surface;
+    }
+    
+    ListItem {
+        padding: 0 1;
+    }
+    
+    ListItem:hover {
+        background: $primary-darken-2;
+    }
+    
+    /* Highlight the selected item when list is focused */
+    ListView:focus > ListItem.-active {
+        background: $primary;
+        color: white;
+    }
+    """
+
+    def __init__(self, prompt: str, options: list[str], current_value: str | None = None, name: str | None = None, id: str | None = None, classes: str | None = None) -> None:
+        super().__init__(name, id, classes)
         self.prompt = prompt
-        self.callback = callback
-        self.future = None
+        self.options = options
+        self.current_value = current_value
 
     def compose(self) -> ComposeResult:
-        yield Label(self.prompt, id="selection-prompt")
-        yield ListView(
-            *[ListItem(Label(opt), id=f"opt_{i}") for i, opt in enumerate(self.options)],
-            id="selection-list"
+        yield Vertical(
+            Label(self.prompt, classes="selection-prompt"),
+            ListView(
+                *[ListItem(Label(opt), id=f"opt_{i}") for i, opt in enumerate(self.options)],
+                id="options_list"
+            ),
+            classes="selection-panel"
         )
 
-    async def wait_for_selection(self) -> str | None:
-        """
-        Метод для асинхронного очікування вибору.
-        """
-        self.future = asyncio.get_running_loop().create_future()
-        self.display = True
-        
-        # Ensure widget is mounted and visible before trying to focus
-        await asyncio.sleep(0)  # Let the display update
-        
-        list_view = self.query_one("#selection-list", ListView)
-        
-        # Focus the ListView
-        list_view.can_focus = True
+    def on_mount(self) -> None:
+        self.app.agent.comm_log.info("DEBUG: SelectionScreen mounted")
+        list_view = self.query_one(ListView)
+        # Focus the list view immediately
         list_view.focus()
         
-        self.app.log(f"SelectionWidget: ListView focused? {list_view.has_focus}")
-        self.app.log(f"SelectionWidget: Widget visible? {self.display}")
-        
-        try:
-            return await self.future
-        finally:
-            self.display = False
-            self.future = None
+        # If current_value is provided, highlight it
+        if self.current_value:
+            self.app.agent.comm_log.info(f"DEBUG: Highlighting current_value: {self.current_value}")
+            try:
+                index = self.options.index(self.current_value)
+                list_view.index = index
+            except ValueError:
+                self.app.agent.comm_log.warning(f"DEBUG: current_value '{self.current_value}' not found in options")
+                pass
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
-        """Handle list selection"""
-        if self.future and not self.future.done():
-            # Отримуємо текст з Label всередині ListItem
-            label = event.item.query_one(Label)
-            selection = str(label.renderable)
-            self.future.set_result(selection)
-            event.stop()
+        # Use the index to get the option from our list
+        index = event.list_view.index
+        self.app.agent.comm_log.info(f"DEBUG: ListItem selected at index: {index}")
+        if index is not None and 0 <= index < len(self.options):
+            val = self.options[index]
+            self.app.agent.comm_log.info(f"DEBUG: Dismissing SelectionScreen with value: {val}")
+            self.dismiss(val)
+        else:
+            self.app.agent.comm_log.warning("DEBUG: SelectionScreen index out of bounds")
+            self.dismiss(None)
 
     def on_key(self, event) -> None:
-        """Handle keyboard input"""
         if event.key == "escape":
-            if self.future and not self.future.done():
-                self.future.set_result(None)
-                event.stop()
-        # Allow ListView to handle Up/Down/Enter keys
-        elif event.key in ("up", "down", "enter"):
-            # Let it propagate to ListView
-            pass
+            self.app.agent.comm_log.info("DEBUG: Escape key pressed in SelectionScreen")
+            self.dismiss(None)
 
 ================================================================================
 END FILE: /home/romankozak/studio/public/code_agent/modules/ui_components/selection_widget.py
 ================================================================================
 
-## <<FILE_20>>
+## <<FILE_21>>
 ================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/tui.css (ID: FILE_20)
+BEGIN FILE: /home/romankozak/studio/public/code_agent/tui.css (ID: FILE_21)
 ================================================================================
 
 /* Константи для сумісності */
@@ -1550,54 +1616,8 @@ LoadingIndicator {
     margin: 0;
 }
 
-/* SelectionWidget Styles - FIXED */
-SelectionWidget {
-    display: none;
-    background: $surface;
-    border-top: thick $accent;
-    height: auto;
-    max-height: 50vh;
-    dock: bottom;
-    margin-bottom: 3; /* Above input-container */
-    padding: 1 2;
-    layer: overlay; /* Ensure it's on top */
-}
-
-#selection-prompt {
-    text-style: bold;
-    margin-bottom: 1;
-    color: $text;
-    height: auto;
-}
-
-#selection-list {
-    background: transparent;
-    border: solid $primary;
-    height: auto;
-    min-height: 5;
-    max-height: 15;
-}
-
-#selection-list > ListItem {
-    padding: 0 1;
-    height: 1;
-}
-
-#selection-list > ListItem:hover {
-    background: $primary-darken-2;
-}
-
-#selection-list > ListItem.-active {
-    background: $primary;
-    color: $text;
-    text-style: bold;
-}
-
-/* Highlight focused list item */
-ListView:focus > ListItem.-active {
-    background: $accent;
-    color: white;
-}
+/* SelectionScreen Styles (Defined in screen class, but overrides here if needed) */
+/* Note: Most styling is now inside modules/screens.py CSS property */
 
 /* Додатково: щоб історія автоматично фокусувалась при появі кнопок */
 #history {
@@ -1608,9 +1628,9 @@ ListView:focus > ListItem.-active {
 END FILE: /home/romankozak/studio/public/code_agent/tui.css
 ================================================================================
 
-## <<FILE_21>>
+## <<FILE_22>>
 ================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/tui.py (ID: FILE_21)
+BEGIN FILE: /home/romankozak/studio/public/code_agent/tui.py (ID: FILE_22)
 ================================================================================
 
 import os
@@ -1620,7 +1640,7 @@ from textual.widgets import Header, Footer, Input, Static, LoadingIndicator
 from textual.containers import Container, VerticalScroll, Horizontal
 from agent import AngelicaAgent
 from modules.tui_ui import TuiUI
-from modules.ui_components.selection_widget import SelectionWidget
+from modules.ui_components.history_input import HistoryInput
 
 class TUI(App):
     CSS_PATH = "tui.css"
@@ -1639,7 +1659,6 @@ class TUI(App):
         yield Header()
         with Container():
             yield VerticalScroll(id="history")
-            yield SelectionWidget(options=[], id="global-selection-widget") # Hidden by default via CSS
             yield Container(
                 Horizontal(
                     LoadingIndicator(),
@@ -1650,7 +1669,7 @@ class TUI(App):
             )
             yield Horizontal(
                 Static("> "),
-                Input(placeholder="Your message...", id="input"),
+                HistoryInput(placeholder="Your message...", id="input"),
                 id="input-container"
             )
         yield Footer()
@@ -1672,73 +1691,99 @@ class TUI(App):
         )
         await self.ui.print_system(startup_message)
         await self.ui.print_system("") # Add an empty line after the startup message
-        self.query_one("#input", Input).focus()
+        self.query_one("#input", HistoryInput).focus()
 
-    async def on_input_submitted(self, message: Input.Submitted) -> None:
-        """Called when the user submits a message."""
-        user_input = message.value.strip()
-        message.input.value = ""
-
-        if not user_input:
-            return
+    async def _handle_context_command(self):
+        """Handles the /context command in a worker to prevent blocking."""
+        self.agent.comm_log.info("DEBUG: Worker started for /context")
+        self.agent.comm_log.info("`/context` command received.")
         
-        # Check if we are in the middle of a model selection
-        if self.agent.is_awaiting_model_selection:
-            available_models = self.agent.settings.get("available_models", [])
-            try:
-                choice_index = int(user_input) - 1
-                if 0 <= choice_index < len(available_models):
-                    selected_model = available_models[choice_index]
-                    self.agent.comm_log.info(f"User selected model choice {user_input} -> '{selected_model}'.")
-                    self.run_worker(self.agent.switch_model(selected_model), exclusive=True)
-                else:
-                    await self.ui.print_error("Invalid selection. Please try again.")
-                    self.agent.comm_log.warning(f"Invalid model selection index: {choice_index}")
-            except ValueError:
-                await self.ui.print_error(f"Invalid input. Please enter a number or 'cancel'.")
-                self.agent.comm_log.warning(f"Non-integer input received for model selection: '{user_input}'")
-
-            # Always reset the state after an attempt
-            if user_input.lower() == 'cancel' or 'c':
-                self.agent.is_awaiting_model_selection = False
-                await self.ui.print_system("Model selection cancelled.")
-            return
-
-        if user_input == "/models":
-            self.agent.comm_log.info("`/models` command received. Displaying list.")
-            available_models = self.agent.settings.get("available_models", [])
-            if not available_models:
-                self.agent.comm_log.error("No available models found in settings.")
-                await self.ui.print_error("No available models configured.")
-                return
-
-            # Build the message to show the user
-            message_lines = ["Available models:"]
-            for i, model in enumerate(available_models):
-                is_current = model.split('/')[-1] == self.agent.chat.model_name.split('/')[-1]
-                message_lines.append(f"  {i+1}: {model} {'(current)' if is_current else ''}")
-            message_lines.append("\nEnter the number of the model to switch to, or 'cancel' to abort.")
-            
-            await self.ui.print_system("\n".join(message_lines))
-            
-            # Set the state to wait for the user's choice
-            self.agent.is_awaiting_model_selection = True
-            return
-
-        if user_input == "/context":
-            self.agent.comm_log.info("`/context` command received.")
-            options = ["small", "medium", "large"]
-            selection = await self.ui.pick_option("Choose context size (Esc to cancel):", options)
+        options = ["small", "medium", "large"]
+        current = self.agent.context_size
+        self.agent.comm_log.info("DEBUG: Calling ui.pick_option from worker")
+        
+        try:
+            selection = await self.ui.pick_option(
+                "Choose context size (Esc to cancel):", 
+                options,
+                current_value=current
+            )
+            self.agent.comm_log.info(f"DEBUG: pick_option returned: {selection}")
             
             if selection:
                 self.agent.set_context_size(selection)
             else:
                  await self.ui.print_system("Selection cancelled.")
+        except Exception as e:
+            self.agent.comm_log.error(f"ERROR in _handle_context_command: {e}")
+
+    async def on_input_submitted(self, message: Input.Submitted) -> None:
+        """Called when the user submits a message."""
+        user_input = message.value.strip()
+        
+        self.agent.comm_log.info(f"DEBUG: on_input_submitted called with: '{user_input}'")
+        
+        # Add to input history if not empty
+        if user_input:
+            if hasattr(message.input, 'add_entry'):
+                message.input.add_entry(user_input)
+            else:
+                self.agent.comm_log.warning("WARNING: Input widget does not support add_entry")
+            
+        message.input.value = ""
+
+        if not user_input:
+            return
+        
+        # --- COMMANDS ---
+
+        if user_input == "/models":
+            self.agent.comm_log.info("`/models` command received.")
+            
+            # Fetch models
+            available_models = self.agent.settings.get("available_models", [])
+            if not available_models:
+                await self.ui.print_error("No available models configured in settings.")
+                return
+
+            # Helper to run model selection in a worker
+            async def _select_model_worker():
+                self.agent.comm_log.info("DEBUG: Starting model selection worker")
+                # Identify current model
+                current = self.agent.chat.model_name
+                
+                # Show picker with current value
+                selection = await self.ui.pick_option(
+                    f"Select AI Model (Current: {current})", 
+                    available_models,
+                    current_value=current
+                )
+                
+                if selection:
+                    # Switch model
+                    await self.agent.switch_model(selection)
+                else:
+                    await self.ui.print_system("Model selection cancelled.")
+
+            # Run in worker to avoid blocking
+            self.run_worker(_select_model_worker(), exclusive=True)
             return
 
-        # Default behavior: process as a prompt
-        await self.ui.print_message(user_input, role="user")
-        self.run_worker(self.agent.process_user_input(user_input), exclusive=True)
+        if user_input == "/context":
+            self.agent.comm_log.info("DEBUG: Scheduling _handle_context_command worker")
+            self.run_worker(self._handle_context_command(), exclusive=True)
+            return
+
+        # --- DEFAULT: CHAT PROMPT ---
+        try:
+            self.agent.comm_log.info(f"DEBUG: Processing regular prompt: '{user_input}'")
+            await self.ui.print_message(user_input, role="user")
+            self.agent.comm_log.info("DEBUG: Message printed to UI, starting agent worker")
+            self.run_worker(self.agent.process_user_input(user_input), exclusive=True)
+            self.agent.comm_log.info("DEBUG: Agent worker scheduled")
+        except Exception as e:
+            self.agent.comm_log.error(f"ERROR in prompt processing: {e}")
+            await self.ui.print_error(f"Critical error: {e}")
 
     async def action_interrupt_agent(self) -> None:
         """Interrupts the agent's current operation."""
@@ -1748,7 +1793,6 @@ if __name__ == "__main__":
     agent = AngelicaAgent() # Instantiate agent without ui
     app = TUI(agent) # Pass the agent to TUI
     app.run()
-
 
 ================================================================================
 END FILE: /home/romankozak/studio/public/code_agent/tui.py

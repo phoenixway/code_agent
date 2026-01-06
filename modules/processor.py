@@ -1,5 +1,3 @@
-import asyncio
-
 # modules/processor.py
 
 class ResponseProcessor:
@@ -9,38 +7,47 @@ class ResponseProcessor:
         self.chat = chat
         self.policy = policy
 
-    async def process_single_action(self, command: dict) -> dict:
-        # ШІ може помилитися і замість 'type' надіслати 'command'
-        # Робимо обробку обох варіантів
-        action_type = command.get("type") or command.get("command")
+    async def process_single_action(self, command_dict: dict) -> dict:
+        # 1. Спроба знайти назву інструмента
+        action_type = command_dict.get("action") or command_dict.get("type")
         
+        # 2. ФОЛБЕК-ЛОГІКА: Якщо назви немає, але є ключ 'command'
+        if not action_type and "command" in command_dict:
+            cmd_text = command_dict["command"]
+            # Якщо там довгий рядок або є спецсимволи (&&, |, >) - це 100% run_shell
+            if isinstance(cmd_text, str) and (" " in cmd_text or "|" in cmd_text or "&&" in cmd_text):
+                action_type = "run_shell"
+            else:
+                # Якщо коротке слово (наприклад, "ls") - теж вважаємо це назвою інструмента
+                action_type = cmd_text
+
         if not action_type:
-            return {
-                "status": "failed", 
-                "output": "Error: No action type found in JSON (expected 'type' or 'command')."
-            }
+            return {"status": "failed", "output": "Error: Could not identify tool name."}
 
-        # Створюємо нормалізовану копію для policy, щоб вона завжди бачила 'type'
-        normalized_command = command.copy()
-        normalized_command["type"] = action_type
-
-        # 1. КРИТИЧНО: Перевірка дозволу (твій MiniPicker)
-        if not await self.policy.check(normalized_command):
-            return {
-                "status": "failed", 
-                "output": "Action denied by user."
-            }
-
-        # 2. Підготовка аргументів (все, крім службових полів)
-        service_fields = {"type", "command", "before_execution", "during_execution", "after_execution", "return_control"}
-        args = {k: v for k, v in command.items() if k not in service_fields}
+        # 3. Збираємо аргументи
+        args = {}
+        # Розгортаємо вкладені параметри
+        for nested in ["params", "arguments", "parameters"]:
+            if isinstance(command_dict.get(nested), dict):
+                args.update(command_dict[nested])
         
-        # 3. Виклик інструмента через ToolManager
-        # Метод call тепер має бути в ToolManager (ми його виправили минулого разу)
-        result = await self.tools.call(action_type, **args)
+        # Всі інші ключі (крім службових)
+        service_fields = {"action", "type", "command", "params", "arguments", "parameters", 
+                         "before_execution", "during_execution", "after_execution", "return_control"}
         
-        # Повертаємо уніфікований результат
-        if result.get("status") == "success":
-            return {"status": "success", "output": result.get("output", "")}
-        else:
-            return {"status": "failed", "output": result.get("output", "Unknown tool error.")}
+        for k, v in command_dict.items():
+            if k not in service_fields:
+                args[k] = v
+
+        # 4. Спеціальна обробка для run_shell: 
+        # переконуємося, що текст команди потрапив у args['command']
+        if action_type == "run_shell" and "command" in command_dict:
+            args["command"] = command_dict["command"]
+
+        # 5. Перевірка політики (MiniPicker)
+        normalized_cmd = {"type": action_type, **args}
+        if not await self.policy.check(normalized_cmd):
+            return {"status": "failed", "output": "Action denied by user."}
+
+        # 6. Виклик через ToolManager
+        return await self.tools.call(action_type, **args)

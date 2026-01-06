@@ -19,3 +19,4 @@ tui.css
 modules/tools/base.py
 modules/tools/manager.py
 modules/ui_components/selection_widget.py
+modules/ui_components/history_input.py

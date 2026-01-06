@@ -15,6 +15,8 @@ All actions must include:
 - "after_execution": Message on success.
 - "return_control": (boolean) Set to 'true' if you need the output of the command to continue.
 
+IMPORTANT: When calling a tool, you MUST include the "type" field with the tool's name. Example for shell: {{"type": "run_shell", "command": "ls"}}. DO NOT just send {{"command": "ls"}} without a type.
+
 ## FILE EDITING STRATEGY
 - For NEW files: Use `create_file`.
 - For EXISTING files: Prefer `edit_file` to replace specific blocks. This saves tokens and prevents overwriting large files.
