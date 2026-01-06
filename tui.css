@@ -39,6 +39,7 @@ Screen {
     margin-bottom: 1;
     border: none;
     background: $bg-main;
+    margin-left: 0; /* Unify alignment */
 }
 
 /* User Message */
@@ -66,14 +67,15 @@ Screen {
     /* Muted Green #446644 */
     border-left: wide #446644;
     padding: 0 1;
-    margin: 1 2 1 2;
+    margin: 1 2 1 0; /* 1 line top margin, 1 line bottom margin */
 }
 
 /* System / Logs */
 .system-message {
     color: $warning;
     text-style: bold;
-    /* Removed border-bottom as requested */
+    /* Invisible border to match others alignment */
+    border-left: wide #050505;
     padding: 0 1;
 }
 
@@ -85,11 +87,10 @@ Screen {
 
 /* Command Results */
 .result-message {
-    background: #001100; /* Very dark green */
-    /* Success Green #00ff41 */
+    background: #0a110a; /* Darker green-tinted background */
     border-left: wide #00ff41;
-    color: $success;
-    margin: 1 4;
+    color: #a0ffa0;
+    margin: 1 2 1 0; /* 1 line top margin, 1 line bottom margin */
     padding: 0 1;
 }
 

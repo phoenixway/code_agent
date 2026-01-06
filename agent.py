@@ -194,7 +194,8 @@ class AngelicaAgent:
                     
                     # Друкуємо результат в історії
                     output_text = result.get('output', '')
-                    await self.ui.print_command_result(output_text)
+                    cmd_name = command.get("type") or command.get("action") or "command"
+                    await self.ui.print_command_result(output_text, command_name=cmd_name)
 
                     # Якщо ШІ потрібен результат для наступного кроку (loop)
                     if command.get("return_control") is True:
