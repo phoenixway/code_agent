@@ -45,27 +45,50 @@ class TUI(App):
         # Check if self.agent.chat is None, if so, get_chat_provider failed during agent init
         model_name = self.agent.chat.model_name if self.agent.chat else "N/A (Provider initialization failed)"
         # Set the full title including the model name
-        await self.ui.update_header(f"Angelica-AI (Model: {model_name})")
+        await self.ui.update_header(f"{model_name}")
         current_directory = os.getcwd()
         
         startup_message = (
             f"✨ Angelica-AI (v{self.VERSION})\n"
+            f"Model: {model_name}\n"
             f"Working Directory: {current_directory}"
         )
         await self.ui.print_system(startup_message)
         await self.ui.print_system("") # Add an empty line after the startup message
         self.query_one("#input", Input).focus()
 
+    async def _handle_context_command(self):
+        """Handles the /context command in a worker to prevent blocking."""
+        self.log("DEBUG: Worker started for /context")
+        self.agent.comm_log.info("`/context` command received.")
+        
+        options = ["small", "medium", "large"]
+        self.log("DEBUG: Calling ui.pick_option from worker")
+        
+        try:
+            selection = await self.ui.pick_option("Choose context size (Esc to cancel):", options)
+            self.log(f"DEBUG: pick_option returned: {selection}")
+            
+            if selection:
+                self.agent.set_context_size(selection)
+            else:
+                 await self.ui.print_system("Selection cancelled.")
+        except Exception as e:
+            self.log(f"ERROR in _handle_context_command: {e}")
+            self.agent.comm_log.error(f"Error handling context command: {e}")
+
     async def on_input_submitted(self, message: Input.Submitted) -> None:
         """Called when the user submits a message."""
         user_input = message.value.strip()
         message.input.value = ""
 
+        self.log(f"DEBUG: Input submitted: '{user_input}'")
         if not user_input:
             return
         
         # Check if we are in the middle of a model selection
         if self.agent.is_awaiting_model_selection:
+            # ... (keep existing logic) ...
             available_models = self.agent.settings.get("available_models", [])
             try:
                 choice_index = int(user_input) - 1
@@ -80,13 +103,13 @@ class TUI(App):
                 await self.ui.print_error(f"Invalid input. Please enter a number or 'cancel'.")
                 self.agent.comm_log.warning(f"Non-integer input received for model selection: '{user_input}'")
 
-            # Always reset the state after an attempt
             if user_input.lower() == 'cancel' or 'c':
                 self.agent.is_awaiting_model_selection = False
                 await self.ui.print_system("Model selection cancelled.")
             return
 
         if user_input == "/models":
+            # ... (keep existing logic) ...
             self.agent.comm_log.info("`/models` command received. Displaying list.")
             available_models = self.agent.settings.get("available_models", [])
             if not available_models:
@@ -94,7 +117,6 @@ class TUI(App):
                 await self.ui.print_error("No available models configured.")
                 return
 
-            # Build the message to show the user
             message_lines = ["Available models:"]
             for i, model in enumerate(available_models):
                 is_current = model.split('/')[-1] == self.agent.chat.model_name.split('/')[-1]
@@ -102,9 +124,12 @@ class TUI(App):
             message_lines.append("\nEnter the number of the model to switch to, or 'cancel' to abort.")
             
             await self.ui.print_system("\n".join(message_lines))
-            
-            # Set the state to wait for the user's choice
             self.agent.is_awaiting_model_selection = True
+            return
+
+        if user_input == "/context":
+            self.log("DEBUG: Scheduling _handle_context_command worker")
+            self.run_worker(self._handle_context_command(), exclusive=True)
             return
 
         # Default behavior: process as a prompt

@@ -6,37 +6,7 @@ from textual.app import ComposeResult
 from rich.markdown import Markdown as RichMarkdown
 from rich.text import Text
 
-class MiniPicker(Static, can_focus=True):
-    """Мінімалістичний CLI-пайкер для підтвердження."""
-    def __init__(self, prompt: str, options: list, future: asyncio.Future):
-        super().__init__()
-        self.prompt = prompt
-        self.options = options
-        self.future = future
-        self.index = 0 
-
-    def render(self) -> Text:
-        lines = [Text(f"{self.prompt}", style="bold yellow")]
-        for i, opt in enumerate(self.options):
-            if i == self.index:
-                lines.append(Text(f" > {opt}", style="bold cyan"))
-            else:
-                lines.append(Text(f"   {opt}", style="dim"))
-        return Text("\n").join(lines)
-
-    def on_key(self, event) -> None:
-        if event.key in ("up", "k"):
-            self.index = (self.index - 1) % len(self.options)
-            self.refresh()
-        elif event.key in ("down", "j"):
-            self.index = (self.index + 1) % len(self.options)
-            self.refresh()
-        elif event.key == "enter":
-            self.future.set_result(self.index == 0)
-        elif event.key == "y":
-            self.future.set_result(True)
-        elif event.key == "n":
-            self.future.set_result(False)
+from modules.screens import ConfirmationScreen, SelectionScreen
 
 class TuiUI:
     def __init__(self, app, history_widget: VerticalScroll, loading_container: Container, loading_label: Static):
@@ -69,23 +39,6 @@ class TuiUI:
     def _update_header_main_thread(self, text: str):
         self.app.title = text
 
-    # --- Методи виклику Picker ---
-
-    async def _show_picker_main_thread(self, prompt: str, options: list) -> bool:
-        loop = asyncio.get_running_loop()
-        future = loop.create_future()
-        picker = MiniPicker(prompt, options, future)
-
-        input_container = self.app.query_one("#input-container")
-        await self.app.mount(picker, before=input_container)
-        
-        picker.focus()
-        try:
-            return await future
-        finally:
-            await picker.remove()
-            self.app.query_one("#input").focus()
-
     # --- Public API для Agent ---
 
     async def start_thinking(self):
@@ -100,14 +53,32 @@ class TuiUI:
     async def update_header(self, text: str):
         await self._call_ui(self._update_header_main_thread, text)
 
+    async def _pick_screen_main_thread(self, screen):
+        # Manually manage future to work around push_screen_wait worker requirement
+        loop = asyncio.get_running_loop()
+        future = loop.create_future()
+
+        def callback(result):
+            if not future.done():
+                future.set_result(result)
+
+        self.app.push_screen(screen, callback=callback)
+        return await future
+
+    async def pick_option(self, prompt: str, options: list) -> str:
+        """Показує меню вибору і повертає вибрану строку."""
+        screen = SelectionScreen(prompt, options)
+        return await self._call_ui(self._pick_screen_main_thread, screen)
+
     async def confirm_action(self, action_details: dict) -> bool:
-        action_type = action_details.get("type", "action")
-        target = action_details.get("path") or action_details.get("command") or ""
-        prompt = f"Allow {action_type} on {target}?"
-        return await self._call_ui(self._show_picker_main_thread, prompt, ["y (Allow)", "n (Deny)"])
+        screen = ConfirmationScreen(action_details)
+        return await self._call_ui(self._pick_screen_main_thread, screen)
 
     async def confirm_continue(self, prompt: str) -> bool:
-        return await self._call_ui(self._show_picker_main_thread, prompt, ["Continue", "Stop"])
+        options = ["Continue", "Stop"]
+        screen = SelectionScreen(prompt, options)
+        result = await self._call_ui(self._pick_screen_main_thread, screen)
+        return result == "Continue"
 
     # --- Методи друку ---
 

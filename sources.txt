@@ -12,12 +12,16 @@ TABLE OF CONTENTS
 - [/home/romankozak/studio/public/code_agent/modules/policy.py](##<<FILE_9>>)
 - [/home/romankozak/studio/public/code_agent/modules/processor.py](##<<FILE_10>>)
 - [/home/romankozak/studio/public/code_agent/modules/project.py](##<<FILE_11>>)
-- [/home/romankozak/studio/public/code_agent/modules/session.py](##<<FILE_12>>)
-- [/home/romankozak/studio/public/code_agent/modules/storage.py](##<<FILE_13>>)
-- [/home/romankozak/studio/public/code_agent/modules/tui_ui.py](##<<FILE_14>>)
-- [/home/romankozak/studio/public/code_agent/modules/ui.py](##<<FILE_15>>)
-- [/home/romankozak/studio/public/code_agent/tui.css](##<<FILE_16>>)
-- [/home/romankozak/studio/public/code_agent/tui.py](##<<FILE_17>>)
+- [/home/romankozak/studio/public/code_agent/modules/screens.py](##<<FILE_12>>)
+- [/home/romankozak/studio/public/code_agent/modules/session.py](##<<FILE_13>>)
+- [/home/romankozak/studio/public/code_agent/modules/storage.py](##<<FILE_14>>)
+- [/home/romankozak/studio/public/code_agent/modules/tools/base.py](##<<FILE_15>>)
+- [/home/romankozak/studio/public/code_agent/modules/tools/manager.py](##<<FILE_16>>)
+- [/home/romankozak/studio/public/code_agent/modules/tui_ui.py](##<<FILE_17>>)
+- [/home/romankozak/studio/public/code_agent/modules/ui.py](##<<FILE_18>>)
+- [/home/romankozak/studio/public/code_agent/modules/ui_components/selection_widget.py](##<<FILE_19>>)
+- [/home/romankozak/studio/public/code_agent/tui.css](##<<FILE_20>>)
+- [/home/romankozak/studio/public/code_agent/tui.py](##<<FILE_21>>)
 
 ================================================================================
 
@@ -30,240 +34,261 @@ import json
 import re
 import logging
 import asyncio
+import os
 
-# Importing custom modules
+# Імпорт системних та кастомних модулів
+from modules.defaults import DEFAULT_SYSTEM_PROMPT
+from modules.tools.manager import ToolManager
 from modules.config_loader import load_settings, CONFIG_DIR
-from modules.files import FileModule
 from modules.context import ContextManager
 from modules.history import HistoryManager
 from modules.session import SessionManager
 from modules.processor import ResponseProcessor
 from modules.policy import PermissionPolicy
 from modules.chat import get_chat_provider, ProviderAPIError
-from modules.tui_ui import TuiUI
 
 class AngelicaAgent:
     def __init__(self, ui=None):
-        """Initializes the agent with settings and necessary managers."""
-        self.ui = ui
+        self._ui = ui
         self.settings = load_settings()
+        
+        # Стан та запобіжники для TUI
+        self.is_awaiting_model_selection = False 
+        self.current_task = None
+        self.MAX_CONSECUTIVE_CALLS = 5
+
+        # Налаштування логування комунікації
+        self.comm_log = self._setup_logger()
+
+        # 1. Ініціалізація ToolManager та завантаження інструментів
+        self.tool_manager = ToolManager()
+        self.tool_manager.load_tools()
+        
+        # 2. Менеджери даних (ContextManager використовує старий FileModule для читання)
+        from modules.files import FileModule
         self.files = FileModule()
         self.context_manager = ContextManager(self.files)
-        self.MAX_CONSECUTIVE_CALLS = 3 # Safeguard against loops
-        self.current_task = None # To hold the current running task
         
-        # Setup communication logger
-        self.comm_log = logging.getLogger('communication')
-        self.comm_log.setLevel(logging.INFO)
-        handler = logging.FileHandler("communication.log", encoding="utf-8")
-        handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
-        self.comm_log.addHandler(handler)
-
-        # Setup AI provider and history 
-        model_name = self.settings.get("default_model", "ollama/qwen:4b")
+        # 3. Налаштування AI Провайдера
+        model_name = self.settings.get("default_model", "ollama/qwen2.5-coder:7b")
         self.chat = get_chat_provider(model_name)
         
-        if self.chat is None:
-            # Handle the case where provider initialization failed
-            error_message = f"Failed to initialize chat provider for model: {model_name}. Please check your API keys and configuration."
-            self.ui.print_message(error_message, role="system")
-            return # Exit __init__ if chat provider is not available
-        
+        # 4. Управління історією та сесіями
         self.history = HistoryManager(self.chat, logger=self.comm_log, max_tokens=self.settings.get("max_history_tokens", 4000))
-        self.session_manager = SessionManager(CONFIG_DIR, self.history, self.context_manager, self.ui)
+        self.session_manager = SessionManager(CONFIG_DIR, self.history, self.context_manager, self._ui)
         
-        # HACK: Disable 'ask' policy in TUI mode for now, as it's blocking.
+        # Ініціалізація розміру контексту з налаштувань
+        initial_context_size = self.settings.get("context_size", "small")
+        self.set_context_size(initial_context_size)
+
+        # 5. Політика безпеки та Процесор дій
         policy_mode = self.settings.get("permission_policy", "ask")
-        if isinstance(ui, TuiUI) and policy_mode == "ask":
-            policy_mode = "always" 
-            
-        self.policy = PermissionPolicy(self.ui, policy_mode)
-        self.processor = ResponseProcessor(self.ui, self.files, self.chat, self.policy)
+        self.policy = PermissionPolicy(self._ui, policy_mode)
+        
+        self.processor = ResponseProcessor(
+            ui=self._ui, 
+            tool_manager=self.tool_manager, 
+            chat=self.chat, 
+            policy=self.policy
+        )
+
+    @property
+    def ui(self):
+        return self._ui
+
+    @ui.setter
+    def ui(self, value):
+        """Синхронізує посилання на UI у всіх залежних модулях при підключенні TUI."""
+        self._ui = value
+        if hasattr(self, 'processor'): self.processor.ui = value
+        if hasattr(self, 'policy'): self.policy.ui = value
+        if hasattr(self, 'session_manager'): self.session_manager.ui = value
+
+    def _setup_logger(self):
+        logger = logging.getLogger('communication')
+        logger.setLevel(logging.INFO)
+        if not logger.handlers:
+            handler = logging.FileHandler("communication.log", encoding="utf-8")
+            handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
+            logger.addHandler(handler)
+        return logger
 
     def _parse_output(self, text: str):
+        """
+        Суворий парсинг: 
+        1. Думки витягуються з <think>...</think>.
+        2. Після думок шукається АБО JSON (type/command), АБО звичайний текст.
+        """
         thoughts = []
         command = None
         
-        # 1. Extract thoughts first to isolate them
-        thought_end_pattern = r'</(?:think|thought|thinking)>'
-        last_match = None
-        # Find the last thought tag to handle multiple thought blocks
-        for match in re.finditer(thought_end_pattern, text, re.IGNORECASE | re.DOTALL):
-            last_match = match
+        # Витягуємо блок роздумів
+        thought_match = re.search(r'<think>(.*?)</think>', text, re.DOTALL | re.IGNORECASE)
+        if thought_match:
+            thoughts.append(thought_match.group(1).strip())
+            payload = text[thought_match.end():].strip()
+        else:
+            payload = text.strip()
+
+        if not payload:
+            return thoughts, None, ""
+
+        # Пошук JSON (підтримує raw JSON або блоки ```json)
+        json_pattern = r'(?:```json\s*)?(\{.*?\})(?:\s*```)?'
+        json_match = re.search(json_pattern, payload, re.DOTALL)
         
-        if last_match:
-            end_pos = last_match.end()
-            thought_block = text[:end_pos]
-            text = text[end_pos:] # The rest of the text after the last thought
-
-            cleaned_thought = re.sub(r'</?(?:think|thought|thinking)>', '', thought_block, flags=re.IGNORECASE).strip()
-            if cleaned_thought:
-                thoughts.append(cleaned_thought)
-
-        # The remaining text is now either a command, plain text, or both.
-        remaining_text = text.strip()
-
-        # 2. Look for a command, prioritizing explicit ```json blocks
-        json_block_match = re.search(r'```json\s*(\{.*?\})\s*```', remaining_text, re.DOTALL)
-        if json_block_match:
-            json_str = json_block_match.group(1).strip()
+        if json_match:
             try:
-                data = json.loads(json_str)
-                if isinstance(data, dict) and "type" in data:
-                    command = data
-                    # Remove the JSON block for the final plain text
-                    remaining_text = remaining_text.replace(json_block_match.group(0), '', 1).strip()
+                json_str = json_match.group(1).strip()
+                parsed = json.loads(json_str)
+                # Перевіряємо наявність ключів команди (дозволяємо 'type' або 'command')
+                if isinstance(parsed, dict) and ("type" in parsed or "command" in parsed):
+                    return thoughts, parsed, ""
             except json.JSONDecodeError:
-                # If it's a malformed JSON block, treat it as plain text
                 pass
         
-        # 3. If no command yet, check if the entire remaining text is a JSON object
-        if not command and remaining_text.startswith('{') and remaining_text.endswith('}'):
-            try:
-                data = json.loads(remaining_text)
-                if isinstance(data, dict) and "type" in data:
-                    command = data
-                    # The entire text was a command, so there's no plain text left
-                    remaining_text = ""
-            except json.JSONDecodeError:
-                # It looked like JSON but wasn't valid, so treat it as plain text
-                pass
-
-        # 4. Whatever is left is plain text; clean it up.
-        plain_text = re.sub(r'</?(?:think|thought|thinking|tool_code|tool_call|json|code|text|message)\b.*?>', '', remaining_text, flags=re.IGNORECASE)
-        plain_text = re.sub(r'^Text Message:\s*', '', plain_text, flags=re.IGNORECASE).strip()
-        
-        return thoughts, command, plain_text
+        # Якщо JSON не знайдено або він невалідний — повертаємо як текст
+        return thoughts, None, payload
 
     async def get_response(self, query):
+        """Отримує стрімінгову відповідь від ШІ."""
         full_text = ""
-        self.comm_log.info(f"OUTGOING TO AI:\n{query}")
-        
-        if self.chat is None:
-            error_message = "Chat provider is not initialized. Cannot get response."
-            await self.ui.print_message(error_message, role="system")
-            return error_message # Return error message to indicate failure
-
+        self.comm_log.info(f"OUTGOING:\n{query}")
         try:
             async for chunk in self.chat.get_streaming_response(query, self.history.get_history_for_api()):
                 full_text += chunk
-        except ProviderAPIError as e:
-            error_message = f"System Message: Chat provider error: {e}"
-            await self.ui.print_message(error_message, role="system")
-            self.comm_log.error(f"Chat provider error: {e}")
-            return error_message # Return error message to indicate failure
-            
-        self.comm_log.info(f"INCOMING FROM AI (RAW): '{repr(full_text)}'")
+        except Exception as e:
+            self.comm_log.error(f"Chat error: {e}")
+            return f"Error: {e}"
+        
+        self.comm_log.info(f"INCOMING:\n{full_text}")
         return full_text
 
-    async def switch_model(self, model_name: str):
-        """Switches the chat model and re-initializes the history."""
-        self.comm_log.info(f"--- Attempting to switch model to: {model_name} ---")
-        await self.ui.print_system(f"Switching to model: {model_name}...")
-        
-        self.comm_log.info(f"Calling get_chat_provider for '{model_name}'.")
-        new_chat_provider = get_chat_provider(model_name)
-        
-        if new_chat_provider is None:
-            self.comm_log.error(f"Failed to initialize chat provider for '{model_name}'.")
-            error_message = f"Failed to initialize chat provider for model: {model_name}. Please check your configuration and API keys."
-            await self.ui.print_error(error_message)
-            await self.ui.print_system(f"Reverting to previous model: {self.chat.model_name}")
-            await self.ui.update_header(f"Model: {self.chat.model_name}")
-        else:
-            self.comm_log.info(f"Successfully initialized new provider: {new_chat_provider.model_name}.")
-            self.chat = new_chat_provider
-            # We create a new history manager to reset the conversation context
-            self.history = HistoryManager(self.chat, logger=self.comm_log, max_tokens=self.settings.get("max_history_tokens", 4000))
-            # Also update the processor with the new chat instance
-            self.processor.chat = self.chat
-            self.comm_log.info("Agent's chat, history, and processor have been updated.")
-            await self.ui.print_system(f"✅ Switched to model: {self.chat.model_name}")
-            await self.ui.update_header(f"Model: {self.chat.model_name}")
-
-    async def interrupt(self):
-        """Cancels the current running task."""
-        if self.current_task and not self.current_task.done():
-            self.current_task.cancel()
-
     async def process_user_input(self, user_input):
+        """Головний цикл обробки вводу: Промпт -> ШІ -> Дія -> Результат -> ШІ."""
+        # Підготовка контексту та інструментів
+        tools_desc = self.tool_manager.get_tools_prompt()
+        system_prompt = DEFAULT_SYSTEM_PROMPT.format(tools_description=tools_desc)
+        context_info = self.context_manager.get_context_prompt()
+        
+        # Додаємо в історію актуальні дані про проект
+        self.history.add_message("system", f"{system_prompt}\n\n{context_info}")
         self.history.add_message("user", user_input)
         
-        context_info = self.context_manager.get_context_prompt()
-        current_query = user_input + ("\n\n" + context_info if context_info else "")
-
-
         active_loop = True
-        consecutive_ai_calls = 0 # Initialize counter
+        consecutive_calls = 0
+        current_query = user_input
 
         try:
-            await self.ui.start_thinking()
             while active_loop:
-                consecutive_ai_calls += 1 # Increment for each loop turn
-                if consecutive_ai_calls > self.MAX_CONSECUTIVE_CALLS:
+                consecutive_calls += 1
+                if consecutive_calls > self.MAX_CONSECUTIVE_CALLS:
                     await self.ui.stop_loading()
-                    should_continue = await self.ui.confirm_continue(
-                        "The agent has performed several actions in a row.\nDo you want to continue?"
-                    )
-                    if not should_continue:
-                        await self.ui.print_system("🛑 Operation stopped by user.")
-                        active_loop = False
+                    if not await self.ui.confirm_continue("Агент виконав багато кроків. Продовжити?"):
                         break
-                    else:
-                        consecutive_ai_calls = 1 # Reset counter and continue
-                        await self.ui.start_thinking()
+
+                await self.ui.start_thinking()
                 
-                # Create a task to be able to cancel it
+                # Запускаємо задачу з можливістю переривання
                 self.current_task = asyncio.create_task(self.get_response(current_query))
                 response = await self.current_task
                 
-                self.comm_log.info(f"LOG_PROCESS_USER_INPUT_PRE_HISTORY: '{repr(response)}'")
-                if not response: 
-                    active_loop = False
+                if not response or response.startswith("Error:"): 
                     break
                 
                 self.history.add_message("assistant", response)
                 thoughts, command, plain_text = self._parse_output(response)
 
+                # Відображення думок в UI
                 for thought in thoughts:
                     await self.ui.print_thought(thought)
 
+                # ВИБІР: АБО Команда, АБО Текстова відповідь
                 if command:
-                    active_loop = False
                     if command.get("before_execution"):
                         await self.ui.print_plan(command['before_execution'])
                     
-                    status_msg = command.get("during_execution", "Processing...")
-                    await self.ui.start_action(status_msg)
+                    await self.ui.start_action(command.get("during_execution", "Processing..."))
                     
-                    result = self.processor.process_single_action(command)
+                    # Виконання дії (тут може з'явитися MiniPicker)
+                    result = await self.processor.process_single_action(command)
                     
-                    if command.get("after_execution") and result.get("status") != "failed":
+                    if result.get("status") == "success" and command.get("after_execution"):
                         await self.ui.print_confirmation(command['after_execution'])
                     
-                    if result.get("status") == "failed" or command.get("return_control") is True:
-                        active_loop = True
-                        # Прибираємо \n після двокрапки
-                        output_text = result.get('output', '').strip()
-                        system_msg = f"SYSTEM RESULT: {output_text}"
-                        
-                        await self.ui.print_command_result(output_text)
-                        self.history.add_message("system", system_msg)
-                        
-                        current_query = system_msg # Set query for the next loop
+                    # Друкуємо результат в історії
+                    output_text = result.get('output', '')
+                    await self.ui.print_command_result(output_text)
+
+                    # Якщо ШІ потрібен результат для наступного кроку (loop)
+                    if command.get("return_control") is True:
+                        res_msg = f"SYSTEM RESULT: {output_text}"
+                        self.history.add_message("system", res_msg)
+                        current_query = res_msg # Передаємо результат на наступну ітерацію
+                    else:
+                        active_loop = False
                 
-                elif plain_text.strip():
-                    await self.ui.print_message(plain_text.strip(), role="assistant")
+                elif plain_text:
+                    await self.ui.print_message(plain_text, role="assistant")
+                    active_loop = False
+                else:
                     active_loop = False
 
             await self.history.check_and_summarize(self.ui)
         except asyncio.CancelledError:
-            # This is expected when the task is cancelled, so we don't need to re-raise
-            # The interrupt() method already printed a message.
-            pass
+            pass # Переривання вже оброблене в interrupt()
         finally:
-            self.current_task = None # Clear the task reference
+            self.current_task = None
             await self.ui.stop_loading()
+
+    async def interrupt(self):
+        """Перериває поточну асинхронну задачу агента."""
+        if self.current_task and not self.current_task.done():
+            self.current_task.cancel()
+            await self.ui.print_system("🛑 Операцію перервано.")
+
+    async def switch_model(self, model_name: str):
+        """Гаряче перемикання моделі ШІ з оновленням історії та процесора."""
+        if hasattr(self.chat, 'model_name') and self.chat.model_name == model_name:
+            await self.ui.print_system(f"Модель {model_name} вже активна.")
+            return
+
+        await self.ui.print_system(f"Перемикаюсь на {model_name}...")
+        new_chat_provider = get_chat_provider(model_name)
+        
+        if new_chat_provider:
+            self.chat = new_chat_provider
+            self.history = HistoryManager(self.chat, logger=self.comm_log, max_tokens=self.settings.get("max_history_tokens", 4000))
+            self.processor.chat = self.chat
+            await self.ui.update_header(f"{self.chat.model_name}")
+            await self.ui.print_system(f"✅ Модель змінено на {model_name}")
+    
+    def set_context_size(self, size_name: str):
+        """Встановлює розмір контекстного вікна."""
+        CONTEXT_SIZES = {
+            "small": 4096,
+            "medium": 16384,
+            "large": 32768
+        }
+        
+        size_key = size_name.lower()
+        if size_key not in CONTEXT_SIZES:
+            # Fallback for unknown values
+            token_limit = 4096
+            size_key = "small"
+        else:
+            token_limit = CONTEXT_SIZES[size_key]
+            
+        # Update history manager if initialized
+        if hasattr(self, 'history'):
+            self.history.max_tokens = token_limit
+            
+        # Save current state (runtime only, doesn't persist to yaml unless we want to)
+        self.context_size = size_key
+        if self.ui:
+            asyncio.create_task(self.ui.print_system(f"Context size set to {size_key.upper()} ({token_limit} tokens limit)"))
+
+
 
 ================================================================================
 END FILE: /home/romankozak/studio/public/code_agent/agent.py
@@ -492,37 +517,90 @@ BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/context.py (ID: FI
 ================================================================================
 
 # modules/context.py
+import os
+from pathlib import Path
+
 class ContextManager:
     def __init__(self, files_module):
         self.files = files_module
         self.basket = {}
+        # Стандартні ігнори, якщо .gitignore відсутній
+        self.default_ignore = {'.git', '__pycache__', 'node_modules', 'venv', '.idea', 'build'}
+
+    def _get_ignore_list(self, root_dir):
+        """Зчитує .gitignore та повертає набір правил."""
+        ignore_path = Path(root_dir) / ".gitignore"
+        ignore_list = self.default_ignore.copy()
+        if ignore_path.exists():
+            try:
+                with open(ignore_path, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith('#'):
+                            # Прибираємо слеші для простого порівняння
+                            ignore_list.add(line.replace('/', ''))
+            except:
+                pass
+        return ignore_list
+
+    def get_project_structure(self, root_dir=".", max_depth=3):
+        """Будує текстове дерево проекту з урахуванням ігнорів."""
+        ignore_list = self._get_ignore_list(root_dir)
+        output = ["Project Structure:"]
+        
+        def _build_tree(current_dir, depth, prefix=""):
+            if depth > max_depth:
+                return
+            
+            try:
+                # Сортуємо: спочатку папки, потім файли
+                items = sorted(Path(current_dir).iterdir(), key=lambda x: (not x.is_dir(), x.name))
+            except PermissionError:
+                return
+
+            for i, item in enumerate(items):
+                if item.name in ignore_list:
+                    continue
+                
+                is_last = (i == len(items) - 1)
+                connector = "└── " if is_last else "├── "
+                output.append(f"{prefix}{connector}{item.name}{'/' if item.is_dir() else ''}")
+                
+                if item.is_dir():
+                    new_prefix = prefix + ("    " if is_last else "│   ")
+                    _build_tree(item, depth + 1, new_prefix)
+
+        _build_tree(root_dir, 1)
+        return "\n".join(output)
 
     def add_file(self, path):
+        # Використовуємо твій існуючий FileModule
         content = self.files.read_file(path)
         if content:
             self.basket[path] = content
             return True
         return False
 
+    def get_context_prompt(self):
+        """Збирає структуру та вміст кошика в один промпт."""
+        # 1. Додаємо дерево проекту
+        structure = self.get_project_structure()
+        
+        # 2. Додаємо вміст файлів з кошика
+        files_content = ""
+        if self.basket:
+            files_content = "\n\n--- OPEN FILES CONTENT ---\n"
+            for p, c in self.basket.items():
+                files_content += f"FILE: {p}\n{c}\n---\n"
+        
+        return f"{structure}{files_content}"
+
+    # Решта методів без змін
     def remove_file(self, path):
         return self.basket.pop(path, None) is not None
 
     def clear(self):
         self.basket.clear()
-
-    def get_stats(self):
-        chars = sum(len(c) for c in self.basket.values())
-        return len(self.basket), chars // 4
-
-    def get_context_prompt(self):
-        if not self.basket: return ""
-        out = "\n--- CONTEXT ---\n"
-        for p, c in self.basket.items():
-            out += f"FILE: {p}\n{c}\n---\n"
-        return out
-
-    def list_files(self):
-        return list(self.basket.keys())
 
 
 ================================================================================
@@ -536,123 +614,35 @@ BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/defaults.py (ID: F
 
 # modules/defaults.py
 
-DEFAULT_SYSTEM_PROMPT = """You are Angelica-AI, a professional coding agent optimized for autonomous problem-solving in Linux (Fedora/Desktop) and Android (Termux) environments.
+DEFAULT_SYSTEM_PROMPT = """You are Angelica-AI, a professional coding agent optimized for autonomous problem-solving in Linux (Fedora/Desktop) and Android (Termux).
 
-## RESPONSE ARCHITECTURE
-Every response must follow this strict sequence:
+## RESPONSE FORMAT
+1. **Reasoning (<think>)**: Start with a `<think>` block for internal analysis and planning.
+2. **Action (Raw JSON)**: After `</think>`, if an action is needed, provide EXACTLY ONE raw JSON object. 
+   - **CRITICAL**: Do NOT use markdown code blocks (e.g., no ```json). Provide the raw string.
+3. **Text Message**: If no action is needed, provide a concise text response after `</think>`.
 
-1. **Internal Reasoning (<think>)**:
-   - Start every response with this block.
-   - Analyze the user's request, plan your steps, and explain your technical choices.
-   - Use this space for Chain-of-Thought reasoning.
+## COMMAND STRUCTURE
+All actions must include:
+- "before_execution": Explain what you are doing.
+- "during_execution": Status message (e.g. "Editing...").
+- "after_execution": Message on success.
+- "return_control": (boolean) Set to 'true' if you need the output of the command to continue.
 
-2. **EITHER a Technical Action (JSON)**:
-   - If a technical step is required (read/write/execute), provide EXACTLY ONE raw JSON object immediately after the </think> tag.
-   - **CRITICAL**: Do NOT use Markdown code blocks (```json) for commands. Provide the raw JSON string.
-   - Do NOT add any text after the JSON block.
+## FILE EDITING STRATEGY
+- For NEW files: Use `create_file`.
+- For EXISTING files: Prefer `edit_file` to replace specific blocks. This saves tokens and prevents overwriting large files.
+- Before editing: Always `read_file` to ensure you have the correct `search_text`.
 
-3. **OR a Text Message**:
-   - If no further action is needed or you need to ask a question, provide a concise text response after the </think> tag.
-
----
-
-## EXAMPLES
-
-### Example 1: Correct Action
-
-<think>
-I need to see the contents of the main application file to understand its structure. I will use the `read_file` command.
-</think>
-{
-  "type": "read_file",
-  "path": "agent.py",
-  "before_execution": "I am reading the main agent file.",
-  "during_execution": "Reading agent.py...",
-  "after_execution": "File content loaded.",
-  "return_control": true
-}
-
-### Example 2: Correct Text Response
-
-<think>
-I have analyzed the code and found a bug in the `calculate_total` function. The tax rate is incorrect. I will inform the user.
-</think>
-I found a bug in the `calculate_total` function. The tax rate is incorrect. I can fix it for you.
-
-### Example 3: Incorrect (Uses wrong tags)
-
-<tool_code>
-print("This is wrong")
-</tool_code>
-
-### Example 4: Incorrect (Uses <tool_call> and has extra text)
-
-<tool_call>
-{
-  "type": "run_command",
-  "command": "ls"
-}
-</tool_call>
-Okay, I am listing the files.  <- This text should not be here.
+## ENVIRONMENT
+You have a full shell (Termux/Linux). You can use `grep`, `sed`, `git`, `kotlinc`, etc., via `run_shell`.
 
 ---
-
-## COMMAND LIFECYCLE & EXECUTION
-Every JSON action MUST include these fields to manage the UI state and execution flow:
-
-- "before_execution": A brief explanation for the user of what you are about to do.
-- "during_execution": A short status message (e.g., "Compiling...") displayed during the process.
-- "after_execution": A confirmation message shown once the action succeeds.
-- "return_control": (boolean)
-    - true: Use this if you need the output (STDOUT/STDERR/File content) to decide your next step. The system will automatically feed the result back to you.
-    - false: Use this for final actions or when the result is not required for your logic. This ends the current execution loop.
-
+{tools_description}
 ---
 
-## SUPPORTED ACTIONS
+Begin your response with an analysis of the task in <think> tags."""
 
-1. **RUN_COMMAND** (Shell execution):
-{
-  "type": "run_command",
-  "command": "terminal_command",
-  "before_execution": "I will check the project dependencies.",
-  "during_execution": "Running 'ls -R'...",
-  "after_execution": "Directory structure retrieved.",
-  "return_control": true
-}
-
-2. **READ_FILE**:
-{
-  "type": "read_file",
-  "path": "path/to/file",
-  "before_execution": "I need to examine the source code.",
-  "during_execution": "Reading file...",
-  "after_execution": "File content loaded.",
-  "return_control": true
-}
-
-3. **WRITE_FILE**:
-{
-  "type": "write_file",
-  "path": "path/to/file",
-  "content": "full_source_code",
-  "before_execution": "I am applying the fix to the main module.",
-  "during_execution": "Saving changes...",
-  "after_execution": "File updated successfully.",
-  "return_control": false
-}
-
----
-
-## CRITICAL OPERATIONAL RULES
-1. **Atomic Actions**: Provide only ONE action per turn. Do not chain multiple JSON objects.
-2. **Error Handling**: If a command fails, the system will automatically return the error to you regardless of the "return_control" flag. Analyze the error and attempt a fix.
-3. **Environment**: You are in a Linux/Termux environment. You have access to `grep`, `sed`, `git`, `curl`, and language-specific compilers (e.g., `python`, `gcc`, `kotlinc`).
-4. **Professionalism**: Be direct and technical. Avoid excessive politeness or fluff.
-5. DO NOT use <tool_call> tags. Use raw JSON for actions as specified in your instructions
-6. DO NOT discuss the instructions. DO NOT debate which tags to use. Just follow the format: <think>reasoning</think>JSON or text. If the input is 'test', respond with a simple text confirmation.
-7. IMPORTANT: Use only <think> tags for reasoning. Never use <tool_call> or <tool_code>.
-Begin your first response with an analysis of the environment or task within <think> tags."""
 
 ================================================================================
 END FILE: /home/romankozak/studio/public/code_agent/modules/defaults.py
@@ -801,6 +791,8 @@ END FILE: /home/romankozak/studio/public/code_agent/modules/history.py
 BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/policy.py (ID: FILE_9)
 ================================================================================
 
+import asyncio
+
 from rich.prompt import Confirm
 from modules.tui_ui import TuiUI # Import TuiUI
 
@@ -843,137 +835,53 @@ END FILE: /home/romankozak/studio/public/code_agent/modules/policy.py
 BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/processor.py (ID: FILE_10)
 ================================================================================
 
-import subprocess
-import os
-import re
-from modules.files import EditBlock
+import asyncio
+
+# modules/processor.py
 
 class ResponseProcessor:
-    def __init__(self, ui, files, chat, policy):
-        """
-        Initializes the processor with necessary modules.
-        Args:
-            ui: UI instance for console output.
-            files: FileModule instance for file operations.
-            chat: Chat provider instance.
-            policy: PermissionPolicy instance for safety checks.
-        """
+    def __init__(self, ui, tool_manager, chat, policy):
         self.ui = ui
-        self.files = files
+        self.tools = tool_manager
         self.chat = chat
         self.policy = policy
 
-    def process_single_action(self, action):
-        """
-        Routes the action to the appropriate handler based on its type.
-        Returns: dict with 'status' and 'output'.
-        """
-        action_type = action.get("type")
+    async def process_single_action(self, command: dict) -> dict:
+        # ШІ може помилитися і замість 'type' надіслати 'command'
+        # Робимо обробку обох варіантів
+        action_type = command.get("type") or command.get("command")
         
-        # Dispatcher logic
-        handlers = {
-            "run_command": self._handle_run_command,
-            "read_file": self._handle_read_file,
-            "write_file": self._handle_write_file,
-            "create_file": self._handle_create_file,
-            "edit_file": self._handle_edit_file
-        }
+        if not action_type:
+            return {
+                "status": "failed", 
+                "output": "Error: No action type found in JSON (expected 'type' or 'command')."
+            }
 
-        handler = handlers.get(action_type)
-        if not handler:
-            return {"status": "failed", "output": f"Unknown action type: {action_type}"}
+        # Створюємо нормалізовану копію для policy, щоб вона завжди бачила 'type'
+        normalized_command = command.copy()
+        normalized_command["type"] = action_type
 
-        try:
-            return handler(action)
-        except Exception as e:
-            return {"status": "failed", "output": f"Execution error: {str(e)}"}
+        # 1. КРИТИЧНО: Перевірка дозволу (твій MiniPicker)
+        if not await self.policy.check(normalized_command):
+            return {
+                "status": "failed", 
+                "output": "Action denied by user."
+            }
 
-    def _handle_run_command(self, action):
-        """Executes shell commands and captures output."""
-        cmd = action.get("command")
-        if not cmd:
-            return {"status": "failed", "output": "No command provided."}
-
-        try:
-            # Using shell=True to support pipes and environment variables in Termux/Fedora
-            result = subprocess.run(
-                cmd, 
-                shell=True, 
-                capture_output=True, 
-                text=True, 
-                timeout=300 # 5 minute safety timeout
-            )
-            
-            output = result.stdout
-            if result.stderr:
-                output += f"\nError Output:\n{result.stderr}"
-            
-            status = "success" if result.returncode == 0 else "failed"
-            return {"status": status, "output": output.strip() or "Command finished with no output."}
-            
-        except subprocess.TimeoutExpired:
-            return {"status": "failed", "output": "Command timed out after 5 minutes."}
-
-    def _handle_read_file(self, action):
-        """Reads file content safely."""
-        path = action.get("path") or action.get("file_path")
-        content = self.files.read_file(path) # Assuming files.py handles exceptions
-        if content is None:
-            return {"status": "failed", "output": f"Could not read file: {path}"}
-        return {"status": "success", "output": content}
-
-    def _handle_create_file(self, action):
-        """Creates a new file. Fails if file exists to prevent accidental overwrite."""
-        path = action.get("path") or action.get("file_path")
-        content = action.get("content", "")
-        result = self.files.create_file(path, content)
-        return {"status": "success" if result.success else "failed", "output": result.message}
-
-    def _handle_write_file(self, action):
-        """Standard file writing (overwrites content)."""
-        path = action.get("path") or action.get("file_path")
-        new_content = action.get("content", "")
+        # 2. Підготовка аргументів (все, крім службових полів)
+        service_fields = {"type", "command", "before_execution", "during_execution", "after_execution", "return_control"}
+        args = {k: v for k, v in command.items() if k not in service_fields}
         
-        old_content = self.files.read_file(path)
-        if old_content is None:
-            # If the file doesn't exist, create it.
-            result = self.files.create_file(path, new_content)
-            return {"status": "success" if result.success else "failed", "output": result.message}
+        # 3. Виклик інструмента через ToolManager
+        # Метод call тепер має бути в ToolManager (ми його виправили минулого разу)
+        result = await self.tools.call(action_type, **args)
         
-        # If the file exists, replace its content.
-        edit = EditBlock(file_path=path, search_text=old_content, replace_text=new_content)
-        result = self.files.apply_edit(edit)
-        return {"status": "success" if result.success else "failed", "output": result.message}
+        # Повертаємо уніфікований результат
+        if result.get("status") == "success":
+            return {"status": "success", "output": result.get("output", "")}
+        else:
+            return {"status": "failed", "output": result.get("output", "Unknown tool error.")}
 
-    def _handle_edit_file(self, action):
-        """
-        Implements search-and-replace editing.
-        Expects 'edits' list with 'search' and 'replace' blocks.
-        """
-        path = action.get("path") or action.get("file_path")
-        edits = action.get("edits", [])
-        
-        if not self.files.read_file(path):
-            return {"status": "failed", "output": f"File not found for editing: {path}"}
-
-        for edit in edits:
-            search_text = edit.get("search")
-            replace_text = edit.get("replace")
-            
-            # We need to read the file for each edit as the content changes
-            current_content = self.files.read_file(path)
-            if search_text not in current_content:
-                return {
-                    "status": "failed", 
-                    "output": f"Search block not found in {path}. Ensure exact matching (spaces/newlines)."
-                }
-
-            edit_block = EditBlock(file_path=path, search_text=search_text, replace_text=replace_text)
-            result = self.files.apply_edit(edit_block)
-            if not result.success:
-                return {"status": "failed", "output": f"Failed to apply edit: {result.message}"}
-
-        return {"status": "success", "output": f"Successfully applied {len(edits)} edits to {path}."}
 
 ================================================================================
 END FILE: /home/romankozak/studio/public/code_agent/modules/processor.py
@@ -1014,7 +922,143 @@ END FILE: /home/romankozak/studio/public/code_agent/modules/project.py
 
 ## <<FILE_12>>
 ================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/session.py (ID: FILE_12)
+BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/screens.py (ID: FILE_12)
+================================================================================
+
+# modules/screens.py
+
+from textual.app import ComposeResult
+from textual.widgets import Static, Button, ListView, ListItem, Label
+from textual.containers import Horizontal, Vertical
+from textual.screen import ModalScreen
+
+class ConfirmationScreen(ModalScreen[bool]):
+    """Screen to ask the user for confirmation for sensitive actions."""
+
+    CSS = """
+    ConfirmationScreen {
+        align: center middle;
+    }
+    
+    .confirmation-panel {
+        width: 60;
+        height: auto;
+        border: thick $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+    
+    .confirmation-title {
+        text-align: center;
+        margin-bottom: 1;
+    }
+    
+    .confirmation-buttons {
+        align: center middle;
+        margin-top: 1;
+    }
+    
+    Button {
+        margin: 0 1;
+    }
+    """
+
+    def __init__(self, action_details: dict, name: str | None = None, id: str | None = None, classes: str | None = None) -> None:
+        super().__init__(name, id, classes)
+        self.action_details = action_details
+
+    def compose(self) -> ComposeResult:
+        action_type = self.action_details.get("type", "Unknown")
+        details = ""
+        if action_type == "run_command":
+            details = self.action_details.get("command", "")
+        elif action_type in ["write_file", "create_file", "edit_file"]:
+            details = self.action_details.get("path") or self.action_details.get("file_path", "")
+
+        yield Vertical(
+            Static(f"[bold yellow]⚠️  ALLOW this action? ⚠️[/bold yellow]", classes="confirmation-title"),
+            Static(f"   - Type: [bold cyan]{action_type}[/bold cyan]", classes="confirmation-detail"),
+            Static(f"   - Details: [bold red]{details}[/bold red]", classes="confirmation-detail"),
+            Horizontal(
+                Button("Allow", id="allow_button", variant="success"),
+                Button("Deny", id="deny_button", variant="error"),
+                classes="confirmation-buttons"
+            ),
+            classes="confirmation-panel"
+        )
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "allow_button":
+            self.dismiss(True)
+        elif event.button.id == "deny_button":
+            self.dismiss(False)
+
+class SelectionScreen(ModalScreen[str | None]):
+    """Screen for selecting an option from a list."""
+
+    CSS = """
+    SelectionScreen {
+        align: center bottom;
+    }
+    
+    .selection-panel {
+        width: 100%;
+        height: auto;
+        max-height: 50%;
+        margin-bottom: 3; /* Відступ для input-container (висота 3 рядки) */
+        border-top: thick $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+    
+    .selection-prompt {
+        text-align: left;
+        padding-bottom: 1;
+        text-style: bold;
+        color: $text;
+    }
+    
+    ListView {
+        height: auto;
+        max-height: 15;
+        border: none;
+        margin-top: 1;
+    }
+    """
+
+    def __init__(self, prompt: str, options: list[str], name: str | None = None, id: str | None = None, classes: str | None = None) -> None:
+        super().__init__(name, id, classes)
+        self.prompt = prompt
+        self.options = options
+
+    def compose(self) -> ComposeResult:
+        yield Vertical(
+            Label(self.prompt, classes="selection-prompt"),
+            ListView(
+                *[ListItem(Label(opt), id=f"opt_{i}") for i, opt in enumerate(self.options)],
+                id="options_list"
+            ),
+            classes="selection-panel"
+        )
+
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        # Get the label text from the selected item
+        label = event.item.query_one(Label)
+        self.dismiss(str(label.renderable))
+
+    def on_key(self, event) -> None:
+        if event.key == "escape":
+            self.dismiss(None)
+
+
+
+================================================================================
+END FILE: /home/romankozak/studio/public/code_agent/modules/screens.py
+================================================================================
+
+## <<FILE_13>>
+================================================================================
+BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/session.py (ID: FILE_13)
 ================================================================================
 
 # modules/session.py
@@ -1038,9 +1082,9 @@ class SessionManager:
 END FILE: /home/romankozak/studio/public/code_agent/modules/session.py
 ================================================================================
 
-## <<FILE_13>>
+## <<FILE_14>>
 ================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/storage.py (ID: FILE_13)
+BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/storage.py (ID: FILE_14)
 ================================================================================
 
 import json
@@ -1070,120 +1114,107 @@ if __name__ == "__main__":
 END FILE: /home/romankozak/studio/public/code_agent/modules/storage.py
 ================================================================================
 
-## <<FILE_14>>
+## <<FILE_15>>
 ================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/tui_ui.py (ID: FILE_14)
+BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/tools/base.py (ID: FILE_15)
 ================================================================================
 
-# modules/tui_ui.py
+from abc import ABC, abstractmethod
+
+class BaseTool(ABC):
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """Назва, за якою ШІ буде викликати інструмент."""
+        pass
+
+    @property
+    @abstractmethod
+    def description(self) -> str:
+        """Опис інструмента для системного промпту."""
+        pass
+
+    @abstractmethod
+    async def execute(self, **kwargs) -> dict:
+        """Логіка виконання. Має повертати словник з ключами 'status' та 'output'."""
+        pass
+
+
+================================================================================
+END FILE: /home/romankozak/studio/public/code_agent/modules/tools/base.py
+================================================================================
+
+## <<FILE_16>>
+================================================================================
+BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/tools/manager.py (ID: FILE_16)
+================================================================================
+
+# modules/tools/manager.py
+import importlib
+import inspect
+import pkgutil
+from typing import Dict
+from .base import BaseTool
+
+class ToolManager:
+    def __init__(self, definitions_pkg="modules.tools.definitions"):
+        self.tools: Dict[str, BaseTool] = {}
+        self._pkg = definitions_pkg
+
+    def load_tools(self):
+        """Динамічно завантажує всі класи інструментів."""
+        self.tools.clear()
+        try:
+            package = importlib.import_module(self._pkg)
+            for _, name, _ in pkgutil.iter_modules(package.__path__):
+                mod = importlib.import_module(f"{self._pkg}.{name}")
+                for _, obj in inspect.getmembers(mod):
+                    if inspect.isclass(obj) and issubclass(obj, BaseTool) and obj is not BaseTool:
+                        t = obj()
+                        self.tools[t.name] = t
+            return list(self.tools.keys())
+        except Exception as e:
+            print(f"Error loading tools: {e}")
+            return []
+
+    def get_tools_prompt(self) -> str:
+        """Генерує опис інструментів для ШІ."""
+        if not self.tools:
+            return "No tools available."
+        prompt = "AVAILABLE TOOLS:\n"
+        for name, tool in self.tools.items():
+            prompt += f"- {name}: {tool.description}\n"
+        return prompt
+
+    async def call(self, name: str, **kwargs):
+        """ВИПРАВЛЕНО: Метод тепер називається 'call'"""
+        tool = self.tools.get(name)
+        if not tool:
+            return {"status": "error", "output": f"Unknown tool: {name}"}
+        try:
+            return await tool.execute(**kwargs)
+        except Exception as e:
+            return {"status": "error", "output": f"Tool execution failed: {str(e)}"}
+
+
+================================================================================
+END FILE: /home/romankozak/studio/public/code_agent/modules/tools/manager.py
+================================================================================
+
+## <<FILE_17>>
+================================================================================
+BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/tui_ui.py (ID: FILE_17)
+================================================================================
 
 import threading
 import asyncio
-from textual.widgets import Static, Button, Markdown as MarkdownWidget
-from textual.containers import Horizontal, Vertical, VerticalScroll, Container
-from textual.screen import Screen
+from textual.widgets import Static, ListItem, Label
+from textual.containers import Vertical, VerticalScroll, Container, Horizontal
 from textual.app import ComposeResult
-from textual.events import Key # Import Key event
-from rich.markdown import Markdown, Markdown as RichMarkdown
+from rich.markdown import Markdown as RichMarkdown
 from rich.text import Text
-from rich.console import Group
-from rich.table import Table
 
-class ConfirmationScreen(Screen[bool]):
-    """Екран підтвердження для небезпечних дій."""
-    def __init__(self, action_details: dict, **kwargs) -> None:
-        super().__init__(**kwargs)
-        self.action_details = action_details
-
-    def compose(self) -> ComposeResult:
-        action_type = self.action_details.get("type", "Unknown")
-        details = ""
-        if action_type == "run_command":
-            details = self.action_details.get("command", "")
-        elif action_type in ["write_file", "create_file", "edit_file"]:
-            details = self.action_details.get("path") or self.action_details.get("file_path", "")
-
-        yield Vertical(
-            Static(f"[bold yellow]⚠️  ALLOW this action? ⚠️[/bold yellow]", classes="confirmation-title"),
-            Static(f"   - Type: [bold cyan]{action_type}[/bold cyan]", classes="confirmation-detail"),
-            Static(f"   - Details: [bold red]{details}[/bold red]", classes="confirmation-detail"),
-            Horizontal(
-                Button("Allow", id="allow_button", variant="success"),
-                Button("Deny", id="deny_button", variant="error"),
-                classes="confirmation-buttons"
-            ),
-            classes="confirmation-panel"
-        )
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "allow_button":
-            self.dismiss(True)
-        elif event.button.id == "deny_button":
-            self.dismiss(False)
-
-class ContinueConfirmationScreen(Screen[bool]):
-    """A generic confirmation screen."""
-    def __init__(self, prompt: str, **kwargs) -> None:
-        super().__init__(**kwargs)
-        self.prompt = prompt
-
-    def compose(self) -> ComposeResult:
-        yield Vertical(
-            Static(f"[bold yellow]⚠️  Confirmation Required ⚠️[/bold yellow]", classes="confirmation-title"),
-            Static(self.prompt, classes="confirmation-detail"),
-            Horizontal(
-                Button("Continue", id="continue_button", variant="success"),
-                Button("Stop", id="stop_button", variant="error"),
-                classes="confirmation-buttons"
-            ),
-            classes="confirmation-panel"
-        )
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "continue_button":
-            self.dismiss(True)
-        elif event.button.id == "stop_button":
-            self.dismiss(False)
-
-
-class ModelSelectionScreen(Screen[str]):
-    """A screen to allow the user to select a model."""
-    def __init__(self, models: list[str], current_model: str, **kwargs) -> None:
-        super().__init__(**kwargs)
-        self.models = models
-        self.current_model = current_model
-        # Create a map: sanitized_id -> original_name
-        self.model_map = {f"model_{i}": m for i, m in enumerate(models)}
-
-    def compose(self) -> ComposeResult:
-        yield Vertical(
-            Static("[bold cyan]Select a Model[/bold cyan]", classes="confirmation-title"),
-            *[
-                Button(
-                    f"{'>> ' if model == self.current_model else ''}{model}",
-                    # Use index for ID
-                    id=f"model_{i}", 
-                    variant="primary" if model == self.current_model else "default"
-                ) for i, model in enumerate(self.models)
-            ],
-            Button("Cancel", id="cancel_button", variant="error"),
-            classes="confirmation-panel"
-        )
-
-    def on_key(self, event: Key) -> None:
-        """Handle key presses."""
-        if event.key == "escape":
-            event.stop()
-            self.dismiss("")
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "cancel_button":
-            self.dismiss("")
-        elif event.button.id in self.model_map:
-            # Get the original name from the button ID
-            self.dismiss(self.model_map[event.button.id])
-        else:
-            self.dismiss("")
+from modules.ui_components.selection_widget import SelectionWidget
 
 class TuiUI:
     def __init__(self, app, history_widget: VerticalScroll, loading_container: Container, loading_label: Static):
@@ -1194,94 +1225,111 @@ class TuiUI:
         self.main_thread = threading.main_thread()
 
     async def _call_ui(self, func, *args, **kwargs):
-        """Безпечний виклик оновлення UI з будь-якого потоку."""
         if threading.current_thread() is self.main_thread:
-            result = func(*args, **kwargs)
-            if asyncio.iscoroutine(result):
-                return await result
-            return result
+            res = func(*args, **kwargs)
+            return await res if asyncio.iscoroutine(res) else res
         else:
             return await self.app.call_from_thread(func, *args, **kwargs)
 
-    def _add_message(self, renderable=None, classes="chat-message", widget=None):
-        """Додає повідомлення в історію."""
-        if widget is None:
-            widget = Static(renderable, classes=classes, expand=False)
-            widget.can_focus = False 
-        
-        self.history.mount(widget)
-        self.history.scroll_end(animate=False)
-
+    # --- Методи керування станом індикатора ---
 
     def _start_thinking(self):
         self.loading_label.update("Thinking...")
         self.loading_container.display = True
 
     def _start_action(self, text: str):
-        status_text = text if text else "Processing..."
-        self.loading_label.update(status_text)
+        self.loading_label.update(text if text else "Processing...")
         self.loading_container.display = True
 
     def _stop_loading(self):
         self.loading_container.display = False
 
-    async def _confirm_action_main_thread(self, action_details: dict) -> bool:
-        return await self.app.push_screen(ConfirmationScreen(action_details))
-
-    async def _confirm_continue_main_thread(self, prompt: str) -> bool:
-        return await self.app.push_screen(ContinueConfirmationScreen(prompt))
-
-    async def _select_model_main_thread(self, models: list[str], current_model: str) -> str:
-        return await self.app.push_screen(ModelSelectionScreen(models, current_model))
-
     def _update_header_main_thread(self, text: str):
-        self.app.query_one("Header").sub_title = text
+        self.app.title = text
 
-    # --- Public methods for the agent ---
-
-    async def update_header(self, text: str):
-        await self._call_ui(self._update_header_main_thread, text)
-
-    async def select_model(self, models: list[str], current_model: str) -> str:
-        return await self._call_ui(self._select_model_main_thread, models, current_model)
+    # --- Public API для Agent ---
 
     async def start_thinking(self):
         await self._call_ui(self._start_thinking)
-        
+
     async def start_action(self, text: str):
         await self._call_ui(self._start_action, text)
 
     async def stop_loading(self):
         await self._call_ui(self._stop_loading)
 
+    async def update_header(self, text: str):
+        await self._call_ui(self._update_header_main_thread, text)
+
+    async def pick_option(self, prompt: str, options: list) -> str:
+        """Показує меню вибору через SelectionWidget і повертає вибрану строку."""
+        async def _pick():
+            widget = self.app.query_one("#global-selection-widget", SelectionWidget)
+            widget.prompt = prompt
+            
+            # Оновлюємо список опцій
+            list_view = widget.query_one("#selection-list")
+            await list_view.clear()
+            for i, opt in enumerate(options):
+                await list_view.mount(ListItem(Label(opt), id=f"opt_{i}"))
+            
+            # Show and wait for selection
+            result = await widget.wait_for_selection()
+            return result
+
+        # Get input widget
+        input_widget = self.app.query_one("#input")
+        
+        # Store original state
+        was_disabled = input_widget.disabled
+        
+        try:
+            # Disable main input during selection
+            input_widget.disabled = True
+            
+            # Run selection
+            return await self._call_ui(_pick)
+        finally:
+            # Re-enable input and restore focus
+            input_widget.disabled = was_disabled
+            if not was_disabled:
+                input_widget.focus()
+
     async def confirm_action(self, action_details: dict) -> bool:
-        return await self._call_ui(self._confirm_action_main_thread, action_details)
+        action_type = action_details.get("type", "action")
+        target = action_details.get("path") or action_details.get("command") or ""
+        prompt = f"Allow {action_type} on {target}?"
+        result = await self.pick_option(prompt, ["y (Allow)", "n (Deny)"])
+        return result is not None and result.startswith("y")
 
     async def confirm_continue(self, prompt: str) -> bool:
-        return await self._call_ui(self._confirm_continue_main_thread, prompt)
+        result = await self.pick_option(prompt, ["Continue", "Stop"])
+        return result == "Continue"
+
+    # --- Методи друку ---
+
+    def _add_message(self, renderable=None, classes="chat-message", widget=None):
+        if widget is None:
+            widget = Static(renderable, classes=classes, expand=False)
+            widget.can_focus = False 
+        self.history.mount(widget)
+        self.history.scroll_end(animate=False)
 
     async def print_system(self, text):
         await self._call_ui(self._add_message, f" {text} ", classes="chat-message system-message")
-
 
     async def print_error(self, text):
         await self._call_ui(self._add_message, f"[bold red]✘ Error:[/] {text}")
 
     async def print_message(self, text, role="assistant"):
         if role == "assistant":
-            clean_text = text.strip()
-            markdown_renderable = RichMarkdown(clean_text)
-            await self._call_ui(self._add_message, markdown_renderable, classes="chat-message assistant-message")
+            await self._call_ui(self._add_message, RichMarkdown(text.strip()), classes="chat-message assistant-message")
         else:
-            renderable = Text(f"> {text.strip()}", style="rgb(100,200,100)")
-            await self._call_ui(self._add_message, renderable, classes="chat-message user-message")
-
+            await self._call_ui(self._add_message, Text(f"> {text.strip()}", style="rgb(100,200,100)"), classes="chat-message user-message")
 
     async def print_thought(self, text):
         if text.strip():
-            await self._call_ui(self._add_message, 
-                                f"[grey37][italic]💭 {text.strip()}[/italic][/grey37]", 
-                                classes="chat-message thought-message")
+            await self._call_ui(self._add_message, f"[grey37][italic]{text.strip()}[/italic][/grey37]", classes="chat-message thought-message")
 
     async def print_plan(self, text):
         await self._call_ui(self._add_message, f"[bold cyan]🤖 Plan:[/] {text.strip()}")
@@ -1292,15 +1340,13 @@ class TuiUI:
     async def print_confirmation(self, text):
         await self._call_ui(self._add_message, f"[bold green]✅ {text.strip()}[/]")
 
-
-
 ================================================================================
 END FILE: /home/romankozak/studio/public/code_agent/modules/tui_ui.py
 ================================================================================
 
-## <<FILE_15>>
+## <<FILE_18>>
 ================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/ui.py (ID: FILE_15)
+BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/ui.py (ID: FILE_18)
 ================================================================================
 
 [Помилка читання файлу /home/romankozak/studio/public/code_agent/modules/ui.py: [Errno 2] No such file or directory: '/home/romankozak/studio/public/code_agent/modules/ui.py']
@@ -1310,9 +1356,90 @@ BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/ui.py (ID: FILE_15
 END FILE: /home/romankozak/studio/public/code_agent/modules/ui.py
 ================================================================================
 
-## <<FILE_16>>
+## <<FILE_19>>
 ================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/tui.css (ID: FILE_16)
+BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/ui_components/selection_widget.py (ID: FILE_19)
+================================================================================
+
+from textual.app import ComposeResult
+from textual.containers import Container
+from textual.widgets import ListView, ListItem, Label
+import asyncio
+
+class SelectionWidget(Container):
+    """
+    Універсальний віджет вибору, що з'являється над полем вводу.
+    """
+    
+    # Make it focusable
+    can_focus = True
+    
+    def __init__(self, options: list[str], prompt: str = "Select an option", callback=None, **kwargs):
+        super().__init__(**kwargs)
+        self.options = options
+        self.prompt = prompt
+        self.callback = callback
+        self.future = None
+
+    def compose(self) -> ComposeResult:
+        yield Label(self.prompt, id="selection-prompt")
+        yield ListView(
+            *[ListItem(Label(opt), id=f"opt_{i}") for i, opt in enumerate(self.options)],
+            id="selection-list"
+        )
+
+    async def wait_for_selection(self) -> str | None:
+        """
+        Метод для асинхронного очікування вибору.
+        """
+        self.future = asyncio.get_running_loop().create_future()
+        self.display = True
+        
+        # Ensure widget is mounted and visible before trying to focus
+        await asyncio.sleep(0)  # Let the display update
+        
+        list_view = self.query_one("#selection-list", ListView)
+        
+        # Focus the ListView
+        list_view.can_focus = True
+        list_view.focus()
+        
+        self.app.log(f"SelectionWidget: ListView focused? {list_view.has_focus}")
+        self.app.log(f"SelectionWidget: Widget visible? {self.display}")
+        
+        try:
+            return await self.future
+        finally:
+            self.display = False
+            self.future = None
+
+    def on_list_view_selected(self, event: ListView.Selected) -> None:
+        """Handle list selection"""
+        if self.future and not self.future.done():
+            # Отримуємо текст з Label всередині ListItem
+            label = event.item.query_one(Label)
+            selection = str(label.renderable)
+            self.future.set_result(selection)
+            event.stop()
+
+    def on_key(self, event) -> None:
+        """Handle keyboard input"""
+        if event.key == "escape":
+            if self.future and not self.future.done():
+                self.future.set_result(None)
+                event.stop()
+        # Allow ListView to handle Up/Down/Enter keys
+        elif event.key in ("up", "down", "enter"):
+            # Let it propagate to ListView
+            pass
+
+================================================================================
+END FILE: /home/romankozak/studio/public/code_agent/modules/ui_components/selection_widget.py
+================================================================================
+
+## <<FILE_20>>
+================================================================================
+BEGIN FILE: /home/romankozak/studio/public/code_agent/tui.css (ID: FILE_20)
 ================================================================================
 
 /* Константи для сумісності */
@@ -1340,12 +1467,12 @@ Screen {
 }
 
 .message-separator {
-    height: 1; /* Встановлюємо рівно 1 рядок відступу */
+    height: 1;
     background: transparent;
 }
 
 .chat-message {
-    padding: 0 1; /* Лівий та правий відступи для тексту */
+    padding: 0 1;
     max-width: 100%; 
     margin: 1 0;
 }
@@ -1423,31 +1550,67 @@ LoadingIndicator {
     margin: 0;
 }
 
-/* ЕКРАН ПІДТВЕРДЖЕННЯ */
-ConfirmationScreen {
-    align: center middle;
+/* SelectionWidget Styles - FIXED */
+SelectionWidget {
+    display: none;
+    background: $surface;
+    border-top: thick $accent;
+    height: auto;
+    max-height: 50vh;
+    dock: bottom;
+    margin-bottom: 3; /* Above input-container */
+    padding: 1 2;
+    layer: overlay; /* Ensure it's on top */
 }
 
-.confirmation-panel {
-    width: 98%;
-    background: $panel;
-    border: heavy $warning;
+#selection-prompt {
+    text-style: bold;
+    margin-bottom: 1;
+    color: $text;
+    height: auto;
+}
+
+#selection-list {
+    background: transparent;
+    border: solid $primary;
+    height: auto;
+    min-height: 5;
+    max-height: 15;
+}
+
+#selection-list > ListItem {
     padding: 0 1;
+    height: 1;
 }
 
-.confirmation-buttons {
-    margin-top: 1;
-    align-horizontal: center;
+#selection-list > ListItem:hover {
+    background: $primary-darken-2;
 }
 
+#selection-list > ListItem.-active {
+    background: $primary;
+    color: $text;
+    text-style: bold;
+}
+
+/* Highlight focused list item */
+ListView:focus > ListItem.-active {
+    background: $accent;
+    color: white;
+}
+
+/* Додатково: щоб історія автоматично фокусувалась при появі кнопок */
+#history {
+    scrollbar-gutter: stable;
+}
 
 ================================================================================
 END FILE: /home/romankozak/studio/public/code_agent/tui.css
 ================================================================================
 
-## <<FILE_17>>
+## <<FILE_21>>
 ================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/tui.py (ID: FILE_17)
+BEGIN FILE: /home/romankozak/studio/public/code_agent/tui.py (ID: FILE_21)
 ================================================================================
 
 import os
@@ -1457,6 +1620,7 @@ from textual.widgets import Header, Footer, Input, Static, LoadingIndicator
 from textual.containers import Container, VerticalScroll, Horizontal
 from agent import AngelicaAgent
 from modules.tui_ui import TuiUI
+from modules.ui_components.selection_widget import SelectionWidget
 
 class TUI(App):
     CSS_PATH = "tui.css"
@@ -1475,6 +1639,7 @@ class TUI(App):
         yield Header()
         with Container():
             yield VerticalScroll(id="history")
+            yield SelectionWidget(options=[], id="global-selection-widget") # Hidden by default via CSS
             yield Container(
                 Horizontal(
                     LoadingIndicator(),
@@ -1494,47 +1659,86 @@ class TUI(App):
         self.ui = TuiUI(self, self.query_one("#history", VerticalScroll), self.query_one("#loading-container"), self.query_one("#loading-label"))
         self.agent.ui = self.ui # Передаємо UI до агента
         
-        # Construct the new startup message
         # Check if self.agent.chat is None, if so, get_chat_provider failed during agent init
         model_name = self.agent.chat.model_name if self.agent.chat else "N/A (Provider initialization failed)"
-        self.query_one("Header").sub_title = f"Model: {model_name}"
+        # Set the full title including the model name
+        await self.ui.update_header(f"{model_name}")
         current_directory = os.getcwd()
         
         startup_message = (
             f"✨ Angelica-AI (v{self.VERSION})\n"
-            f"Directory: {current_directory}"
+            f"Model: {model_name}\n"
+            f"Working Directory: {current_directory}"
         )
         await self.ui.print_system(startup_message)
+        await self.ui.print_system("") # Add an empty line after the startup message
         self.query_one("#input", Input).focus()
 
     async def on_input_submitted(self, message: Input.Submitted) -> None:
         """Called when the user submits a message."""
         user_input = message.value.strip()
-        message.input.value = "" # Clear input immediately
+        message.input.value = ""
 
         if not user_input:
             return
+        
+        # Check if we are in the middle of a model selection
+        if self.agent.is_awaiting_model_selection:
+            available_models = self.agent.settings.get("available_models", [])
+            try:
+                choice_index = int(user_input) - 1
+                if 0 <= choice_index < len(available_models):
+                    selected_model = available_models[choice_index]
+                    self.agent.comm_log.info(f"User selected model choice {user_input} -> '{selected_model}'.")
+                    self.run_worker(self.agent.switch_model(selected_model), exclusive=True)
+                else:
+                    await self.ui.print_error("Invalid selection. Please try again.")
+                    self.agent.comm_log.warning(f"Invalid model selection index: {choice_index}")
+            except ValueError:
+                await self.ui.print_error(f"Invalid input. Please enter a number or 'cancel'.")
+                self.agent.comm_log.warning(f"Non-integer input received for model selection: '{user_input}'")
+
+            # Always reset the state after an attempt
+            if user_input.lower() == 'cancel' or 'c':
+                self.agent.is_awaiting_model_selection = False
+                await self.ui.print_system("Model selection cancelled.")
+            return
 
         if user_input == "/models":
-            self.agent.comm_log.info("`/models` command received. Opening selection screen.")
+            self.agent.comm_log.info("`/models` command received. Displaying list.")
             available_models = self.agent.settings.get("available_models", [])
             if not available_models:
                 self.agent.comm_log.error("No available models found in settings.")
                 await self.ui.print_error("No available models configured.")
                 return
+
+            # Build the message to show the user
+            message_lines = ["Available models:"]
+            for i, model in enumerate(available_models):
+                is_current = model.split('/')[-1] == self.agent.chat.model_name.split('/')[-1]
+                message_lines.append(f"  {i+1}: {model} {'(current)' if is_current else ''}")
+            message_lines.append("\nEnter the number of the model to switch to, or 'cancel' to abort.")
             
-            current_model = self.agent.chat.model_name
-            selected_model = await self.ui.select_model(available_models, current_model)
-            self.agent.comm_log.info(f"Model selection screen closed. Selected model: '{selected_model}'")
+            await self.ui.print_system("\n".join(message_lines))
             
-            if selected_model and selected_model != current_model:
-                self.agent.comm_log.info(f"New model selected. Calling `switch_model` with '{selected_model}'.")
-                self.run_worker(self.agent.switch_model(selected_model), exclusive=True)
+            # Set the state to wait for the user's choice
+            self.agent.is_awaiting_model_selection = True
+            return
+
+        if user_input == "/context":
+            self.agent.comm_log.info("`/context` command received.")
+            options = ["small", "medium", "large"]
+            selection = await self.ui.pick_option("Choose context size (Esc to cancel):", options)
+            
+            if selection:
+                self.agent.set_context_size(selection)
             else:
-                self.agent.comm_log.info("Model selection cancelled or unchanged.")
-        else:
-            await self.ui.print_message(user_input, role="user")
-            self.run_worker(self.agent.process_user_input(user_input), exclusive=True)
+                 await self.ui.print_system("Selection cancelled.")
+            return
+
+        # Default behavior: process as a prompt
+        await self.ui.print_message(user_input, role="user")
+        self.run_worker(self.agent.process_user_input(user_input), exclusive=True)
 
     async def action_interrupt_agent(self) -> None:
         """Interrupts the agent's current operation."""

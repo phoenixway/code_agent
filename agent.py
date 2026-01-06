@@ -45,6 +45,10 @@ class AngelicaAgent:
         self.history = HistoryManager(self.chat, logger=self.comm_log, max_tokens=self.settings.get("max_history_tokens", 4000))
         self.session_manager = SessionManager(CONFIG_DIR, self.history, self.context_manager, self._ui)
         
+        # Ініціалізація розміру контексту з налаштувань
+        initial_context_size = self.settings.get("context_size", "small")
+        self.set_context_size(initial_context_size)
+
         # 5. Політика безпеки та Процесор дій
         policy_mode = self.settings.get("permission_policy", "ask")
         self.policy = PermissionPolicy(self._ui, policy_mode)
@@ -224,5 +228,31 @@ class AngelicaAgent:
             self.chat = new_chat_provider
             self.history = HistoryManager(self.chat, logger=self.comm_log, max_tokens=self.settings.get("max_history_tokens", 4000))
             self.processor.chat = self.chat
-            await self.ui.update_header(f"Angelica-AI (Model: {self.chat.model_name})")
+            await self.ui.update_header(f"{self.chat.model_name}")
             await self.ui.print_system(f"✅ Модель змінено на {model_name}")
+    
+    def set_context_size(self, size_name: str):
+        """Встановлює розмір контекстного вікна."""
+        CONTEXT_SIZES = {
+            "small": 4096,
+            "medium": 16384,
+            "large": 32768
+        }
+        
+        size_key = size_name.lower()
+        if size_key not in CONTEXT_SIZES:
+            # Fallback for unknown values
+            token_limit = 4096
+            size_key = "small"
+        else:
+            token_limit = CONTEXT_SIZES[size_key]
+            
+        # Update history manager if initialized
+        if hasattr(self, 'history'):
+            self.history.max_tokens = token_limit
+            
+        # Save current state (runtime only, doesn't persist to yaml unless we want to)
+        self.context_size = size_key
+        if self.ui:
+            asyncio.create_task(self.ui.print_system(f"Context size set to {size_key.upper()} ({token_limit} tokens limit)"))
+

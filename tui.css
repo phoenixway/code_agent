@@ -23,12 +23,12 @@ Screen {
 }
 
 .message-separator {
-    height: 1; /* Встановлюємо рівно 1 рядок відступу */
+    height: 1;
     background: transparent;
 }
 
 .chat-message {
-    padding: 0 1; /* Лівий та правий відступи для тексту */
+    padding: 0 1;
     max-width: 100%; 
     margin: 1 0;
 }
@@ -106,57 +106,10 @@ LoadingIndicator {
     margin: 0;
 }
 
-/* ЕКРАН ПІДТВЕРДЖЕННЯ */
-ConfirmationScreen {
-    align: center middle;
-}
+/* SelectionScreen Styles (Defined in screen class, but overrides here if needed) */
+/* Note: Most styling is now inside modules/screens.py CSS property */
 
-.confirmation-panel {
-    width: 98%;
-    background: $panel;
-    border: heavy $warning;
-    padding: 0 1;
-}
-
-.confirmation-buttons {
-    margin-top: 1;
-    align-horizontal: center;
-}
-
-/* tui.css */
-
-.inline-conf-box {
-    background: $panel;
-    border: tall $warning;
-    margin: 1 4;
-    padding: 1 2;
-    height: auto;
-    color: $text;
-}
-
-.inline-conf-buttons {
-    margin-top: 1;
-    height: 3;
-    align-horizontal: center;
-}
-
-.inline-conf-buttons Button {
-    margin: 0 2;
-    min-width: 12;
-}
-
-/* Додатково: щоб історія автоматично фокусувалася при появі кнопок */
+/* Додатково: щоб історія автоматично фокусувалась при появі кнопок */
 #history {
     scrollbar-gutter: stable;
 }
-
-MiniPicker {
-    background: $surface;
-    color: $text;
-    padding: 1 2;
-    height: auto;
-    border-top: solid $primary;
-    dock: bottom; /* Це притисне його до низу над інпутом */
-}
-
-/* Прибираємо старі стилі inline-conf-box, вони більше не потрібні */

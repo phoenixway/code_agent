@@ -13,5 +13,9 @@ modules/session.py
 modules/storage.py
 modules/ui.py
 modules/tui_ui.py
+modules/screens.py
 tui.py
 tui.css
+modules/tools/base.py
+modules/tools/manager.py
+modules/ui_components/selection_widget.py
