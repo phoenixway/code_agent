@@ -5,6 +5,7 @@ from textual.widgets import Header, Footer, Input, Static, LoadingIndicator
 from textual.containers import Container, VerticalScroll, Horizontal
 from agent import AngelicaAgent
 from modules.tui_ui import TuiUI
+from modules.ui_components.history_input import HistoryInput
 
 class TUI(App):
     CSS_PATH = "tui.css"
@@ -33,7 +34,7 @@ class TUI(App):
             )
             yield Horizontal(
                 Static("> "),
-                Input(placeholder="Your message...", id="input"),
+                HistoryInput(placeholder="Your message...", id="input"),
                 id="input-container"
             )
         yield Footer()
@@ -55,34 +56,47 @@ class TUI(App):
         )
         await self.ui.print_system(startup_message)
         await self.ui.print_system("") # Add an empty line after the startup message
-        self.query_one("#input", Input).focus()
+        self.query_one("#input", HistoryInput).focus()
 
     async def _handle_context_command(self):
         """Handles the /context command in a worker to prevent blocking."""
-        self.log("DEBUG: Worker started for /context")
+        self.agent.comm_log.info("DEBUG: Worker started for /context")
         self.agent.comm_log.info("`/context` command received.")
         
         options = ["small", "medium", "large"]
-        self.log("DEBUG: Calling ui.pick_option from worker")
+        current = self.agent.context_size
+        self.agent.comm_log.info("DEBUG: Calling ui.pick_option from worker")
         
         try:
-            selection = await self.ui.pick_option("Choose context size (Esc to cancel):", options)
-            self.log(f"DEBUG: pick_option returned: {selection}")
+            selection = await self.ui.pick_option(
+                "Choose context size (Esc to cancel):", 
+                options,
+                current_value=current
+            )
+            self.agent.comm_log.info(f"DEBUG: pick_option returned: {selection}")
             
             if selection:
                 self.agent.set_context_size(selection)
             else:
                  await self.ui.print_system("Selection cancelled.")
         except Exception as e:
-            self.log(f"ERROR in _handle_context_command: {e}")
-            self.agent.comm_log.error(f"Error handling context command: {e}")
+            self.agent.comm_log.error(f"ERROR in _handle_context_command: {e}")
 
     async def on_input_submitted(self, message: Input.Submitted) -> None:
         """Called when the user submits a message."""
         user_input = message.value.strip()
+        
+        self.agent.comm_log.info(f"DEBUG: on_input_submitted called with: '{user_input}'")
+        
+        # Add to input history if not empty
+        if user_input:
+            if hasattr(message.input, 'add_entry'):
+                message.input.add_entry(user_input)
+            else:
+                self.agent.comm_log.warning("WARNING: Input widget does not support add_entry")
+            
         message.input.value = ""
 
-        self.log(f"DEBUG: Input submitted: '{user_input}'")
         if not user_input:
             return
         
@@ -99,14 +113,15 @@ class TUI(App):
 
             # Helper to run model selection in a worker
             async def _select_model_worker():
-                self.log("DEBUG: Starting model selection worker")
-                # Identify current model to maybe highlight it (optional, logic not in Screen yet)
+                self.agent.comm_log.info("DEBUG: Starting model selection worker")
+                # Identify current model
                 current = self.agent.chat.model_name
                 
-                # Show picker
+                # Show picker with current value
                 selection = await self.ui.pick_option(
                     f"Select AI Model (Current: {current})", 
-                    available_models
+                    available_models,
+                    current_value=current
                 )
                 
                 if selection:
@@ -120,13 +135,20 @@ class TUI(App):
             return
 
         if user_input == "/context":
-            self.log("DEBUG: Scheduling _handle_context_command worker")
+            self.agent.comm_log.info("DEBUG: Scheduling _handle_context_command worker")
             self.run_worker(self._handle_context_command(), exclusive=True)
             return
 
         # --- DEFAULT: CHAT PROMPT ---
-        await self.ui.print_message(user_input, role="user")
-        self.run_worker(self.agent.process_user_input(user_input), exclusive=True)
+        try:
+            self.agent.comm_log.info(f"DEBUG: Processing regular prompt: '{user_input}'")
+            await self.ui.print_message(user_input, role="user")
+            self.agent.comm_log.info("DEBUG: Message printed to UI, starting agent worker")
+            self.run_worker(self.agent.process_user_input(user_input), exclusive=True)
+            self.agent.comm_log.info("DEBUG: Agent worker scheduled")
+        except Exception as e:
+            self.agent.comm_log.error(f"ERROR in prompt processing: {e}")
+            await self.ui.print_error(f"Critical error: {e}")
 
     async def action_interrupt_agent(self) -> None:
         """Interrupts the agent's current operation."""

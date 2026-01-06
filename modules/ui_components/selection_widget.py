@@ -1,86 +1,102 @@
 from textual.app import ComposeResult
-from textual.containers import Container
 from textual.widgets import ListView, ListItem, Label
-from textual.reactive import reactive
-import asyncio
+from textual.containers import Vertical
+from textual.screen import ModalScreen
 
-class SelectionWidget(Container):
-    """
-    Універсальний віджет вибору, що з'являється над полем вводу.
-    """
+class SelectionScreen(ModalScreen[str | None]):
+    """Screen for selecting an option from a list, styled to look like a bottom widget."""
+
+    CSS = """
+    SelectionScreen {
+        align: center bottom;
+        background: 0%; /* Transparent background */
+    }
     
-    # Make it focusable
-    can_focus = True
+    .selection-panel {
+        width: 100%;
+        height: auto;
+        max-height: 50vh;
+        margin-bottom: 3; /* Position above the input container */
+        border-top: thick $accent;
+        background: $surface;
+        padding: 1 2;
+    }
     
-    def __init__(self, options: list[str], prompt: str = "Select an option", callback=None, **kwargs):
-        super().__init__(**kwargs)
-        self.options = options
+    .selection-prompt {
+        text-align: left;
+        padding-bottom: 1;
+        text-style: bold;
+        color: $text;
+    }
+    
+    ListView {
+        height: auto;
+        max-height: 15;
+        border: none;
+        margin-top: 1;
+        background: $surface;
+    }
+    
+    ListItem {
+        padding: 0 1;
+    }
+    
+    ListItem:hover {
+        background: $primary-darken-2;
+    }
+    
+    /* Highlight the selected item when list is focused */
+    ListView:focus > ListItem.-active {
+        background: $primary;
+        color: white;
+    }
+    """
+
+    def __init__(self, prompt: str, options: list[str], current_value: str | None = None, name: str | None = None, id: str | None = None, classes: str | None = None) -> None:
+        super().__init__(name, id, classes)
         self.prompt = prompt
-        self.callback = callback
-        self.future = None
+        self.options = options
+        self.current_value = current_value
 
     def compose(self) -> ComposeResult:
-        yield Label(self.prompt, id="selection-prompt")
-        yield ListView(
-            *[ListItem(Label(opt), id=f"opt_{i}") for i, opt in enumerate(self.options)],
-            id="selection-list"
+        yield Vertical(
+            Label(self.prompt, classes="selection-prompt"),
+            ListView(
+                *[ListItem(Label(opt), id=f"opt_{i}") for i, opt in enumerate(self.options)],
+                id="options_list"
+            ),
+            classes="selection-panel"
         )
 
-    async def wait_for_selection(self) -> str | None:
-        """
-        Метод для асинхронного очікування вибору.
-        """
-        self.future = asyncio.get_running_loop().create_future()
-        self.display = True
-        
-        # Force UI refresh and focus
-        self.refresh(layout=True)
-        await asyncio.sleep(0.1)  # Give more time for layout
-        
-        list_view = self.query_one("#selection-list", ListView)
-        list_view.can_focus = True
-        
-        # Force focus multiple times to ensure it works
-        self.focus()
-        await asyncio.sleep(0.05)
+    def on_mount(self) -> None:
+        self.app.agent.comm_log.info("DEBUG: SelectionScreen mounted")
+        list_view = self.query_one(ListView)
+        # Focus the list view immediately
         list_view.focus()
         
-        self.app.log(f"SelectionWidget: ListView focused? {list_view.has_focus}")
-        self.app.log(f"SelectionWidget: Widget visible? {self.display}")
-        self.app.log(f"SelectionWidget: Focused widget: {self.app.focused}")
-        
-        try:
-            return await self.future
-        finally:
-            self.display = False
-            self.future = None
+        # If current_value is provided, highlight it
+        if self.current_value:
+            self.app.agent.comm_log.info(f"DEBUG: Highlighting current_value: {self.current_value}")
+            try:
+                index = self.options.index(self.current_value)
+                list_view.index = index
+            except ValueError:
+                self.app.agent.comm_log.warning(f"DEBUG: current_value '{self.current_value}' not found in options")
+                pass
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
-        """Handle list selection"""
-        if self.future and not self.future.done():
-            # Отримуємо текст з Label всередині ListItem
-            label = event.item.query_one(Label)
-            selection = str(label.renderable)
-            self.future.set_result(selection)
-            event.stop()
+        # Use the index to get the option from our list
+        index = event.list_view.index
+        self.app.agent.comm_log.info(f"DEBUG: ListItem selected at index: {index}")
+        if index is not None and 0 <= index < len(self.options):
+            val = self.options[index]
+            self.app.agent.comm_log.info(f"DEBUG: Dismissing SelectionScreen with value: {val}")
+            self.dismiss(val)
+        else:
+            self.app.agent.comm_log.warning("DEBUG: SelectionScreen index out of bounds")
+            self.dismiss(None)
 
     def on_key(self, event) -> None:
-        """Handle keyboard input"""
-        self.app.log(f"SelectionWidget.on_key: {event.key}")
-        
         if event.key == "escape":
-            if self.future and not self.future.done():
-                self.future.set_result(None)
-                event.stop()
-                event.prevent_default()
-        elif event.key == "enter":
-            # Get the highlighted item and select it
-            list_view = self.query_one("#selection-list", ListView)
-            if list_view.highlighted_child:
-                label = list_view.highlighted_child.query_one(Label)
-                selection = str(label.renderable)
-                if self.future and not self.future.done():
-                    self.future.set_result(selection)
-                    event.stop()
-                    event.prevent_default()
-        # Don't stop up/down to let ListView handle them
+            self.app.agent.comm_log.info("DEBUG: Escape key pressed in SelectionScreen")
+            self.dismiss(None)
