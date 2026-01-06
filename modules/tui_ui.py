@@ -8,13 +8,13 @@ from rich.text import Text
 
 from modules.screens import ConfirmationScreen
 from modules.ui_components.selection_widget import SelectionScreen
+from modules.ui_components.status_bar import StatusBar
 
 class TuiUI:
-    def __init__(self, app, history_widget: VerticalScroll, loading_container: Container, loading_label: Static):
+    def __init__(self, app, history_widget: VerticalScroll, status_bar: StatusBar):
         self.app = app
         self.history = history_widget
-        self.loading_container = loading_container
-        self.loading_label = loading_label
+        self.status_bar = status_bar
         self.main_thread = threading.main_thread()
 
     async def _call_ui(self, func, *args, **kwargs):
@@ -27,15 +27,13 @@ class TuiUI:
     # --- Методи керування станом індикатора ---
 
     def _start_thinking(self):
-        self.loading_label.update("Thinking...")
-        self.loading_container.display = True
+        self.status_bar.start_thinking()
 
     def _start_action(self, text: str):
-        self.loading_label.update(text if text else "Processing...")
-        self.loading_container.display = True
+        self.status_bar.start_action(text)
 
     def _stop_loading(self):
-        self.loading_container.display = False
+        self.status_bar.stop()
 
     def _update_header_main_thread(self, text: str):
         self.app.title = text
@@ -124,7 +122,7 @@ class TuiUI:
         await self._call_ui(self._add_message, f"[bold cyan]🤖 Plan:[/] {text.strip()}")
 
     async def print_command_result(self, text):
-        await self._call_ui(self._add_message, f"[bold white]SYSTEM RESULT:[/] {text.strip()}")
+        await self._call_ui(self._add_message, f"{text.strip()}", classes="chat-message result-message")
 
     async def print_confirmation(self, text):
         await self._call_ui(self._add_message, f"[bold green]✅ {text.strip()}[/]")

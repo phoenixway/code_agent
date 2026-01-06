@@ -83,17 +83,18 @@ class AngelicaAgent:
 
     def _parse_output(self, text: str):
         """
-        Суворий парсинг: 
-        1. Думки витягуються з <think>...</think>.
-        2. Після думок шукається АБО JSON (type/command), АБО звичайний текст.
+        Надзвичайно стійкий парсер:
+        1. Витягує роздуми з <think>.
+        2. Шукає JSON від НАЙПЕРШОЇ '{' до НАЙОСТАННЬОЇ '}'.
         """
         thoughts = []
         command = None
         
-        # Витягуємо блок роздумів
+        # 1. Витягуємо блок роздумів
         thought_match = re.search(r'<think>(.*?)</think>', text, re.DOTALL | re.IGNORECASE)
         if thought_match:
             thoughts.append(thought_match.group(1).strip())
+            # Беремо все, що ПІСЛЯ блоку думок
             payload = text[thought_match.end():].strip()
         else:
             payload = text.strip()
@@ -101,21 +102,24 @@ class AngelicaAgent:
         if not payload:
             return thoughts, None, ""
 
-        # Пошук JSON (підтримує raw JSON або блоки ```json)
-        json_pattern = r'(?:```json\s*)?(\{.*?\})(?:\s*```)?'
-        json_match = re.search(json_pattern, payload, re.DOTALL)
+        # 2. ШУКАЄМО JSON: Жадібний пошук від першої { до останньої }
+        # Це дозволяє ігнорувати сміття навколо і правильно збирати вкладені JSON
+        json_match = re.search(r'(\{.*\})', payload, re.DOTALL)
         
         if json_match:
+            json_str = json_match.group(1).strip()
             try:
-                json_str = json_match.group(1).strip()
                 parsed = json.loads(json_str)
-                # Перевіряємо наявність ключів команди (дозволяємо 'type' або 'command')
-                if isinstance(parsed, dict) and ("type" in parsed or "command" in parsed):
+                # Якщо це словник і в ньому є ознаки команди
+                if isinstance(parsed, dict) and any(k in parsed for k in ["type", "command", "action"]):
                     return thoughts, parsed, ""
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as e:
+                # Якщо JSON невалідний, логуємо помилку для відладки
+                self.comm_log.error(f"JSON Parse Error: {e} | Content: {json_str}")
+                # Якщо не вдалося розпарсити, вважаємо це текстом
                 pass
         
-        # Якщо JSON не знайдено або він невалідний — повертаємо як текст
+        # 3. Якщо JSON не знайдено або він "битий" — повертаємо як текст
         return thoughts, None, payload
 
     async def get_response(self, query):

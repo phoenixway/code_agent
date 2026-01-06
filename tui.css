@@ -1,115 +1,180 @@
-/* Константи для сумісності */
-$info: #3498db;
-$text-muted: #888888;
+/* Modern Dark Theme for Angelica-AI */
+
+/* --- GLOBAL VARS --- */
+/* Palette inspired by VS Code Dark+ & Cyberpunk */
+$bg-main: #1e1e1e;
+$bg-card: #252526;
+$bg-input: #3c3c3c;
+$accent: #007acc;
+$accent-secondary: #c586c0; /* Pink/Purple */
+$text-main: #d4d4d4;
+$text-muted: #858585;
+$success: #4ec9b0;
+$warning: #cca700;
+$error: #f48771;
 
 Screen {
-    background: $surface;
-    overflow: hidden;
+    background: $bg-main;
+    color: $text-main;
 }
 
-#app-grid {
-    layout: vertical;
-    height: 100%;
-}
-
-/* ІСТОРІЯ: Максимальна економія місця */
+/* --- CHAT HISTORY --- */
 #history {
-    height: 1fr;
-    margin: 0;
-    padding: 0;
-    border: none;
-    background: $surface;
-    overflow-y: scroll;
+    background: $bg-main;
+    scrollbar-background: $bg-main;
+    scrollbar-color: $accent;
+    scrollbar-size: 1 1;
+    padding: 1;
 }
 
-.message-separator {
-    height: 1;
-    background: transparent;
-}
-
+/* General Message Style */
 .chat-message {
-    padding: 0 1;
-    max-width: 100%; 
-    margin: 1 0;
+    padding: 1 2;
+    margin-bottom: 1;
+    border: none;
+    background: $bg-main; /* Default transparent-ish */
 }
 
+/* User Message */
+.user-message {
+    background: #2b3a42;
+    color: #e0f7fa;
+    border-left: wide #00bcd4; /* Cyan accent */
+    margin-right: 2;
+}
+
+/* Assistant Message */
 .assistant-message {
-    border-left: tall rgb(255,100,200);
-    padding-left: 1;
+    background: $bg-card;
+    border-left: wide $accent-secondary; /* Purple accent */
+    margin-left: 0;
 }
 
+/* Thoughts / Reasoning (<think>) */
 .thought-message {
     color: $text-muted;
     text-style: italic;
-    margin-left: 1; 
-    border-left: tall $accent; 
-    padding-left: 1;
+    background: #181818;
+    border-left: wide #858585;
+    padding: 0 1;
+    margin: 1 2 1 2; /* 1 line top margin, indented sides, 1 line bottom margin */
 }
 
+/* System / Logs */
 .system-message {
-    color: $info;
+    color: $warning;
     text-style: bold;
-    margin: 0;
+    border-bottom: solid $bg-input;
     padding: 0 1;
 }
 
-/* БЛОК ЗАВАНТАЖЕННЯ ТА СТАТУСУ */
-#loading-container {
-    display: none;
-    height: 1;
-    layout: horizontal;
-    margin: 0;
+/* Plan / Commands */
+.plan-message {
+    color: $success;
+    text-style: bold;
+}
+
+/* Command Results */
+.result-message {
+    background: #1e2a1e; /* Dark green-ish tint */
+    border-left: wide $success;
+    color: #a0ffa0;
+    margin: 1 4;
     padding: 0 1;
-    background: $accent-darken-3;
-    color: $accent;
+}
+
+/* --- STATUS BAR --- */
+#loading-container {
+    background: $bg-main; /* Same as history background */
+    color: $accent; /* Text in accent color for visibility */
+    height: 1;
+    margin-top: 1;
+    padding: 0 1;
+    display: none;
+    layout: horizontal;
 }
 
 LoadingIndicator {
+    color: $accent; /* Spinner in accent color */
     width: 4;
     height: 1;
 }
 
 #loading-label {
+    text-style: bold;
     margin-left: 1;
     height: 1;
     content-align: left middle;
-    text-style: italic;
-    width: auto;
 }
 
-/* ПОЛЕ ВВОДУ: Впритул до країв */
+/* --- INPUT AREA --- */
 #input-container {
     height: 3;
-    border: round $success;
-    margin: 0;
+    background: $bg-main; /* Same as history background */
+    border: solid $bg-input; /* Full border */
     padding: 0 1;
-    background: $surface;
     align-vertical: middle;
 }
 
 #input-container:focus-within {
-    border: solid rgb(0, 150, 255);
+    border: solid $accent; /* Full border highlight */
+    background: $bg-main;
 }
 
 #input-container > Static {
-    width: 2;
-    height: 100%;
-    content-align: center middle;
+    color: $accent;
+    text-style: bold;
+    margin-right: 1;
+    width: auto;
 }
 
 #input {
     width: 1fr;
-    height: 100%;
-    border: none;
     background: transparent;
+    border: none;
+    color: #ffffff; /* Explicit white for visibility */
     padding: 0;
-    margin: 0;
 }
 
-/* SelectionScreen Styles (Defined in screen class, but overrides here if needed) */
-/* Note: Most styling is now inside modules/screens.py CSS property */
+#input:focus {
+    border: none;
+}
 
-/* Додатково: щоб історія автоматично фокусувалась при появі кнопок */
-#history {
-    scrollbar-gutter: stable;
+/* --- HEADER & FOOTER --- */
+Header {
+    background: #333333;
+    color: white;
+    text-style: bold;
+}
+
+Footer {
+    background: $bg-main;
+    color: $text-muted;
+}
+
+/* --- MODALS / SELECTION --- */
+SelectionScreen {
+    align: center middle;
+    background: rgba(0,0,0,0.7);
+}
+
+SelectionScreen > Container {
+    width: 60;
+    height: auto;
+    background: $bg-card;
+    border: solid $accent;
+    padding: 1 2;
+}
+
+ConfirmationScreen {
+    align: center middle;
+    background: rgba(0,0,0,0.8);
+}
+
+.confirmation-box {
+    width: 50;
+    height: auto;
+    background: $bg-card;
+    border: double $error;
+    padding: 1 2;
 }

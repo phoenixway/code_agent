@@ -6,6 +6,7 @@ from textual.containers import Container, VerticalScroll, Horizontal
 from agent import AngelicaAgent
 from modules.tui_ui import TuiUI
 from modules.ui_components.history_input import HistoryInput
+from modules.ui_components.status_bar import StatusBar
 
 class TUI(App):
     CSS_PATH = "tui.css"
@@ -24,14 +25,7 @@ class TUI(App):
         yield Header()
         with Container():
             yield VerticalScroll(id="history")
-            yield Container(
-                Horizontal(
-                    LoadingIndicator(),
-                    Static("Thinking...", id="loading-label"),
-                    classes="loading-spinner-container"
-                ),
-                id="loading-container",
-            )
+            yield StatusBar(id="loading-container")
             yield Horizontal(
                 Static("> "),
                 HistoryInput(placeholder="Your message...", id="input"),
@@ -40,7 +34,7 @@ class TUI(App):
         yield Footer()
 
     async def on_mount(self) -> None:
-        self.ui = TuiUI(self, self.query_one("#history", VerticalScroll), self.query_one("#loading-container"), self.query_one("#loading-label"))
+        self.ui = TuiUI(self, self.query_one("#history", VerticalScroll), self.query_one(StatusBar))
         self.agent.ui = self.ui # Передаємо UI до агента
         
         # Check if self.agent.chat is None, if so, get_chat_provider failed during agent init
