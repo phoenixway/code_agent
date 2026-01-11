@@ -45,9 +45,9 @@ class AngelicaAgent:
         self.history = HistoryManager(self.chat, logger=self.comm_log, max_tokens=self.settings.get("max_history_tokens", 4000))
         self.session_manager = SessionManager(CONFIG_DIR, self.history, self.context_manager, self._ui)
         
-        # Ініціалізація розміру контексту з налаштувань
-        initial_context_size = self.settings.get("context_size", "small")
-        self.set_context_size(initial_context_size)
+        # Ініціалізація розміру історії з налаштувань
+        initial_history_size = self.settings.get("history_size", "small")
+        self.set_history_size(initial_history_size)
 
         # 5. Політика безпеки та Процесор дій
         policy_mode = self.settings.get("permission_policy", "ask")
@@ -240,28 +240,28 @@ class AngelicaAgent:
             await self.ui.update_header(f"{self.chat.model_name}")
             await self.ui.print_system(f"✅ Модель змінено на {model_name}")
     
-    def set_context_size(self, size_name: str):
-        """Встановлює розмір контекстного вікна."""
-        CONTEXT_SIZES = {
+    def set_history_size(self, size_name: str):
+        """Встановлює ліміт токенів історії (колишній context_size)."""
+        HISTORY_LIMITS = {
             "small": 4096,
             "medium": 16384,
             "large": 32768
         }
         
         size_key = size_name.lower()
-        if size_key not in CONTEXT_SIZES:
+        if size_key not in HISTORY_LIMITS:
             # Fallback for unknown values
             token_limit = 4096
             size_key = "small"
         else:
-            token_limit = CONTEXT_SIZES[size_key]
+            token_limit = HISTORY_LIMITS[size_key]
             
         # Update history manager if initialized
         if hasattr(self, 'history'):
             self.history.max_tokens = token_limit
             
         # Save current state (runtime only, doesn't persist to yaml unless we want to)
-        self.context_size = size_key
+        self.history_size = size_key
         if self.ui:
-            asyncio.create_task(self.ui.print_system(f"Context size set to {size_key.upper()} ({token_limit} tokens limit)"))
+            asyncio.create_task(self.ui.print_system(f"History limit set to {size_key.upper()} ({token_limit} tokens)"))
 

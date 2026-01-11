@@ -5,6 +5,7 @@ from textual.app import App, ComposeResult
 from textual.widgets import Header, Footer, Input, Static, LoadingIndicator
 from textual.containers import Container, VerticalScroll, Horizontal
 from agent import AngelicaAgent
+from textual.suggester import SuggestFromList
 from modules.tui_ui import TuiUI
 from modules.ui_components.history_input import HistoryInput
 from modules.ui_components.status_bar import StatusBar
@@ -20,6 +21,9 @@ class TUI(App):
         ("escape", "interrupt_agent", "Interrupt"),
     ]
     
+    # List of available slash commands for autocomplete
+    COMMANDS = ["/add", "/drop", "/models", "/theme", "/history-size", "/cd", "/help", "/quit"]
+    
     def __init__(self, agent: AngelicaAgent):
         super().__init__()
         self.agent = agent
@@ -31,7 +35,11 @@ class TUI(App):
             yield StatusBar(id="loading-container")
             yield Horizontal(
                 Static("> "),
-                HistoryInput(placeholder="Your message...", id="input"),
+                HistoryInput(
+                    placeholder="Your message...", 
+                    id="input",
+                    suggester=SuggestFromList(self.COMMANDS, case_sensitive=False)
+                ),
                 id="input-container"
             )
         yield Footer()
@@ -66,35 +74,35 @@ class TUI(App):
         # await self.ui.print_system("") # Removed extra empty line
         self.query_one("#input", HistoryInput).focus()
 
-    async def _handle_context_command(self):
-        """Handles the /context command in a worker to prevent blocking."""
-        self.agent.comm_log.info("DEBUG: Worker started for /context")
-        self.agent.comm_log.info("`/context` command received.")
+    async def _handle_history_size_command(self):
+        """Handles the /history-size command in a worker to prevent blocking."""
+        self.agent.comm_log.info("DEBUG: Worker started for /history-size")
+        self.agent.comm_log.info("`/history-size` command received.")
         
         options = ["small", "medium", "large"]
-        current = self.agent.context_size
+        current = self.agent.history_size
         self.agent.comm_log.info("DEBUG: Calling ui.pick_option from worker")
         
         try:
             selection = await self.ui.pick_option(
-                "Choose context size (Esc to cancel):", 
+                "Choose history limit (Esc to cancel):", 
                 options,
                 current_value=current
             )
             self.agent.comm_log.info(f"DEBUG: pick_option returned: {selection}")
             
             if selection:
-                self.agent.set_context_size(selection)
+                self.agent.set_history_size(selection)
                 # Persist to config
                 try:
-                    update_settings({"context_size": selection})
-                    await self.ui.print_system(f"💾 Context size preference saved: {selection}")
+                    update_settings({"history_size": selection})
+                    await self.ui.print_system(f"💾 History size preference saved: {selection}")
                 except Exception as e:
-                    await self.ui.print_error(f"Context set, but failed to save config: {e}")
+                    await self.ui.print_error(f"History size set, but failed to save config: {e}")
             else:
                  await self.ui.print_system("Selection cancelled.")
         except Exception as e:
-            self.agent.comm_log.error(f"ERROR in _handle_context_command: {e}")
+            self.agent.comm_log.error(f"ERROR in _handle_history_size_command: {e}")
 
     async def on_input_submitted(self, message: Input.Submitted) -> None:
         """Called when the user submits a message."""
@@ -153,6 +161,28 @@ class TUI(App):
                     await self.ui.print_system(f"🗑️ Removed {total_removed} file(s) from context.")
             except Exception as e:
                 await self.ui.print_error(f"Error removing paths: {e}")
+            return
+
+        if user_input.startswith("/cd"):
+            self.agent.comm_log.info(f"`/cd` command received: {user_input}")
+            try:
+                parts = shlex.split(user_input)
+                if len(parts) < 2:
+                    await self.ui.print_error("Usage: /cd <path>")
+                    return
+                
+                new_path = parts[1]
+                os.chdir(os.path.expanduser(new_path))
+                
+                current_dir = os.getcwd()
+                await self.ui.print_system(f"📁 Working directory changed to: [bold cyan]{current_dir}[/]")
+                
+                # Optionally clear context as it might be irrelevant now
+                # self.agent.context_manager.clear()
+                # await self.ui.print_system("🗑️ Context cleared due to directory change.")
+                
+            except Exception as e:
+                await self.ui.print_error(f"Error changing directory: {e}")
             return
 
         if user_input == "/models":
@@ -224,9 +254,9 @@ class TUI(App):
             self.run_worker(_select_theme_worker(), exclusive=True)
             return
 
-        if user_input == "/context":
-            self.agent.comm_log.info("DEBUG: Scheduling _handle_context_command worker")
-            self.run_worker(self._handle_context_command(), exclusive=True)
+        if user_input == "/history-size":
+            self.agent.comm_log.info("DEBUG: Scheduling _handle_history_size_command worker")
+            self.run_worker(self._handle_history_size_command(), exclusive=True)
             return
 
         # --- DEFAULT: CHAT PROMPT ---

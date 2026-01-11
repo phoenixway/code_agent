@@ -44,6 +44,7 @@ default_model: "ollama/qwen2.5-coder:7b"
 max_history_tokens: 4000
 permission_policy: "ask" # options: ask, always, never
 theme: "hacker-green" # options: hacker-green, textual-dark, textual-light
+history_size: "small" # options: small, medium, large
 available_models: 
   - "ollama/qwen2.5-coder:7b"
   - "openai/gpt-4o"
@@ -60,7 +61,9 @@ make run
 - `/add <path>`: Add files or directories to AI context.
 - `/drop [path]`: Remove specific paths or clear context (if no path).
 - `/models`: Switch between available AI models via a selection widget.
-- `/context`: Change context window size.
+- `/theme`: Switch interface theme.
+- `/history-size`: Change history context window size.
+- `/cd <path>`: Change current working directory.
 
 ## 🧪 Testing & Development
 

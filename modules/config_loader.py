@@ -22,7 +22,8 @@ def load_settings():
                 "gpt-4"
             ],
             "permission_policy": "ask", 
-            "max_history_tokens": 4000
+            "max_history_tokens": 4000,
+            "history_size": "small"
         }
         with open(CONFIG_FILE, 'w') as f:
             yaml.dump(default, f)
@@ -31,7 +32,16 @@ def load_settings():
         load_dotenv(ENV_FILE)
         
     with open(CONFIG_FILE, 'r') as f:
-        return yaml.safe_load(f) or {}
+        settings = yaml.safe_load(f) or {}
+        
+    # Migration: rename context_size to history_size if it exists
+    if "context_size" in settings and "history_size" not in settings:
+        settings["history_size"] = settings.pop("context_size")
+        # Save migrated settings
+        with open(CONFIG_FILE, 'w') as f:
+            yaml.dump(settings, f, default_flow_style=False)
+            
+    return settings
 
 def update_settings(updates: dict):
     """Updates the config.yaml file with the provided dictionary."""

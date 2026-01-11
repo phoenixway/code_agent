@@ -67,5 +67,23 @@ class TestCLICommands(unittest.IsolatedAsyncioTestCase):
         self.agent.context_manager.clear.assert_called_once()
         self.app.ui.print_system.assert_called_with("🗑️ Context cleared (all files removed).")
 
+    async def test_cd_command(self):
+        """Test /cd command."""
+        import os
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_dir = os.getcwd()
+            try:
+                self.message.value = f"/cd {tmpdir}"
+                await self.app.on_input_submitted(self.message)
+                
+                self.assertEqual(os.getcwd(), os.path.realpath(tmpdir))
+                self.app.ui.print_system.assert_called()
+                # Check if the message contains the path (using partial match as path might be resolved)
+                call_args = self.app.ui.print_system.call_args[0][0]
+                self.assertIn("Working directory changed to", call_args)
+            finally:
+                os.chdir(original_dir)
+
 if __name__ == "__main__":
     unittest.main()

@@ -57,12 +57,12 @@ class DemoApp(App):
         with Container(id="main"):
             yield ContextPicker(id="context-picker")
         yield Input(
-            placeholder="Type /context",
+            placeholder="Type /history-size",
             id="command-input",
         )
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
-        if event.value.strip() == "/context":
+        if event.value.strip() == "/history-size":
             self.query_one("#context-picker", ContextPicker).show()
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
