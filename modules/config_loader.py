@@ -32,3 +32,13 @@ def load_settings():
         
     with open(CONFIG_FILE, 'r') as f:
         return yaml.safe_load(f) or {}
+
+def update_settings(updates: dict):
+    """Updates the config.yaml file with the provided dictionary."""
+    current_settings = load_settings()
+    current_settings.update(updates)
+    
+    with open(CONFIG_FILE, 'w') as f:
+        yaml.dump(current_settings, f, default_flow_style=False)
+    
+    return current_settings

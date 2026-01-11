@@ -3439,3 +3439,53 @@ Model: gemma2:9b
 Working Directory: /home/romankozak/studio/public/code_agent'
 2026-01-11 03:40:57,878 - DEBUG: _add_message called with classes: chat-message system-message
 2026-01-11 03:40:57,878 - DEBUG: Message mounted and scrolled
+2026-01-11 03:49:08,280 - DEBUG: print_system: '✨ Angelica AI (v0.1.0)
+Model: gemma2:9b
+Working Directory: /home/romankozak/studio/public/code_agent'
+2026-01-11 03:49:08,280 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-11 03:49:08,281 - DEBUG: Message mounted and scrolled
+2026-01-11 03:49:13,435 - DEBUG: on_input_submitted called with: '/models'
+2026-01-11 03:49:13,435 - `/models` command received.
+2026-01-11 03:49:13,436 - DEBUG: Starting model selection worker
+2026-01-11 03:49:13,436 - DEBUG: pick_option called with prompt: 'Select AI Model (Current: gemma2:9b)'
+2026-01-11 03:49:13,436 - DEBUG: Entering _pick_screen_main_thread with screen: SelectionScreen()
+2026-01-11 03:49:13,459 - DEBUG: Screen pushed, awaiting future
+2026-01-11 03:49:13,463 - DEBUG: SelectionScreen mounted
+2026-01-11 03:49:13,463 - DEBUG: Highlighting current_value: gemma2:9b
+2026-01-11 03:49:13,463 - DEBUG: current_value 'gemma2:9b' not found in options
+2026-01-11 03:49:22,219 - DEBUG: Escape key pressed in SelectionScreen
+2026-01-11 03:49:22,220 - DEBUG: Screen callback triggered with result: None
+2026-01-11 03:49:22,226 - DEBUG: Future resolved in _pick_screen_main_thread: None
+2026-01-11 03:49:22,226 - DEBUG: print_system: 'Model selection cancelled.'
+2026-01-11 03:49:22,226 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-11 03:49:22,226 - DEBUG: Message mounted and scrolled
+2026-01-11 03:58:00,877 - DEBUG: print_system: '✨ Angelica AI (v0.1.0)
+Model: gemma2:9b
+Working Directory: /home/romankozak/studio/public/code_agent'
+2026-01-11 03:58:00,877 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-11 03:58:00,877 - DEBUG: Message mounted and scrolled
+2026-01-11 04:03:52,406 - DEBUG: print_system: '✨ Angelica AI (v0.1.0)
+Model: gemma2:9b
+Working Directory: /home/romankozak/studio/public/code_agent'
+2026-01-11 04:03:52,406 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-11 04:03:52,407 - DEBUG: Message mounted and scrolled
+2026-01-11 04:35:25,213 - DEBUG: print_system: '✨ Angelica AI (v0.1.0)
+Model: gemma2:9b
+Working Directory: /home/romankozak/studio/public/code_agent'
+2026-01-11 04:35:25,214 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-11 04:35:25,214 - DEBUG: Message mounted and scrolled
+2026-01-11 04:35:27,725 - DEBUG: on_input_submitted called with: '/theme'
+2026-01-11 04:35:27,725 - `/theme` command received.
+2026-01-11 04:35:27,725 - DEBUG: Starting theme selection worker
+2026-01-11 04:35:27,725 - DEBUG: pick_option called with prompt: 'Select Interface Theme (Current: dracula)'
+2026-01-11 04:35:27,725 - DEBUG: Entering _pick_screen_main_thread with screen: SelectionScreen()
+2026-01-11 04:35:27,758 - DEBUG: Screen pushed, awaiting future
+2026-01-11 04:35:27,764 - DEBUG: SelectionScreen mounted
+2026-01-11 04:35:27,764 - DEBUG: Highlighting current_value: dracula
+2026-01-11 04:35:34,749 - DEBUG: ListItem selected at index: 6
+2026-01-11 04:35:34,749 - DEBUG: Dismissing SelectionScreen with value: gruvbox
+2026-01-11 04:35:34,751 - DEBUG: Screen callback triggered with result: gruvbox
+2026-01-11 04:35:34,762 - DEBUG: Future resolved in _pick_screen_main_thread: gruvbox
+2026-01-11 04:35:34,762 - DEBUG: print_system: '🎨 Theme switched to: gruvbox'
+2026-01-11 04:35:34,762 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-11 04:35:34,762 - DEBUG: Message mounted and scrolled

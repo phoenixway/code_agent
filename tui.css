@@ -1,34 +1,17 @@
 /* Retro Linux/Hacker Green Theme for Angelica-AI */
 
-/* --- THEME VARIABLES --- */
-$bg-main: #050505;          /* Almost Pure Black */
-$bg-card: #0d110d;          /* Very dark green-black */
-$bg-input: #1a1a1a;
-
-$accent: #00ff41;           /* Matrix Green / Primary */
-$accent-user: #adff2f;      /* Green-Yellow / Lime */
-$accent-secondary: #008f11; /* Darker Green */
-
-$text-main: #e0ffe0;        /* Pale Greenish White */
-$text-bright: #ffffff;
-$text-muted: #446644;       /* Dim Green */
-
-$success: #00ff41;
-$warning: #dfff00;          /* Chartreuse */
-$error: #ff4444;            /* Soft Red */
-
 /* --- STYLES --- */
 
 Screen {
-    background: $bg-main;
-    color: $text-main;
+    background: $background;
+    color: $text;
 }
 
 /* --- CHAT HISTORY --- */
 #history {
-    background: $bg-main;
-    scrollbar-background: $bg-main;
-    scrollbar-color: $accent;
+    background: $background;
+    scrollbar-background: $background;
+    scrollbar-color: $primary;
     scrollbar-size: 1 1;
     padding: 1;
 }
@@ -38,24 +21,24 @@ Screen {
     padding: 1 2;
     margin-bottom: 1;
     border: none;
-    background: $bg-main;
+    background: $background;
     margin-left: 0; /* Unify alignment */
 }
 
 /* User Message */
 .user-message {
-    background: #0f1a0f; /* Slight green tint */
-    color: $text-main;
-    /* User Accent: Lime Green #adff2f */
+    /* Using dark green tint for user messages */
+    background: #0f1a0f; 
+    color: $text;
+    /* User Accent: Lime Green #adff2f (hardcoded for specific user styling) */
     border-left: wide #adff2f;
     margin-right: 2;
 }
 
 /* Assistant Message */
 .assistant-message {
-    background: $bg-card;
-    /* Secondary Accent: Darker Green #008f11 */
-    border-left: wide #008f11;
+    background: $surface;
+    border-left: wide $secondary;
     margin-left: 0;
 }
 
@@ -63,9 +46,9 @@ Screen {
 .thought-message {
     color: $text-muted;
     text-style: italic;
-    background: $bg-main;
-    /* Muted Green #446644 */
-    border-left: wide #446644;
+    background: $background;
+    /* Use $secondary or a fixed dim color for border as $text-muted is not a color variable */
+    border-left: wide $secondary; 
     padding: 0 1;
     margin: 1 2 1 0; /* 1 line top margin, 1 line bottom margin */
 }
@@ -75,7 +58,7 @@ Screen {
     color: $warning;
     text-style: bold;
     /* Invisible border to match others alignment */
-    border-left: wide #050505;
+    border-left: wide $background;
     padding: 0 1;
 }
 
@@ -88,7 +71,7 @@ Screen {
 /* Command Results */
 .result-message {
     background: #0a110a; /* Darker green-tinted background */
-    border-left: wide #00ff41;
+    border-left: wide $primary;
     color: #a0ffa0;
     margin: 1 2 1 0; /* 1 line top margin, 1 line bottom margin */
     padding: 0 1;
@@ -96,8 +79,8 @@ Screen {
 
 /* --- STATUS BAR --- */
 #loading-container {
-    background: $bg-main;
-    color: $accent;
+    background: $background;
+    color: $primary;
     height: 1;
     margin-top: 1;
     padding: 0 1;
@@ -106,7 +89,7 @@ Screen {
 }
 
 LoadingIndicator {
-    color: $accent;
+    color: $primary;
     width: 4;
     height: 1;
 }
@@ -121,21 +104,20 @@ LoadingIndicator {
 /* --- INPUT AREA --- */
 #input-container {
     height: 3;
-    background: $bg-main;
-    /* Muted Green Border #334433 */
-    border: solid #334433;
+    background: $background;
+    /* Using $secondary for the muted border look */
+    border: solid $secondary;
     padding: 0 1;
     align-vertical: middle;
 }
 
 #input-container:focus-within {
-    background: $bg-main;
-    /* Slightly brighter green #448844 */
-    border: solid #448844;
+    background: $background;
+    border: solid $primary;
 }
 
 #input-container > Static {
-    color: $accent;
+    color: $primary;
     text-style: bold;
     margin-right: 1;
     width: auto;
@@ -145,7 +127,7 @@ LoadingIndicator {
     width: 1fr;
     background: transparent;
     border: none;
-    color: $text-bright;
+    color: $text;
     padding: 0;
 }
 
@@ -156,29 +138,17 @@ LoadingIndicator {
 /* --- HEADER & FOOTER --- */
 Header {
     background: #111111;
-    color: $accent;
+    color: $primary;
     text-style: bold;
 }
 
 Footer {
-    background: $bg-main;
+    background: $background;
     color: $text-muted;
 }
 
 /* --- MODALS / SELECTION --- */
-SelectionScreen {
-    align: center middle;
-    background: rgba(0,0,0,0.8);
-}
-
-SelectionScreen > Container {
-    width: 60;
-    height: auto;
-    background: #0d110d;
-    /* Bright Green #00ff41 */
-    border: solid #00ff41;
-    padding: 1 2;
-}
+/* SelectionScreen handles its own CSS internally in selection_widget.py */
 
 ConfirmationScreen {
     align: center middle;
@@ -188,8 +158,7 @@ ConfirmationScreen {
 .confirmation-box {
     width: 50;
     height: auto;
-    background: #0d110d;
-    /* Red Error #ff4444 */
-    border: double #ff4444;
+    background: $surface;
+    border: double $error;
     padding: 1 2;
 }

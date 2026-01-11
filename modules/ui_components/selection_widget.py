@@ -9,15 +9,16 @@ class SelectionScreen(ModalScreen[str | None]):
     CSS = """
     SelectionScreen {
         align: center bottom;
-        background: 0%; /* Transparent background */
+        background: rgba(0, 0, 0, 0.5);
     }
     
     .selection-panel {
         width: 100%;
         height: auto;
         max-height: 50vh;
-        margin-bottom: 3; /* Position above the input container */
-        border-top: thick $accent;
+        margin-bottom: 5; /* Positioned higher to not obscure input */
+        border-top: thick $primary;
+        border-bottom: thick $primary;
         background: $surface;
         padding: 1 2;
     }
@@ -26,7 +27,7 @@ class SelectionScreen(ModalScreen[str | None]):
         text-align: left;
         padding-bottom: 1;
         text-style: bold;
-        color: $text;
+        color: $primary;
     }
     
     ListView {
@@ -35,20 +36,25 @@ class SelectionScreen(ModalScreen[str | None]):
         border: none;
         margin-top: 1;
         background: $surface;
+        scrollbar-color: $primary;
     }
     
     ListItem {
         padding: 0 1;
+        background: $surface;
+        color: $text;
     }
     
     ListItem:hover {
-        background: $primary-darken-2;
+        background: $secondary;
+        color: white;
     }
     
     /* Highlight the selected item when list is focused */
     ListView:focus > ListItem.-active {
         background: $primary;
-        color: white;
+        color: $background;
+        text-style: bold;
     }
     """
 

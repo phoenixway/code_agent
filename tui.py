@@ -9,6 +9,8 @@ from modules.tui_ui import TuiUI
 from modules.ui_components.history_input import HistoryInput
 from modules.ui_components.status_bar import StatusBar
 from modules.version import __version__
+from modules.theme import HACKER_THEME
+from modules.config_loader import update_settings
 
 class TUI(App):
     CSS_PATH = "tui.css"
@@ -35,6 +37,17 @@ class TUI(App):
         yield Footer()
 
     async def on_mount(self) -> None:
+        # Register custom themes
+        self.register_theme(HACKER_THEME)
+        
+        # Apply theme from config (default to 'hacker-green')
+        target_theme = self.agent.settings.get("theme", "hacker-green")
+        try:
+            self.theme = target_theme
+        except Exception:
+            self.agent.comm_log.warning(f"Theme '{target_theme}' not found. Falling back to 'hacker-green'.")
+            self.theme = "hacker-green"
+        
         self.ui = TuiUI(self, self.query_one("#history", VerticalScroll), self.query_one(StatusBar))
         self.agent.ui = self.ui # Передаємо UI до агента
         
@@ -72,6 +85,12 @@ class TUI(App):
             
             if selection:
                 self.agent.set_context_size(selection)
+                # Persist to config
+                try:
+                    update_settings({"context_size": selection})
+                    await self.ui.print_system(f"💾 Context size preference saved: {selection}")
+                except Exception as e:
+                    await self.ui.print_error(f"Context set, but failed to save config: {e}")
             else:
                  await self.ui.print_system("Selection cancelled.")
         except Exception as e:
@@ -161,11 +180,48 @@ class TUI(App):
                 if selection:
                     # Switch model
                     await self.agent.switch_model(selection)
+                    # Persist to config
+                    try:
+                        update_settings({"default_model": selection})
+                        await self.ui.print_system(f"💾 Model preference saved: {selection}")
+                    except Exception as e:
+                        await self.ui.print_error(f"Model switched, but failed to save config: {e}")
                 else:
                     await self.ui.print_system("Model selection cancelled.")
 
             # Run in worker to avoid blocking
             self.run_worker(_select_model_worker(), exclusive=True)
+            return
+
+        if user_input == "/theme":
+            self.agent.comm_log.info("`/theme` command received.")
+            
+            async def _select_theme_worker():
+                self.agent.comm_log.info("DEBUG: Starting theme selection worker")
+                # Get available themes from Textual app registry
+                themes = list(self.available_themes.keys())
+                themes.sort()
+                
+                current = self.theme
+                
+                selection = await self.ui.pick_option(
+                    f"Select Interface Theme (Current: {current})", 
+                    themes,
+                    current_value=current
+                )
+                
+                if selection:
+                    self.theme = selection
+                    # Persist theme to config
+                    try:
+                        update_settings({"theme": selection})
+                        await self.ui.print_system(f"🎨 Theme switched to: {selection} (Saved)")
+                    except Exception as e:
+                        await self.ui.print_error(f"Theme set, but failed to save config: {e}")
+                else:
+                    await self.ui.print_system("Theme selection cancelled.")
+
+            self.run_worker(_select_theme_worker(), exclusive=True)
             return
 
         if user_input == "/context":

@@ -43,6 +43,7 @@ Settings are loaded from `~/.config/angelica-ai/config.yaml`.
 default_model: "ollama/qwen2.5-coder:7b"
 max_history_tokens: 4000
 permission_policy: "ask" # options: ask, always, never
+theme: "hacker-green" # options: hacker-green, textual-dark, textual-light
 available_models: 
   - "ollama/qwen2.5-coder:7b"
   - "openai/gpt-4o"
