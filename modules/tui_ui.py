@@ -8,6 +8,7 @@ from rich.text import Text
 
 from modules.ui_components.selection_widget import SelectionScreen
 from modules.ui_components.status_bar import StatusBar
+from modules.ui_components.diff_viewer import DiffViewer
 
 class TuiUI:
     def __init__(self, app, history_widget: VerticalScroll, status_bar: StatusBar):
@@ -89,6 +90,12 @@ class TuiUI:
         screen = SelectionScreen(prompt, ["Allow", "Deny"])
         result = await self._call_ui(self._pick_screen_main_thread, screen)
         return result == "Allow"
+
+    async def show_diff_preview(self, proposal) -> bool:
+        """Shows the DiffViewer and returns True if approved."""
+        self.app.agent.comm_log.info(f"DEBUG: show_diff_preview for {proposal.file_path}")
+        screen = DiffViewer(proposal)
+        return await self._call_ui(self._pick_screen_main_thread, screen)
 
     async def confirm_continue(self, prompt: str) -> bool:
         self.app.agent.comm_log.info(f"DEBUG: confirm_continue called with prompt: '{prompt}'")

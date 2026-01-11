@@ -50,4 +50,22 @@ class ResponseProcessor:
             return {"status": "failed", "output": "Action denied by user."}
 
         # 6. Виклик через ToolManager
-        return await self.tools.call(action_type, **args)
+        result = await self.tools.call(action_type, **args)
+        
+        # 7. Check for ChangeProposal (Diff Preview)
+        from modules.types import ChangeProposal
+        
+        if isinstance(result, ChangeProposal):
+            # Show diff UI
+            approved = await self.ui.show_diff_preview(result)
+            
+            if approved:
+                try:
+                    result.apply()
+                    return {"status": "success", "output": f"Changes applied to {result.file_path}"}
+                except Exception as e:
+                    return {"status": "error", "output": f"Failed to apply changes: {e}"}
+            else:
+                return {"status": "error", "output": "User rejected the file changes."}
+                
+        return result

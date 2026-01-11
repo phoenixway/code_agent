@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from ..base import BaseTool
+from modules.types import ChangeProposal
 
 class ReadFileTool(BaseTool):
     name = "read_file"
@@ -21,17 +22,35 @@ class CreateFileTool(BaseTool):
     description = "Creates a NEW file with content. Fails if file exists. Params: 'path' (str), 'content' (str)"
 
     async def execute(self, path: str, content: str):
-        # Використовуємо твою логіку створення з перевіркою існування
         p = Path(path)
         if p.exists():
             return {"status": "error", "output": f"File {path} already exists. Use 'edit_file' or 'run_shell' to modify."}
-        try:
-            # Твоя логіка створення батьківських папок
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(content, encoding='utf-8')
-            return {"status": "success", "output": f"File created successfully: {path}"}
-        except Exception as e:
-            return {"status": "error", "output": f"Failed to create file: {str(e)}"}
+        
+        # Return proposal instead of writing directly
+        proposal = ChangeProposal(
+            file_path=path,
+            original_content="",
+            new_content=content
+        )
+        return proposal
+
+class WriteFileTool(BaseTool):
+    name = "write_file"
+    description = "Overwrites an existing file. Params: 'path' (str), 'content' (str)"
+
+    async def execute(self, path: str, content: str):
+        p = Path(path)
+        original = ""
+        if p.exists():
+            original = p.read_text(encoding='utf-8')
+        
+        # Return proposal
+        proposal = ChangeProposal(
+            file_path=path,
+            original_content=original,
+            new_content=content
+        )
+        return proposal
 
 class EditFileTool(BaseTool):
     name = "edit_file"
@@ -42,7 +61,6 @@ class EditFileTool(BaseTool):
     )
 
     async def execute(self, path: str, search_text: str, replace_text: str):
-        # Повна реалізація apply_edit з твого старого коду
         p = Path(path)
         if not p.exists():
             return {"status": "error", "output": f"File not found: {path}"}
@@ -50,18 +68,30 @@ class EditFileTool(BaseTool):
         try:
             content = p.read_text(encoding='utf-8')
             
-            # Твоя логіка пошуку та заміни одного входження
-            if search_text in content:
-                new_content = content.replace(search_text, replace_text, 1)
-                p.write_text(new_content, encoding='utf-8')
+            # Verify search text exists
+            if search_text not in content:
+                # If exact match fails, try relaxed matching (strip)
+                if search_text.strip() in content:
+                    # Adjust search_text to match content exactly
+                    # This is tricky without knowing exact whitespace. 
+                    # Let's stick to strict matching for safety, but improve error message.
+                    pass
+                
                 return {
-                    "status": "success", 
-                    "output": f"Successfully applied edit to {path}. Strategy: exact match replacement."
+                    "status": "error", 
+                    "output": "Search block not found. Ensure whitespace and indentation match exactly."
                 }
             
-            return {
-                "status": "error", 
-                "output": "Search block not found in the file. Ensure the 'search_text' matches exactly, including indentation."
-            }
+            # Perform replacement
+            new_content = content.replace(search_text, replace_text, 1)
+            
+            # Return proposal
+            proposal = ChangeProposal(
+                file_path=path,
+                original_content=content,
+                new_content=new_content
+            )
+            return proposal
+            
         except Exception as e:
             return {"status": "error", "output": f"Edit failed: {str(e)}"}
