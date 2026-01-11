@@ -1,0 +1,21 @@
+#!/bin/bash
+
+# Отримуємо абсолютний шлях до папки, де лежить цей скрипт
+# Це дозволяє запускати його через сімлінк з будь-якого місця
+REAL_PATH=$(readlink -f "$0")
+PROJECT_ROOT=$(dirname "$REAL_PATH")
+
+# Шлях до Python у віртуальному середовищі
+VENV_PYTHON="$PROJECT_ROOT/venv/bin/python3"
+ENTRY_POINT="$PROJECT_ROOT/tui.py"
+
+# Перевіряємо, чи існує venv
+if [ ! -f "$VENV_PYTHON" ]; then
+    echo "Error: Virtual environment not found at $PROJECT_ROOT/venv"
+    echo "Please run 'python3 -m venv venv' and install requirements."
+    exit 1
+fi
+
+# Запускаємо TUI, передаючи всі аргументи ($@)
+# Важливо: Ми НЕ робимо cd в папку проекту, щоб агент працював у поточній директорії користувача
+exec "$VENV_PYTHON" "$ENTRY_POINT" "$@"

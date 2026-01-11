@@ -27,11 +27,11 @@ Screen {
 
 /* User Message */
 .user-message {
-    /* Using dark green tint for user messages */
-    background: #0f1a0f; 
+    /* Using theme variables for adaptability */
+    background: $surface; 
     color: $text;
-    /* User Accent: Lime Green #adff2f (hardcoded for specific user styling) */
-    border-left: wide #adff2f;
+    /* User Accent: Primary Theme Color */
+    border-left: wide $primary;
     margin-right: 2;
 }
 
@@ -70,11 +70,11 @@ Screen {
 
 /* Command Results */
 .result-message {
-    background: #0a110a; /* Darker green-tinted background */
+    background: $background; 
     border-left: wide $primary;
-    color: #a0ffa0;
+    color: $text;
     margin: 1 2 1 0; /* 1 line top margin, 1 line bottom margin */
-    padding: 0 1;
+    padding: 1 1; /* Added vertical padding (1 line) and horizontal padding (1 cell) */
 }
 
 /* --- STATUS BAR --- */
@@ -137,7 +137,7 @@ LoadingIndicator {
 
 /* --- HEADER & FOOTER --- */
 Header {
-    background: #111111;
+    background: $background;
     color: $primary;
     text-style: bold;
 }

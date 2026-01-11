@@ -121,7 +121,8 @@ class TuiUI:
         if role == "assistant":
             await self._call_ui(self._add_message, RichMarkdown(text.strip()), classes="chat-message assistant-message")
         else:
-            await self._call_ui(self._add_message, Text(f"> {text.strip()}", style="rgb(100,200,100)"), classes="chat-message user-message")
+            # Removed hardcoded style="rgb(100,200,100)" to use theme from CSS
+            await self._call_ui(self._add_message, Text(f"> {text.strip()}"), classes="chat-message user-message")
         self.app.agent.comm_log.info("DEBUG: print_message completed")
 
     async def print_thought(self, text):
