@@ -1,6 +1,6 @@
-# Angelica-AI Architecture Overview
+# Angelica AI Architecture Overview
 
-Angelica-AI is a modular, CLI-based AI agent designed to perform software engineering tasks. It follows a loop-based architecture where the agent perceives the environment (files, user input), processes it via an LLM, and acts through a set of defined tools.
+Angelica AI is a modular, CLI-based AI agent designed to perform software engineering tasks. It follows a loop-based architecture where the agent perceives the environment (files, user input), processes it via an LLM, and acts through a set of defined tools.
 
 ## High-Level Structure
 

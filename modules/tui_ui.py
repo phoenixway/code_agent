@@ -6,7 +6,6 @@ from textual.app import ComposeResult
 from rich.markdown import Markdown as RichMarkdown
 from rich.text import Text
 
-from modules.screens import ConfirmationScreen
 from modules.ui_components.selection_widget import SelectionScreen
 from modules.ui_components.status_bar import StatusBar
 
@@ -77,8 +76,19 @@ class TuiUI:
 
     async def confirm_action(self, action_details: dict) -> bool:
         self.app.agent.comm_log.info(f"DEBUG: confirm_action called for: {action_details.get('type')}")
-        screen = ConfirmationScreen(action_details)
-        return await self._call_ui(self._pick_screen_main_thread, screen)
+        
+        # Build a descriptive prompt
+        action_type = action_details.get("type", "Unknown")
+        details = ""
+        if action_type == "run_command":
+            details = action_details.get("command", "")
+        elif action_type in ["write_file", "create_file", "edit_file"]:
+            details = action_details.get("path") or action_details.get("file_path", "")
+            
+        prompt = f"ALLOW ACTION?\nType: {action_type}\nDetails: {details}"
+        screen = SelectionScreen(prompt, ["Allow", "Deny"])
+        result = await self._call_ui(self._pick_screen_main_thread, screen)
+        return result == "Allow"
 
     async def confirm_continue(self, prompt: str) -> bool:
         self.app.agent.comm_log.info(f"DEBUG: confirm_continue called with prompt: '{prompt}'")

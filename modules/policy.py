@@ -1,5 +1,5 @@
 import asyncio
-
+import inspect
 from rich.prompt import Confirm
 from modules.tui_ui import TuiUI # Import TuiUI
 
@@ -23,7 +23,7 @@ class PermissionPolicy:
         elif action_type in ["write_file", "create_file", "edit_file"]:
             details = action.get("path") or action.get("file_path")
         
-        if hasattr(self.ui, 'confirm_action') and asyncio.iscoroutinefunction(self.ui.confirm_action):
+        if hasattr(self.ui, 'confirm_action') and inspect.iscoroutinefunction(self.ui.confirm_action):
           return await self.ui.confirm_action(action)
         else:
             # Fallback to synchronous confirmation for old CLI

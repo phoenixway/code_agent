@@ -5,3 +5,4 @@ PyYAML
 ollama
 python-dotenv
 textual
+bump-my-version

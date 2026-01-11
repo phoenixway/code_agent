@@ -8,6 +8,7 @@ from agent import AngelicaAgent
 from modules.tui_ui import TuiUI
 from modules.ui_components.history_input import HistoryInput
 from modules.ui_components.status_bar import StatusBar
+from modules.version import __version__
 
 class TUI(App):
     CSS_PATH = "tui.css"
@@ -16,8 +17,7 @@ class TUI(App):
         ("q", "quit", "Quit"),
         ("escape", "interrupt_agent", "Interrupt"),
     ]
-    VERSION = "0.1.0" # Define version here
-
+    
     def __init__(self, agent: AngelicaAgent):
         super().__init__()
         self.agent = agent
@@ -45,7 +45,7 @@ class TUI(App):
         current_directory = os.getcwd()
         
         startup_message = (
-            f"✨ Angelica-AI (v{self.VERSION})\n"
+            f"✨ Angelica AI (v{__version__})\n"
             f"Model: {model_name}\n"
             f"Working Directory: {current_directory}"
         )

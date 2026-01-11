@@ -1,6 +1,6 @@
 # Testing Manual
 
-This document outlines the testing strategy for Angelica-AI.
+This document outlines the testing strategy for Angelica AI.
 
 ## Overview
 
