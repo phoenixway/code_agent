@@ -64,6 +64,8 @@ make run
 - `/theme`: Switch interface theme.
 - `/history-size`: Change history context window size.
 - `/cd <path>`: Change current working directory.
+- `/export [filename]`: Save chat history to a Markdown file.
+- `/import <filename>`: Load chat history from a file.
 
 ## 🧪 Testing & Development
 

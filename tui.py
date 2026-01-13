@@ -22,7 +22,7 @@ class TUI(App):
     ]
     
     # List of available slash commands for autocomplete
-    COMMANDS = ["/add", "/drop", "/models", "/theme", "/history-size", "/cd", "/help", "/quit"]
+    COMMANDS = ["/add", "/drop", "/models", "/theme", "/history-size", "/cd", "/export", "/import", "/help", "/quit"]
     
     def __init__(self, agent: AngelicaAgent):
         super().__init__()
@@ -183,6 +183,87 @@ class TUI(App):
                 
             except Exception as e:
                 await self.ui.print_error(f"Error changing directory: {e}")
+            return
+
+        if user_input.startswith("/export"):
+            self.agent.comm_log.info(f"`/export` command received: {user_input}")
+            try:
+                parts = shlex.split(user_input)
+                filename = parts[1] if len(parts) > 1 else "chat_history.md"
+                
+                # Записуємо історію
+                with open(filename, "w", encoding="utf-8") as f:
+                    for msg in self.agent.history.messages:
+                        role = msg.get("role", "unknown")
+                        content = msg.get("content", "")
+                        # Записуємо з розділювачем
+                        f.write(f"## Role: {role}\n{content}\n\n")
+                
+                await self.ui.print_system(f"✅ Chat history exported to [bold cyan]{filename}[/]")
+            except Exception as e:
+                await self.ui.print_error(f"Error exporting history: {e}")
+            return
+
+        if user_input.startswith("/import"):
+            self.agent.comm_log.info(f"`/import` command received: {user_input}")
+            try:
+                parts = shlex.split(user_input)
+                if len(parts) < 2:
+                    await self.ui.print_error("Usage: /import <filename>")
+                    return
+                
+                filename = parts[1]
+                if not os.path.exists(filename):
+                    await self.ui.print_error(f"File not found: {filename}")
+                    return
+
+                with open(filename, "r", encoding="utf-8") as f:
+                    content = f.read()
+                
+                # Простий парсинг
+                import re
+                # Шукаємо блоки: ## Role: <role>\n<content>
+                # Використовуємо split, щоб розділити по заголовках
+                chunks = re.split(r"## Role: (\w+)\n", content)
+                # chunks[0] - це текст до першого заголовка (зазвичай порожній)
+                # Далі йдуть пари: [role, content, role, content...]
+                
+                new_messages = []
+                # Починаємо з індексу 1, бо split повертає роздільник у групі
+                if len(chunks) > 1:
+                    for i in range(1, len(chunks), 2):
+                        role = chunks[i].strip()
+                        msg_content = chunks[i+1].strip()
+                        new_messages.append({"role": role, "content": msg_content})
+                
+                count = 0
+                for msg in new_messages:
+                    self.agent.history.add_message(msg["role"], msg["content"])
+                    # Відображаємо в UI, щоб користувач бачив, що додалося
+                    role = msg["role"]
+                    text = msg["content"]
+                    if role == "user":
+                        await self.ui.print_message(text, role="user")
+                    elif role == "assistant":
+                        await self.ui.print_message(text, role="assistant")
+                    elif role == "system":
+                         # Системні повідомлення можна показати як thoughts або system
+                         # Якщо це довгий промпт, краще не спамити.
+                         # Але користувач просив "те що бачу".
+                         # Часто system messages це промпти або результати tool call.
+                         # Tool call results:
+                         if text.startswith("SYSTEM RESULT:"):
+                             await self.ui.print_command_result(text.replace("SYSTEM RESULT:", "").strip())
+                         else:
+                             # Не показуємо великі системні промпти, якщо вони не є "видимими"
+                             # Але якщо це імпорт, можливо користувач хоче знати.
+                             pass
+                    count += 1
+                
+                await self.ui.print_system(f"✅ Imported {count} messages from [bold cyan]{filename}[/]")
+
+            except Exception as e:
+                await self.ui.print_error(f"Error importing history: {e}")
             return
 
         if user_input == "/models":
