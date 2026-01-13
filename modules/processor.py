@@ -7,6 +7,16 @@ class ResponseProcessor:
         self.chat = chat
         self.policy = policy
 
+    MAX_OUTPUT_LENGTH = 3000
+
+    def _truncate_output(self, text: str) -> str:
+        if not isinstance(text, str):
+            return text
+        if len(text) > self.MAX_OUTPUT_LENGTH:
+            truncated_len = len(text) - self.MAX_OUTPUT_LENGTH
+            return text[:self.MAX_OUTPUT_LENGTH] + f"\n... (truncated {truncated_len} characters) ..."
+        return text
+
     async def process_single_action(self, command_dict: dict) -> dict:
         # 1. Спроба знайти назву інструмента
         action_type = command_dict.get("action") or command_dict.get("type")
@@ -67,5 +77,9 @@ class ResponseProcessor:
                     return {"status": "error", "output": f"Failed to apply changes: {e}"}
             else:
                 return {"status": "error", "output": "User rejected the file changes."}
+
+        # 8. Output Truncation
+        if isinstance(result, dict) and "output" in result:
+            result["output"] = self._truncate_output(result["output"])
                 
         return result

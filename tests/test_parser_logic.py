@@ -1,0 +1,96 @@
+import unittest
+from modules.parser import ResponseParser, Segment
+
+class TestResponseParser(unittest.TestCase):
+    def setUp(self):
+        self.parser = ResponseParser()
+
+    def test_basic_thought_and_action(self):
+        text = '<think>I should list files.</think> {"type": "run_shell", "command": "ls"}'
+        segments = self.parser.parse(text)
+        
+        self.assertEqual(len(segments), 2)
+        self.assertEqual(segments[0].type, 'thought')
+        self.assertEqual(segments[0].content, "I should list files.")
+        self.assertEqual(segments[1].type, 'action')
+        self.assertEqual(segments[1].content['command'], "ls")
+
+    def test_text_action_text(self):
+        text = 'I will run ls. {"type": "run_shell", "command": "ls"} Done.'
+        segments = self.parser.parse(text)
+        
+        self.assertEqual(len(segments), 3)
+        self.assertEqual(segments[0].type, 'text')
+        self.assertEqual(segments[0].content, "I will run ls.")
+        self.assertEqual(segments[1].type, 'action')
+        self.assertEqual(segments[2].type, 'text')
+        self.assertEqual(segments[2].content, "Done.")
+
+    def test_multiple_actions(self):
+        text = 'Step 1 {"type": "cmd1"} Step 2 {"type": "cmd2"}'
+        segments = self.parser.parse(text)
+        
+        self.assertEqual(len(segments), 4)
+        self.assertEqual(segments[1].type, 'action')
+        self.assertEqual(segments[1].content['type'], "cmd1")
+        self.assertEqual(segments[3].type, 'action')
+        self.assertEqual(segments[3].content['type'], "cmd2")
+
+    def test_json_inside_thought_ignored(self):
+        text = '<think>I am thinking about {"type": "bad"}</think> {"type": "good"}'
+        segments = self.parser.parse(text)
+        
+        self.assertEqual(len(segments), 2)
+        self.assertEqual(segments[0].type, 'thought')
+        self.assertIn('{"type": "bad"}', segments[0].content) # JSON remains as string in thought
+        self.assertEqual(segments[1].type, 'action')
+        self.assertEqual(segments[1].content['type'], "good")
+
+    def test_fallback_malformed_tags(self):
+        """Test the greedy fallback for mismatched tags."""
+        text = 'I am thinking... </think> Real content {"type": "act"}'
+        segments = self.parser.parse(text)
+        
+        # Expectation: Thought, then mixed content (Text, Action)
+        self.assertEqual(len(segments), 3)
+        self.assertEqual(segments[0].type, 'thought')
+        self.assertEqual(segments[0].content, "I am thinking...")
+        self.assertEqual(segments[1].type, 'text')
+        self.assertIn("Real content", segments[1].content)
+        self.assertEqual(segments[2].type, 'action')
+        self.assertEqual(segments[2].content['type'], "act")
+        
+    def test_fallback_complex(self):
+        text = 'Think 1 </think> Think 2 </think> {"type": "act"}'
+        segments = self.parser.parse(text)
+        
+        self.assertEqual(segments[0].type, 'thought')
+        # Should catch everything up to last </think>
+        self.assertIn("Think 2", segments[0].content)
+        
+        # The rest is action
+        # The parser splits remaining text mixed content
+        # segments[0] is thought. segments[1] might be empty text if stripped, then segments[2] action
+        # Let's check the last segment is action
+        self.assertEqual(segments[-1].type, 'action')
+        self.assertEqual(segments[-1].content['type'], "act")
+
+    def test_mixed_sequence(self):
+        text = 'Start <think>Thinking</think> Middle {"type": "a"} End'
+        segments = self.parser.parse(text)
+        self.assertEqual(segments[0].type, 'text') # Start
+        self.assertEqual(segments[1].type, 'thought') # Thinking
+        self.assertEqual(segments[2].type, 'text') # Middle
+        self.assertEqual(segments[3].type, 'action') # a
+        self.assertEqual(segments[4].type, 'text') # End
+
+    def test_non_command_json(self):
+        """JSON that is valid but not a command should be treated as text."""
+        text = 'Here is data: {"key": "value"}'
+        segments = self.parser.parse(text)
+        # Should be text -> text (json) or just text
+        # Parser implementation: text "Here is data:", then text '{"key": "value"}'
+        self.assertTrue(all(s.type == 'text' for s in segments))
+
+if __name__ == "__main__":
+    unittest.main()

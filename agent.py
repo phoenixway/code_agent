@@ -14,6 +14,7 @@ from modules.session import SessionManager
 from modules.processor import ResponseProcessor
 from modules.policy import PermissionPolicy
 from modules.chat import get_chat_provider, ProviderAPIError
+from modules.parser import ResponseParser, Segment
 
 class AngelicaAgent:
     def __init__(self, ui=None):
@@ -59,6 +60,24 @@ class AngelicaAgent:
             chat=self.chat, 
             policy=self.policy
         )
+        
+        # 6. Parser
+        self.parser = ResponseParser()
+        
+        # 7. Loop Detection
+        self.last_action_fingerprint = None
+        self.last_action_status = None
+        self.consecutive_failed_repeats = 0
+
+    def _get_action_fingerprint(self, command: dict) -> str:
+        """Creates a unique string for an action based on type and arguments."""
+        cmd_type = command.get("type") or command.get("action") or "unknown"
+        # Extract arguments, ignoring service fields
+        service_fields = {"before_execution", "during_execution", "after_execution", "return_control"}
+        args = {k: v for k, v in command.items() if k not in service_fields}
+        # Stable string representation
+        args_str = json.dumps(args, sort_keys=True)
+        return f"{cmd_type}:{args_str}"
 
     @property
     def ui(self):
@@ -81,47 +100,6 @@ class AngelicaAgent:
             logger.addHandler(handler)
         return logger
 
-    def _parse_output(self, text: str):
-        """
-        Надзвичайно стійкий парсер:
-        1. Витягує роздуми з <think>.
-        2. Шукає JSON від НАЙПЕРШОЇ '{' до НАЙОСТАННЬОЇ '}'.
-        """
-        thoughts = []
-        command = None
-        
-        # 1. Витягуємо блок роздумів
-        thought_match = re.search(r'<think>(.*?)</think>', text, re.DOTALL | re.IGNORECASE)
-        if thought_match:
-            thoughts.append(thought_match.group(1).strip())
-            # Беремо все, що ПІСЛЯ блоку думок
-            payload = text[thought_match.end():].strip()
-        else:
-            payload = text.strip()
-
-        if not payload:
-            return thoughts, None, ""
-
-        # 2. ШУКАЄМО JSON: Жадібний пошук від першої { до останньої }
-        # Це дозволяє ігнорувати сміття навколо і правильно збирати вкладені JSON
-        json_match = re.search(r'(\{.*\})', payload, re.DOTALL)
-        
-        if json_match:
-            json_str = json_match.group(1).strip()
-            try:
-                parsed = json.loads(json_str)
-                # Якщо це словник і в ньому є ознаки команди
-                if isinstance(parsed, dict) and any(k in parsed for k in ["type", "command", "action"]):
-                    return thoughts, parsed, ""
-            except json.JSONDecodeError as e:
-                # Якщо JSON невалідний, логуємо помилку для відладки
-                self.comm_log.error(f"JSON Parse Error: {e} | Content: {json_str}")
-                # Якщо не вдалося розпарсити, вважаємо це текстом
-                pass
-        
-        # 3. Якщо JSON не знайдено або він "битий" — повертаємо як текст
-        return thoughts, None, payload
-
     async def get_response(self, query):
         """Отримує стрімінгову відповідь від ШІ."""
         full_text = ""
@@ -137,7 +115,7 @@ class AngelicaAgent:
         return full_text
 
     async def process_user_input(self, user_input):
-        """Головний цикл обробки вводу: Промпт -> ШІ -> Дія -> Результат -> ШІ."""
+        """Головний цикл обробки вводу: Промпт -> ШІ -> Парсинг -> Послідовне виконання -> ШІ."""
         # Підготовка контексту та інструментів
         tools_desc = self.tool_manager.get_tools_prompt()
         system_prompt = DEFAULT_SYSTEM_PROMPT.format(tools_description=tools_desc)
@@ -159,7 +137,7 @@ class AngelicaAgent:
                     if not await self.ui.confirm_continue("Агент виконав багато кроків. Продовжити?"):
                         break
 
-                await self.ui.start_thinking()
+                await self.ui.start_thinking() 
                 
                 # Запускаємо задачу з можливістю переривання
                 self.current_task = asyncio.create_task(self.get_response(current_query))
@@ -168,47 +146,103 @@ class AngelicaAgent:
                 if not response:
                     break
                 
-                if response.startswith("Error:"): 
+                if response.startswith("Error:"):
                     await self.ui.print_error(response)
                     break
                 
                 self.history.add_message("assistant", response)
-                thoughts, command, plain_text = self._parse_output(response)
-
-                # Відображення думок в UI
-                for thought in thoughts:
-                    await self.ui.print_thought(thought)
-
-                # ВИБІР: АБО Команда, АБО Текстова відповідь
-                if command:
-                    if command.get("before_execution"):
-                        await self.ui.print_plan(command['before_execution'])
-                    
-                    await self.ui.start_action(command.get("during_execution", "Processing..."))
-                    
-                    # Виконання дії (тут може з'явитися MiniPicker)
-                    result = await self.processor.process_single_action(command)
-                    
-                    if result.get("status") == "success" and command.get("after_execution"):
-                        await self.ui.print_confirmation(command['after_execution'])
-                    
-                    # Друкуємо результат в історії
-                    output_text = result.get('output', '')
-                    cmd_name = command.get("type") or command.get("action") or "command"
-                    await self.ui.print_command_result(output_text, command_name=cmd_name)
-
-                    # Якщо ШІ потрібен результат для наступного кроку (loop)
-                    if command.get("return_control") is True:
-                        res_msg = f"SYSTEM RESULT: {output_text}"
-                        self.history.add_message("system", res_msg)
-                        current_query = res_msg # Передаємо результат на наступну ітерацію
-                    else:
-                        active_loop = False
                 
-                elif plain_text:
-                    await self.ui.print_message(plain_text, role="assistant")
-                    active_loop = False
+                # --- NEW PARSING & EXECUTION LOOP ---
+                segments = self.parser.parse(response)
+                
+                execution_results = []
+                should_return_control = False
+                found_action = False
+                
+                for segment in segments:
+                    if segment.type == 'thought':
+                        await self.ui.print_thought(segment.content)
+                    
+                    elif segment.type == 'text':
+                        # Only print text if we haven't found an action yet, 
+                        # or if we want to stream text mixed with actions.
+                        await self.ui.print_message(segment.content, role="assistant")
+                        
+                    elif segment.type == 'action':
+                        found_action = True
+                        command = segment.content
+                        
+                        # --- LOOP DETECTION ---
+                        fingerprint = self._get_action_fingerprint(command)
+                        if fingerprint == self.last_action_fingerprint and self.last_action_status in ["failed", "error"]:
+                            self.consecutive_failed_repeats += 1
+                        else:
+                            self.consecutive_failed_repeats = 0
+                        
+                        if self.consecutive_failed_repeats >= 1: # Already one failure, now repeating
+                            warn_msg = "⚠️ Loop detected: You are repeating the same action that just failed."
+                            await self.ui.print_error(warn_msg)
+                            # Inject warning into history for AI
+                            self.history.add_message("system", f"CRITICAL: {warn_msg} Change your strategy.")
+                        
+                        if command.get("before_execution"):
+                            await self.ui.print_plan(command['before_execution'])
+                        
+                        await self.ui.start_action(command.get("during_execution", "Processing..."))
+                        
+                        # Execute
+                        result = await self.processor.process_single_action(command)
+                        
+                        # Update Loop Detection State
+                        self.last_action_fingerprint = fingerprint
+                        self.last_action_status = result.get("status")
+                        
+                        if result.get("status") == "success" and command.get("after_execution"):
+                            await self.ui.print_confirmation(command['after_execution'])
+                        
+                        output_text = result.get('output', '')
+                        cmd_name = command.get("type") or command.get("action") or "command"
+                        await self.ui.print_command_result(output_text, command_name=cmd_name)
+                        
+                        # Accumulate result
+                        if result.get("status") in ["failed", "error"]:
+                            # Self-Healing Injection
+                            output_text += "\n\n[SYSTEM INSTRUCTION: The action failed. Analyze this error in a <think> block to determine the root cause, then propose a corrected action.]"
+                        
+                        execution_results.append(f"Command: {cmd_name}\nResult: {output_text}")
+                        
+                        # Check return_control
+                        if command.get("return_control") is True:
+                            should_return_control = True
+                            break 
+                        
+                        # Check for critical failure? User said "stop if current block gives error"
+                        if result.get("status") == "failed" or result.get("status") == "error":
+                            # Stop chain execution
+                            should_return_control = True # Implicitly return control so AI knows it failed
+                            break
+
+                # End of Segment Loop
+                
+                if found_action:
+                    # Construct system message with all results
+                    full_result_msg = "SYSTEM RESULTS:\n" + "\n---".join(execution_results)
+                    self.history.add_message("system", full_result_msg)
+                    current_query = full_result_msg
+                    
+                    if should_return_control:
+                        # Continue loop (call AI again with results)
+                        active_loop = True
+                    else:
+                        # If actions were executed but no explicit return control, 
+                        # assume we are done for now unless we loop automatically.
+                        # Given the user wants sequential execution, if we finished all blocks
+                        # and no return_control=True was explicit, we usually stop.
+                        # However, if one of them FAILED, we set should_return_control=True above, so we loop.
+                        # If all SUCCESS and no return_control, we stop.
+                        active_loop = False
                 else:
+                    # No actions found, just text/thoughts.
                     active_loop = False
 
             await self.history.check_and_summarize(self.ui)
@@ -264,4 +298,3 @@ class AngelicaAgent:
         self.history_size = size_key
         if self.ui:
             asyncio.create_task(self.ui.print_system(f"History limit set to {size_key.upper()} ({token_limit} tokens)"))
-

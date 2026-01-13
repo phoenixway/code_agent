@@ -13,12 +13,15 @@ The application is structured around a central **Agent** class that coordinates 
     -   Manages the main execution loop: `User Input -> Context Assembly -> LLM Request -> Response Parsing -> Action Execution -> Output Feedback`.
     -   Handles high-level error catching and session management.
 
-2.  **Response Processor (`modules/processor.py`)**
-    -   Responsible for interpreting the raw text output from the AI model.
-    -   **Key Logic**:
-        -   Extracts `<think>` blocks for internal reasoning.
-        -   Parses JSON commands (greedy matching).
-        -   Implements "Smart Fallback": if the model outputs a shell command string instead of a structured JSON, the processor attempts to wrap it into a valid `run_shell` or tool call.
+2.  **Response Processing (`modules/parser.py` & `modules/processor.py`)**
+    -   **Parser (`ResponseParser`)**:
+        -   Splits the response into a sequence of `Segment` objects: `THOUGHT`, `TEXT`, `ACTION`.
+        -   **Fallback Logic**: If `<think>` tags are malformed (e.g., more closing than opening), it treats everything up to the last `</think>` as thought content.
+        -   **Security**: JSONs found inside `<think>` blocks are strictly ignored.
+        -   **Scanning**: Uses an iterative scanner to extract multiple sequential actions interspersed with text.
+    -   **Processor (`ResponseProcessor`)**:
+        -   Executes the extracted `ACTION` segments.
+        -   Handles the `return_control` logic: if a tool requests to return control, the execution loop pauses and returns results to the LLM.
 
 3.  **Tool System (`modules/tools/`)**
     -   **`manager.py`**: Dynamically loads tool classes and exposes them to the processor.
