@@ -13,6 +13,7 @@ class HistoryInput(Input):
     BINDINGS = [
         Binding("ctrl+up", "history_up", "Previous Command", show=False),
         Binding("ctrl+down", "history_down", "Next Command", show=False),
+        Binding("ctrl+q", "app.quit", "Quit App", show=False),
     ]
 
     def __init__(self, *args, **kwargs):

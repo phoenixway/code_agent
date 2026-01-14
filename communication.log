@@ -4852,3 +4852,132 @@ Model: deepseek-coder
 Working Directory: /home/romankozak/studio/public/code_agent'
 2026-01-14 13:18:58,535 - DEBUG: _add_message called with classes: chat-message system-message
 2026-01-14 13:18:58,536 - DEBUG: Message mounted and scrolled
+2026-01-14 13:20:08,196 - DEBUG: print_system: '✨ Angelica AI (v0.1.0)
+Model: deepseek-coder
+Working Directory: /home/romankozak/studio/public/code_agent'
+2026-01-14 13:20:08,196 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-14 13:20:08,197 - DEBUG: Message mounted and scrolled
+2026-01-14 13:20:11,916 - DEBUG: print_system: '✨ Angelica AI (v0.1.0)
+Model: deepseek-coder
+Working Directory: /home/romankozak/studio/public/code_agent'
+2026-01-14 13:20:11,916 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-14 13:20:11,917 - DEBUG: Message mounted and scrolled
+2026-01-14 13:29:03,884 - DEBUG: print_system: '✨ Angelica AI (v0.1.0)
+Model: deepseek-coder
+Working Directory: /home/romankozak/studio/public/code_agent'
+2026-01-14 13:29:03,884 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-14 13:29:03,884 - DEBUG: Message mounted and scrolled
+2026-01-14 13:29:09,725 - DEBUG: on_input_submitted called with: '/m'
+2026-01-14 13:29:09,725 - DEBUG: detected command '/m', spawning worker
+2026-01-14 13:29:13,132 - DEBUG: on_input_submitted called with: '/models'
+2026-01-14 13:29:13,132 - DEBUG: detected command '/models', spawning worker
+2026-01-14 13:29:13,132 - Command triggered: /models
+2026-01-14 13:29:13,132 - DEBUG: pick_option called with prompt: 'Select AI Model (Current: deepseek-coder)'
+2026-01-14 13:29:13,132 - DEBUG: Entering _pick_screen_main_thread with screen: SelectionScreen()
+2026-01-14 13:29:13,157 - DEBUG: Screen pushed, awaiting future
+2026-01-14 13:29:13,161 - DEBUG: SelectionScreen mounted
+2026-01-14 13:29:14,692 - DEBUG: ListItem selected at index: 2
+2026-01-14 13:29:14,692 - DEBUG: Dismissing SelectionScreen with value: ollama/qwen3:4b
+2026-01-14 13:29:14,693 - DEBUG: Screen callback triggered with result: ollama/qwen3:4b
+2026-01-14 13:29:14,700 - DEBUG: Future resolved in _pick_screen_main_thread: ollama/qwen3:4b
+2026-01-14 13:29:14,700 - DEBUG: print_system: 'Перемикаюсь на ollama/qwen3:4b...'
+2026-01-14 13:29:14,700 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-14 13:29:14,700 - DEBUG: Message mounted and scrolled
+2026-01-14 13:29:14,701 - DEBUG: print_system: '✅ Модель змінено на ollama/qwen3:4b'
+2026-01-14 13:29:14,701 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-14 13:29:14,701 - DEBUG: Message mounted and scrolled
+2026-01-14 13:29:14,702 - DEBUG: print_system: '💾 Model preference saved: ollama/qwen3:4b'
+2026-01-14 13:29:14,702 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-14 13:29:14,703 - DEBUG: Message mounted and scrolled
+2026-01-14 13:29:16,650 - DEBUG: print_system: '✨ Angelica AI (v0.1.0)
+Model: qwen3:4b
+Working Directory: /home/romankozak/studio/public/code_agent'
+2026-01-14 13:29:16,650 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-14 13:29:16,651 - DEBUG: Message mounted and scrolled
+2026-01-14 13:31:11,432 - DEBUG: print_system: '✨ Angelica AI (v0.1.0)
+Model: qwen3:4b
+Working Directory: /home/romankozak/studio/public/code_agent'
+2026-01-14 13:31:11,432 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-14 13:31:11,434 - DEBUG: Message mounted and scrolled
+2026-01-14 13:31:15,398 - DEBUG: print_system: '✨ Angelica AI (v0.1.0)
+Model: qwen3:4b
+Working Directory: /home/romankozak/studio/public/code_agent'
+2026-01-14 13:31:15,398 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-14 13:31:15,398 - DEBUG: Message mounted and scrolled
+2026-01-14 13:34:54,949 - DEBUG: print_system: '✨ Angelica AI (v0.1.0)
+Model: qwen3:4b
+Working Directory: /home/romankozak/studio/public/code_agent'
+2026-01-14 13:34:54,949 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-14 13:34:54,949 - DEBUG: Message mounted and scrolled
+2026-01-14 13:34:57,574 - DEBUG: action_quit called. Exiting...
+2026-01-14 13:35:00,461 - DEBUG: print_system: '✨ Angelica AI (v0.1.0)
+Model: qwen3:4b
+Working Directory: /home/romankozak/studio/public/code_agent'
+2026-01-14 13:35:00,461 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-14 13:35:00,461 - DEBUG: Message mounted and scrolled
+2026-01-14 13:35:03,039 - DEBUG: on_input_submitted called with: '/models'
+2026-01-14 13:35:03,039 - DEBUG: detected command '/models', spawning worker
+2026-01-14 13:35:03,039 - Command triggered: /models
+2026-01-14 13:35:03,040 - DEBUG: pick_option called with prompt: 'Select AI Model (Current: qwen3:4b)'
+2026-01-14 13:35:03,040 - DEBUG: Entering _pick_screen_main_thread with screen: SelectionScreen()
+2026-01-14 13:35:03,063 - DEBUG: Screen pushed, awaiting future
+2026-01-14 13:35:03,066 - DEBUG: SelectionScreen mounted
+2026-01-14 13:35:04,086 - DEBUG: ListItem selected at index: 1
+2026-01-14 13:35:04,086 - DEBUG: Dismissing SelectionScreen with value: deepseek-coder
+2026-01-14 13:35:04,087 - DEBUG: Screen callback triggered with result: deepseek-coder
+2026-01-14 13:35:04,093 - DEBUG: Future resolved in _pick_screen_main_thread: deepseek-coder
+2026-01-14 13:35:04,093 - DEBUG: print_system: 'Перемикаюсь на deepseek-coder...'
+2026-01-14 13:35:04,093 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-14 13:35:04,093 - DEBUG: Message mounted and scrolled
+2026-01-14 13:35:04,093 - DEBUG: print_system: '✅ Модель змінено на deepseek-coder'
+2026-01-14 13:35:04,094 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-14 13:35:04,094 - DEBUG: Message mounted and scrolled
+2026-01-14 13:35:04,095 - DEBUG: print_system: '💾 Model preference saved: deepseek-coder'
+2026-01-14 13:35:04,095 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-14 13:35:04,096 - DEBUG: Message mounted and scrolled
+2026-01-14 13:35:06,350 - DEBUG: action_quit called. Exiting...
+2026-01-14 13:35:10,781 - DEBUG: print_system: '✨ Angelica AI (v0.1.0)
+Model: deepseek-coder
+Working Directory: /home/romankozak/studio/public/code_agent'
+2026-01-14 13:35:10,781 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-14 13:35:10,782 - DEBUG: Message mounted and scrolled
+2026-01-14 13:42:37,797 - DEBUG: print_system: '✨ Angelica AI (v0.1.0)
+Model: deepseek-coder
+Working Directory: /home/romankozak/studio/public/code_agent'
+2026-01-14 13:42:37,797 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-14 13:42:37,798 - DEBUG: Message mounted and scrolled
+2026-01-14 13:42:52,908 - DEBUG: on_input_submitted called with: '/models'
+2026-01-14 13:42:52,908 - DEBUG: detected command '/models', spawning worker
+2026-01-14 13:42:52,908 - Command triggered: /models
+2026-01-14 13:42:52,908 - DEBUG: pick_option called with prompt: 'Select AI Model (Current: deepseek-coder)'
+2026-01-14 13:42:52,908 - DEBUG: Entering _pick_screen_main_thread with screen: SelectionScreen()
+2026-01-14 13:42:52,961 - DEBUG: Screen pushed, awaiting future
+2026-01-14 13:42:52,965 - DEBUG: SelectionScreen mounted
+2026-01-14 13:42:54,444 - DEBUG: ListItem selected at index: 2
+2026-01-14 13:42:54,444 - DEBUG: Dismissing SelectionScreen with value: ollama/qwen3:4b
+2026-01-14 13:42:54,445 - DEBUG: Screen callback triggered with result: ollama/qwen3:4b
+2026-01-14 13:42:54,451 - DEBUG: Future resolved in _pick_screen_main_thread: ollama/qwen3:4b
+2026-01-14 13:42:54,451 - DEBUG: print_system: 'Перемикаюсь на ollama/qwen3:4b...'
+2026-01-14 13:42:54,451 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-14 13:42:54,451 - DEBUG: Message mounted and scrolled
+2026-01-14 13:42:54,451 - DEBUG: print_system: '✅ Модель змінено на ollama/qwen3:4b'
+2026-01-14 13:42:54,451 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-14 13:42:54,452 - DEBUG: Message mounted and scrolled
+2026-01-14 13:42:54,453 - DEBUG: print_system: '💾 Model preference saved: ollama/qwen3:4b'
+2026-01-14 13:42:54,453 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-14 13:42:54,454 - DEBUG: Message mounted and scrolled
+2026-01-14 13:42:56,460 - DEBUG: on_input_submitted called with: 'test'
+2026-01-14 13:42:56,460 - DEBUG: Processing regular prompt: 'test'
+2026-01-14 13:42:56,460 - DEBUG: print_message (role=user): 'test...'
+2026-01-14 13:42:56,460 - DEBUG: _add_message called with classes: chat-message user-message
+2026-01-14 13:42:56,461 - DEBUG: Message mounted and scrolled
+2026-01-14 13:42:56,461 - DEBUG: print_message completed
+2026-01-14 13:42:56,461 - DEBUG: Message printed to UI, starting agent worker
+2026-01-14 13:42:56,473 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=system, Content=''You are Angelica AI, a professional coding agent optimized for autonomous problem-solving in Linux (Fedora/Desktop) and Android (Termux).\n\n## RESPONSE FORMAT (Strict Sequence)\n1. **Planning (<plan>)**: For complex tasks, START with a `<plan>` block outlining your step-by-step strategy. This is optional for simple queries.\n2. **Reasoning (<think>)**: Use a `<think>` block for internal analysis, file path verification, and command construction.\n3. **Action (Raw JSON)**: After `</think>`, if an action is needed, provide EXACTLY ONE raw JSON object. \n   - **CRITICAL**: Do NOT use markdown code blocks (e.g., no ```json). Provide the raw string.\n   - **CRITICAL**: The JSON **MUST** contain a "type" field matching a tool name (e.g., "run_shell", "read_file").\n4. **Text Message**: If no action is needed, provide a concise text response.\n\n## COMMAND STRUCTURE\nAll actions must include:\n- "type": The exact name of the tool (e.g., "run_shell").\n- "before_execution": Explain what you are doing (shown to user).\n- "during_execution": Status message (e.g. "Editing...").\n- "after_execution": Message on success.\n- "return_control": (boolean) Set to \'true\' if you need the output of the command to decide the next step.\n\n## GUIDELINES & STRATEGIES\n1. **File Editing**: \n   - New files: `create_file`.\n   - Existing files: Use `replace` (or `edit_file`) to change specific blocks. AVOID overwriting entire files unless necessary.\n   - **Context**: Always `read_file` before editing to ensure your `old_string` (search text) is exact.\n\n2. **Loop Prevention**:\n   - If an action fails, DO NOT repeat it identically.\n   - Analyze the error in `<think>`, check your assumptions (e.g., does the file exist? is the path correct?), and try a different approach.\n\n3. **Self-Correction**:\n   - If you see a system message starting with "CRITICAL" or "SYSTEM INSTRUCTION", prioritize it immediately.\n\n## ENVIRONMENT\nYou have a full shell (Termux/Linux). You can use `grep`, `fd`, `git`, `python3`, etc., via `run_shell`.\n\n---\nAVAILABLE TOOLS:\n- create_file: Creates a NEW file with content. Fails if file exists. Params: \'path\' (str), \'content\' (str)\n- edit_file: Surgically edits an existing file by replacing a specific block of text. Params: \'path\' (str), \'search_text\' (str), \'replace_text\' (str). The \'search_text\' must exactly match a part of the file.\n- read_file: Reads the full content of a file. Use this before editing. Params: \'path\' (str)\n- write_file: Overwrites an existing file. Params: \'path\' (str), \'content\' (str)\n- search_content: Searches for text patterns inside files using \'ripgrep\' (rg). Useful for finding code usage, TODOs, or specific strings. Parameters: pattern (str, required) - the regex pattern to search for; path (str, optional) - directory to search in (default: current).\n- search_files: Finds files matching a pattern using \'fd\'. Useful for locating files by name or extension. Parameters: pattern (str, required) - the glob pattern or regex to search for (e.g. \'*.py\', \'main\'); path (str, optional) - directory to search in (default: current).\n- run_shell: Executes a shell command in the current environment. Params: \'command\' (str)\n\n---\n\nBegin your response with an analysis (and optional plan) in <think> tags.\n\nProject Structure:\n├── .crush/\n│   ├── logs/\n│   │   └── crush.log\n│   ├── .gitignore\n│   ├── crush.db\n│   ├── crush.db-shm\n│   ├── crush.db-wal\n│   └── init\n├── .pytest_cache/\n│   ├── v/\n│   │   └── cache/\n│   ├── .gitignore\n│   ├── CACHEDIR.TAG\n│   └── README.md\n├── dist/\n│   └── angelica\n├── docs/\n│   ├── ARCHITECTURE.md\n│   ├── CREATING_TOOLS.md\n│   ├── DEV_LOG.md\n│   ├── FEATURE_REQUESTS.md\n│   └── TESTING.md\n├── modules/\n│   ├── providers/\n│   │   ├── base.py\n│   │   ├── gemini.py\n│   │   ├── ollama.py\n│   │   └── openai.py\n│   ├── tools/\n│   │   ├── definitions/\n│   │   ├── base.py\n│   │   └── manager.py\n│   ├── ui_components/\n│   │   ├── __init__.py\n│   │   ├── diff_viewer.py\n│   │   ├── history_input.py\n│   │   ├── selection_widget.py\n│   │   └── status_bar.py\n│   ├── __init__.py\n│   ├── chat.py\n│   ├── command_handler.py\n│   ├── config_loader.py\n│   ├── context.py\n│   ├── defaults.py\n│   ├── files.py\n│   ├── healer.py\n│   ├── history.py\n│   ├── parser.py\n│   ├── policy.py\n│   ├── processor.py\n│   ├── project.py\n│   ├── screens.py\n│   ├── session.py\n│   ├── storage.py\n│   ├── theme.css\n│   ├── theme.py\n│   ├── tui_ui.py\n│   ├── types.py\n│   └── version.py\n├── sessions/\n│   ├── session_20260102_153229.json\n│   ├── session_20260102_154041.json\n│   ├── session_20260102_154149.json\n│   ├── session_20260102_154258.json\n│   ├── session_20260102_154410.json\n│   ├── session_20260102_154550.json\n│   ├── session_20260102_154718.json\n│   ├── session_20260102_155011.json\n│   ├── session_20260102_155124.json\n│   ├── session_20260102_155309.json\n│   ├── session_20260102_155425.json\n│   ├── session_20260102_155612.json\n│   ├── session_20260102_160026.json\n│   ├── session_20260102_160157.json\n│   ├── session_20260102_160443.json\n│   ├── session_20260102_160837.json\n│   ├── session_20260102_161302.json\n│   ├── session_20260102_161349.json\n│   ├── session_20260102_161535.json\n│   ├── session_20260102_161833.json\n│   ├── session_20260102_162024.json\n│   ├── session_20260102_162316.json\n│   ├── session_20260102_162547.json\n│   ├── session_20260102_162753.json\n│   ├── session_20260102_163051.json\n│   ├── session_20260102_163331.json\n│   ├── session_20260102_164057.json\n│   ├── session_20260102_164244.json\n│   ├── session_20260102_164538.json\n│   ├── session_20260102_165026.json\n│   ├── session_20260102_165114.json\n│   ├── session_20260102_165201.json\n│   ├── session_20260102_165502.json\n│   ├── session_20260102_165724.json\n│   ├── session_20260102_165803.json\n│   ├── session_20260102_170058.json\n│   ├── session_20260102_170238.json\n│   ├── session_20260102_170300.json\n│   ├── session_20260102_171203.json\n│   ├── session_20260102_171226.json\n│   ├── session_20260102_171252.json\n│   ├── session_20260102_171330.json\n│   ├── session_20260102_171704.json\n│   ├── session_20260102_171756.json\n│   ├── session_20260102_171841.json\n│   ├── session_20260102_171931.json\n│   ├── session_20260102_172031.json\n│   ├── session_20260102_172109.json\n│   ├── session_20260102_172212.json\n│   ├── session_20260102_172312.json\n│   ├── session_20260102_172812.json\n│   ├── session_20260102_173720.json\n│   ├── session_20260102_174050.json\n│   ├── session_20260103_110517.json\n│   ├── session_20260103_122923.json\n│   ├── session_20260103_123014.json\n│   └── session_20260103_123517.json\n├── tests/\n│   ├── test_commands.py\n│   ├── test_core_logic.py\n│   ├── test_loop_detection.py\n│   ├── test_modules.py\n│   ├── test_orchestration_advanced.py\n│   ├── test_parser_logic.py\n│   ├── test_search_tools.py\n│   ├── test_tools_comprehensive.py\n│   └── test_truncation.py\n├── .bumpversion.toml\n├── .gitignore\n├── AGENTS.md\n├── Makefile\n├── README.md\n├── agent.py\n├── angelica\n├── angelica.spec\n├── app.py\n├── build.sh\n├── communication.log\n├── concat_into.py\n├── debug_json.py\n├── debug_repro.py\n├── debug_selection.py\n├── hello.py\n├── hello_world.py\n├── interval_notifier.py\n├── message.sh\n├── path.txt\n├── pyinstaller.log\n├── requirements.txt\n├── screens.py\n├── sources.txt\n├── tui.css\n└── tui.py''
+2026-01-14 13:42:56,473 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=system, Content=''You are Angelica AI, a professional coding agent optimized for autonomous problem-solving in Linux (Fedora/Desktop) and Android (Termux).\n\n## RESPONSE FORMAT (Strict Sequence)\n1. **Planning (<plan>)**: For complex tasks, START with a `<plan>` block outlining your step-by-step strategy. This is optional for simple queries.\n2. **Reasoning (<think>)**: Use a `<think>` block for internal analysis, file path verification, and command construction.\n3. **Action (Raw JSON)**: After `</think>`, if an action is needed, provide EXACTLY ONE raw JSON object. \n   - **CRITICAL**: Do NOT use markdown code blocks (e.g., no ```json). Provide the raw string.\n   - **CRITICAL**: The JSON **MUST** contain a "type" field matching a tool name (e.g., "run_shell", "read_file").\n4. **Text Message**: If no action is needed, provide a concise text response.\n\n## COMMAND STRUCTURE\nAll actions must include:\n- "type": The exact name of the tool (e.g., "run_shell").\n- "before_execution": Explain what you are doing (shown to user).\n- "during_execution": Status message (e.g. "Editing...").\n- "after_execution": Message on success.\n- "return_control": (boolean) Set to \'true\' if you need the output of the command to decide the next step.\n\n## GUIDELINES & STRATEGIES\n1. **File Editing**: \n   - New files: `create_file`.\n   - Existing files: Use `replace` (or `edit_file`) to change specific blocks. AVOID overwriting entire files unless necessary.\n   - **Context**: Always `read_file` before editing to ensure your `old_string` (search text) is exact.\n\n2. **Loop Prevention**:\n   - If an action fails, DO NOT repeat it identically.\n   - Analyze the error in `<think>`, check your assumptions (e.g., does the file exist? is the path correct?), and try a different approach.\n\n3. **Self-Correction**:\n   - If you see a system message starting with "CRITICAL" or "SYSTEM INSTRUCTION", prioritize it immediately.\n\n## ENVIRONMENT\nYou have a full shell (Termux/Linux). You can use `grep`, `fd`, `git`, `python3`, etc., via `run_shell`.\n\n---\nAVAILABLE TOOLS:\n- create_file: Creates a NEW file with content. Fails if file exists. Params: \'path\' (str), \'content\' (str)\n- edit_file: Surgically edits an existing file by replacing a specific block of text. Params: \'path\' (str), \'search_text\' (str), \'replace_text\' (str). The \'search_text\' must exactly match a part of the file.\n- read_file: Reads the full content of a file. Use this before editing. Params: \'path\' (str)\n- write_file: Overwrites an existing file. Params: \'path\' (str), \'content\' (str)\n- search_content: Searches for text patterns inside files using \'ripgrep\' (rg). Useful for finding code usage, TODOs, or specific strings. Parameters: pattern (str, required) - the regex pattern to search for; path (str, optional) - directory to search in (default: current).\n- search_files: Finds files matching a pattern using \'fd\'. Useful for locating files by name or extension. Parameters: pattern (str, required) - the glob pattern or regex to search for (e.g. \'*.py\', \'main\'); path (str, optional) - directory to search in (default: current).\n- run_shell: Executes a shell command in the current environment. Params: \'command\' (str)\n\n---\n\nBegin your response with an analysis (and optional plan) in <think> tags.\n\nProject Structure:\n├── .crush/\n│   ├── logs/\n│   │   └── crush.log\n│   ├── .gitignore\n│   ├── crush.db\n│   ├── crush.db-shm\n│   ├── crush.db-wal\n│   └── init\n├── .pytest_cache/\n│   ├── v/\n│   │   └── cache/\n│   ├── .gitignore\n│   ├── CACHEDIR.TAG\n│   └── README.md\n├── dist/\n│   └── angelica\n├── docs/\n│   ├── ARCHITECTURE.md\n│   ├── CREATING_TOOLS.md\n│   ├── DEV_LOG.md\n│   ├── FEATURE_REQUESTS.md\n│   └── TESTING.md\n├── modules/\n│   ├── providers/\n│   │   ├── base.py\n│   │   ├── gemini.py\n│   │   ├── ollama.py\n│   │   └── openai.py\n│   ├── tools/\n│   │   ├── definitions/\n│   │   ├── base.py\n│   │   └── manager.py\n│   ├── ui_components/\n│   │   ├── __init__.py\n│   │   ├── diff_viewer.py\n│   │   ├── history_input.py\n│   │   ├── selection_widget.py\n│   │   └── status_bar.py\n│   ├── __init__.py\n│   ├── chat.py\n│   ├── command_handler.py\n│   ├── config_loader.py\n│   ├── context.py\n│   ├── defaults.py\n│   ├── files.py\n│   ├── healer.py\n│   ├── history.py\n│   ├── parser.py\n│   ├── policy.py\n│   ├── processor.py\n│   ├── project.py\n│   ├── screens.py\n│   ├── session.py\n│   ├── storage.py\n│   ├── theme.css\n│   ├── theme.py\n│   ├── tui_ui.py\n│   ├── types.py\n│   └── version.py\n├── sessions/\n│   ├── session_20260102_153229.json\n│   ├── session_20260102_154041.json\n│   ├── session_20260102_154149.json\n│   ├── session_20260102_154258.json\n│   ├── session_20260102_154410.json\n│   ├── session_20260102_154550.json\n│   ├── session_20260102_154718.json\n│   ├── session_20260102_155011.json\n│   ├── session_20260102_155124.json\n│   ├── session_20260102_155309.json\n│   ├── session_20260102_155425.json\n│   ├── session_20260102_155612.json\n│   ├── session_20260102_160026.json\n│   ├── session_20260102_160157.json\n│   ├── session_20260102_160443.json\n│   ├── session_20260102_160837.json\n│   ├── session_20260102_161302.json\n│   ├── session_20260102_161349.json\n│   ├── session_20260102_161535.json\n│   ├── session_20260102_161833.json\n│   ├── session_20260102_162024.json\n│   ├── session_20260102_162316.json\n│   ├── session_20260102_162547.json\n│   ├── session_20260102_162753.json\n│   ├── session_20260102_163051.json\n│   ├── session_20260102_163331.json\n│   ├── session_20260102_164057.json\n│   ├── session_20260102_164244.json\n│   ├── session_20260102_164538.json\n│   ├── session_20260102_165026.json\n│   ├── session_20260102_165114.json\n│   ├── session_20260102_165201.json\n│   ├── session_20260102_165502.json\n│   ├── session_20260102_165724.json\n│   ├── session_20260102_165803.json\n│   ├── session_20260102_170058.json\n│   ├── session_20260102_170238.json\n│   ├── session_20260102_170300.json\n│   ├── session_20260102_171203.json\n│   ├── session_20260102_171226.json\n│   ├── session_20260102_171252.json\n│   ├── session_20260102_171330.json\n│   ├── session_20260102_171704.json\n│   ├── session_20260102_171756.json\n│   ├── session_20260102_171841.json\n│   ├── session_20260102_171931.json\n│   ├── session_20260102_172031.json\n│   ├── session_20260102_172109.json\n│   ├── session_20260102_172212.json\n│   ├── session_20260102_172312.json\n│   ├── session_20260102_172812.json\n│   ├── session_20260102_173720.json\n│   ├── session_20260102_174050.json\n│   ├── session_20260103_110517.json\n│   ├── session_20260103_122923.json\n│   ├── session_20260103_123014.json\n│   └── session_20260103_123517.json\n├── tests/\n│   ├── test_commands.py\n│   ├── test_core_logic.py\n│   ├── test_loop_detection.py\n│   ├── test_modules.py\n│   ├── test_orchestration_advanced.py\n│   ├── test_parser_logic.py\n│   ├── test_search_tools.py\n│   ├── test_tools_comprehensive.py\n│   └── test_truncation.py\n├── .bumpversion.toml\n├── .gitignore\n├── AGENTS.md\n├── Makefile\n├── README.md\n├── agent.py\n├── angelica\n├── angelica.spec\n├── app.py\n├── build.sh\n├── communication.log\n├── concat_into.py\n├── debug_json.py\n├── debug_repro.py\n├── debug_selection.py\n├── hello.py\n├── hello_world.py\n├── interval_notifier.py\n├── message.sh\n├── path.txt\n├── pyinstaller.log\n├── requirements.txt\n├── screens.py\n├── sources.txt\n├── tui.css\n└── tui.py''
+2026-01-14 13:42:56,473 - LOG_HISTORY_ADD_MESSAGE_RAW: Role=user, Content=''test''
+2026-01-14 13:42:56,473 - LOG_HISTORY_ADD_MESSAGE_CLEANED: Role=user, Content=''test''
+2026-01-14 13:42:56,474 - OUTGOING:
+test
+2026-01-14 13:42:56,550 - DEBUG: Agent worker scheduled
+2026-01-14 13:43:00,612 - DEBUG: action_quit called. Exiting...

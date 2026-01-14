@@ -19,11 +19,12 @@ class TUI(App):
     BINDINGS = [
         ("d", "toggle_dark", "Toggle dark mode"),
         ("q", "quit", "Quit"),
+        ("ctrl+q", "quit", "Quit"),
         ("escape", "interrupt_agent", "Interrupt"),
     ]
     
     # List of available slash commands for autocomplete
-    COMMANDS = ["/add", "/drop", "/models", "/theme", "/history-size", "/cd", "/export", "/import", "/help", "/quit"]
+    SLASH_COMMANDS = ["/add", "/drop", "/models", "/theme", "/history-size", "/cd", "/export", "/import", "/help", "/quit"]
     
     def __init__(self, agent: AngelicaAgent):
         super().__init__()
@@ -39,7 +40,7 @@ class TUI(App):
                 HistoryInput(
                     placeholder="Your message...", 
                     id="input",
-                    suggester=SuggestFromList(self.COMMANDS, case_sensitive=False)
+                    suggester=SuggestFromList(self.SLASH_COMMANDS, case_sensitive=False)
                 ),
                 id="input-container"
             )
@@ -100,10 +101,20 @@ class TUI(App):
         # Check if it's a command (starts with /)
         if user_input.startswith("/"):
             self.agent.comm_log.info(f"DEBUG: detected command '{user_input}', spawning worker")
-            async def run_command():
-                await self.command_handler.handle(user_input)
             
-            self.run_worker(run_command(), exclusive=True)
+            async def run_command():
+                try:
+                    await self.command_handler.handle(user_input)
+                except Exception as e:
+                    self.agent.comm_log.error(f"Command execution error: {e}")
+                    await self.ui.print_error(f"Command failed: {e}")
+                finally:
+                    # Only restore focus if we aren't quitting and app is running
+                    if self.app._running and not user_input.startswith("/quit"):
+                        self.query_one("#input").focus()
+            
+            # Remove exclusive=True for commands to allow interruptions (like quit)
+            self.run_worker(run_command())
             return
 
         # --- DEFAULT: CHAT PROMPT ---
@@ -121,14 +132,10 @@ class TUI(App):
         """Interrupts the agent's current operation."""
         await self.agent.interrupt()
 
-if __name__ == "__main__":
-    agent = AngelicaAgent() # Instantiate agent without ui
-    app = TUI(agent) # Pass the agent to TUI
-    app.run()
-
-    async def action_interrupt_agent(self) -> None:
-        """Interrupts the agent's current operation."""
-        await self.agent.interrupt()
+    async def action_quit(self) -> None:
+        """Quit the application immediately."""
+        self.agent.comm_log.info("DEBUG: action_quit called. Exiting...")
+        self.exit()
 
 if __name__ == "__main__":
     agent = AngelicaAgent() # Instantiate agent without ui
