@@ -51,7 +51,13 @@ class SelectionScreen(ModalScreen[str | None]):
     }
     
     /* Highlight the selected item when list is focused */
-    ListView:focus > ListItem.-active {
+    ListView > ListItem.--highlight {
+        background: $primary 30%;
+        color: $primary;
+        text-style: bold;
+    }
+
+    ListView:focus > ListItem.--highlight {
         background: $primary;
         color: $background;
         text-style: bold;
@@ -74,21 +80,35 @@ class SelectionScreen(ModalScreen[str | None]):
             classes="selection-panel"
         )
 
+    def _update_markers(self, active_index: int | None) -> None:
+        """Adds a '❯ ' marker to the active item and removes it from others."""
+        items = self.query("ListItem")
+        for i, item in enumerate(items):
+            label = item.query_one(Label)
+            base_text = self.options[i]
+            if i == active_index:
+                label.update(f"❯ {base_text}")
+            else:
+                label.update(f"  {base_text}")
+
     def on_mount(self) -> None:
         self.app.agent.comm_log.info("DEBUG: SelectionScreen mounted")
         list_view = self.query_one(ListView)
-        # Focus the list view immediately
         list_view.focus()
         
-        # If current_value is provided, highlight it
+        initial_index = 0
         if self.current_value:
-            self.app.agent.comm_log.info(f"DEBUG: Highlighting current_value: {self.current_value}")
             try:
-                index = self.options.index(self.current_value)
-                list_view.index = index
+                initial_index = self.options.index(self.current_value)
+                list_view.index = initial_index
             except ValueError:
-                self.app.agent.comm_log.warning(f"DEBUG: current_value '{self.current_value}' not found in options")
                 pass
+        
+        self._update_markers(initial_index)
+
+    def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
+        """Update markers when the selection changes."""
+        self._update_markers(event.list_view.index)
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         # Use the index to get the option from our list

@@ -4847,3 +4847,8 @@ Working Directory: /home/romankozak/studio/public/code_agent'
 2026-01-14 13:13:57,304 - DEBUG: print_system: 'Model selection cancelled.'
 2026-01-14 13:13:57,304 - DEBUG: _add_message called with classes: chat-message system-message
 2026-01-14 13:13:57,304 - DEBUG: Message mounted and scrolled
+2026-01-14 13:18:58,535 - DEBUG: print_system: '✨ Angelica AI (v0.1.0)
+Model: deepseek-coder
+Working Directory: /home/romankozak/studio/public/code_agent'
+2026-01-14 13:18:58,535 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-14 13:18:58,536 - DEBUG: Message mounted and scrolled
