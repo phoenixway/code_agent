@@ -97,7 +97,13 @@ class TUI(App):
             return
         
         # --- COMMAND HANDLING DELEGATION ---
-        if await self.command_handler.handle(user_input):
+        # Check if it's a command (starts with /)
+        if user_input.startswith("/"):
+            self.agent.comm_log.info(f"DEBUG: detected command '{user_input}', spawning worker")
+            async def run_command():
+                await self.command_handler.handle(user_input)
+            
+            self.run_worker(run_command(), exclusive=True)
             return
 
         # --- DEFAULT: CHAT PROMPT ---

@@ -51,8 +51,6 @@ class SelectionScreen(ModalScreen[str | None]):
     }
     
     /* Highlight the selected item when list is focused */
-    ListView > ListItem.--highlight,
-    ListView:focus > ListItem.--highlight,
     ListView:focus > ListItem.-active {
         background: $primary;
         color: $background;

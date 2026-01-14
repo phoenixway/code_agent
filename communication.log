@@ -4816,3 +4816,34 @@ print('Olá Mundo!')
 2026-01-11 06:02:29,363 - DEBUG: _add_message called with classes: chat-message assistant-message
 2026-01-11 06:02:29,364 - DEBUG: Message mounted and scrolled
 2026-01-11 06:02:29,364 - DEBUG: print_message completed
+2026-01-14 13:04:00,971 - DEBUG: print_system: '✨ Angelica AI (v0.1.0)
+Model: deepseek-coder
+Working Directory: /home/romankozak/studio/public/code_agent'
+2026-01-14 13:04:00,971 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-14 13:04:00,972 - DEBUG: Message mounted and scrolled
+2026-01-14 13:04:04,809 - DEBUG: on_input_submitted called with: '/models'
+2026-01-14 13:04:04,809 - Command triggered: /models
+2026-01-14 13:04:04,809 - DEBUG: pick_option called with prompt: 'Select AI Model (Current: deepseek-coder)'
+2026-01-14 13:04:04,809 - DEBUG: Entering _pick_screen_main_thread with screen: SelectionScreen()
+2026-01-14 13:04:04,832 - DEBUG: Screen pushed, awaiting future
+2026-01-14 13:04:04,835 - DEBUG: SelectionScreen mounted
+2026-01-14 13:04:04,836 - DEBUG: Highlighting current_value: deepseek-coder
+2026-01-14 13:13:49,147 - DEBUG: print_system: '✨ Angelica AI (v0.1.0)
+Model: deepseek-coder
+Working Directory: /home/romankozak/studio/public/code_agent'
+2026-01-14 13:13:49,147 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-14 13:13:49,147 - DEBUG: Message mounted and scrolled
+2026-01-14 13:13:51,953 - DEBUG: on_input_submitted called with: '/models'
+2026-01-14 13:13:51,953 - DEBUG: detected command '/models', spawning worker
+2026-01-14 13:13:51,953 - Command triggered: /models
+2026-01-14 13:13:51,954 - DEBUG: pick_option called with prompt: 'Select AI Model (Current: deepseek-coder)'
+2026-01-14 13:13:51,954 - DEBUG: Entering _pick_screen_main_thread with screen: SelectionScreen()
+2026-01-14 13:13:51,976 - DEBUG: Screen pushed, awaiting future
+2026-01-14 13:13:51,980 - DEBUG: SelectionScreen mounted
+2026-01-14 13:13:51,980 - DEBUG: Highlighting current_value: deepseek-coder
+2026-01-14 13:13:57,297 - DEBUG: Escape key pressed in SelectionScreen
+2026-01-14 13:13:57,298 - DEBUG: Screen callback triggered with result: None
+2026-01-14 13:13:57,304 - DEBUG: Future resolved in _pick_screen_main_thread: None
+2026-01-14 13:13:57,304 - DEBUG: print_system: 'Model selection cancelled.'
+2026-01-14 13:13:57,304 - DEBUG: _add_message called with classes: chat-message system-message
+2026-01-14 13:13:57,304 - DEBUG: Message mounted and scrolled
