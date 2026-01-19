@@ -60,7 +60,7 @@ class ResponseProcessor:
             return {"status": "failed", "output": "Action denied by user."}
 
         # 6. Виклик через ToolManager
-        result = await self.tools.call(action_type, **args)
+        result = await self.tools.call(action_type, ui=self.ui, **args)
         
         # 7. Check for ChangeProposal (Diff Preview)
         from modules.types import ChangeProposal
@@ -79,7 +79,9 @@ class ResponseProcessor:
                 return {"status": "error", "output": "User rejected the file changes."}
 
         # 8. Output Truncation
-        if isinstance(result, dict) and "output" in result:
-            result["output"] = self._truncate_output(result["output"])
+        if not result.get("skip_truncation"):
+            if isinstance(result, dict) and "output" in result and isinstance(result["output"], str) and len(result["output"]) > self.MAX_OUTPUT_LENGTH:
+                if await self.ui.confirm_truncation(action_type, len(result["output"])):
+                    result["output"] = self._truncate_output(result["output"])
                 
         return result

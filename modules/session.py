@@ -1,15 +1,30 @@
 # modules/session.py
 import json
+import os
+import asyncio
 
 class SessionManager:
-    def __init__(self, config_dir, history, context, ui):
-        self.dir = config_dir / "sessions"
-        self.dir.mkdir(exist_ok=True)
+    def __init__(self, history, context, ui):
+        self.session_file = os.path.join(os.getcwd(), ".angelica_session.json")
         self.history = history
         self.context = context
         self.ui = ui
 
-    def save_session(self, name):
+    def save_session(self):
         data = {"history": self.history.messages, "context": self.context.list_files()}
-        with open(self.dir / f"{name}.json", 'w') as f:
+        with open(self.session_file, 'w') as f:
             json.dump(data, f)
+
+    def load_session(self):
+        if os.path.exists(self.session_file):
+            with open(self.session_file, 'r') as f:
+                data = json.load(f)
+            self.history.messages = data.get("history", [])
+            
+            # Restore context
+            for file_path in data.get("context", []):
+                self.context.add_path(file_path)
+            
+            # Optionally, notify UI
+            if self.ui:
+                asyncio.create_task(self.ui.print_system("💾 Session loaded."))

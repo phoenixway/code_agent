@@ -7,11 +7,32 @@ class ReadFileTool(BaseTool):
     name = "read_file"
     description = "Reads the full content of a file. Use this before editing. Params: 'path' (str)"
 
-    async def execute(self, path: str):
+    async def execute(self, path: str, ui=None):
         try:
             p = Path(path)
             if not p.exists():
                 return {"status": "error", "output": f"File not found: {path}"}
+
+            # Check file size
+            file_size = p.stat().st_size
+            if file_size > 1024 * 1024:  # 1MB
+                if ui:
+                    if not await ui.confirm_action({
+                        "type": "read_large_file",
+                        "path": path,
+                        "size": f"{file_size / (1024 * 1024):.2f} MB"
+                    }):
+                        return {"status": "error", "output": "User denied reading large file."}
+                    else:
+                        # User confirmed reading the large file, so we should not truncate it.
+                        content = p.read_text(encoding='utf-8')
+                        return {"status": "success", "output": content, "skip_truncation": True}
+                else:
+                    # No UI, so we can't ask for confirmation.
+                    # For now, we will proceed with reading the file.
+                    # In the future, we might want to have a different behavior here.
+                    pass
+
             content = p.read_text(encoding='utf-8')
             return {"status": "success", "output": content}
         except Exception as e:

@@ -109,6 +109,8 @@ class SelectionScreen(ModalScreen[str | None]):
     def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
         """Update markers when the selection changes."""
         self._update_markers(event.list_view.index)
+        if event.item:
+            event.list_view.scroll_to(y=event.item.region.y)
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         # Use the index to get the option from our list

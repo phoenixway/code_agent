@@ -144,7 +144,9 @@ class TUI(App):
 
     async def action_quit(self) -> None:
         """Quit the application immediately."""
-        self.agent.log.info("DEBUG: action_quit called. Exiting...")
+        self.agent.log.info("DEBUG: action_quit called. Saving session...")
+        self.agent.session_manager.save_session()
+        self.agent.log.info("DEBUG: Session saved. Exiting...")
         self.exit()
 
 if __name__ == "__main__":

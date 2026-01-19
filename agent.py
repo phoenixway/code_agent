@@ -47,7 +47,8 @@ class AngelicaAgent:
         
         # 4. Управління історією та сесіями
         self.history = HistoryManager(self.chat, logger=self.log, max_tokens=self.settings.get("max_history_tokens", 4000))
-        self.session_manager = SessionManager(CONFIG_DIR, self.history, self.context_manager, self._ui)
+        self.session_manager = SessionManager(self.history, self.context_manager, self._ui)
+        self.session_manager.load_session()
         
         # Ініціалізація розміру історії з налаштувань
         initial_history_size = self.settings.get("history_size", "small")

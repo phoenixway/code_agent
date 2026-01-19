@@ -104,6 +104,16 @@ class TuiUI:
         result = await self._call_ui(self._pick_screen_main_thread, screen)
         return result == "Continue"
 
+    async def confirm_truncation(self, action_type: str, output_length: int) -> bool:
+        """Asks the user if they want to truncate the output."""
+        self.app.agent.log.info(f"DEBUG: confirm_truncation called for: {action_type}")
+        
+        prompt = f"The output of '{action_type}' is very long ({output_length} characters). What would you like to do?"
+        options = ["Truncate", "Show Full Output"]
+        screen = SelectionScreen(prompt, options)
+        result = await self._call_ui(self._pick_screen_main_thread, screen)
+        return result == "Truncate"
+
     # --- Методи друку ---
 
     def _add_message(self, renderable=None, classes="chat-message", widget=None):

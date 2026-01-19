@@ -35,12 +35,16 @@ class ToolManager:
             prompt += f"- {name}: {tool.description}\n"
         return prompt
 
-    async def call(self, name: str, **kwargs):
+    async def call(self, name: str, ui=None, **kwargs):
         """ВИПРАВЛЕНО: Метод тепер називається 'call'"""
         tool = self.tools.get(name)
         if not tool:
             return {"status": "error", "output": f"Unknown tool: {name}"}
         try:
-            return await tool.execute(**kwargs)
+            sig = inspect.signature(tool.execute)
+            if 'ui' in sig.parameters:
+                return await tool.execute(ui=ui, **kwargs)
+            else:
+                return await tool.execute(**kwargs)
         except Exception as e:
             return {"status": "error", "output": f"Tool execution failed: {str(e)}"}
