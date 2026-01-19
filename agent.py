@@ -24,6 +24,7 @@ class AngelicaAgent:
         # Стан та запобіжники для TUI
         self.is_awaiting_model_selection = False 
         self.current_task = None
+        self.main_task = None
         self.MAX_CONSECUTIVE_CALLS = 5
 
         # Налаштування логування комунікації
