@@ -45,6 +45,8 @@ class ConfirmationScreen(ModalScreen[bool]):
             details = self.action_details.get("command", "")
         elif action_type in ["write_file", "create_file", "edit_file"]:
             details = self.action_details.get("path") or self.action_details.get("file_path", "")
+        elif action_type == "summarize_history":
+            details = "The conversation is getting long."
 
         yield Vertical(
             Static(f"[bold yellow]⚠️  ALLOW this action? ⚠️[/bold yellow]", classes="confirmation-title"),

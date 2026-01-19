@@ -68,6 +68,7 @@ The application is structured around a central **Agent** class that coordinates 
 │   ├── processor.py    # Parsing and execution logic
 │   ├── context.py      # Context management
 │   ├── history.py      # Chat history & summarization
+│   ├── logger.py       # Logging setup and utilities
 │   ├── tools/          # Tool definitions & manager
 │   ├── files.py        # File I/O
 │   └── ...
@@ -76,3 +77,36 @@ The application is structured around a central **Agent** class that coordinates 
 │   └── test_core_logic.py # Core logic & edge case tests
 └── docs/               # Documentation
 ```
+
+## Logging
+
+The application uses a two-file logging system, managed by the `modules/logger.py` module.
+
+### Log Files
+
+1.  **`communication.log`**:
+    -   **Purpose**: Records the core interaction between the user, the agent, and the AI model. It is designed to be human-readable and provides a clean, visual representation of the conversation flow.
+    -   **Content**: Contains only the formatted `OUTGOING` (to AI) and `INCOMING` (from AI) messages.
+    -   **Behavior**: This log is automatically cleared at the start of each new application session.
+
+2.  **`debug.log`**:
+    -   **Purpose**: Captures all other internal logging information, including debug messages, warnings, and errors from all modules. This file is intended for developers for debugging and tracing application behavior.
+    -   **Content**: Detailed, timestamped logs with log levels (DEBUG, INFO, WARNING, ERROR).
+    -   **Behavior**: This log is overwritten at the start of each new application session.
+
+### How to Log
+
+The `modules/logger.py` module provides a simple API for logging.
+
+-   **Debug Logging**: To log general debug information, import the logger and use its methods. The `AngelicaAgent` class instance has a `log` attribute that holds the debug logger.
+    ```python
+    # In a module that has access to the agent instance
+    self.agent.log.debug("This is a debug message.")
+    self.agent.log.error("This is an error.")
+    ```
+
+-   **Communication Logging**: To log the primary AI interactions, use the communication logger. This is typically only done within the `get_response` method in `agent.py`.
+    ```python
+    # In agent.py
+    self.comm_log.info(f"--- OUTGOING ---\n{query}\n")
+    ```

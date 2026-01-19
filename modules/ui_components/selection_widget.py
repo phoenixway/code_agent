@@ -92,7 +92,7 @@ class SelectionScreen(ModalScreen[str | None]):
                 label.update(f"  {base_text}")
 
     def on_mount(self) -> None:
-        self.app.agent.comm_log.info("DEBUG: SelectionScreen mounted")
+        self.app.agent.log.info("DEBUG: SelectionScreen mounted")
         list_view = self.query_one(ListView)
         list_view.focus()
         
@@ -113,16 +113,16 @@ class SelectionScreen(ModalScreen[str | None]):
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         # Use the index to get the option from our list
         index = event.list_view.index
-        self.app.agent.comm_log.info(f"DEBUG: ListItem selected at index: {index}")
+        self.app.agent.log.info(f"DEBUG: ListItem selected at index: {index}")
         if index is not None and 0 <= index < len(self.options):
             val = self.options[index]
-            self.app.agent.comm_log.info(f"DEBUG: Dismissing SelectionScreen with value: {val}")
+            self.app.agent.log.info(f"DEBUG: Dismissing SelectionScreen with value: {val}")
             self.dismiss(val)
         else:
-            self.app.agent.comm_log.warning("DEBUG: SelectionScreen index out of bounds")
+            self.app.agent.log.warning("DEBUG: SelectionScreen index out of bounds")
             self.dismiss(None)
 
     def on_key(self, event) -> None:
         if event.key == "escape":
-            self.app.agent.comm_log.info("DEBUG: Escape key pressed in SelectionScreen")
+            self.app.agent.log.info("DEBUG: Escape key pressed in SelectionScreen")
             self.dismiss(None)

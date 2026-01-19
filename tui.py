@@ -2,10 +2,9 @@ import os
 import asyncio
 import shlex
 from textual.app import App, ComposeResult
-from textual.widgets import Header, Footer, Input, Static, LoadingIndicator
+from textual.widgets import Header, Footer, Static, LoadingIndicator
 from textual.containers import Container, VerticalScroll, Horizontal
 from agent import AngelicaAgent
-from textual.suggester import SuggestFromList
 from modules.tui_ui import TuiUI
 from modules.ui_components.history_input import HistoryInput
 from modules.ui_components.status_bar import StatusBar
@@ -23,8 +22,8 @@ class TUI(App):
         ("escape", "interrupt_agent", "Interrupt"),
     ]
     
-    # List of available slash commands for autocomplete
-    SLASH_COMMANDS = ["/add", "/drop", "/models", "/theme", "/history-size", "/cd", "/export", "/import", "/help", "/quit"]
+    # List of available slash commands
+    SLASH_COMMANDS = ["/add", "/drop", "/models", "/theme", "/history-size", "/history-summarize", "/cd", "/export", "/import", "/help", "/quit"]
     
     def __init__(self, agent: AngelicaAgent):
         super().__init__()
@@ -34,14 +33,11 @@ class TUI(App):
         yield Header()
         with Container():
             yield VerticalScroll(id="history")
+            yield Static(id="suggestion-box", classes="hidden")
             yield StatusBar(id="loading-container")
             yield Horizontal(
                 Static("> "),
-                HistoryInput(
-                    placeholder="Your message...", 
-                    id="input",
-                    suggester=SuggestFromList(self.SLASH_COMMANDS, case_sensitive=False)
-                ),
+                HistoryInput(id="input", slash_commands=self.SLASH_COMMANDS, logger=self.agent.log),
                 id="input-container"
             )
         yield Footer()
@@ -55,11 +51,11 @@ class TUI(App):
         try:
             self.theme = target_theme
         except Exception:
-            self.agent.comm_log.warning(f"Theme '{target_theme}' not found. Falling back to 'hacker-green'.")
+            self.agent.log.warning(f"Theme '{target_theme}' not found. Falling back to 'hacker-green'.")
             self.theme = "hacker-green"
         
         self.ui = TuiUI(self, self.query_one("#history", VerticalScroll), self.query_one(StatusBar))
-        self.agent.ui = self.ui # Передаємо UI до агента
+        self.agent.ui = self.ui # Pass UI to agent
         
         # Initialize Command Handler
         self.command_handler = CommandHandler(self)
@@ -76,23 +72,38 @@ class TUI(App):
             f"Working Directory: {current_directory}"
         )
         await self.ui.print_system(startup_message)
-        # await self.ui.print_system("") # Removed extra empty line
         self.query_one("#input", HistoryInput).focus()
 
-    async def on_input_submitted(self, message: Input.Submitted) -> None:
+    def on_history_input_suggestion(self, message: HistoryInput.Suggestion) -> None:
+        suggestion_box = self.query_one("#suggestion-box", Static)
+        if message.suggestions:
+            
+            def highlight(s, i):
+                if i == message.sender.suggestion_index:
+                    return f"[b white on blue]{s}[/]"
+                else:
+                    return s
+            
+            suggestion_text = "  ".join(highlight(s, i) for i, s in enumerate(message.suggestions))
+            suggestion_box.update(suggestion_text)
+            suggestion_box.remove_class("hidden")
+        else:
+            suggestion_box.add_class("hidden")
+
+    async def on_history_input_submitted(self, message: HistoryInput.Submitted) -> None:
         """Called when the user submits a message."""
-        user_input = message.value.strip()
+        user_input = message.text.strip()
         
-        self.agent.comm_log.info(f"DEBUG: on_input_submitted called with: '{user_input}'")
+        self.agent.log.info(f"DEBUG: on_history_input_submitted called with: '{user_input}'")
         
         # Add to input history if not empty
         if user_input:
-            if hasattr(message.input, 'add_entry'):
-                message.input.add_entry(user_input)
+            if hasattr(message.sender, 'add_entry'):
+                message.sender.add_entry(user_input)
             else:
-                self.agent.comm_log.warning("WARNING: Input widget does not support add_entry")
+                self.agent.log.warning("WARNING: Input widget does not support add_entry")
             
-        message.input.value = ""
+        message.sender.text = ""
 
         if not user_input:
             return
@@ -100,32 +111,31 @@ class TUI(App):
         # --- COMMAND HANDLING DELEGATION ---
         # Check if it's a command (starts with /)
         if user_input.startswith("/"):
-            self.agent.comm_log.info(f"DEBUG: detected command '{user_input}', spawning worker")
+            self.agent.log.info(f"DEBUG: detected command '{user_input}', spawning worker")
             
             async def run_command():
                 try:
                     await self.command_handler.handle(user_input)
                 except Exception as e:
-                    self.agent.comm_log.error(f"Command execution error: {e}")
+                    self.agent.log.error(f"Command execution error: {e}")
                     await self.ui.print_error(f"Command failed: {e}")
                 finally:
                     # Only restore focus if we aren't quitting and app is running
                     if self.app._running and not user_input.startswith("/quit"):
                         self.query_one("#input").focus()
             
-            # Remove exclusive=True for commands to allow interruptions (like quit)
             self.run_worker(run_command())
             return
 
         # --- DEFAULT: CHAT PROMPT ---
         try:
-            self.agent.comm_log.info(f"DEBUG: Processing regular prompt: '{user_input}'")
+            self.agent.log.info(f"DEBUG: Processing regular prompt: '{user_input}'")
             await self.ui.print_message(user_input, role="user")
-            self.agent.comm_log.info("DEBUG: Message printed to UI, starting agent worker")
+            self.agent.log.info("DEBUG: Message printed to UI, starting agent worker")
             self.run_worker(self.agent.process_user_input(user_input), exclusive=True)
-            self.agent.comm_log.info("DEBUG: Agent worker scheduled")
+            self.agent.log.info("DEBUG: Agent worker scheduled")
         except Exception as e:
-            self.agent.comm_log.error(f"ERROR in prompt processing: {e}")
+            self.agent.log.error(f"ERROR in prompt processing: {e}")
             await self.ui.print_error(f"Critical error: {e}")
 
     async def action_interrupt_agent(self) -> None:
@@ -134,7 +144,7 @@ class TUI(App):
 
     async def action_quit(self) -> None:
         """Quit the application immediately."""
-        self.agent.comm_log.info("DEBUG: action_quit called. Exiting...")
+        self.agent.log.info("DEBUG: action_quit called. Exiting...")
         self.exit()
 
 if __name__ == "__main__":

@@ -1,6 +1,5 @@
 import json
 import re
-import logging
 import asyncio
 import os
 
@@ -15,6 +14,7 @@ from modules.processor import ResponseProcessor
 from modules.policy import PermissionPolicy
 from modules.chat import get_chat_provider, ProviderAPIError
 from modules.parser import ResponseParser, Segment
+from modules.logger import get_comm_logger, get_debug_logger, setup_loggers
 
 class AngelicaAgent:
     def __init__(self, ui=None):
@@ -27,8 +27,10 @@ class AngelicaAgent:
         self.main_task = None
         self.MAX_CONSECUTIVE_CALLS = 5
 
-        # Налаштування логування комунікації
-        self.comm_log = self._setup_logger()
+        # Налаштування логування
+        setup_loggers(clear_communication_log=True)
+        self.comm_log = get_comm_logger()
+        self.log = get_debug_logger()
 
         # 1. Ініціалізація ToolManager та завантаження інструментів
         self.tool_manager = ToolManager()
@@ -44,7 +46,7 @@ class AngelicaAgent:
         self.chat = get_chat_provider(model_name)
         
         # 4. Управління історією та сесіями
-        self.history = HistoryManager(self.chat, logger=self.comm_log, max_tokens=self.settings.get("max_history_tokens", 4000))
+        self.history = HistoryManager(self.chat, logger=self.log, max_tokens=self.settings.get("max_history_tokens", 4000))
         self.session_manager = SessionManager(CONFIG_DIR, self.history, self.context_manager, self._ui)
         
         # Ініціалізація розміру історії з налаштувань
@@ -92,27 +94,18 @@ class AngelicaAgent:
         if hasattr(self, 'policy'): self.policy.ui = value
         if hasattr(self, 'session_manager'): self.session_manager.ui = value
 
-    def _setup_logger(self):
-        logger = logging.getLogger('communication')
-        logger.setLevel(logging.INFO)
-        if not logger.handlers:
-            handler = logging.FileHandler("communication.log", encoding="utf-8")
-            handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
-            logger.addHandler(handler)
-        return logger
-
     async def get_response(self, query):
         """Отримує стрімінгову відповідь від ШІ."""
         full_text = ""
-        self.comm_log.info(f"OUTGOING:\n{query}")
+        self.comm_log.info(f"--- OUTGOING ---\n{query}\n")
         try:
             async for chunk in self.chat.get_streaming_response(query, self.history.get_history_for_api()):
                 full_text += chunk
         except Exception as e:
-            self.comm_log.error(f"Chat error: {e}")
+            self.log.error(f"Chat error: {e}")
             return f"Error: {e}"
         
-        self.comm_log.info(f"INCOMING:\n{full_text}")
+        self.comm_log.info(f"--- INCOMING ---\n{full_text}\n")
         return full_text
 
     async def process_user_input(self, user_input):
@@ -270,7 +263,7 @@ class AngelicaAgent:
         
         if new_chat_provider:
             self.chat = new_chat_provider
-            self.history = HistoryManager(self.chat, logger=self.comm_log, max_tokens=self.settings.get("max_history_tokens", 4000))
+            self.history = HistoryManager(self.chat, logger=self.log, max_tokens=self.settings.get("max_history_tokens", 4000))
             self.processor.chat = self.chat
             await self.ui.update_header(f"{self.chat.model_name}")
             await self.ui.print_system(f"✅ Модель змінено на {model_name}")
