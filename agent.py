@@ -145,27 +145,27 @@ class AngelicaAgent:
                     await self.ui.print_error(response)
                     break
                 
-                self.history.add_message("assistant", response)
-                
-                # --- NEW PARSING & EXECUTION LOOP ---
                 segments = self.parser.parse(response)
                 
+                pending_history = []
                 execution_results = []
                 should_return_control = False
                 found_action = False
+                execution_failed = False
                 
                 for segment in segments:
                     if segment.type == 'thought':
+                        pending_history.append({'role': 'assistant', 'content': f'<think>{segment.content}</think>'})
                         await self.ui.print_thought(segment.content)
                     
                     elif segment.type == 'text':
-                        # Only print text if we haven't found an action yet, 
-                        # or if we want to stream text mixed with actions.
+                        pending_history.append({'role': 'assistant', 'content': segment.content})
                         await self.ui.print_message(segment.content, role="assistant")
                         
                     elif segment.type == 'action':
                         found_action = True
                         command = segment.content
+                        pending_history.append({'role': 'assistant', 'content': f'<action>{json.dumps(command)}</action>'})
                         
                         # --- LOOP DETECTION ---
                         fingerprint = self._get_action_fingerprint(command)
@@ -177,7 +177,6 @@ class AngelicaAgent:
                         if self.consecutive_failed_repeats >= 1: # Already one failure, now repeating
                             warn_msg = "⚠️ Loop detected: You are repeating the same action that just failed."
                             await self.ui.print_error(warn_msg)
-                            # Inject warning into history for AI
                             self.history.add_message("system", f"CRITICAL: {warn_msg} Change your strategy.")
                         
                         if command.get("before_execution"):
@@ -185,10 +184,8 @@ class AngelicaAgent:
                         
                         await self.ui.start_action(command.get("during_execution", "Processing..."))
                         
-                        # Execute
                         result = await self.processor.process_single_action(command)
                         
-                        # Update Loop Detection State
                         self.last_action_fingerprint = fingerprint
                         self.last_action_status = result.get("status")
                         
@@ -197,55 +194,42 @@ class AngelicaAgent:
                         
                         output_text = result.get('output', '')
                         cmd_name = command.get("type") or command.get("action") or "command"
-                        
                         full_command = command.get('command') if cmd_name == 'run_shell' else None
                         
                         await self.ui.print_command_result(output_text, tool_name=cmd_name, command_name=full_command)
                         
-                        # Accumulate result
                         if result.get("status") in ["failed", "error"]:
-                            # Self-Healing Injection
                             output_text += "\n\n[SYSTEM INSTRUCTION: The action failed. Analyze this error in a <think> block to determine the root cause, then propose a corrected action.]"
+                            execution_failed = True
                         
-                        execution_results.append(f"Command: {cmd_name}\nResult: {output_text}")
+                        system_message = f"SYSTEM RESULT: {output_text}"
+                        pending_history.append({'role': 'system', 'content': system_message})
+                        execution_results.append(system_message)
                         
-                        # Check return_control
                         if command.get("return_control") is True:
                             should_return_control = True
-                            break 
                         
-                        # Check for critical failure? User said "stop if current block gives error"
-                        if result.get("status") == "failed" or result.get("status") == "error":
-                            # Stop chain execution
-                            should_return_control = True # Implicitly return control so AI knows it failed
+                        if execution_failed:
                             break
 
-                # End of Segment Loop
+                self.history.add_messages(pending_history)
                 
-                if found_action:
-                    # Construct system message with all results
-                    full_result_msg = "SYSTEM RESULTS:\n" + "\n---".join(execution_results)
-                    self.history.add_message("system", full_result_msg)
+                if execution_failed:
+                    active_loop = False
+                elif found_action:
+                    full_result_msg = "\n---".join(execution_results)
                     current_query = full_result_msg
                     
                     if should_return_control:
-                        # Continue loop (call AI again with results)
                         active_loop = True
                     else:
-                        # If actions were executed but no explicit return control, 
-                        # assume we are done for now unless we loop automatically.
-                        # Given the user wants sequential execution, if we finished all blocks
-                        # and no return_control=True was explicit, we usually stop.
-                        # However, if one of them FAILED, we set should_return_control=True above, so we loop.
-                        # If all SUCCESS and no return_control, we stop.
                         active_loop = False
                 else:
-                    # No actions found, just text/thoughts.
                     active_loop = False
 
             await self.history.check_and_summarize(self.ui)
         except asyncio.CancelledError:
-            pass # Переривання вже оброблене в interrupt()
+            pass
         finally:
             self.current_task = None
             await self.ui.stop_loading()

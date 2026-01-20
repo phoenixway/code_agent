@@ -19,6 +19,11 @@ class HistoryManager:
             if cleaned:
                 self.messages.append({"role": role, "content": cleaned})
 
+    def add_messages(self, messages):
+        """Adds a list of messages to the history."""
+        for message in messages:
+            self.add_message(message["role"], message["content"])
+
     def get_history_for_api(self):
         return self.messages
 
