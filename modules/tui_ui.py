@@ -149,9 +149,12 @@ class TuiUI:
     async def print_plan(self, text):
         await self._call_ui(self._add_message, f"[bold cyan]🤖 Plan:[/] {text.strip()}")
 
-    async def print_command_result(self, text, command_name=None):
-        if command_name:
-            prefix = f"[bold cyan]❯ {command_name}[/]"
+    async def print_command_result(self, text, tool_name=None, command_name=None):
+        if tool_name == 'run_shell' and command_name:
+            prefix = f"[bold cyan]run_shell: {command_name}[/]"
+            await self._call_ui(self._add_message, prefix, classes="chat-message")
+        elif tool_name:
+            prefix = f"[bold cyan]{tool_name}[/]"
             await self._call_ui(self._add_message, prefix, classes="chat-message")
         
         await self._call_ui(self._add_message, f"{text.strip()}", classes="chat-message result-message")
