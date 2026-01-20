@@ -11,7 +11,7 @@ class SessionManager:
         self.ui = ui
 
     def save_session(self):
-        data = {"history": self.history.messages, "context": self.context.list_files()}
+        data = {"history": self.history.messages, "context": list(self.context.basket.keys())}
         with open(self.session_file, 'w') as f:
             json.dump(data, f)
 
