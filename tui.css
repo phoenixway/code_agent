@@ -19,6 +19,7 @@ Screen {
 /* General Message Style */
 .chat-message {
     padding: 1 2;
+    margin-top: 1;
     margin-bottom: 1;
     border: none;
     background: $background;
@@ -103,12 +104,13 @@ LoadingIndicator {
 
 /* --- INPUT AREA --- */
 #input-container {
-    height: 3;
+    height: auto;
+    max-height: 20;
     background: $background;
     /* Using $secondary for the muted border look */
     border: solid $secondary;
     padding: 0 1;
-    align-vertical: middle;
+    align-vertical: top; /* Changed to top for better multiline alignment */
 }
 
 #input-container:focus-within {
@@ -125,7 +127,8 @@ LoadingIndicator {
 
 #input {
     width: 1fr;
-    background: transparent;
+    height: auto;
+    background: $background;
     border: none;
     color: $text;
     padding: 0;
@@ -133,6 +136,23 @@ LoadingIndicator {
 
 #input:focus {
     border: none;
+}
+
+#suggestion-box {
+    background: $surface;
+    border: round $primary;
+    padding: 0 1;
+    margin: 0 1 1 1;
+    display: none;
+}
+
+.suggestion-active {
+    background: $primary;
+    color: $background;
+}
+
+.hidden {
+    display: none;
 }
 
 /* --- HEADER & FOOTER --- */

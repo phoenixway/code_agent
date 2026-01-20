@@ -4,3 +4,4 @@ sessions/*.json
 target.py
 .DS_Store
 *.log
+debug.log

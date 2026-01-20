@@ -20,7 +20,7 @@ class CommandHandler:
 
     @property
     def log(self):
-        return self.agent.comm_log
+        return self.agent.log
 
     async def handle(self, user_input: str) -> bool:
         """
@@ -43,6 +43,7 @@ class CommandHandler:
             "/models": self._handle_models,
             "/theme": self._handle_theme,
             "/history-size": self._handle_history_size,
+            "/history-summarize": self._handle_history_summarize,
             "/quit": self._handle_quit,
             "/help": self._handle_help
         }
@@ -232,6 +233,10 @@ class CommandHandler:
         else:
                 await self.ui.print_system("Selection cancelled.")
 
+    async def _handle_history_summarize(self, user_input):
+        await self.agent.history.summarize(self.ui)
+
+
     async def _handle_quit(self, user_input):
         await self.app.action_quit()
 
@@ -246,6 +251,7 @@ class CommandHandler:
             "  /models           - Switch AI model\n"
             "  /theme            - Switch UI theme\n"
             "  /history-size     - Change context window size\n"
+            "  /history-summarize - Manually summarize history\n"
             "  /quit             - Exit application"
         )
         await self.ui.print_system(help_text)
