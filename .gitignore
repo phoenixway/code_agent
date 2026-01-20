@@ -3,5 +3,6 @@ __pycache__/
 sessions/*.json
 target.py
 .DS_Store
+*.log
 debug.log
 communication.log
