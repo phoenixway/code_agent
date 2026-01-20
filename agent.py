@@ -124,6 +124,9 @@ class AngelicaAgent:
         consecutive_calls = 0
         current_query = user_input
 
+        # Список операцій, що змінюють стан
+        STATE_CHANGING_OPS = ["run_shell", "create_file", "replace", "edit_file", "git_add", "git_commit", "git_checkout", "delete_file"]
+
         try:
             while active_loop:
                 consecutive_calls += 1
@@ -147,26 +150,23 @@ class AngelicaAgent:
                 
                 segments = self.parser.parse(response)
                 
-                pending_history = []
-                execution_results = []
-                should_return_control = False
-                found_action = False
-                execution_failed = False
+                processed_segments = []
+                system_results = []
+                active_loop = False # За замовчуванням цикл завершується, якщо не буде знайдено дій
                 
                 for segment in segments:
+                    processed_segments.append(segment)
+
                     if segment.type == 'thought':
-                        pending_history.append({'role': 'assistant', 'content': f'<think>{segment.content}</think>'})
                         await self.ui.print_thought(segment.content)
                     
                     elif segment.type == 'text':
-                        pending_history.append({'role': 'assistant', 'content': segment.content})
                         await self.ui.print_message(segment.content, role="assistant")
                         
                     elif segment.type == 'action':
-                        found_action = True
                         command = segment.content
-                        pending_history.append({'role': 'assistant', 'content': f'<action>{json.dumps(command)}</action>'})
-                        
+                        cmd_name = command.get("type") or command.get("action", "unknown")
+
                         # --- LOOP DETECTION ---
                         fingerprint = self._get_action_fingerprint(command)
                         if fingerprint == self.last_action_fingerprint and self.last_action_status in ["failed", "error"]:
@@ -174,7 +174,7 @@ class AngelicaAgent:
                         else:
                             self.consecutive_failed_repeats = 0
                         
-                        if self.consecutive_failed_repeats >= 1: # Already one failure, now repeating
+                        if self.consecutive_failed_repeats >= 1:
                             warn_msg = "⚠️ Loop detected: You are repeating the same action that just failed."
                             await self.ui.print_error(warn_msg)
                             self.history.add_message("system", f"CRITICAL: {warn_msg} Change your strategy.")
@@ -182,7 +182,7 @@ class AngelicaAgent:
                         if command.get("before_execution"):
                             await self.ui.print_plan(command['before_execution'])
                         
-                        await self.ui.start_action(command.get("during_execution", "Processing..."))
+                        await self.ui.start_action(command.get("during_execution", f"Executing {cmd_name}..."))
                         
                         result = await self.processor.process_single_action(command)
                         
@@ -193,39 +193,53 @@ class AngelicaAgent:
                             await self.ui.print_confirmation(command['after_execution'])
                         
                         output_text = result.get('output', '')
-                        cmd_name = command.get("type") or command.get("action") or "command"
-                        full_command = command.get('command') if cmd_name == 'run_shell' else None
+                        full_command_name = command.get('command') if cmd_name == 'run_shell' else None
                         
-                        await self.ui.print_command_result(output_text, tool_name=cmd_name, command_name=full_command)
+                        await self.ui.print_command_result(output_text, tool_name=cmd_name, command_name=full_command_name)
                         
-                        if result.get("status") in ["failed", "error"]:
-                            output_text += "\n\n[SYSTEM INSTRUCTION: The action failed. Analyze this error in a <think> block to determine the root cause, then propose a corrected action.]"
-                            execution_failed = True
-                        
-                        system_message = f"SYSTEM RESULT: {output_text}"
-                        pending_history.append({'role': 'system', 'content': system_message})
-                        execution_results.append(system_message)
-                        
-                        if command.get("return_control") is True:
-                            should_return_control = True
-                        
-                        if execution_failed:
-                            break
+                        # --- SMART STOP & TRUNCATION LOGIC ---
+                        is_state_changing = any(op in cmd_name for op in STATE_CHANGING_OPS)
+                        execution_failed = result.get("status") in ["failed", "error"]
+                        should_return_control = command.get("return_control") is True
 
-                self.history.add_messages(pending_history)
-                
-                if execution_failed:
-                    active_loop = False
-                elif found_action:
-                    full_result_msg = "\n---".join(execution_results)
-                    current_query = full_result_msg
+                        if execution_failed:
+                            output_text += "\n\n[SYSTEM INSTRUCTION: The action failed. Analyze this error in a <think> block to determine the root cause, then propose a corrected action.]"
+                        
+                        system_results.append(f"SYSTEM RESULT for `{cmd_name}`: {output_text}")
+                        
+                        # Зупиняємо виконання, якщо дія провалилася, змінює стан, або явно вимагає цього
+                        if execution_failed or is_state_changing or should_return_control:
+                            break # Зупиняємо обробку подальших сегментів
+
+                # Реконструюємо повідомлення асистента ЛИШЕ з оброблених сегментів
+                reconstructed_message = self.parser.reconstruct(processed_segments)
+                if reconstructed_message:
+                    self.history.add_message("assistant", reconstructed_message)
+
+                # Додаємо всі результати виконаних дій в історію
+                if system_results:
+                    for res in system_results:
+                        self.history.add_message("system", res)
                     
-                    if should_return_control:
-                        active_loop = True
+                    # Визначаємо, чи продовжувати цикл
+                    # Продовжуємо, якщо остання дія не вимагала зупинки
+                    last_action_segment = next((s for s in reversed(processed_segments) if s.type == 'action'), None)
+                    if last_action_segment:
+                        last_command = last_action_segment.content
+                        last_result_failed = self.last_action_status in ["failed", "error"]
+                        last_cmd_name = last_command.get("type") or last_command.get("action", "unknown")
+                        is_last_state_changing = any(op in last_cmd_name for op in STATE_CHANGING_OPS)
+                        
+                        # Не продовжуємо, якщо остання дія провалилася або була зі зміною стану
+                        if not last_result_failed and not is_last_state_changing:
+                            active_loop = True
+                            current_query = "\n---\n".join(system_results)
+                        else:
+                            active_loop = False # Зупиняємось, щоб користувач міг втрутитись
                     else:
                         active_loop = False
                 else:
-                    active_loop = False
+                    active_loop = False # Немає дій, немає циклу
 
             await self.history.check_and_summarize(self.ui)
         except asyncio.CancelledError:

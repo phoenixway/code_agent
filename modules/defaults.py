@@ -17,6 +17,14 @@ All actions must include:
 - "after_execution": Message on success.
 - "return_control": (boolean) Set to 'true' if you need the output of the command to decide the next step.
 
+## BATCHING & EXECUTION RULES
+1.  **Batching**: You can include multiple `<action>` blocks in a single response for **read-only** commands (`read_file`, `list_directory`, `find_files`, `git_diff`).
+2.  **Smart Stop**: You **MUST** stop and wait for feedback after any single action that **modifies state**. Set `"return_control": true` for these actions:
+    - `run_shell`
+    - `create_file`
+    - `replace` or `edit_file`
+    - Any `git` command that writes (`commit`, `checkout`, `add`)
+
 ## GUIDELINES & STRATEGIES
 1. **File Editing**: 
    - New files: `create_file`.

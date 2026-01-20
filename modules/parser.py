@@ -101,6 +101,22 @@ class ResponseParser:
 
         return segments
 
+    def reconstruct(self, segments: List[Segment]) -> str:
+        """
+        Reconstructs the raw text response from a list of Segments.
+        """
+        response_parts = []
+        for segment in segments:
+            if segment.type == 'thought':
+                response_parts.append(f"<think>\n{segment.content}\n</think>")
+            elif segment.type == 'action':
+                # Actions are stored as JSON objects, so we need to dump them back to a string
+                action_str = json.dumps(segment.content, indent=4)
+                response_parts.append(f"<action>\n{action_str}\n</action>")
+            elif segment.type == 'text':
+                response_parts.append(segment.content)
+        return "\n".join(response_parts)
+
     def _extract_json(self, text: str):
         """
         Attempts to parse JSON from a string.
