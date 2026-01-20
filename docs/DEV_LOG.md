@@ -8,6 +8,20 @@
 
 ## Achieved Goals
 
+### 2026-01-20: Switched to <action> tags
+
+**Objective**: Make the agent's response format more robust and less prone to parsing errors.
+
+**Completed Tasks**:
+- [x] Changed the system prompt to require JSON to be wrapped in `<action>` tags.
+- [x] Updated the response parser to extract JSON from `<action>` tags.
+- [x] Updated documentation and tests to reflect the new format.
+
+**Problem Solving / Technical Details**:
+
+1.  **Issue**: The previous raw JSON format was fragile. The model would sometimes include extra text before or after the JSON, causing parsing errors.
+    -   **Solution**: By wrapping the JSON in `<action>` tags, we can use a more reliable regex to extract the action, and then parse the JSON inside. This makes the parsing much more robust.
+
 ### 2026-01-11: Core Logic Stabilization & Testing
 
 **Objective**: Ensure the agent's "brain" (parsing and decision making) is robust and tested against edge cases.

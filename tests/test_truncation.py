@@ -4,7 +4,8 @@ from modules.processor import ResponseProcessor
 
 class TestOutputTruncation(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-        self.ui = MagicMock()
+        self.ui = AsyncMock()
+        self.ui.confirm_truncation.return_value = True
         self.tools = MagicMock()
         self.chat = MagicMock()
         self.policy = MagicMock()

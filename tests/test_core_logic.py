@@ -1,6 +1,5 @@
 import unittest
 from unittest.mock import MagicMock, AsyncMock, patch
-import json
 import asyncio
 from agent import AngelicaAgent
 from modules.tools.manager import ToolManager
@@ -23,57 +22,6 @@ class MockChatProvider:
         yield "Summary of conversation"
 
 # --- Tests ---
-
-class TestAgentParser(unittest.TestCase):
-    def setUp(self):
-        self.ui = MagicMock()
-        # Initialize agent with mocks to avoid real file/network ops
-        # patch asyncio.create_task to avoid "no running event loop" error during init
-        with patch('agent.load_settings', return_value={}), \
-             patch('agent.get_chat_provider'), \
-             patch('agent.ToolManager'), \
-             patch('agent.ContextManager'), \
-             patch('agent.HistoryManager'), \
-             patch('agent.SessionManager'), \
-             patch('asyncio.create_task'):
-            self.agent = AngelicaAgent(ui=self.ui)
-
-    def test_parse_simple_json(self):
-        """Test parsing a simple JSON command."""
-        text = 'Here is the command: {"type": "run_command", "command": "ls"}'
-        thoughts, command, plain = self.agent._parse_output(text)
-        self.assertEqual(command["type"], "run_command")
-        self.assertEqual(command["command"], "ls")
-        self.assertEqual(len(thoughts), 0)
-
-    def test_parse_json_with_thoughts(self):
-        """Test parsing JSON with <think> block."""
-        text = '<think>I need to list files.</think> {"type": "run_command", "command": "ls"}'
-        thoughts, command, plain = self.agent._parse_output(text)
-        self.assertEqual(thoughts[0], "I need to list files.")
-        self.assertEqual(command["command"], "ls")
-
-    def test_parse_nested_json(self):
-        """Test parsing nested JSON correctly (greedy match)."""
-        text = '{"type": "edit_file", "edits": [{"search": "{", "replace": "}"}]}'
-        thoughts, command, plain = self.agent._parse_output(text)
-        self.assertEqual(command["type"], "edit_file")
-        self.assertEqual(command["edits"][0]["search"], "{")
-
-    def test_parse_invalid_json(self):
-        """Test graceful failure on invalid JSON."""
-        text = '{"type": "run_command", "command": "ls"' # Missing closing brace
-        thoughts, command, plain = self.agent._parse_output(text)
-        self.assertIsNone(command)
-        self.assertIn('{"type":', plain)
-
-    def test_parse_no_json(self):
-        """Test text only response."""
-        text = "Hello, how can I help you?"
-        thoughts, command, plain = self.agent._parse_output(text)
-        self.assertIsNone(command)
-        self.assertEqual(plain, "Hello, how can I help you?")
-
 
 class TestToolManager(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
@@ -198,12 +146,12 @@ class TestEdgeCases(unittest.IsolatedAsyncioTestCase):
         cmd1 = {"command": "read_file", "path": "test.txt"}
         await self.processor.process_single_action(cmd1)
         # 'command' key is consumed to determine action type and not passed as arg
-        self.tool_manager.call.assert_called_with("read_file", path="test.txt")
+        self.tool_manager.call.assert_called_with("read_file", ui=self.ui, path="test.txt")
         
         # Case 2: Complex command -> run_shell
         cmd2 = {"command": "ls -la | grep py"}
         await self.processor.process_single_action(cmd2)
-        self.tool_manager.call.assert_called_with("run_shell", command="ls -la | grep py")
+        self.tool_manager.call.assert_called_with("run_shell", ui=self.ui, command="ls -la | grep py")
 
     async def test_processor_argument_flattening(self):
         """Test that nested params/arguments are flattened."""

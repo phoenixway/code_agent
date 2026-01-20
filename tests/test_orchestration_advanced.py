@@ -12,7 +12,7 @@ class TestOrchestrationAdvanced(unittest.TestCase):
 
     def test_parse_standard_command(self):
         """Standard case: Thoughts followed by a clean JSON command."""
-        text = '<think>I should list files.</think>{"type": "run_shell", "command": "ls"}'
+        text = '<think>I should list files.</think><action>{"type": "run_shell", "command": "ls"}</action>'
         segments = self.agent.parser.parse(text)
         
         self.assertEqual(len(segments), 2)
@@ -24,7 +24,7 @@ class TestOrchestrationAdvanced(unittest.TestCase):
 
     def test_parse_nested_json(self):
         """Parsing JSON with nested objects (braces inside braces)."""
-        text = '{"type": "write_file", "content": "if (a) { return b; }"}'
+        text = '<action>{"type": "write_file", "content": "if (a) { return b; }"}</action>'
         segments = self.agent.parser.parse(text)
         
         self.assertEqual(len(segments), 1)
@@ -34,7 +34,7 @@ class TestOrchestrationAdvanced(unittest.TestCase):
 
     def test_parse_multiple_jsons(self):
         """The model might output two JSONs. The parser should create two action segments."""
-        text = '<think>First step</think>{"type": "cmd1"}<think>Then</think>{"type": "cmd2"}'
+        text = '<think>First step</think><action>{"type": "cmd1"}</action><think>Then</think><action>{"type": "cmd2"}</action>'
         segments = self.agent.parser.parse(text)
         
         self.assertEqual(len(segments), 4)
@@ -49,7 +49,7 @@ class TestOrchestrationAdvanced(unittest.TestCase):
         """JSON embedded in heavy text."""
         text = """
         I will run the command now.
-        {"type": "run_shell", "command": "echo 'hello'"}
+        <action>{"type": "run_shell", "command": "echo 'hello'"}</action>
         This command will print hello.
         """
         segments = self.agent.parser.parse(text)
@@ -63,7 +63,7 @@ class TestOrchestrationAdvanced(unittest.TestCase):
 
     def test_parse_malformed_json(self):
         """Should treat malformed JSON as text."""
-        text = '{"type": "run_shell", "command": "oops" # Missing quote and brace'
+        text = '<action>{"type": "run_shell", "command": "oops" # Missing quote and brace</action>'
         segments = self.agent.parser.parse(text)
         self.assertEqual(len(segments), 1)
         self.assertEqual(segments[0].type, "text")

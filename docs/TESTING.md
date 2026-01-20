@@ -15,11 +15,11 @@ The project uses Python's built-in `unittest` framework. Tests are located in th
 2.  **`tests/test_core_logic.py`**
     -   **Scope**: Critical integration logic and edge cases.
     -   **Focus**:
-        -   **Parser**: Validating that the agent correctly extracts JSON commands from mixed text/thoughts.
+        -   **Parser**: Validating that the agent correctly extracts JSON commands from `<action>` tags from mixed text/thoughts.
         -   **Processor**: Ensuring the fallback logic for commands works (e.g., converting "ls -la" text to a shell command).
         -   **Context**: Testing handling of permission errors and invalid paths.
         -   **History**: Verifying automatic summarization logic.
-        -   **Edge Cases**: Binary file handling, malformed JSON, missing arguments.
+        -   **Edge Cases**: Binary file handling, malformed <action> tags or JSON, missing arguments.
 
 ## Running Tests
 

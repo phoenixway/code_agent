@@ -74,70 +74,54 @@ class ResponseParser:
 
     def _parse_mixed_content(self, text: str) -> List[Segment]:
         """
-        Scans a string for JSON commands. Anything not JSON is Text.
+        Scans a string for <action> tags. Anything not in an action tag is Text.
         """
         segments = []
-        cursor = 0
-        length = len(text)
+        parts = re.split(r'(<action>.*?</action>)', text, flags=re.DOTALL | re.IGNORECASE)
 
-        while cursor < length:
-            # Find next potential start of JSON
-            start_brace = text.find('{', cursor)
-            
-            if start_brace == -1:
-                # No more JSONs, the rest is text
-                remaining = text[cursor:].strip()
-                if remaining:
-                    segments.append(Segment('text', remaining))
-                break
+        for part in parts:
+            if not part.strip():
+                continue
 
-            # If there is text before the brace, add it
-            pre_text = text[cursor:start_brace].strip()
-            if pre_text:
-                segments.append(Segment('text', pre_text))
-
-            # Attempt to extract valid JSON starting at start_brace
-            json_obj, end_index = self._extract_json_with_index(text, start_brace)
-            
-            if json_obj:
-                # Validate if it looks like a command
-                if isinstance(json_obj, dict) and any(k in json_obj for k in ["type", "command", "action"]):
-                    segments.append(Segment('action', json_obj))
-                    cursor = end_index
+            action_match = re.match(r'<action>(.*?)</action>', part, flags=re.DOTALL | re.IGNORECASE)
+            if action_match:
+                json_content = action_match.group(1).strip()
+                json_obj = self._extract_json(json_content)
+                if json_obj:
+                    if isinstance(json_obj, dict) and any(k in json_obj for k in ["type", "command", "action"]):
+                        segments.append(Segment('action', json_obj))
+                    else:
+                        segments.append(Segment('text', part)) # Not a valid command, treat as text
                 else:
-                    # Valid JSON but not a command? Treat as text (or ignore). 
-                    # For now, treat as text to be safe, or just skip past it?
-                    # Let's treat it as text because the user might be explaining a JSON structure.
-                    # Re-adding the brace to text and moving on is tricky because we just consumed it.
-                    # Better strategy: If it's valid JSON but not a command, treat it as text.
-                    raw_json = text[start_brace:end_index]
-                    segments.append(Segment('text', raw_json))
-                    cursor = end_index
+                    segments.append(Segment('text', part)) # Not valid JSON, treat as text
             else:
-                # Failed to parse JSON at this brace. 
-                # Treat the brace as text and move cursor forward by 1 to search again
-                segments.append(Segment('text', "{"))
-                cursor = start_brace + 1
+                stripped_part = part.strip()
+                if stripped_part:
+                    segments.append(Segment('text', stripped_part))
 
         return segments
 
-    def _extract_json_with_index(self, text: str, start_index: int):
+    def _extract_json(self, text: str):
         """
-        Attempts to parse JSON starting at start_index.
-        Returns (json_obj, end_index) or (None, -1).
-        end_index is the index immediately after the closing brace.
+        Attempts to parse JSON from a string.
+        Returns json_obj or None.
         """
-        next_close = start_index
-        while True:
-            next_close = text.find('}', next_close + 1)
-            if next_close == -1:
-                break
-            
-            candidate = text[start_index : next_close + 1]
+        try:
+            # First, try to load directly
+            return json.loads(text)
+        except json.JSONDecodeError:
+            # If that fails, it might be because of escaped characters.
+            # Let's try to find the JSON object within the string.
+            # This is a common issue when the model returns a string with a JSON object inside.
+            # For example: "`json\n{...}\n`"
             try:
-                data = json.loads(candidate)
-                return data, next_close + 1
+                # Find the first '{' and the last '}'
+                start_brace = text.find('{')
+                end_brace = text.rfind('}')
+                if start_brace != -1 and end_brace != -1 and start_brace < end_brace:
+                    json_str = text[start_brace:end_brace+1]
+                    return json.loads(json_str)
             except json.JSONDecodeError:
-                continue
-        
-        return None, -1
+                pass # If it still fails, we'll return None
+
+        return None

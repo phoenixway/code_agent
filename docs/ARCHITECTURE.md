@@ -17,7 +17,7 @@ The application is structured around a central **Agent** class that coordinates 
     -   **Parser (`ResponseParser`)**:
         -   Splits the response into a sequence of `Segment` objects: `THOUGHT`, `TEXT`, `ACTION`.
         -   **Fallback Logic**: If `<think>` tags are malformed (e.g., more closing than opening), it treats everything up to the last `</think>` as thought content.
-        -   **Security**: JSONs found inside `<think>` blocks are strictly ignored.
+        -   **Security**: Actions found inside `<think>` blocks are strictly ignored.
         -   **Scanning**: Uses an iterative scanner to extract multiple sequential actions interspersed with text.
     -   **Processor (`ResponseProcessor`)**:
         -   Executes the extracted `ACTION` segments.
@@ -53,7 +53,7 @@ The application is structured around a central **Agent** class that coordinates 
 2.  **Context**: `ContextManager` gathers the project tree and open files. `ToolManager` provides the list of available tools.
 3.  **Prompt**: `HistoryManager` combines history + context + tools definitions into a prompt.
 4.  **Inference**: The `ChatProvider` sends the prompt to the configured Model (Ollama, OpenAI, etc.).
-5.  **Parsing**: `ResponseProcessor` detects a JSON command in the response.
+5.  **Parsing**: `ResponseProcessor` detects an <action> tag with a JSON command in the response.
 6.  **Verification**: `PermissionPolicy` checks if the action is allowed.
 7.  **Execution**: `ToolManager` calls the appropriate tool.
 8.  **Feedback**: The result (stdout/stderr/file content) is fed back into the history as a "System" message, allowing the agent to react to the result.
