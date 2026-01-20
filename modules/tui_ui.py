@@ -150,8 +150,11 @@ class TuiUI:
         await self._call_ui(self._add_message, f"[bold cyan]🤖 Plan:[/] {text.strip()}")
 
     async def print_command_result(self, text, command_name=None):
-        prefix = f"[dim]❯ {command_name}[/]\n" if command_name else ""
-        await self._call_ui(self._add_message, f"{prefix}{text.strip()}", classes="chat-message result-message")
+        if command_name:
+            prefix = f"[bold cyan]❯ {command_name}[/]"
+            await self._call_ui(self._add_message, prefix, classes="chat-message")
+        
+        await self._call_ui(self._add_message, f"{text.strip()}", classes="chat-message result-message")
 
     async def print_confirmation(self, text):
         await self._call_ui(self._add_message, f"[bold green]✅ {text.strip()}[/]")

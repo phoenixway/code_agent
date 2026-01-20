@@ -197,7 +197,10 @@ class AngelicaAgent:
                         
                         output_text = result.get('output', '')
                         cmd_name = command.get("type") or command.get("action") or "command"
-                        await self.ui.print_command_result(output_text, command_name=cmd_name)
+                        
+                        full_command = command.get('command') if cmd_name == 'run_shell' else cmd_name
+                        
+                        await self.ui.print_command_result(output_text, command_name=full_command)
                         
                         # Accumulate result
                         if result.get("status") in ["failed", "error"]:
