@@ -197,3 +197,14 @@ ConfirmationScreen {
     border: double $error;
     padding: 1 2;
 }
+
+.system-message {
+    background: transparent;
+    color: $warning;
+    text-style: bold;
+    border-top: wide $warning;
+    border-bottom: wide $warning;
+    text-align: center;
+    margin: 1 0;
+    padding: 1 1;
+}
