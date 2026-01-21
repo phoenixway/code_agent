@@ -59,6 +59,15 @@ Screen {
     margin: 0; /* Ensure no external spacing */
 }
 
+/* --- READ FILE MESSAGE --- */
+
+.read-file-message {
+    background: transparent;
+    color: $primary;
+    padding: 0 1;
+    margin: 0;
+}
+
 /* --- TOOL CALL MESSAGE --- */
 
 .tool-call-message {

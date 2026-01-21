@@ -125,7 +125,7 @@ class TuiUI:
     # ---------------------------------------------------------------------
     # Message mounting
     # ---------------------------------------------------------------------
-
+    
     def _add_message(self, renderable=None, classes="chat-message", widget=None):
         # Insert a separator before each new message, but not at the very top.
         if self.history.children:
@@ -298,7 +298,7 @@ class TuiUI:
         """Prints the initial state for a read_file command and returns the widget."""
         file_path = command.get('path', '...')
         renderable = Text.from_markup(f"🐾 Reading file [dim]{escape(file_path)}[/dim]")
-        widget = Static(renderable, classes="chat-message tool-call-message")
+        widget = Static(renderable, classes="read-file-message")
         widget.file_path = file_path # Store for update
         await self._call_ui(self._add_message, widget=widget)
         return widget
@@ -309,12 +309,13 @@ class TuiUI:
         status = result.get('status')
         
         if status == 'success':
-            icon = '✓'
+            icon = '[green]✓[/green]'
         else:
-            icon = '✗'
+            icon = '[red]✗[/red]'
         
         new_renderable = Text.from_markup(f"{icon} Reading file [dim]{escape(file_path)}[/dim]")
         await self._call_ui(widget.update, new_renderable)
+
     # ---------------------------------------------------------------------
     # Tool result rendering
     # ---------------------------------------------------------------------
