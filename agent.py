@@ -184,11 +184,6 @@ class AngelicaAgent:
                             shell_widget = await self.ui.print_shell_start(command)
                             await self.ui.start_action(command.get("during_execution", f"Executing {cmd_name}..."))
                             result = await self.processor.process_single_action(command)
-                            
-                            # NEW: Print confirmation before updating the shell result widget
-                            if result.get("status") == "success" and command.get("after_execution"):
-                                await self.ui.print_confirmation(command['after_execution'])
-
                             await self.ui.update_shell_result(shell_widget, result)
                         else:
                             # Default display for all other tools

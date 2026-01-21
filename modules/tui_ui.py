@@ -228,20 +228,34 @@ class TuiUI:
 
     def _render_shell_result(self, command: dict, result: dict) -> RichMarkdown:
         shell_command = command.get('command', '')
+        after_execution = command.get('after_execution')
         output = result.get('output', '')
         status = result.get('status')
 
+        md_parts = []
+
+        # 1. Add after_execution text first, if it exists
+        if status == 'success' and after_execution:
+            after_exec_plain = f"✅ {after_execution.strip()}"
+            md_parts.append(after_exec_plain)
+
+        # 2. Add the result box
         if status == 'success':
             icon_char = '✔'
         else:
             icon_char = '✘'
         
-        md_content = f"""```sh
+        result_box = f"""```sh
 {icon_char} run_shell: {shell_command}
 ---
 {escape(output.strip())}
 ```
 """
+        md_parts.append(result_box)
+
+        # 3. Join them with newlines
+        md_content = "\n\n".join(md_parts)
+
         return RichMarkdown(md_content)
 
     async def update_shell_result(self, widget: Static, result: dict):
