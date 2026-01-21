@@ -2,10 +2,11 @@ import os
 import asyncio
 import shlex
 from textual.app import App, ComposeResult
-from textual.widgets import Header, Footer, Static, Input
+from textual.widgets import Header, Footer, Static
 from textual.containers import Container, VerticalScroll, Horizontal
 from agent import AngelicaAgent
 from modules.tui_ui import TuiUI
+from modules.ui_components.history_aware_input import HistoryAwareInput
 from modules.ui_components.status_bar import StatusBar
 from modules.ui_components.token_status_bar import TokenStatusBar
 from modules.version import __version__
@@ -36,7 +37,7 @@ class TUI(App):
             yield StatusBar(id="loading-container")
             yield Horizontal(
                 Static("> "),
-                Input(
+                HistoryAwareInput(
                     id="input",
                     placeholder="Введіть запит або /команду...",
                     suggester=self.command_completer,
@@ -72,7 +73,7 @@ class TUI(App):
             f"Working Directory: {current_directory}"
         )
         await self.ui.print_initial_system_message(startup_message)
-        self.query_one("#input", Input).focus()
+        self.query_one("#input", HistoryAwareInput).focus()
 
         # Perform initial token status update
         try:
@@ -87,20 +88,19 @@ class TUI(App):
         except Exception as e:
             self.agent.log.error(f"Initial token status update failed: {e}")
 
-    async def on_input_submitted(self, message: Input.Submitted) -> None:
+    async def on_input_submitted(self, message: HistoryAwareInput.Submitted) -> None:
         """Called when the user submits a message."""
         user_input = message.value.strip()
         
         self.agent.log.info(f"DEBUG: on_input_submitted called with: '{user_input}'")
         
+        input_widget = self.query_one(HistoryAwareInput)
+        
         # Add to input history if not empty
-        # if user_input:
-        #     if hasattr(message.sender, 'add_entry'):
-        #         message.sender.add_entry(user_input)
-        #     else:
-        #         self.agent.log.warning("WARNING: Input widget does not support add_entry")
+        if user_input:
+            input_widget.add_entry(user_input)
             
-        self.query_one("#input", Input).value = ""
+        input_widget.value = ""
 
         if not user_input:
             return

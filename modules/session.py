@@ -28,3 +28,9 @@ class SessionManager:
             # Optionally, notify UI
             if self.ui:
                 asyncio.create_task(self.ui.print_system("💾 Session loaded."))
+
+    def clear_session(self):
+        if os.path.exists(self.session_file):
+            os.remove(self.session_file)
+            return True
+        return False

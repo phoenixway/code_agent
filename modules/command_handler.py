@@ -1,5 +1,7 @@
 import os
 import shlex
+import asyncio
+import tempfile
 from modules.config_loader import update_settings
 
 class CommandHandler:
@@ -20,7 +22,10 @@ class CommandHandler:
             "/history-size": self._handle_history_size,
             "/history-summarize": self._handle_history_summarize,
             "/quit": self._handle_quit,
-            "/help": self._handle_help
+            "/help": self._handle_help,
+            "/clearsession": self._handle_clear_session,
+            "/find": self._handle_find,
+            "/f": self._handle_find
         }
 
     @property
@@ -59,6 +64,46 @@ class CommandHandler:
             return True
         
         return False
+
+    async def _handle_find(self, user_input):
+        try:
+            with tempfile.NamedTemporaryFile(mode='w+', delete=False) as tmp_file:
+                temp_filename = tmp_file.name
+
+            # Command to execute fzf and write output to the temp file
+            fzf_command = f'fzf --multi --height=100% > "{temp_filename}"'
+
+            with self.app.suspend():
+                process = await asyncio.create_subprocess_shell(fzf_command)
+                await process.communicate()
+
+            selected_paths = []
+            if os.path.exists(temp_filename) and os.path.getsize(temp_filename) > 0:
+                with open(temp_filename, 'r') as f:
+                    selected_paths = [line.strip() for line in f if line.strip()]
+            
+            # Clean up the temporary file
+            os.remove(temp_filename)
+
+            if selected_paths:
+                total_added = 0
+                for path in selected_paths:
+                    count = self.agent.context_manager.add_path(path)
+                    total_added += count
+                await self.ui.print_system(f"✅ Added {total_added} file(s) from fzf to context.")
+            else:
+                await self.ui.print_system("No files selected from fzf.")
+
+        except FileNotFoundError:
+            await self.ui.print_error("fzf command not found. Please install fzf to use this feature.")
+        except Exception as e:
+            await self.ui.print_error(f"An error occurred with fzf: {e}")
+
+    async def _handle_clear_session(self, user_input):
+        if self.agent.session_manager.clear_session():
+            await self.ui.print_system("✅ Saved session cleared. It will not be loaded on the next start.")
+        else:
+            await self.ui.print_system("No saved session found to clear.")
 
     async def _handle_add(self, user_input):
         try:
@@ -256,6 +301,8 @@ class CommandHandler:
             "  /theme            - Switch UI theme\n"
             "  /history-size     - Change context window size\n"
             "  /history-summarize - Manually summarize history\n"
+            "  /clearsession     - Clear the saved session data\n"
+            "  /f, /find         - Fuzzy find files to add to context\n"
             "  /quit             - Exit application"
         )
         await self.ui.print_system(help_text)
