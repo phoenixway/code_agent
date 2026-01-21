@@ -8,6 +8,7 @@ from agent import AngelicaAgent
 from modules.tui_ui import TuiUI
 from modules.ui_components.history_input import HistoryInput
 from modules.ui_components.status_bar import StatusBar
+from modules.ui_components.token_status_bar import TokenStatusBar
 from modules.version import __version__
 from modules.theme import HACKER_THEME
 from modules.config_loader import update_settings
@@ -40,7 +41,7 @@ class TUI(App):
                 HistoryInput(id="input", slash_commands=self.SLASH_COMMANDS, logger=self.agent.log),
                 id="input-container"
             )
-        yield Footer()
+        yield TokenStatusBar(id="token-status-bar")
 
     async def on_mount(self) -> None:
         # Register custom themes
@@ -73,6 +74,19 @@ class TUI(App):
         )
         await self.ui.print_initial_system_message(startup_message)
         self.query_one("#input", HistoryInput).focus()
+
+        # Perform initial token status update
+        try:
+            initial_history_tokens = self.agent.history.current_token_count
+            max_tokens = self.agent.history.max_tokens
+            token_bar = self.query_one(TokenStatusBar)
+            token_bar.update_tokens(
+                history_tokens=initial_history_tokens,
+                max_tokens=max_tokens,
+                session_tokens=self.agent.session_tokens  # Should be 0
+            )
+        except Exception as e:
+            self.agent.log.error(f"Initial token status update failed: {e}")
 
     def on_history_input_suggestion(self, message: HistoryInput.Suggestion) -> None:
         suggestion_box = self.query_one("#suggestion-box", Static)

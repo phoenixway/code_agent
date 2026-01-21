@@ -27,6 +27,22 @@ class HistoryManager:
     def get_history_for_api(self):
         return self.messages
 
+    @property
+    def current_token_count(self):
+        """Calculates and returns the current token count of the history."""
+        if not self.messages:
+            return 0
+        
+        tokenizer = self.chat.get_tokenizer()
+        if not tokenizer:
+            # Fallback to a rough character-based estimation if no tokenizer is available
+            return sum(len(m["content"]) for m in self.messages) // 4
+
+        token_count = 0
+        for message in self.messages:
+            token_count += len(tokenizer.encode(message['content']))
+        return token_count
+
     # modules/history.py
 
     async def check_and_summarize(self, ui):

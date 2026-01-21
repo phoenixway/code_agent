@@ -209,6 +209,13 @@ Footer {
     color: $text-muted;
 }
 
+#token-status-bar {
+    background: $surface;
+    color: $text-muted;
+    height: 1;
+    padding: 0 1;
+}
+
 /* --- MODALS --- */
 
 ConfirmationScreen {

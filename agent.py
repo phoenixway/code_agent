@@ -73,6 +73,9 @@ class AngelicaAgent:
         self.last_action_status = None
         self.consecutive_failed_repeats = 0
 
+        # 8. Token tracking
+        self.session_tokens = 0
+
     def _get_action_fingerprint(self, command: dict) -> str:
         """Creates a unique string for an action based on type and arguments."""
         cmd_type = command.get("type") or command.get("action") or "unknown"
@@ -140,6 +143,32 @@ class AngelicaAgent:
                 # Запускаємо задачу з можливістю переривання
                 self.current_task = asyncio.create_task(self.get_response(current_query))
                 response = await self.current_task
+
+                # --- TOKEN CALCULATION & UI UPDATE ---
+                try:
+                    if self.ui and hasattr(self.ui, 'update_token_status'):
+                        prompt_tokens = 0
+                        completion_tokens = 0
+                        tokenizer = self.chat.get_tokenizer()
+
+                        if tokenizer:
+                            prompt_tokens = len(tokenizer.encode(current_query))
+                            completion_tokens = len(tokenizer.encode(response))
+                        else:
+                            # Fallback to character-based estimation
+                            prompt_tokens = len(current_query) // 4
+                            completion_tokens = len(response) // 4
+                        
+                        self.session_tokens += prompt_tokens + completion_tokens
+
+                        await self.ui.update_token_status(
+                            history_tokens=self.history.current_token_count,
+                            max_tokens=self.history.max_tokens,
+                            session_tokens=self.session_tokens
+                        )
+                except Exception as e:
+                    self.log.error(f"Failed to update token status: {e}")
+                # --- END TOKEN CALCULATION ---
                 
                 if not response:
                     break

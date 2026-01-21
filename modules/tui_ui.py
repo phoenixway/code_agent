@@ -11,6 +11,7 @@ from rich.markup import escape
 from modules.ui_components.selection_widget import SelectionScreen
 from modules.ui_components.status_bar import StatusBar
 from modules.ui_components.diff_viewer import DiffViewer
+from modules.ui_components.token_status_bar import TokenStatusBar
 
 
 class MessageSeparator(Static):
@@ -65,6 +66,14 @@ class TuiUI:
 
     async def update_header(self, text: str):
         await self._call_ui(self._update_header_main_thread, text)
+
+    async def update_token_status(self, history_tokens: int, max_tokens: int, session_tokens: int):
+        try:
+            token_bar = self.app.query_one(TokenStatusBar)
+            await self._call_ui(token_bar.update_tokens, history_tokens, max_tokens, session_tokens)
+        except Exception as e:
+            if hasattr(self.app, 'agent') and self.app.agent.log:
+                self.app.agent.log.error(f"Could not update token status bar: {e}")
 
     # ---------------------------------------------------------------------
     # Screens & confirmations
