@@ -114,6 +114,18 @@ class ResponseParser:
 
         return segments
 
+    def _parse_key_value_tags(self, text: str) -> Optional[dict]:
+        """Parses a string of <key>value</key> tags into a dictionary."""
+        data = {}
+        # Regex to find <tag>value</tag>
+        pattern = re.compile(r'<([^>]+)>(.*?)</\1>', re.DOTALL | re.IGNORECASE)
+        matches = pattern.findall(text)
+        if not matches:
+            return None
+        for key, value in matches:
+            data[key.strip()] = value.strip()
+        return data
+
     def reconstruct(self, segments: List[Segment]) -> str:
         """
         Reconstructs the raw text response from a list of Segments.
@@ -172,6 +184,11 @@ class ResponseParser:
                     json_str = text[start_brace:end_brace+1]
                     return json.loads(json_str)
             except json.JSONDecodeError:
-                pass # If it still fails, we'll return None
+                pass # If it still fails, we'll try the next method
+
+        # Fallback to XML-like key-value pair parsing
+        parsed_data = self._parse_key_value_tags(text)
+        if parsed_data:
+            return parsed_data
 
         return None

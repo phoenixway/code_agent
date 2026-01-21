@@ -283,9 +283,11 @@ class TuiUI:
         subtitle = " (truncated)" if truncated else ""
         md_lines = [f"**✅ Result**{subtitle}"]
         
-        # Avoids creating an empty code block if there's no text
+        # Display a placeholder if the result is empty
         if text and text.strip():
             md_lines.append(f"```\n{escape(text.strip())}\n```")
+        else:
+            md_lines.append("```\n(empty)\n```")
 
         renderable = RichMarkdown("\n\n".join(md_lines))
         return Static(renderable, classes="chat-message tool-result-message")
