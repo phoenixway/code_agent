@@ -145,8 +145,17 @@ class ResponseParser:
     def _extract_json(self, text: str):
         """
         Attempts to parse JSON from a string.
+        Handles CDATA blocks for cases like shell commands.
         Returns json_obj or None.
         """
+        # First, check for CDATA block
+        cdata_match = re.match(r'^\s*<!\[CDATA\[(.*?)\]\]>\s*$', text, re.DOTALL)
+        if cdata_match:
+            # If it's CDATA, assume it's a raw command string
+            # and wrap it in a JSON object with a 'command' key.
+            # This is specific to run_shell tools with CDATA.
+            return {"command": cdata_match.group(1).strip()}
+
         try:
             # First, try to load directly
             return json.loads(text)

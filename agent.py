@@ -235,13 +235,10 @@ class AngelicaAgent:
                     last_action_segment = next((s for s in reversed(processed_segments) if s.type == 'action'), None)
                     if last_action_segment:
                         last_command = last_action_segment.content
-                        last_result_failed = self.last_action_status in ["failed", "error"]
-                        # Продовжуємо цикл, якщо дія була успішною
-                        if not last_result_failed:
-                            active_loop = True
-                            current_query = "\n---\n".join(system_results)
-                        else:
-                            active_loop = False # Зупиняємось при помилці
+                        # Always continue the loop to let the AI handle the result,
+                        # even if it's an error.
+                        active_loop = True
+                        current_query = "\n---\n".join(system_results)
                     else:
                         active_loop = False
                 else:
