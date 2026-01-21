@@ -101,8 +101,9 @@ class HistoryInput(TextArea):
             self._log(f"Suggestions: {self.suggestions}")
             self.post_message(self.Suggestion(self, self.suggestions))
         else:
-            self.suggestions = []
-            self.post_message(self.Suggestion(self, []))
+            if self.suggestions:
+                self.suggestions = []
+                self.post_message(self.Suggestion(self, []))
 
     def on_key(self, event: Key) -> None:
         if event.key == "enter":

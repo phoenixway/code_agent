@@ -9,6 +9,24 @@ class CommandHandler:
         :param app: The main TUI App instance (provides access to agent, ui, theme, etc.)
         """
         self.app = app
+        self.handlers = {
+            "/add": self._handle_add,
+            "/drop": self._handle_drop,
+            "/cd": self._handle_cd,
+            "/export": self._handle_export,
+            "/import": self._handle_import,
+            "/models": self._handle_models,
+            "/theme": self._handle_theme,
+            "/history-size": self._handle_history_size,
+            "/history-summarize": self._handle_history_summarize,
+            "/quit": self._handle_quit,
+            "/help": self._handle_help
+        }
+
+    @property
+    def command_names(self) -> list[str]:
+        """Returns a list of all available command names."""
+        return list(self.handlers.keys())
 
     @property
     def agent(self):
@@ -34,21 +52,7 @@ class CommandHandler:
 
         command = user_input.split(" ")[0].lower()
 
-        handlers = {
-            "/add": self._handle_add,
-            "/drop": self._handle_drop,
-            "/cd": self._handle_cd,
-            "/export": self._handle_export,
-            "/import": self._handle_import,
-            "/models": self._handle_models,
-            "/theme": self._handle_theme,
-            "/history-size": self._handle_history_size,
-            "/history-summarize": self._handle_history_summarize,
-            "/quit": self._handle_quit,
-            "/help": self._handle_help
-        }
-
-        handler = handlers.get(command)
+        handler = self.handlers.get(command)
         if handler:
             self.log.info(f"Command triggered: {user_input}")
             await handler(user_input)

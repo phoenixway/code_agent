@@ -2,17 +2,17 @@ import os
 import asyncio
 import shlex
 from textual.app import App, ComposeResult
-from textual.widgets import Header, Footer, Static, LoadingIndicator
+from textual.widgets import Header, Footer, Static, Input
 from textual.containers import Container, VerticalScroll, Horizontal
 from agent import AngelicaAgent
 from modules.tui_ui import TuiUI
-from modules.ui_components.history_input import HistoryInput
 from modules.ui_components.status_bar import StatusBar
 from modules.ui_components.token_status_bar import TokenStatusBar
 from modules.version import __version__
 from modules.theme import HACKER_THEME
 from modules.config_loader import update_settings
 from modules.command_handler import CommandHandler
+from modules.ui_components.command_completer import CommandCompleter
 
 class TUI(App):
     CSS_PATH = "tui.css"
@@ -23,22 +23,24 @@ class TUI(App):
         ("escape", "interrupt_agent", "Interrupt"),
     ]
     
-    # List of available slash commands
-    SLASH_COMMANDS = ["/add", "/drop", "/models", "/theme", "/history-size", "/history-summarize", "/cd", "/export", "/import", "/help", "/quit"]
-    
     def __init__(self, agent: AngelicaAgent):
         super().__init__()
         self.agent = agent
+        self.command_handler = CommandHandler(self)
+        self.command_completer = CommandCompleter(self.command_handler.command_names)
 
     def compose(self) -> ComposeResult:
         yield Header()
         with Container():
             yield VerticalScroll(id="history")
-            yield Static(id="suggestion-box", classes="hidden")
             yield StatusBar(id="loading-container")
             yield Horizontal(
                 Static("> "),
-                HistoryInput(id="input", slash_commands=self.SLASH_COMMANDS, logger=self.agent.log),
+                Input(
+                    id="input",
+                    placeholder="Введіть запит або /команду...",
+                    suggester=self.command_completer,
+                ),
                 id="input-container"
             )
         yield TokenStatusBar(id="token-status-bar")
@@ -58,9 +60,6 @@ class TUI(App):
         self.ui = TuiUI(self, self.query_one("#history", VerticalScroll), self.query_one(StatusBar))
         self.agent.ui = self.ui # Pass UI to agent
         
-        # Initialize Command Handler
-        self.command_handler = CommandHandler(self)
-        
         # Check if self.agent.chat is None, if so, get_chat_provider failed during agent init
         model_name = self.agent.chat.model_name if self.agent.chat else "N/A (Provider initialization failed)"
         # Set the full title including the model name
@@ -73,7 +72,7 @@ class TUI(App):
             f"Working Directory: {current_directory}"
         )
         await self.ui.print_initial_system_message(startup_message)
-        self.query_one("#input", HistoryInput).focus()
+        self.query_one("#input", Input).focus()
 
         # Perform initial token status update
         try:
@@ -88,42 +87,25 @@ class TUI(App):
         except Exception as e:
             self.agent.log.error(f"Initial token status update failed: {e}")
 
-    def on_history_input_suggestion(self, message: HistoryInput.Suggestion) -> None:
-        suggestion_box = self.query_one("#suggestion-box", Static)
-        if message.suggestions:
-            
-            def highlight(s, i):
-                if i == message.sender.suggestion_index:
-                    return f"[b white on blue]{s}[/]"
-                else:
-                    return s
-            
-            suggestion_text = "  ".join(highlight(s, i) for i, s in enumerate(message.suggestions))
-            suggestion_box.update(suggestion_text)
-            suggestion_box.remove_class("hidden")
-        else:
-            suggestion_box.add_class("hidden")
-
-    async def on_history_input_submitted(self, message: HistoryInput.Submitted) -> None:
+    async def on_input_submitted(self, message: Input.Submitted) -> None:
         """Called when the user submits a message."""
-        user_input = message.text.strip()
+        user_input = message.value.strip()
         
-        self.agent.log.info(f"DEBUG: on_history_input_submitted called with: '{user_input}'")
+        self.agent.log.info(f"DEBUG: on_input_submitted called with: '{user_input}'")
         
         # Add to input history if not empty
-        if user_input:
-            if hasattr(message.sender, 'add_entry'):
-                message.sender.add_entry(user_input)
-            else:
-                self.agent.log.warning("WARNING: Input widget does not support add_entry")
+        # if user_input:
+        #     if hasattr(message.sender, 'add_entry'):
+        #         message.sender.add_entry(user_input)
+        #     else:
+        #         self.agent.log.warning("WARNING: Input widget does not support add_entry")
             
-        message.sender.text = ""
+        self.query_one("#input", Input).value = ""
 
         if not user_input:
             return
         
         # --- COMMAND HANDLING DELEGATION ---
-        # Check if it's a command (starts with /)
         if user_input.startswith("/"):
             self.agent.log.info(f"DEBUG: detected command '{user_input}', spawning worker")
             

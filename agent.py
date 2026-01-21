@@ -161,6 +161,7 @@ class AngelicaAgent:
                         
                         self.session_tokens += prompt_tokens + completion_tokens
 
+                        self.log.info(f"Updating token status: history={self.history.current_token_count}, max={self.history.max_tokens}, session={self.session_tokens}")
                         await self.ui.update_token_status(
                             history_tokens=self.history.current_token_count,
                             max_tokens=self.history.max_tokens,
