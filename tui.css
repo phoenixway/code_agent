@@ -43,6 +43,21 @@ Screen {
     margin-left: 0;
 }
 
+/* Tool Call Message */
+.tool-call-message {
+    background: $surface;
+    border-left: wide $warning; /* Use warning color for distinction */
+    margin-left: 0;
+}
+
+/* Tool Result Message */
+.tool-result-message {
+    background: $surface;
+    border-left: wide $success; /* Green for success */
+    margin-left: 0;
+    padding: 0 1;
+}
+
 /* Thoughts / Reasoning (<think>) */
 .thought-message {
     color: $text-muted;

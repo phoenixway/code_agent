@@ -77,24 +77,37 @@ class ResponseParser:
         Scans a string for <action> tags. Anything not in an action tag is Text.
         """
         segments = []
-        parts = re.split(r'(<action>.*?</action>)', text, flags=re.DOTALL | re.IGNORECASE)
+        # Split by action tag, keeping the tag itself. This regex is broad on purpose.
+        parts = re.split(r'(<action[^>]*>.*?</action>)', text, flags=re.DOTALL | re.IGNORECASE)
 
         for part in parts:
             if not part.strip():
                 continue
 
-            action_match = re.match(r'<action>(.*?)</action>', part, flags=re.DOTALL | re.IGNORECASE)
+            # More specific regex to extract data from the potential action block
+            action_match = re.match(r'<action(?:\s+type="([^"]+)")?>(.*?)</action>', part, flags=re.DOTALL | re.IGNORECASE)
+            
             if action_match:
-                json_content = action_match.group(1).strip()
+                action_type = action_match.group(1) # This might be None
+                json_content = action_match.group(2).strip()
+                
                 json_obj = self._extract_json(json_content)
-                if json_obj:
-                    if isinstance(json_obj, dict) and any(k in json_obj for k in ["type", "command", "action"]):
+                
+                if json_obj and isinstance(json_obj, dict):
+                    # If type was captured from attribute, add it to the object.
+                    # This is the key fix: ensuring the type from the tag is in the dictionary.
+                    if action_type:
+                        json_obj['type'] = action_type.strip()
+                    
+                    # Now, check if the object is a valid action by looking for a 'type' or 'command' key.
+                    if any(k in json_obj for k in ["type", "command", "action"]):
                         segments.append(Segment('action', json_obj))
                     else:
                         segments.append(Segment('text', part)) # Not a valid command, treat as text
                 else:
                     segments.append(Segment('text', part)) # Not valid JSON, treat as text
             else:
+                # This is a text part
                 stripped_part = part.strip()
                 if stripped_part:
                     segments.append(Segment('text', stripped_part))
@@ -110,9 +123,21 @@ class ResponseParser:
             if segment.type == 'thought':
                 response_parts.append(f"<think>\n{segment.content}\n</think>")
             elif segment.type == 'action':
-                # Actions are stored as JSON objects, so we need to dump them back to a string
-                action_str = json.dumps(segment.content, indent=4)
-                response_parts.append(f"<action>\n{action_str}\n</action>")
+                # Make a copy to avoid modifying the original segment content
+                action_content = segment.content.copy()
+                
+                # Extract 'type' for the tag attribute, then remove it from the JSON payload
+                action_type = action_content.pop('type', None)
+                
+                # The remaining content is the JSON payload
+                action_str = json.dumps(action_content, indent=4)
+                
+                # Construct the tag with the type attribute if it exists
+                if action_type:
+                    response_parts.append(f'<action type="{action_type}">\n{action_str}\n</action>')
+                else:
+                    response_parts.append(f"<action>\n{action_str}\n</action>")
+
             elif segment.type == 'text':
                 response_parts.append(segment.content)
         return "\n".join(response_parts)

@@ -178,24 +178,39 @@ class AngelicaAgent:
                             warn_msg = "⚠️ Loop detected: You are repeating the same action that just failed."
                             await self.ui.print_error(warn_msg)
                             self.history.add_message("system", f"CRITICAL: {warn_msg} Change your strategy.")
-                        
-                        if command.get("before_execution"):
-                            await self.ui.print_plan(command['before_execution'])
-                        
-                        await self.ui.start_action(command.get("during_execution", f"Executing {cmd_name}..."))
-                        
-                        result = await self.processor.process_single_action(command)
-                        
+
+                        # --- Branch for run_shell display ---
+                        if cmd_name == 'run_shell':
+                            shell_widget = await self.ui.print_shell_start(command)
+                            await self.ui.start_action(command.get("during_execution", f"Executing {cmd_name}..."))
+                            result = await self.processor.process_single_action(command)
+                            
+                            # NEW: Print confirmation before updating the shell result widget
+                            if result.get("status") == "success" and command.get("after_execution"):
+                                await self.ui.print_confirmation(command['after_execution'])
+
+                            await self.ui.update_shell_result(shell_widget, result)
+                        else:
+                            # Default display for all other tools
+                            await self.ui.print_tool_call(command)
+                            if command.get("before_execution"):
+                                await self.ui.print_plan(command['before_execution'])
+                            
+                            await self.ui.start_action(command.get("during_execution", f"Executing {cmd_name}..."))
+                            result = await self.processor.process_single_action(command)
+
+                            if result.get("status") == "success" and command.get("after_execution"):
+                                await self.ui.print_confirmation(command['after_execution'])
+                            
+                            output_text_for_print = result.get('output', '')
+                            await self.ui.print_command_result(output_text_for_print)
+
+                        # --- COMMON POST-ACTION LOGIC ---
                         self.last_action_fingerprint = fingerprint
                         self.last_action_status = result.get("status")
                         
-                        if result.get("status") == "success" and command.get("after_execution"):
-                            await self.ui.print_confirmation(command['after_execution'])
-                        
                         output_text = result.get('output', '')
                         full_command_name = command.get('command') if cmd_name == 'run_shell' else None
-                        
-                        await self.ui.print_command_result(output_text, tool_name=cmd_name, command_name=full_command_name)
                         
                         # --- SMART STOP & TRUNCATION LOGIC ---
                         is_state_changing = any(op in cmd_name for op in STATE_CHANGING_OPS)
@@ -222,20 +237,18 @@ class AngelicaAgent:
                         self.history.add_message("system", res)
                     
                     # Визначаємо, чи продовжувати цикл
-                    # Продовжуємо, якщо остання дія не вимагала зупинки
                     last_action_segment = next((s for s in reversed(processed_segments) if s.type == 'action'), None)
                     if last_action_segment:
                         last_command = last_action_segment.content
                         last_result_failed = self.last_action_status in ["failed", "error"]
-                        last_cmd_name = last_command.get("type") or last_command.get("action", "unknown")
-                        is_last_state_changing = any(op in last_cmd_name for op in STATE_CHANGING_OPS)
+                        should_return_control_to_user = last_command.get("return_control") is True
                         
-                        # Не продовжуємо, якщо остання дія провалилася або була зі зміною стану
-                        if not last_result_failed and not is_last_state_changing:
+                        # Продовжуємо цикл, якщо дія була успішною І не вимагала повернення контролю користувачу
+                        if not last_result_failed and not should_return_control_to_user:
                             active_loop = True
                             current_query = "\n---\n".join(system_results)
                         else:
-                            active_loop = False # Зупиняємось, щоб користувач міг втрутитись
+                            active_loop = False # Зупиняємось при помилці або за вимогою `return_control`
                     else:
                         active_loop = False
                 else:
