@@ -211,14 +211,17 @@ class AngelicaAgent:
                         # --- SMART STOP & TRUNCATION LOGIC ---
                         is_state_changing = any(op in cmd_name for op in STATE_CHANGING_OPS)
                         execution_failed = result.get("status") in ["failed", "error"]
+                        action_denied = result.get("status") == "denied" # Assuming "denied" is the status for denied actions
 
                         if execution_failed:
                             output_text += "\n\n[SYSTEM INSTRUCTION: The action failed. Analyze this error in a <think> block to determine the root cause, then propose a corrected action.]"
+                        elif action_denied: # New condition
+                            output_text += "\n\n[SYSTEM INSTRUCTION: The user denied the action. Re-evaluate your plan and propose an alternative action or explanation.]"
                         
                         system_results.append(f"SYSTEM RESULT for `{cmd_name}`: {output_text}")
                         
-                        # Stop processing further segments if the action failed or changed state
-                        if execution_failed or is_state_changing:
+                        # Stop processing further segments if the action failed, changed state, OR was denied
+                        if execution_failed or is_state_changing or action_denied:
                             break
 
                 # Реконструюємо повідомлення асистента ЛИШЕ з оброблених сегментів
@@ -235,10 +238,14 @@ class AngelicaAgent:
                     last_action_segment = next((s for s in reversed(processed_segments) if s.type == 'action'), None)
                     if last_action_segment:
                         last_command = last_action_segment.content
-                        # Always continue the loop to let the AI handle the result,
-                        # even if it's an error.
-                        active_loop = True
-                        current_query = "\n---\n".join(system_results)
+                        last_result_failed = self.last_action_status in ["failed", "error"]
+                        last_action_denied = self.last_action_status == "denied" # Assuming "denied" is the status
+                        
+                        if not last_result_failed and not last_action_denied: # Only continue if not failed AND not denied
+                            active_loop = True
+                            current_query = "\n---\n".join(system_results)
+                        else:
+                            active_loop = False # Stop on error OR if denied
                     else:
                         active_loop = False
                 else:
