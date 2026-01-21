@@ -71,7 +71,7 @@ class TUI(App):
             f"Model: {model_name}\n"
             f"Working Directory: {current_directory}"
         )
-        await self.ui.print_system(startup_message)
+        await self.ui.print_initial_system_message(startup_message)
         self.query_one("#input", HistoryInput).focus()
 
     def on_history_input_suggestion(self, message: HistoryInput.Suggestion) -> None:

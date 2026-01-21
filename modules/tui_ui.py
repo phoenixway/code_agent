@@ -13,6 +13,14 @@ from modules.ui_components.status_bar import StatusBar
 from modules.ui_components.diff_viewer import DiffViewer
 
 
+class MessageSeparator(Static):
+    """A 1-line tall, non-interactive separator widget."""
+    def __init__(self):
+        super().__init__("", classes="message-separator")
+
+
+
+
 class TuiUI:
     def __init__(self, app, history_widget: VerticalScroll, status_bar: StatusBar):
         self.app = app
@@ -119,6 +127,10 @@ class TuiUI:
     # ---------------------------------------------------------------------
 
     def _add_message(self, renderable=None, classes="chat-message", widget=None):
+        # Insert a separator before each new message, but not at the very top.
+        if self.history.children:
+            self.history.mount(MessageSeparator())
+
         if widget is None:
             widget = Static(renderable, classes=classes, expand=False)
             widget.can_focus = False
@@ -135,6 +147,13 @@ class TuiUI:
             self._add_message,
             f" {text} ",
             classes="chat-message system-message",
+        )
+
+    async def print_initial_system_message(self, text: str):
+        await self._call_ui(
+            self._add_message,
+            Text(text, justify="center"),
+            classes="chat-message initial-history-message",
         )
 
     async def print_error(self, text: str):

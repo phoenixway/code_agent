@@ -1,6 +1,7 @@
-/* Retro Linux/Hacker Green Theme for Angelica-AI */
+/* Retro Linux / Hacker Green Theme for Angelica-AI */
+/* =============================================== */
 
-/* --- STYLES --- */
+/* --- GLOBAL --- */
 
 Screen {
     background: $background;
@@ -8,6 +9,7 @@ Screen {
 }
 
 /* --- CHAT HISTORY --- */
+
 #history {
     background: $background;
     scrollbar-background: $background;
@@ -16,84 +18,97 @@ Screen {
     padding: 1;
 }
 
-/* General Message Style */
 .chat-message {
-    padding: 1 2;
-    margin-top: 0;
-    margin-bottom: 1;
-    border: none;
     background: $background;
-    margin-left: 0; /* Unify alignment */
+    border: none;
+    padding: 1 2; /* Keep the visual frame */
+    margin: 0; /* Remove all margins, spacing is handled by the separator widget */
 }
 
-/* User Message */
+/* The physical spacer widget inserted between messages */
+.message-separator {
+    height: 1;
+    background: $background;
+}
+
+/* --- USER MESSAGE --- */
+
 .user-message {
-    /* Using theme variables for adaptability */
-    background: $surface; 
+    background: $surface;
     color: $text;
-    /* User Accent: Primary Theme Color */
     border-left: wide $primary;
     margin-right: 2;
 }
 
-/* Assistant Message */
+/* --- ASSISTANT MESSAGE --- */
+
 .assistant-message {
     background: $surface;
     border-left: wide $secondary;
-    margin-left: 0;
 }
 
-/* Tool Call Message */
-.tool-call-message {
-    background: $surface;
-    border-left: wide $warning; /* Use warning color for distinction */
-    margin-left: 0;
-}
+/* --- INITIAL HISTORY MESSAGE --- */
 
-/* Tool Result Message */
-.tool-result-message {
-    background: $surface;
-    border-left: wide $success; /* Green for success */
-    margin-left: 0;
-    padding: 0 1;
-}
-
-/* Thoughts / Reasoning (<think>) */
-.thought-message {
-    color: $text-muted;
-    text-style: italic;
-    background: $background;
-    /* Use $secondary or a fixed dim color for border as $text-muted is not a color variable */
-    border-left: wide $secondary; 
-    padding: 0 1;
-    margin: 1 2 1 0; /* 1 line top margin, 1 line bottom margin */
-}
-
-/* System / Logs */
-.system-message {
+.initial-history-message {
+    background: transparent;
     color: $warning;
     text-style: bold;
-    /* Invisible border to match others alignment */
-    border-left: wide $background;
-    padding: 0 1;
+    border-top: wide $warning;
+    border-bottom: wide $warning;
+    padding: 1 0; /* Vertical padding to give borders space */
+    margin: 0; /* Ensure no external spacing */
 }
 
-/* Plan / Commands */
+/* --- TOOL CALL MESSAGE --- */
+
+.tool-call-message {
+    background: $surface;
+    border-left: wide $warning;
+}
+
+/* --- TOOL RESULT MESSAGE --- */
+
+.tool-result-message {
+    background: $surface;
+    border-left: wide $success;
+}
+
+/* --- THOUGHT / REASONING --- */
+
+.thought-message {
+    background: transparent;
+    border-left: dashed $secondary;
+    color: $text-muted;
+    opacity: 70%;
+    text-style: italic;
+}
+
+/* --- SYSTEM / LOG (Prefix-based) --- */
+.system-message {
+    background: transparent;
+    color: $text-muted;
+    text-style: italic;
+    padding: 0 1;
+    margin: 0;
+}
+
+/* --- PLAN / COMMAND --- */
+
 .plan-message {
     color: $success;
     text-style: bold;
 }
 
-/* Command Results */
+/* --- COMMAND RESULT --- */
+
 .result-message {
-    background: $background; 
+    background: $background;
     border-left: wide $primary;
     color: $text;
-    margin: 1 2 1 0; /* 1 line top margin, 1 line bottom margin */
-    padding: 1 1; /* Added vertical padding (1 line) and horizontal padding (1 cell) */
 }
 
 /* --- STATUS BAR --- */
+
 #loading-container {
     background: $background;
     color: $primary;
@@ -118,14 +133,14 @@ LoadingIndicator {
 }
 
 /* --- INPUT AREA --- */
+
 #input-container {
     height: auto;
     max-height: 20;
     background: $background;
-    /* Using $secondary for the muted border look */
     border: solid $secondary;
     padding: 0 1;
-    align-vertical: top; /* Changed to top for better multiline alignment */
+    align-vertical: top;
 }
 
 #input-container:focus-within {
@@ -153,6 +168,8 @@ LoadingIndicator {
     border: none;
 }
 
+/* --- SUGGESTIONS --- */
+
 #suggestion-box {
     background: $surface;
     border: round $primary;
@@ -171,6 +188,7 @@ LoadingIndicator {
 }
 
 /* --- HEADER & FOOTER --- */
+
 Header {
     background: $background;
     color: $primary;
@@ -182,8 +200,7 @@ Footer {
     color: $text-muted;
 }
 
-/* --- MODALS / SELECTION --- */
-/* SelectionScreen handles its own CSS internally in selection_widget.py */
+/* --- MODALS --- */
 
 ConfirmationScreen {
     align: center middle;
@@ -196,15 +213,4 @@ ConfirmationScreen {
     background: $surface;
     border: double $error;
     padding: 1 2;
-}
-
-.system-message {
-    background: transparent;
-    color: $warning;
-    text-style: bold;
-    border-top: wide $warning;
-    border-bottom: wide $warning;
-    text-align: center;
-    margin: 1 0;
-    padding: 1 1;
 }
