@@ -19,7 +19,7 @@ Screen {
 /* General Message Style */
 .chat-message {
     padding: 1 2;
-    margin-top: 1;
+    margin-top: 0;
     margin-bottom: 1;
     border: none;
     background: $background;
