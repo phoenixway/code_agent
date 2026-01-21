@@ -145,7 +145,7 @@ class TuiUI:
     async def print_system(self, text: str):
         await self._call_ui(
             self._add_message,
-            f" {text} ",
+            f"• {text} ",
             classes="chat-message system-message",
         )
 
@@ -294,6 +294,27 @@ class TuiUI:
         new_renderable = self._render_shell_result(command, result)
         await self._call_ui(widget.update, new_renderable)
 
+    async def print_read_file_start(self, command: dict) -> Static:
+        """Prints the initial state for a read_file command and returns the widget."""
+        file_path = command.get('path', '...')
+        renderable = Text.from_markup(f"🐾 Reading file [dim]{escape(file_path)}[/dim]")
+        widget = Static(renderable, classes="chat-message tool-call-message")
+        widget.file_path = file_path # Store for update
+        await self._call_ui(self._add_message, widget=widget)
+        return widget
+
+    async def update_read_file_result(self, widget: Static, result: dict):
+        """Updates the read_file widget with the final result."""
+        file_path = getattr(widget, 'file_path', '...')
+        status = result.get('status')
+        
+        if status == 'success':
+            icon = '✓'
+        else:
+            icon = '✗'
+        
+        new_renderable = Text.from_markup(f"{icon} Reading file [dim]{escape(file_path)}[/dim]")
+        await self._call_ui(widget.update, new_renderable)
     # ---------------------------------------------------------------------
     # Tool result rendering
     # ---------------------------------------------------------------------

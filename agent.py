@@ -187,6 +187,11 @@ class AngelicaAgent:
                             await self.ui.start_action(command.get("during_execution", f"Executing {cmd_name}..."))
                             result = await self.processor.process_single_action(command)
                             await self.ui.update_shell_result(shell_widget, result)
+                        elif cmd_name == 'read_file':
+                            read_file_widget = await self.ui.print_read_file_start(command)
+                            await self.ui.start_action(f"Reading {command.get('path', 'file')}...")
+                            result = await self.processor.process_single_action(command)
+                            await self.ui.update_read_file_result(read_file_widget, result)
                         else:
                             # Default display for all other tools
                             await self.ui.print_tool_call(command)
@@ -207,6 +212,7 @@ class AngelicaAgent:
                         self.last_action_status = result.get("status")
                         
                         output_text = result.get('output', '')
+
                         
                         # --- SMART STOP & TRUNCATION LOGIC ---
                         is_state_changing = any(op in cmd_name for op in STATE_CHANGING_OPS)
@@ -237,15 +243,15 @@ class AngelicaAgent:
                     # Визначаємо, чи продовжувати цикл
                     last_action_segment = next((s for s in reversed(processed_segments) if s.type == 'action'), None)
                     if last_action_segment:
-                        last_command = last_action_segment.content
-                        last_result_failed = self.last_action_status in ["failed", "error"]
-                        last_action_denied = self.last_action_status == "denied" # Assuming "denied" is the status
-                        
-                        if not last_result_failed and not last_action_denied: # Only continue if not failed AND not denied
+                        last_action_denied = self.last_action_status == "denied"
+
+                        # After an error, control is immediately returned to the AI, allowing it to make corrections.
+                        # The rest of the AI's message after the failed call is cut off.
+                        if not last_action_denied:
                             active_loop = True
                             current_query = "\n---\n".join(system_results)
                         else:
-                            active_loop = False # Stop on error OR if denied
+                            active_loop = False  # Stop if the user denied the action
                     else:
                         active_loop = False
                 else:
