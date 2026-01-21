@@ -203,8 +203,19 @@ class TuiUI:
         if args:
             try:
                 args_json = json.dumps(args, indent=2, ensure_ascii=False)
-                md_lines.append(f"```json\n{args_json}\n```")
+                # Remove the first and last line (curly braces)
+                args_lines = args_json.splitlines()
+                if len(args_lines) > 2: # Ensure there's content between braces
+                    # Join lines from index 1 to second-to-last, and unindent by 2 spaces
+                    args_display = "\n".join([line[2:] for line in args_lines[1:-1]])
+                else: # Handle empty or very short JSONs (e.g., just {})
+                    args_display = "" 
+                
+                if args_display:
+                    md_lines.append(f"```json\n{args_display}\n```")
+                # If args_display is empty, don't add the code block, just the tool call header
             except Exception:
+                # Fallback in case of non-JSON args or error, just print as string
                 md_lines.append(f"```\n{str(args)}\n```")
         
         renderable = RichMarkdown("\n\n".join(md_lines))

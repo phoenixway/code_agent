@@ -155,15 +155,17 @@ class AngelicaAgent:
                 active_loop = False # За замовчуванням цикл завершується, якщо не буде знайдено дій
                 
                 for segment in segments:
-                    processed_segments.append(segment)
-
                     if segment.type == 'thought':
                         await self.ui.print_thought(segment.content)
+                        processed_segments.append(segment)
                     
                     elif segment.type == 'text':
                         await self.ui.print_message(segment.content, role="assistant")
+                        processed_segments.append(segment)
                         
                     elif segment.type == 'action':
+                        processed_segments.append(segment)
+                        
                         command = segment.content
                         cmd_name = command.get("type") or command.get("action", "unknown")
 
@@ -205,21 +207,19 @@ class AngelicaAgent:
                         self.last_action_status = result.get("status")
                         
                         output_text = result.get('output', '')
-                        full_command_name = command.get('command') if cmd_name == 'run_shell' else None
                         
                         # --- SMART STOP & TRUNCATION LOGIC ---
                         is_state_changing = any(op in cmd_name for op in STATE_CHANGING_OPS)
                         execution_failed = result.get("status") in ["failed", "error"]
-                        should_return_control = command.get("return_control") is True
 
                         if execution_failed:
                             output_text += "\n\n[SYSTEM INSTRUCTION: The action failed. Analyze this error in a <think> block to determine the root cause, then propose a corrected action.]"
                         
                         system_results.append(f"SYSTEM RESULT for `{cmd_name}`: {output_text}")
                         
-                        # Зупиняємо виконання, якщо дія провалилася, змінює стан, або явно вимагає цього
-                        if execution_failed or is_state_changing or should_return_control:
-                            break # Зупиняємо обробку подальших сегментів
+                        # Stop processing further segments if the action failed or changed state
+                        if execution_failed or is_state_changing:
+                            break
 
                 # Реконструюємо повідомлення асистента ЛИШЕ з оброблених сегментів
                 reconstructed_message = self.parser.reconstruct(processed_segments)
@@ -236,20 +236,21 @@ class AngelicaAgent:
                     if last_action_segment:
                         last_command = last_action_segment.content
                         last_result_failed = self.last_action_status in ["failed", "error"]
-                        should_return_control_to_user = last_command.get("return_control") is True
-                        
-                        # Продовжуємо цикл, якщо дія була успішною І не вимагала повернення контролю користувачу
-                        if not last_result_failed and not should_return_control_to_user:
+                        # Продовжуємо цикл, якщо дія була успішною
+                        if not last_result_failed:
                             active_loop = True
                             current_query = "\n---\n".join(system_results)
                         else:
-                            active_loop = False # Зупиняємось при помилці або за вимогою `return_control`
+                            active_loop = False # Зупиняємось при помилці
                     else:
                         active_loop = False
                 else:
                     active_loop = False # Немає дій, немає циклу
 
-            await self.history.check_and_summarize(self.ui)
+            try:
+                await self.history.check_and_summarize(self.ui)
+            except Exception as e:
+                self.log.warning(f"History summarization was skipped or failed: {e}")
         except asyncio.CancelledError:
             pass
         finally:

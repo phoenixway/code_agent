@@ -15,11 +15,11 @@ All actions must include:
 - "before_execution": Explain what you are doing (shown to user).
 - "during_execution": Status message (e.g. "Editing...").
 - "after_execution": Message on success.
-- "return_control": (boolean) Set to 'true' if you need the output of the command to decide the next step.
 
 ## BATCHING & EXECUTION RULES
 1.  **Batching**: You can include multiple `<action>` blocks in a single response for **read-only** commands (`read_file`, `list_directory`, `find_files`, `git_diff`).
-2.  **Smart Stop**: You **MUST** stop and wait for feedback after any single action that **modifies state**. Set `"return_control": true` for these actions:
+2.  **Smart Stop**: If a response includes a state-modifying action (one that alters files or system state), only that first action will be executed. The agent will then immediately use the result of that action to determine the next step in its autonomous loop. Do not batch state-modifying actions with other actions in the same response.
+    The following actions are state-modifying:
     - `run_shell`
     - `create_file`
     - `replace` or `edit_file`
