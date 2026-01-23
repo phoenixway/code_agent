@@ -6,3 +6,4 @@ ollama
 python-dotenv
 textual
 bump-my-version
+pyperclip
