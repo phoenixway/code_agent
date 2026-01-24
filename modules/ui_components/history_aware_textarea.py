@@ -1,10 +1,11 @@
 from pathlib import Path
 import subprocess
 
-from textual.widgets import TextArea
+from textual.widgets import TextArea, Static
 from textual.binding import Binding
 from textual.events import Key
 from textual.message import Message
+from textual.reactive import reactive
 
 try:
     from modules.logger import get_debug_logger
@@ -25,9 +26,27 @@ except (ImportError, FileNotFoundError):
     HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 
+class SuggestionWidget(Static):
+    """Віджет для відображення автопідказок."""
+    
+    suggestion = reactive("")
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.styles.color = "gray"
+        self.styles.height = 1
+    
+    def watch_suggestion(self, new_suggestion: str) -> None:
+        """Оновлює текст підказки."""
+        if new_suggestion:
+            self.update(f"💡 {new_suggestion} [dim](Tab для прийняття)[/dim]")
+        else:
+            self.update("")
+
+
 class HistoryAwareTextArea(TextArea):
     """
-    TextArea з історією команд і гарантованою обробкою Enter (Termux-safe).
+    TextArea з історією команд і autosuggestion для команд.
     """
 
     class Submitted(Message):
@@ -45,9 +64,10 @@ class HistoryAwareTextArea(TextArea):
     BINDINGS = [
         Binding("ctrl+up", "history_up", show=False),
         Binding("ctrl+down", "history_down", show=False),
+        Binding("tab", "accept_suggestion", show=False),
     ]
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, commands=None, suggestion_widget=None, **kwargs):
         max_lines = kwargs.pop("max_lines", None)
         soft_wrap = kwargs.pop("wrap", False)
         self._placeholder = kwargs.pop("placeholder", "")
@@ -61,12 +81,51 @@ class HistoryAwareTextArea(TextArea):
         self._history: list[str] = []
         self._history_index = -1
         self._draft = ""
+        self._commands = commands or []  # Список доступних команд
+        self._suggestion_widget = suggestion_widget  # Віджет для відображення підказок
 
         self._load_history()
         self.show_line_numbers = False
 
         if not self.text and self._placeholder:
             self._show_placeholder()
+
+    # ------------------------------------------------------------------
+    # Autosuggestion
+    # ------------------------------------------------------------------
+
+    def _update_suggestion(self) -> None:
+        """Оновлює підказку на основі поточного тексту."""
+        current = self.text
+        
+        # Очищаємо підказку якщо текст порожній або це placeholder
+        if not current or current == self._placeholder:
+            self._set_suggestion("")
+            return
+        
+        # Шукаємо підказку тільки для команд (що починаються з /)
+        if not current.startswith("/"):
+            self._set_suggestion("")
+            return
+        
+        # Шукаємо першу команду, що підходить
+        current_lower = current.lower()
+        for cmd in self._commands:
+            if cmd.lower().startswith(current_lower) and cmd != current:
+                self._set_suggestion(cmd)
+                return
+        
+        self._set_suggestion("")
+
+    def _set_suggestion(self, suggestion: str) -> None:
+        """Оновлює віджет підказки."""
+        if self._suggestion_widget:
+            self._suggestion_widget.suggestion = suggestion
+        self._current_suggestion = suggestion
+
+    def _get_current_suggestion(self) -> str:
+        """Повертає поточну підказку."""
+        return getattr(self, '_current_suggestion', "")
 
     # ------------------------------------------------------------------
     # Placeholder
@@ -184,10 +243,26 @@ class HistoryAwareTextArea(TextArea):
                 logger.info(f"--- POSTING SUBMITTED MESSAGE ---\nvalue: {value!r}\n")
             
             self.post_message(self.Submitted(self, value))
+            return
+        
+        # Оновлюємо підказку після будь-якої клавіші
+        self._update_suggestion()
+    
+    def watch_text(self, new_text: str) -> None:
+        """Викликається при зміні тексту."""
+        self._update_suggestion()
 
     # ------------------------------------------------------------------
     # Actions
     # ------------------------------------------------------------------
+
+    def action_accept_suggestion(self) -> None:
+        """Приймає поточну підказку (Tab)."""
+        suggestion = self._get_current_suggestion()
+        if suggestion:
+            self.text = suggestion
+            self.move_cursor_to_end()
+            self._set_suggestion("")
 
     def action_new_line(self) -> None:
         """Action для Shift/Ctrl+Enter - додає новий рядок."""

@@ -6,7 +6,7 @@ from textual.widgets import Header, Footer, Static
 from textual.containers import Container, VerticalScroll, Horizontal
 from agent import AngelicaAgent
 from modules.tui_ui import TuiUI
-from modules.ui_components.history_aware_textarea import HistoryAwareTextArea
+from modules.ui_components.history_aware_textarea import HistoryAwareTextArea, SuggestionWidget
 from modules.ui_components.status_bar import StatusBar
 from modules.ui_components.token_status_bar import TokenStatusBar
 from modules.version import __version__
@@ -35,6 +35,7 @@ class TUI(App):
         with Container():
             yield VerticalScroll(id="history")
             yield StatusBar(id="loading-container")
+            yield SuggestionWidget(id="suggestion")
             yield Horizontal(
                 Static("> "),
                 HistoryAwareTextArea(
@@ -72,7 +73,16 @@ class TUI(App):
             f"Working Directory: {current_directory}"
         )
         await self.ui.print_initial_system_message(startup_message)
-        self.query_one("#input", HistoryAwareTextArea).focus()
+        
+        # Setup autosuggestion
+        input_area = self.query_one("#input", HistoryAwareTextArea)
+        suggestion_widget = self.query_one("#suggestion", SuggestionWidget)
+        
+        # Передати команди та віджет для підказок
+        input_area._commands = list(self.command_handler.command_names)
+        input_area._suggestion_widget = suggestion_widget
+        
+        input_area.focus()
 
         # Perform initial token status update
         try:
@@ -91,7 +101,7 @@ class TUI(App):
         """Called when the user submits a message."""
         user_input = message.value.strip()
         
-        self.agent.log.info(f"DEBUG: on_input_submitted called with: '{user_input}'")
+        self.agent.log.info(f"DEBUG: on_history_aware_text_area_submitted called with: '{user_input}'")
         
         input_widget = self.query_one(HistoryAwareTextArea)
         
