@@ -69,7 +69,7 @@ class HistoryAwareTextArea(TextArea):
 
     def __init__(self, *args, commands=None, suggestion_widget=None, **kwargs):
         max_lines = kwargs.pop("max_lines", None)
-        soft_wrap = kwargs.pop("wrap", False)
+        soft_wrap = kwargs.pop("wrap", True)  # Увімкнено за замовчуванням
         self._placeholder = kwargs.pop("placeholder", "")
 
         kwargs.setdefault("language", None)
