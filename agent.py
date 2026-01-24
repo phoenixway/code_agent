@@ -222,6 +222,11 @@ class AngelicaAgent:
                             await self.ui.start_action(f"Reading {command.get('path', 'file')}...")
                             result = await self.processor.process_single_action(command)
                             await self.ui.update_read_file_result(read_file_widget, result)
+                        elif cmd_name == 'edit_file':
+                            edit_file_widget = await self.ui.print_edit_file_start(command)
+                            await self.ui.start_action(f"Editing {command.get('path', 'file')}...")
+                            result = await self.processor.process_single_action(command)
+                            await self.ui.update_edit_file_result(edit_file_widget, result)
                         else:
                             # Default display for all other tools
                             await self.ui.print_tool_call(command)

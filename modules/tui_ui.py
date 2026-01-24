@@ -325,6 +325,28 @@ class TuiUI:
         new_renderable = Text.from_markup(f"{icon} Reading file [dim]{escape(file_path)}[/dim]")
         await self._call_ui(widget.update, new_renderable)
 
+    async def print_edit_file_start(self, command: dict) -> Static:
+        """Prints the initial state for an edit_file command and returns the widget."""
+        file_path = command.get('path', '...')
+        renderable = Text.from_markup(f"✏️ Editing file [dim]{escape(file_path)}[/dim]")
+        widget = Static(renderable, classes="edit-file-message")
+        widget.file_path = file_path # Store for update
+        await self._call_ui(self._add_message, widget=widget)
+        return widget
+
+    async def update_edit_file_result(self, widget: Static, result: dict):
+        """Updates the edit_file widget with the final result."""
+        file_path = getattr(widget, 'file_path', '...')
+        status = result.get('status')
+        
+        if status == 'success':
+            icon = '[green]✓[/green]'
+        else:
+            icon = '[red]✗[/red]'
+        
+        new_renderable = Text.from_markup(f"{icon} Editing file [dim]{escape(file_path)}[/dim]")
+        await self._call_ui(widget.update, new_renderable)
+
     # ---------------------------------------------------------------------
     # Tool result rendering
     # ---------------------------------------------------------------------

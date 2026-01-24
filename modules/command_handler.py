@@ -20,7 +20,7 @@ class CommandHandler:
             "/models": self._handle_models,
             "/theme": self._handle_theme,
             "/history-size": self._handle_history_size,
-            "/history-summarize": self._handle_history_summarize,
+            "/compact": self._handle_compact,
             "/quit": self._handle_quit,
             "/help": self._handle_help,
             "/clearsession": self._handle_clear_session,
@@ -282,7 +282,7 @@ class CommandHandler:
         else:
                 await self.ui.print_system("Selection cancelled.")
 
-    async def _handle_history_summarize(self, user_input):
+    async def _handle_compact(self, user_input):
         await self.agent.history.summarize(self.ui)
 
 
@@ -300,7 +300,7 @@ class CommandHandler:
             "  /models           - Switch AI model\n"
             "  /theme            - Switch UI theme\n"
             "  /history-size     - Change context window size\n"
-            "  /history-summarize - Manually summarize history\n"
+            "  /compact - Manually summarize history (compact)\n"
             "  /clearsession     - Clear the saved session data\n"
             "  /f, /find         - Fuzzy find files to add to context\n"
             "  /quit             - Exit application"
