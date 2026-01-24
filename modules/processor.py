@@ -1,11 +1,12 @@
 # modules/processor.py
 
 class ResponseProcessor:
-    def __init__(self, ui, tool_manager, chat, policy):
+    def __init__(self, ui, tool_manager, chat, policy, history):
         self.ui = ui
         self.tools = tool_manager
         self.chat = chat
         self.policy = policy
+        self.history = history
 
     MAX_OUTPUT_LENGTH = 3000
 
@@ -57,12 +58,24 @@ class ResponseProcessor:
         # 5. Перевірка політики (MiniPicker)
         normalized_cmd = {"type": action_type, **args}
         if not await self.policy.check(normalized_cmd):
-            return {"status": "failed", "output": "Action denied by user."}
+            return {"status": "denied", "output": "Action denied by user."}
 
         # 6. Виклик через ToolManager
         result = await self.tools.call(action_type, ui=self.ui, **args)
         
-        # 7. Check for ChangeProposal (Diff Preview)
+        # 7. Post-processing for specific tools (e.g., read_file)
+        if action_type == 'read_file' and result.get('status') == 'success':
+            file_path = result.get('file_path')
+            content = result.get('output')
+            if file_path and content:
+                version = self.history.add_file_version(file_path, content)
+                if version:
+                    self.history.add_file_context_marker(file_path, version)
+                    self.history.add_transient_file_content(file_path, version, content)
+                    # Modify the output for the main loop - it no longer needs the full content
+                    result['output'] = f"Read file '{file_path}' and added to history as v{version}."
+
+        # 8. Check for ChangeProposal (Diff Preview)
         from modules.types import ChangeProposal
         
         if isinstance(result, ChangeProposal):
@@ -78,7 +91,7 @@ class ResponseProcessor:
             else:
                 return {"status": "error", "output": "User rejected the file changes."}
 
-        # 8. Output Truncation
+        # 9. Output Truncation
         if not result.get("skip_truncation"):
             if isinstance(result, dict) and "output" in result and isinstance(result["output"], str) and len(result["output"]) > self.MAX_OUTPUT_LENGTH:
                 if await self.ui.confirm_truncation(action_type, len(result["output"])):

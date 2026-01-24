@@ -2,27 +2,16 @@ TABLE OF CONTENTS
 ================================================================================
 
 - [/home/romankozak/studio/public/code_agent/agent.py](##<<FILE_1>>)
-- [/home/romankozak/studio/public/code_agent/modules/chat.py](##<<FILE_2>>)
-- [/home/romankozak/studio/public/code_agent/modules/config_loader.py](##<<FILE_3>>)
-- [/home/romankozak/studio/public/code_agent/modules/context.py](##<<FILE_4>>)
-- [/home/romankozak/studio/public/code_agent/modules/defaults.py](##<<FILE_5>>)
-- [/home/romankozak/studio/public/code_agent/modules/files.py](##<<FILE_6>>)
-- [/home/romankozak/studio/public/code_agent/modules/healer.py](##<<FILE_7>>)
-- [/home/romankozak/studio/public/code_agent/modules/history.py](##<<FILE_8>>)
-- [/home/romankozak/studio/public/code_agent/modules/policy.py](##<<FILE_9>>)
-- [/home/romankozak/studio/public/code_agent/modules/processor.py](##<<FILE_10>>)
-- [/home/romankozak/studio/public/code_agent/modules/project.py](##<<FILE_11>>)
-- [/home/romankozak/studio/public/code_agent/modules/screens.py](##<<FILE_12>>)
-- [/home/romankozak/studio/public/code_agent/modules/session.py](##<<FILE_13>>)
-- [/home/romankozak/studio/public/code_agent/modules/storage.py](##<<FILE_14>>)
-- [/home/romankozak/studio/public/code_agent/modules/tools/base.py](##<<FILE_15>>)
-- [/home/romankozak/studio/public/code_agent/modules/tools/manager.py](##<<FILE_16>>)
-- [/home/romankozak/studio/public/code_agent/modules/tui_ui.py](##<<FILE_17>>)
-- [/home/romankozak/studio/public/code_agent/modules/ui.py](##<<FILE_18>>)
-- [/home/romankozak/studio/public/code_agent/modules/ui_components/history_input.py](##<<FILE_19>>)
-- [/home/romankozak/studio/public/code_agent/modules/ui_components/selection_widget.py](##<<FILE_20>>)
-- [/home/romankozak/studio/public/code_agent/tui.css](##<<FILE_21>>)
-- [/home/romankozak/studio/public/code_agent/tui.py](##<<FILE_22>>)
+- [/home/romankozak/studio/public/code_agent/modules/context.py](##<<FILE_2>>)
+- [/home/romankozak/studio/public/code_agent/modules/defaults.py](##<<FILE_3>>)
+- [/home/romankozak/studio/public/code_agent/modules/history.py](##<<FILE_4>>)
+- [/home/romankozak/studio/public/code_agent/modules/processor.py](##<<FILE_5>>)
+- [/home/romankozak/studio/public/code_agent/modules/project.py](##<<FILE_6>>)
+- [/home/romankozak/studio/public/code_agent/modules/storage.py](##<<FILE_7>>)
+- [/home/romankozak/studio/public/code_agent/modules/tools/base.py](##<<FILE_8>>)
+- [/home/romankozak/studio/public/code_agent/modules/tools/manager.py](##<<FILE_9>>)
+- [/home/romankozak/studio/public/code_agent/tui.css](##<<FILE_10>>)
+- [/home/romankozak/studio/public/code_agent/tui.py](##<<FILE_11>>)
 
 ================================================================================
 
@@ -33,7 +22,6 @@ BEGIN FILE: /home/romankozak/studio/public/code_agent/agent.py (ID: FILE_1)
 
 import json
 import re
-import logging
 import asyncio
 import os
 
@@ -47,6 +35,8 @@ from modules.session import SessionManager
 from modules.processor import ResponseProcessor
 from modules.policy import PermissionPolicy
 from modules.chat import get_chat_provider, ProviderAPIError
+from modules.parser import ResponseParser, Segment
+from modules.logger import get_comm_logger, get_debug_logger, setup_loggers
 
 class AngelicaAgent:
     def __init__(self, ui=None):
@@ -56,10 +46,13 @@ class AngelicaAgent:
         # Стан та запобіжники для TUI
         self.is_awaiting_model_selection = False 
         self.current_task = None
+        self.main_task = None
         self.MAX_CONSECUTIVE_CALLS = 5
 
-        # Налаштування логування комунікації
-        self.comm_log = self._setup_logger()
+        # Налаштування логування
+        setup_loggers(clear_communication_log=True)
+        self.comm_log = get_comm_logger()
+        self.log = get_debug_logger()
 
         # 1. Ініціалізація ToolManager та завантаження інструментів
         self.tool_manager = ToolManager()
@@ -75,12 +68,13 @@ class AngelicaAgent:
         self.chat = get_chat_provider(model_name)
         
         # 4. Управління історією та сесіями
-        self.history = HistoryManager(self.chat, logger=self.comm_log, max_tokens=self.settings.get("max_history_tokens", 4000))
-        self.session_manager = SessionManager(CONFIG_DIR, self.history, self.context_manager, self._ui)
+        self.history = HistoryManager(self.chat, logger=self.log, max_tokens=self.settings.get("max_history_tokens", 4000))
+        self.session_manager = SessionManager(self.history, self.context_manager, self._ui)
+        self.session_manager.load_session()
         
-        # Ініціалізація розміру контексту з налаштувань
-        initial_context_size = self.settings.get("context_size", "small")
-        self.set_context_size(initial_context_size)
+        # Ініціалізація розміру історії з налаштувань
+        initial_history_size = self.settings.get("history_size", "small")
+        self.set_history_size(initial_history_size)
 
         # 5. Політика безпеки та Процесор дій
         policy_mode = self.settings.get("permission_policy", "ask")
@@ -90,8 +84,30 @@ class AngelicaAgent:
             ui=self._ui, 
             tool_manager=self.tool_manager, 
             chat=self.chat, 
-            policy=self.policy
+            policy=self.policy,
+            history=self.history
         )
+        
+        # 6. Parser
+        self.parser = ResponseParser()
+        
+        # 7. Loop Detection
+        self.last_action_fingerprint = None
+        self.last_action_status = None
+        self.consecutive_failed_repeats = 0
+
+        # 8. Token tracking
+        self.session_tokens = 0
+
+    def _get_action_fingerprint(self, command: dict) -> str:
+        """Creates a unique string for an action based on type and arguments."""
+        cmd_type = command.get("type") or command.get("action") or "unknown"
+        # Extract arguments, ignoring service fields
+        service_fields = {"before_execution", "during_execution", "after_execution", "return_control"}
+        args = {k: v for k, v in command.items() if k not in service_fields}
+        # Stable string representation
+        args_str = json.dumps(args, sort_keys=True)
+        return f"{cmd_type}:{args_str}"
 
     @property
     def ui(self):
@@ -105,33 +121,22 @@ class AngelicaAgent:
         if hasattr(self, 'policy'): self.policy.ui = value
         if hasattr(self, 'session_manager'): self.session_manager.ui = value
 
-    def _setup_logger(self):
-        logger = logging.getLogger('communication')
-        logger.setLevel(logging.INFO)
-        if not logger.handlers:
-            handler = logging.FileHandler("communication.log", encoding="utf-8")
-            handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s'))
-            logger.addHandler(handler)
-        return logger
-
-
-
     async def get_response(self, query):
         """Отримує стрімінгову відповідь від ШІ."""
         full_text = ""
-        self.comm_log.info(f"OUTGOING:\n{query}")
+        self.comm_log.info(f"--- OUTGOING ---\n{query}\n")
         try:
             async for chunk in self.chat.get_streaming_response(query, self.history.get_history_for_api()):
                 full_text += chunk
         except Exception as e:
-            self.comm_log.error(f"Chat error: {e}")
+            self.log.error(f"Chat error: {e}")
             return f"Error: {e}"
         
-        self.comm_log.info(f"INCOMING:\n{full_text}")
+        self.comm_log.info(f"--- INCOMING ---\n{full_text}\n")
         return full_text
 
     async def process_user_input(self, user_input):
-        """Головний цикл обробки вводу: Промпт -> ШІ -> Дія -> Результат -> ШІ."""
+        """Головний цикл обробки вводу: Промпт -> ШІ -> Парсинг -> Послідовне виконання -> ШІ."""
         # Підготовка контексту та інструментів
         tools_desc = self.tool_manager.get_tools_prompt()
         system_prompt = DEFAULT_SYSTEM_PROMPT.format(tools_description=tools_desc)
@@ -145,6 +150,9 @@ class AngelicaAgent:
         consecutive_calls = 0
         current_query = user_input
 
+        # Список операцій, що змінюють стан
+        STATE_CHANGING_OPS = ["run_shell", "create_file", "replace", "edit_file", "git_add", "git_commit", "git_checkout", "delete_file"]
+
         try:
             while active_loop:
                 consecutive_calls += 1
@@ -153,56 +161,166 @@ class AngelicaAgent:
                     if not await self.ui.confirm_continue("Агент виконав багато кроків. Продовжити?"):
                         break
 
-                await self.ui.start_thinking()
+                await self.ui.start_thinking() 
                 
                 # Запускаємо задачу з можливістю переривання
                 self.current_task = asyncio.create_task(self.get_response(current_query))
                 response = await self.current_task
+
+                # --- TOKEN CALCULATION & UI UPDATE ---
+                try:
+                    if self.ui and hasattr(self.ui, 'update_token_status'):
+                        prompt_tokens = 0
+                        completion_tokens = 0
+                        tokenizer = self.chat.get_tokenizer()
+
+                        if tokenizer:
+                            prompt_tokens = len(tokenizer.encode(current_query))
+                            completion_tokens = len(tokenizer.encode(response))
+                        else:
+                            # Fallback to character-based estimation
+                            prompt_tokens = len(current_query) // 4
+                            completion_tokens = len(response) // 4
+                        
+                        self.session_tokens += prompt_tokens + completion_tokens
+
+                        self.log.info(f"Updating token status: history={self.history.current_token_count}, max={self.history.max_tokens}, session={self.session_tokens}")
+                        await self.ui.update_token_status(
+                            history_tokens=self.history.current_token_count,
+                            max_tokens=self.history.max_tokens,
+                            session_tokens=self.session_tokens
+                        )
+                except Exception as e:
+                    self.log.error(f"Failed to update token status: {e}")
+                # --- END TOKEN CALCULATION ---
                 
-                if not response or response.startswith("Error:"): 
+                if not response:
                     break
                 
-                self.history.add_message("assistant", response)
-                thoughts, command, plain_text = self._parse_output(response)
+                if response.startswith("Error:"):
+                    await self.ui.print_error(response)
+                    break
+                
+                segments = self.parser.parse(response)
+                
+                processed_segments = []
+                system_results = []
+                active_loop = False # За замовчуванням цикл завершується, якщо не буде знайдено дій
+                
+                for segment in segments:
+                    if segment.type == 'thought':
+                        await self.ui.print_thought(segment.content)
+                        processed_segments.append(segment)
+                    
+                    elif segment.type == 'text':
+                        await self.ui.print_message(segment.content, role="assistant")
+                        processed_segments.append(segment)
+                        
+                    elif segment.type == 'action':
+                        processed_segments.append(segment)
+                        
+                        command = segment.content
+                        cmd_name = command.get("type") or command.get("action", "unknown")
 
-                # Відображення думок в UI
-                for thought in thoughts:
-                    await self.ui.print_thought(thought)
+                        # --- LOOP DETECTION ---
+                        fingerprint = self._get_action_fingerprint(command)
+                        if fingerprint == self.last_action_fingerprint and self.last_action_status in ["failed", "error"]:
+                            self.consecutive_failed_repeats += 1
+                        else:
+                            self.consecutive_failed_repeats = 0
+                        
+                        if self.consecutive_failed_repeats >= 1:
+                            warn_msg = "⚠️ Loop detected: You are repeating the same action that just failed."
+                            await self.ui.print_error(warn_msg)
+                            self.history.add_message("system", f"CRITICAL: {warn_msg} Change your strategy.")
 
-                # ВИБІР: АБО Команда, АБО Текстова відповідь
-                if command:
-                    if command.get("before_execution"):
-                        await self.ui.print_plan(command['before_execution'])
-                    
-                    await self.ui.start_action(command.get("during_execution", "Processing..."))
-                    
-                    # Виконання дії (тут може з'явитися MiniPicker)
-                    result = await self.processor.process_single_action(command)
-                    
-                    if result.get("status") == "success" and command.get("after_execution"):
-                        await self.ui.print_confirmation(command['after_execution'])
-                    
-                    # Друкуємо результат в історії
-                    output_text = result.get('output', '')
-                    await self.ui.print_command_result(output_text)
+                        # --- Branch for run_shell display ---
+                        if cmd_name == 'run_shell':
+                            shell_widget = await self.ui.print_shell_start(command)
+                            await self.ui.start_action(command.get("during_execution", f"Executing {cmd_name}..."))
+                            result = await self.processor.process_single_action(command)
+                            await self.ui.update_shell_result(shell_widget, result)
+                        elif cmd_name == 'read_file':
+                            read_file_widget = await self.ui.print_read_file_start(command)
+                            await self.ui.start_action(f"Reading {command.get('path', 'file')}...")
+                            result = await self.processor.process_single_action(command)
+                            await self.ui.update_read_file_result(read_file_widget, result)
+                        elif cmd_name == 'edit_file':
+                            edit_file_widget = await self.ui.print_edit_file_start(command)
+                            await self.ui.start_action(f"Editing {command.get('path', 'file')}...")
+                            result = await self.processor.process_single_action(command)
+                            await self.ui.update_edit_file_result(edit_file_widget, result)
+                        else:
+                            # Default display for all other tools
+                            await self.ui.print_tool_call(command)
+                            if command.get("before_execution"):
+                                await self.ui.print_plan(command['before_execution'])
+                            
+                            await self.ui.start_action(command.get("during_execution", f"Executing {cmd_name}..."))
+                            result = await self.processor.process_single_action(command)
 
-                    # Якщо ШІ потрібен результат для наступного кроку (loop)
-                    if command.get("return_control") is True:
-                        res_msg = f"SYSTEM RESULT: {output_text}"
-                        self.history.add_message("system", res_msg)
-                        current_query = res_msg # Передаємо результат на наступну ітерацію
+                            if result.get("status") == "success" and command.get("after_execution"):
+                                await self.ui.print_confirmation(command['after_execution'])
+                            
+                            output_text_for_print = result.get('output', '')
+                            await self.ui.print_command_result(output_text_for_print)
+
+                        # --- COMMON POST-ACTION LOGIC ---
+                        self.last_action_fingerprint = fingerprint
+                        self.last_action_status = result.get("status")
+                        
+                        output_text = result.get('output', '')
+
+                        
+                        # --- SMART STOP & TRUNCATION LOGIC ---
+                        is_state_changing = any(op in cmd_name for op in STATE_CHANGING_OPS)
+                        execution_failed = result.get("status") in ["failed", "error"]
+                        action_denied = result.get("status") == "denied" # Assuming "denied" is the status for denied actions
+
+                        if execution_failed:
+                            output_text += "\n\n[SYSTEM INSTRUCTION: The action failed. Analyze this error in a <think> block to determine the root cause, then propose a corrected action.]"
+                        elif action_denied: # New condition
+                            output_text += "\n\n[SYSTEM INSTRUCTION: The user denied the action. Re-evaluate your plan and propose an alternative action or explanation.]"
+                        
+                        system_results.append(f"SYSTEM RESULT for `{cmd_name}`: {output_text}")
+                        
+                        # Stop processing further segments if the action failed, changed state, OR was denied
+                        if execution_failed or is_state_changing or action_denied:
+                            break
+
+                # Реконструюємо повідомлення асистента ЛИШЕ з оброблених сегментів
+                reconstructed_message = self.parser.reconstruct(processed_segments)
+                if reconstructed_message:
+                    self.history.add_message("assistant", reconstructed_message)
+
+                # Додаємо всі результати виконаних дій в історію
+                if system_results:
+                    for res in system_results:
+                        self.history.add_message("system", res)
+                    
+                    # Визначаємо, чи продовжувати цикл
+                    last_action_segment = next((s for s in reversed(processed_segments) if s.type == 'action'), None)
+                    if last_action_segment:
+                        last_action_denied = self.last_action_status == "denied"
+
+                        # After an error, control is immediately returned to the AI, allowing it to make corrections.
+                        # The rest of the AI's message after the failed call is cut off.
+                        if not last_action_denied:
+                            active_loop = True
+                            current_query = "\n---\n".join(system_results)
+                        else:
+                            active_loop = False  # Stop if the user denied the action
                     else:
                         active_loop = False
-                
-                elif plain_text:
-                    await self.ui.print_message(plain_text, role="assistant")
-                    active_loop = False
                 else:
-                    active_loop = False
+                    active_loop = False # Немає дій, немає циклу
 
-            await self.history.check_and_summarize(self.ui)
+            try:
+                await self.history.check_and_summarize(self.ui)
+            except Exception as e:
+                self.log.warning(f"History summarization was skipped or failed: {e}")
         except asyncio.CancelledError:
-            pass # Переривання вже оброблене в interrupt()
+            pass
         finally:
             self.current_task = None
             await self.ui.stop_loading()
@@ -224,37 +342,36 @@ class AngelicaAgent:
         
         if new_chat_provider:
             self.chat = new_chat_provider
-            self.history = HistoryManager(self.chat, logger=self.comm_log, max_tokens=self.settings.get("max_history_tokens", 4000))
+            self.history = HistoryManager(self.chat, logger=self.log, max_tokens=self.settings.get("max_history_tokens", 4000))
             self.processor.chat = self.chat
+            self.processor.history = self.history # Update processor with new history
             await self.ui.update_header(f"{self.chat.model_name}")
             await self.ui.print_system(f"✅ Модель змінено на {model_name}")
     
-    def set_context_size(self, size_name: str):
-        """Встановлює розмір контекстного вікна."""
-        CONTEXT_SIZES = {
+    def set_history_size(self, size_name: str):
+        """Встановлює ліміт токенів історії (колишній context_size)."""
+        HISTORY_LIMITS = {
             "small": 4096,
             "medium": 16384,
             "large": 32768
         }
         
         size_key = size_name.lower()
-        if size_key not in CONTEXT_SIZES:
+        if size_key not in HISTORY_LIMITS:
             # Fallback for unknown values
             token_limit = 4096
             size_key = "small"
         else:
-            token_limit = CONTEXT_SIZES[size_key]
+            token_limit = HISTORY_LIMITS[size_key]
             
         # Update history manager if initialized
         if hasattr(self, 'history'):
             self.history.max_tokens = token_limit
             
         # Save current state (runtime only, doesn't persist to yaml unless we want to)
-        self.context_size = size_key
+        self.history_size = size_key
         if self.ui:
-            asyncio.create_task(self.ui.print_system(f"Context size set to {size_key.upper()} ({token_limit} tokens limit)"))
-
-
+            asyncio.create_task(self.ui.print_system(f"History limit set to {size_key.upper()} ({token_limit} tokens)"))
 
 ================================================================================
 END FILE: /home/romankozak/studio/public/code_agent/agent.py
@@ -262,224 +379,7 @@ END FILE: /home/romankozak/studio/public/code_agent/agent.py
 
 ## <<FILE_2>>
 ================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/chat.py (ID: FILE_2)
-================================================================================
-
-import os
-import httpx
-import json
-from modules.defaults import DEFAULT_SYSTEM_PROMPT
-
-class ProviderAPIError(Exception):
-    """Custom exception for API errors from chat providers."""
-    pass
-
-class BaseChat:
-    """Базовий клас для всіх провайдерів."""
-    def __init__(self, model_name):
-        self.model_name = model_name
-
-    def _prepare_messages(self, prompt, history):
-        messages = [{"role": "system", "content": DEFAULT_SYSTEM_PROMPT}]
-        
-        # Додаємо лише непусті повідомлення та обрізаємо їх
-        for msg in history:
-            print(f"LOG_PREPARE_MESSAGES: Processing history message: '{repr(msg)}'")
-            content = msg.get("content", "").strip()
-            if content:
-                messages.append({"role": msg["role"], "content": content})
-                
-        # Додаємо поточний запит, якщо він не порожній і його ще немає в історії
-        if prompt and prompt.strip():
-            messages.append({"role": "user", "content": prompt.strip()})
-            
-        return messages
-
-class OpenAICompatibleChat(BaseChat):
-    """Для OpenAI, DeepSeek та інших OpenAI-сумісних сервісів."""
-    def __init__(self, model_name, base_url, api_key_env):
-        super().__init__(model_name)
-        self.base_url = base_url
-        self.api_key = os.getenv(api_key_env)
-        if not self.api_key:
-            raise ValueError(f"Missing API key for {model_name}. Please set the {api_key_env} environment variable.")
-
-    async def get_streaming_response(self, prompt, history):
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "model": self.model_name,
-            "messages": self._prepare_messages(prompt, history),
-            "temperature": 0.2,
-            "stream": True
-        }
-
-        try:
-            async with httpx.AsyncClient(timeout=300) as client:
-                async with client.stream("POST", f"{self.base_url}/chat/completions", headers=headers, json=payload) as response:
-                    async for line in response.aiter_lines():
-                        if line.startswith('data: '):
-                            line_text = line[6:]
-                            if line_text == '[DONE]':
-                                break
-                            try:
-                                data = json.loads(line_text)
-                                content = data['choices'][0]['delta'].get('content', '')
-                                if content:
-                                    yield content
-                            except json.JSONDecodeError:
-                                continue
-        except Exception as e:
-            raise ProviderAPIError(f"OpenAICompatibleChat Error: {str(e)}")
-
-class OllamaChat(BaseChat):
-    """Для локального запуску через Ollama."""
-    def __init__(self, model_name):
-        super().__init__(model_name)
-        self.url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/api/chat")
-
-    async def get_streaming_response(self, prompt, history):
-        payload = {
-            "model": self.model_name,
-            "messages": self._prepare_messages(prompt, history),
-            "stream": True
-        }
-
-        try:
-            async with httpx.AsyncClient(timeout=300) as client:
-                async with client.stream("POST", self.url, json=payload) as response:
-                    async for line in response.aiter_lines():
-                        if line:
-                            data = json.loads(line)
-                            if 'message' in data:
-                                yield data['message'].get('content', '')
-                            if data.get('done'):
-                                break
-        except Exception as e:
-            raise ProviderAPIError(f"Ollama Connection Error: {str(e)}")
-
-class GeminiRestChat(BaseChat):
-    """Полегшена версія Gemini з підтримкою стрімінгу через REST."""
-    def __init__(self, model_name):
-        super().__init__(model_name)
-        self.api_key = os.getenv("GEMINI_API_KEY")
-        if not self.api_key:
-            raise ValueError(f"Missing API key for Gemini. Please set the GEMINI_API_KEY environment variable.")
-        self.url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:streamGenerateContent?key={self.api_key}"
-
-    async def get_streaming_response(self, prompt, history):
-        contents = []
-        for m in history:
-            # Gemini expects "model" for assistant role
-            role = "user" if m["role"] == "user" else "model"
-            contents.append({"role": role, "parts": [{"text": m["content"]}]})
-        if prompt:
-            contents.append({"role": "user", "parts": [{"text": prompt}]})
-
-        payload = {
-            "contents": contents,
-            "system_instruction": {"parts": [{"text": DEFAULT_SYSTEM_PROMPT}]}
-        }
-        
-        try:
-            async with httpx.AsyncClient(timeout=300) as client:
-                async with client.stream("POST", self.url, json=payload) as response:
-                    async for line in response.aiter_lines():
-                        if line.startswith('data: '):
-                            line_text = line[6:]
-                            try:
-                                data = json.loads(line_text)
-                                yield data['candidates'][0]['content']['parts'][0]['text']
-                            except (json.JSONDecodeError, KeyError, IndexError):
-                                continue
-        except Exception as e:
-            raise ProviderAPIError(f"Gemini Stream Error: {str(e)}")
-
-# A dictionary to map model name keywords to provider classes and their arguments
-PROVIDERS = {
-    "gemini": (GeminiRestChat, []),
-    "deepseek": (OpenAICompatibleChat, ["https://api.deepseek.com", "DEEPSEEK_API_KEY"]),
-    "gpt": (OpenAICompatibleChat, ["https://api.openai.com/v1", "OPENAI_API_KEY"]),
-    "ollama": (OllamaChat, []),
-    "qwen": (OllamaChat, []),
-}
-
-def get_chat_provider(model_name):
-    """Factory function to get the appropriate chat provider."""
-    m_lower = model_name.lower()
-    
-    for keyword, (provider_class, args) in PROVIDERS.items():
-        if keyword in m_lower:
-            try:
-                if keyword in ["ollama", "qwen"]:
-                    clean_name = model_name.split('/')[-1] if '/' in model_name else model_name
-                    return provider_class(clean_name)
-                return provider_class(model_name, *args)
-            except ValueError as e:
-                print(f"Error initializing chat provider for {model_name}: {e}")
-                return None
-            
-    # Default fallback provider
-    try:
-        return GeminiRestChat("gemini-1.5-pro")
-    except ValueError as e:
-        print(f"Error initializing default Gemini chat provider: {e}")
-        return None
-
-================================================================================
-END FILE: /home/romankozak/studio/public/code_agent/modules/chat.py
-================================================================================
-
-## <<FILE_3>>
-================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/config_loader.py (ID: FILE_3)
-================================================================================
-
-# modules/config_loader.py
-import os
-import yaml
-from pathlib import Path
-from dotenv import load_dotenv
-
-CONFIG_DIR = Path.home() / ".config" / "angelica-ai"
-CONFIG_FILE = CONFIG_DIR / "config.yaml"
-ENV_FILE = CONFIG_DIR / ".env"
-
-def load_settings():
-    if not CONFIG_DIR.exists():
-        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    
-    if not CONFIG_FILE.exists():
-        default = {
-            "default_model": "gemini-1.5-pro",
-            "available_models": [
-                "gemini-1.5-pro",
-                "ollama/qwen:4b",
-                "claude-3-opus-20240229",
-                "gpt-4"
-            ],
-            "permission_policy": "ask", 
-            "max_history_tokens": 4000
-        }
-        with open(CONFIG_FILE, 'w') as f:
-            yaml.dump(default, f)
-            
-    if ENV_FILE.exists():
-        load_dotenv(ENV_FILE)
-        
-    with open(CONFIG_FILE, 'r') as f:
-        return yaml.safe_load(f) or {}
-
-
-================================================================================
-END FILE: /home/romankozak/studio/public/code_agent/modules/config_loader.py
-================================================================================
-
-## <<FILE_4>>
-================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/context.py (ID: FILE_4)
+BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/context.py (ID: FILE_2)
 ================================================================================
 
 # modules/context.py
@@ -539,13 +439,44 @@ class ContextManager:
         _build_tree(root_dir, 1)
         return "\n".join(output)
 
-    def add_file(self, path):
-        # Використовуємо твій існуючий FileModule
-        content = self.files.read_file(path)
-        if content:
-            self.basket[path] = content
-            return True
-        return False
+    def add_path(self, path):
+        """Додає файл або всі файли з папки до контексту."""
+        p = Path(path)
+        if not p.exists():
+            return 0
+
+        added_count = 0
+        
+        if p.is_file():
+            content = self.files.read_file(str(p))
+            if content:
+                self.basket[str(p)] = content
+                added_count = 1
+        elif p.is_dir():
+            # Додаємо всі файли з папки (тільки перший рівень, щоб не перевантажити)
+            ignore_list = self._get_ignore_list(p)
+            for item in p.iterdir():
+                if item.is_file() and item.name not in ignore_list:
+                    content = self.files.read_file(str(item))
+                    if content:
+                        self.basket[str(item)] = content
+                        added_count += 1
+        
+        return added_count
+
+    def remove_path(self, path):
+        """Видаляє шлях з контексту. Якщо папка - видаляє всі файли, що починаються з цього шляху."""
+        # Якщо точний збіг (файл)
+        if path in self.basket:
+            del self.basket[path]
+            return 1
+            
+        # Якщо це папка або частковий шлях
+        to_remove = [k for k in self.basket.keys() if k.startswith(path)]
+        count = len(to_remove)
+        for k in to_remove:
+            del self.basket[k]
+        return count
 
     def get_context_prompt(self):
         """Збирає структуру та вміст кошика в один промпт."""
@@ -561,10 +492,6 @@ class ContextManager:
         
         return f"{structure}{files_content}"
 
-    # Решта методів без змін
-    def remove_file(self, path):
-        return self.basket.pop(path, None) is not None
-
     def clear(self):
         self.basket.clear()
 
@@ -573,9 +500,9 @@ class ContextManager:
 END FILE: /home/romankozak/studio/public/code_agent/modules/context.py
 ================================================================================
 
-## <<FILE_5>>
+## <<FILE_3>>
 ================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/defaults.py (ID: FILE_5)
+BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/defaults.py (ID: FILE_3)
 ================================================================================
 
 # modules/defaults.py
@@ -595,7 +522,15 @@ All actions must include:
 - "before_execution": Explain what you are doing (shown to user).
 - "during_execution": Status message (e.g. "Editing...").
 - "after_execution": Message on success.
-- "return_control": (boolean) Set to 'true' if you need the output of the command to decide the next step.
+
+## BATCHING & EXECUTION RULES
+1.  **Batching**: You can include multiple `<action>` blocks in a single response for **read-only** commands (`read_file`, `list_directory`, `find_files`, `git_diff`).
+2.  **Smart Stop**: If a response includes a state-modifying action (one that alters files or system state), only that first action will be executed. The agent will then immediately use the result of that action to determine the next step in its autonomous loop. Do not batch state-modifying actions with other actions in the same response.
+    The following actions are state-modifying:
+    - `run_shell`
+    - `create_file`
+    - `replace` or `edit_file`
+    - Any `git` command that writes (`commit`, `checkout`, `add`)
 
 ## GUIDELINES & STRATEGIES
 1. **File Editing**: 
@@ -624,263 +559,417 @@ Begin your response with an analysis (and optional plan) in <think> tags."""
 END FILE: /home/romankozak/studio/public/code_agent/modules/defaults.py
 ================================================================================
 
-## <<FILE_6>>
+## <<FILE_4>>
 ================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/files.py (ID: FILE_6)
-================================================================================
-
-# modules/files.py
-import os
-import re
-from pathlib import Path
-from dataclasses import dataclass
-from typing import Optional
-
-@dataclass
-class EditBlock:
-    file_path: str
-    search_text: str
-    replace_text: str
-
-@dataclass
-class EditResult:
-    success: bool
-    message: str
-    strategy: str = "none"
-
-class FileModule:
-    def create_file(self, file_path: str, content: str) -> EditResult:
-        path = Path(file_path)
-        if path.exists():
-            return EditResult(False, f"File {file_path} already exists.")
-        try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(content, encoding='utf-8')
-            return EditResult(True, f"File created: {file_path}", "create")
-        except Exception as e:
-            return EditResult(False, str(e))
-
-    def apply_edit(self, block: EditBlock) -> EditResult:
-        path = Path(block.file_path)
-        if not path.exists():
-            return EditResult(False, f"File not found: {block.file_path}")
-        
-        content = path.read_text(encoding='utf-8')
-        if block.search_text in content:
-            new_content = content.replace(block.search_text, block.replace_text, 1)
-            path.write_text(new_content, encoding='utf-8')
-            return EditResult(True, f"Applied to {block.file_path}", "exact")
-        
-        return EditResult(False, "Search block not found.")
-
-    def read_file(self, file_path: str) -> Optional[str]:
-        path = Path(file_path)
-        return path.read_text(encoding='utf-8') if path.exists() else None
-
-
-================================================================================
-END FILE: /home/romankozak/studio/public/code_agent/modules/files.py
-================================================================================
-
-## <<FILE_7>>
-================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/healer.py (ID: FILE_7)
-================================================================================
-
-# modules/healer.py
-class HealerModule:
-    @staticmethod
-    def generate_healing_prompt(file_path, error, content):
-        return f"Patch failed for {file_path}.\nError: {error}\nCurrent file state:\n{content}\nPlease provide a correct JSON patch."
-
-
-================================================================================
-END FILE: /home/romankozak/studio/public/code_agent/modules/healer.py
-================================================================================
-
-## <<FILE_8>>
-================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/history.py (ID: FILE_8)
+BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/history.py (ID: FILE_4)
 ================================================================================
 
 # modules/history.py
+import json
+import time
+
 class HistoryManager:
-    def __init__(self, chat_provider, logger=None, max_tokens=4000):
-        self.messages = []
+    """
+    HistoryManager для code-agent:
+    - зберігає повідомлення (user/assistant/system)
+    - зберігає файли коду з версіями
+    - підтримує token counting, sliding window, summary через LLM
+    """
+
+    def __init__(self, chat_provider, logger=None, max_tokens=4000, window_size=50, max_file_versions=5):
+        self.messages = []         # raw chat messages
+        self.files = {}            # {"filename": [{"version": int, "content": str, "timestamp": float}, ...]}
         self.chat = chat_provider
-        self.max_tokens = max_tokens
         self.logger = logger
+        self.max_tokens = max_tokens
+        self.window_size = window_size  # останні N повідомлень залишаються без summary
+        self.max_file_versions = max_file_versions
 
-    def add_message(self, role, content):
-        if self.logger:
-            self.logger.info(f"LOG_HISTORY_ADD_MESSAGE_RAW: Role={role}, Content='{repr(content)}'")
+    # ------------------ Messages ------------------
+
+    def add_message(self, role, content, msg_type=None):
+        """Додає чисте повідомлення в історію"""
+        if not content and not msg_type:
+            return
+
+        if isinstance(content, str):
+            content = content.strip()
+            if not content and not msg_type:
+                return
         
-        if content and isinstance(content, str):
-            cleaned = content.strip()
-            
-            if self.logger:
-                self.logger.info(f"LOG_HISTORY_ADD_MESSAGE_CLEANED: Role={role}, Content='{repr(cleaned)}'")
+        message = {"role": role, "content": content}
+        if msg_type:
+            message["type"] = msg_type
 
-            if cleaned:
-                self.messages.append({"role": role, "content": cleaned})
+        self.messages.append(message)
+        if self.logger:
+            log_content = content
+            if isinstance(content, dict):
+                log_content = json.dumps(content)[:100]
+            elif isinstance(content, str):
+                log_content = content[:50]
+            self.logger.debug(f"Added message: role={role}, type={msg_type}, content='{log_content}...'")
+
+    def add_messages(self, messages):
+        for msg in messages:
+            self.add_message(msg["role"], msg.get("content"), msg.get("type"))
+
+    # ------------------ Files ------------------
+
+    def add_file_version(self, filename, content):
+        """
+        Додає нову версію файлу в self.files і повертає номер версії.
+        """
+        content = content.strip()
+        if not content:
+            return None
+        version_list = self.files.setdefault(filename, [])
+        version_number = (version_list[-1]["version"] + 1) if version_list else 1
+        version_list.append({
+            "version": version_number,
+            "content": content,
+            "timestamp": time.time()
+        })
+        # Trim old versions
+        if len(version_list) > self.max_file_versions:
+            version_list[:] = version_list[-self.max_file_versions:]
+        if self.logger:
+            self.logger.debug(f"Added file version: {filename} v{version_number}")
+        return version_number
+
+    def add_file_context_marker(self, filename, version):
+        """Додає маркер-посилання на файл в історію повідомлень."""
+        marker = {"filename": filename, "version": version}
+        self.add_message("system", marker, msg_type="file_context")
+
+    def add_transient_file_content(self, filename, version, content):
+        """Додає тимчасове повідомлення з повним вмістом файлу."""
+        transient_content = {
+            "filename": filename,
+            "version": version,
+            "content": content
+        }
+        self.add_message("system", transient_content, msg_type="transient_file_content")
+
+    def get_latest_file_content(self, filename):
+        """Повертає останню версію файлу"""
+        versions = self.files.get(filename)
+        if versions:
+            return versions[-1]["content"]
+        return None
+
+    def get_file_history(self, filename):
+        """Повертає список всіх версій файлу"""
+        return self.files.get(filename, [])
+
+    # ------------------ Token counting ------------------
+
+    def count_tokens(self, messages=None):
+        """Підрахунок токенів історії"""
+        messages_to_count = messages or self.get_history_for_api()
+        tokenizer = getattr(self.chat, "get_tokenizer", lambda: None)()
+        
+        if not tokenizer:
+            # Fallback to character-based estimation
+            token_count = 0
+            for m in messages_to_count:
+                if isinstance(m.get('content'), str):
+                    token_count += len(m['content'])
+            return token_count // 4
+        
+        # Sum tokens for all messages
+        return sum(len(tokenizer.encode(m["content"])) for m in messages_to_count if isinstance(m.get('content'), str))
+
+    @property
+    def current_token_count(self):
+        """Повертає поточну кількість токенів в історії, яку буде надіслано в API."""
+        return self.count_tokens()
+
+    # ------------------ History for API ------------------
 
     def get_history_for_api(self):
-        return self.messages
+        """
+        Динамічно генерує історію для відправки в API.
+        - "Очищує" старі тимчасові повідомлення з контентом файлів.
+        - Включає контент файлів на основі маркерів `file_context` згідно з правилами.
+        - Гарантує, що контент щойно запитаного файлу буде в кінці історії.
+        """
+        api_history = []
+        included_files = {}  # {"filename": [v1, v2]}
 
-    # modules/history.py
+        # 1. Основний прохід: будуємо чисту історію
+        for msg in self.messages:
+            msg_type = msg.get("type")
 
-    async def check_and_summarize(self, ui):
-        # Приблизний підрахунок токенів
-        tokens = sum(len(m["content"]) for m in self.messages) // 4
-        
-        if tokens > self.max_tokens:
-            # ДОДАНО await, бо ui.print_system тепер асинхронний
-            await ui.print_system(f"History too long ({tokens} tokens). Summarizing...")
+            if msg_type == "transient_file_content":
+                # Ігноруємо ці повідомлення на основному проході.
+                # Вони будуть оброблені в кінці, якщо потрібно.
+                continue
             
-            # Створюємо запит для сумаризації
-            history_text = "\n".join([f"{m['role']}: {m['content']}" for m in self.messages])
-            prompt = f"Summarize the following conversation history briefly, keeping key facts:\n\n{history_text}"
+            elif msg_type == "file_context":
+                filename = msg["content"]["filename"]
+                version = msg["content"]["version"]
+                
+                # Правило: не більше 2 версій одного файлу
+                if len(included_files.get(filename, [])) >= 2:
+                    continue
+                
+                # Правило: не включати ту саму версію двічі
+                if version in included_files.get(filename, []):
+                    continue
+
+                file_content = self.get_file_version_content(filename, version)
+                if file_content:
+                    api_history.append({
+                        "role": "system",
+                        "content": (
+                            f"The following file '{filename}' (version {version}) is in context:\n"
+                            f"--- start of file ---\n"
+                            f"{file_content}\n"
+                            f"--- end of file ---"
+                        )
+                    })
+                    included_files.setdefault(filename, []).append(version)
             
+            else: # Звичайні повідомлення
+                # Переконуємось, що content - це рядок
+                content = msg.get('content', '')
+                if not isinstance(content, str):
+                    content = json.dumps(content, indent=2)
+
+                api_history.append({
+                    "role": msg["role"],
+                    "content": content
+                })
+
+        # 2. Фінальна перевірка: задовольняємо очікування моделі
+        last_message = self.messages[-1] if self.messages else None
+        if last_message and last_message.get("type") == "transient_file_content":
+            transient_content = last_message["content"]
+            filename = transient_content["filename"]
+            version = transient_content["version"]
+            content = transient_content["content"]
+            
+            # Перевіряємо, чи цей контент вже не був доданий
+            already_included = False
+            for h_msg in reversed(api_history):
+                if h_msg['content'].startswith(f"The following file '{filename}'"):
+                    if f"(version {version})" in h_msg['content']:
+                        already_included = True
+                        break
+            
+            if not already_included:
+                 api_history.append({
+                    "role": "system",
+                    "content": f"SYSTEM RESULT for `read_file`: File '{filename}' (version {version}) content:\n---\n{content}\n---"
+                })
+
+        return api_history
+    
+    def get_file_version_content(self, filename, version):
+        """Допоміжна функція для отримання контенту конкретної версії файлу."""
+        versions = self.files.get(filename, [])
+        for v in versions:
+            if v["version"] == version:
+                return v["content"]
+        return None
+
+
+    # ------------------ Summarization ------------------
+
+    async def check_and_summarize(self, ui=None):
+        """Перевірка токенів і запуск summary при перевищенні max_tokens"""
+        if self.count_tokens() > self.max_tokens:
+            confirm = True
+            if ui and hasattr(ui, "confirm_action"):
+                confirm = await ui.confirm_action({"type": "summarize_history"})
+            if confirm:
+                await self.summarize(ui, window=True)
+
+    async def summarize(self, ui=None, window=True):
+        """
+        Структуроване summary історії та файлів.
+        Якщо window=True, summarize старі повідомлення, залишаючи останні window_size.
+        """
+        if window and len(self.messages) > self.window_size:
+            to_summarize = self.messages[:-self.window_size]
+            keep_messages = self.messages[-self.window_size:]
+        else:
+            to_summarize = self.messages
+            keep_messages = []
+
+        if not to_summarize:
+            return
+
+        # Формуємо історію чатів
+        history_text = "\n".join(f"{m['role']}: {m['content']}" for m in to_summarize)
+
+        # Формуємо список файлів та змін
+        file_changes = {}
+        for fname, versions in self.files.items():
+            file_changes[fname] = [
+                {"version": v["version"], "content_snippet": v["content"][:200]}
+                for v in versions
+            ]
+
+        prompt = (
+            "Summarize the following conversation history and code changes in JSON format, "
+            "keeping key facts, decisions, pending tasks, and latest code snippets.\n\n"
+            f"Chat history:\n{history_text}\n\n"
+            f"Files:\n{json.dumps(file_changes, indent=2)}\n\n"
+            "Output JSON example:\n"
+            "{\n"
+            '  "summary": "...",\n'
+            '  "decisions": ["..."],\n'
+            '  "pending_tasks": ["..."],\n'
+            '  "file_summaries": {"filename": "..."}\n'
+            "}"
+        )
+
+        if ui and hasattr(ui, "print_system"):
+            await ui.print_system(f"Summarizing {len(to_summarize)} messages and {len(file_changes)} files...")
+
+        summary = ""
+        try:
+            async for chunk in self.chat.get_streaming_response(prompt, []):
+                summary += chunk
             try:
-                # Викликаємо ШІ. Оскільки це запит до моделі, він МАЄ бути асинхронним
-                summary = ""
-                async for chunk in self.chat.get_streaming_response(prompt, []):
-                    summary += chunk
-                
-                # Очищуємо історію та залишаємо тільки сумаризацію
-                self.messages = [
-                    {"role": "system", "content": f"Previous conversation summary: {summary}"}
-                ]
-                
-                await ui.print_system("History summarized successfully.")
-                
-            except Exception as e:
-                await ui.print_error(f"Failed to summarize history: {str(e)}")
+                json_summary = json.loads(summary)
+                summary_text = json.dumps(json_summary, indent=2)
+            except Exception:
+                summary_text = summary  # fallback if JSON invalid
 
+            # Замінюємо старі повідомлення на одне system повідомлення зі summary
+            self.messages = [{"role": "system", "content": f"Previous conversation summary: {summary_text}"}] + keep_messages
+
+            if ui and hasattr(ui, "print_system"):
+                await ui.print_system("History summarized successfully.")
+            if self.logger:
+                self.logger.debug("History summarized successfully.")
+        except Exception as e:
+            if ui and hasattr(ui, "print_error"):
+                await ui.print_error(f"Failed to summarize history: {str(e)}")
+            elif self.logger:
+                self.logger.error(f"Failed to summarize history: {str(e)}")
 
 ================================================================================
 END FILE: /home/romankozak/studio/public/code_agent/modules/history.py
 ================================================================================
 
-## <<FILE_9>>
+## <<FILE_5>>
 ================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/policy.py (ID: FILE_9)
-================================================================================
-
-import asyncio
-
-from rich.prompt import Confirm
-from modules.tui_ui import TuiUI # Import TuiUI
-
-class PermissionPolicy:
-    def __init__(self, ui, mode="ask"):
-        self.ui = ui
-        self.mode = mode
-
-    async def check(self, action): # Make it async
-        """Checks if the action is allowed based on the current policy."""
-        if self.mode == "always":
-            return True
-        if self.mode == "never":
-            return False
-        
-        # Default to "ask"
-        action_type = action.get("type")
-        details = ""
-        if action_type == "run_command":
-            details = action.get("command")
-        elif action_type in ["write_file", "create_file", "edit_file"]:
-            details = action.get("path") or action.get("file_path")
-        
-        if hasattr(self.ui, 'confirm_action') and asyncio.iscoroutinefunction(self.ui.confirm_action):
-          return await self.ui.confirm_action(action)
-        else:
-            # Fallback to synchronous confirmation for old CLI
-            return Confirm.ask(
-                f"[bold yellow]⚠️  ALLOW this action? ⚠️[/bold yellow]\n"
-                f"   - Type: [bold cyan]{action_type}[/bold cyan]\n"
-                f"   - Details: [bold red]{details}[/bold red]\n"
-            )
-
-================================================================================
-END FILE: /home/romankozak/studio/public/code_agent/modules/policy.py
-================================================================================
-
-## <<FILE_10>>
-================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/processor.py (ID: FILE_10)
+BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/processor.py (ID: FILE_5)
 ================================================================================
 
 # modules/processor.py
 
 class ResponseProcessor:
-    def __init__(self, ui, tool_manager, chat, policy):
+    def __init__(self, ui, tool_manager, chat, policy, history):
         self.ui = ui
         self.tools = tool_manager
         self.chat = chat
         self.policy = policy
+        self.history = history
+
+    MAX_OUTPUT_LENGTH = 3000
+
+    def _truncate_output(self, text: str) -> str:
+        if not isinstance(text, str):
+            return text
+        if len(text) > self.MAX_OUTPUT_LENGTH:
+            truncated_len = len(text) - self.MAX_OUTPUT_LENGTH
+            return text[:self.MAX_OUTPUT_LENGTH] + f"\n... (truncated {truncated_len} characters) ..."
+        return text
 
     async def process_single_action(self, command_dict: dict) -> dict:
-        # 1. Визначаємо назву інструмента (пріоритет: action -> type -> command)
-        # Якщо в 'command' лежить довгий текст зі пробілами - це не назва інструмента!
-        
+        # 1. Спроба знайти назву інструмента
         action_type = command_dict.get("action") or command_dict.get("type")
         
-        # Перевіряємо ключ 'command' тільки якщо він короткий (без пробілів)
-        if not action_type:
-            potential_cmd = command_dict.get("command")
-            if potential_cmd and isinstance(potential_cmd, str) and " " not in potential_cmd.strip():
-                action_type = potential_cmd
+        # 2. ФОЛБЕК-ЛОГІКА: Якщо назви немає, але є ключ 'command'
+        if not action_type and "command" in command_dict:
+            cmd_text = command_dict["command"]
+            # Якщо там довгий рядок або є спецсимволи (&&, |, >) - це 100% run_shell
+            if isinstance(cmd_text, str) and (" " in cmd_text or "|" in cmd_text or "&&" in cmd_text):
+                action_type = "run_shell"
+            else:
+                # Якщо коротке слово (наприклад, "ls") - теж вважаємо це назвою інструмента
+                action_type = cmd_text
 
         if not action_type:
-            return {
-                "status": "failed", 
-                "output": "Error: Could not determine tool name. Use 'action' or 'type' for tool name."
-            }
-
-        # 2. Захист: якщо модель все одно пхає bash-код в ім'я інструмента
-        if isinstance(action_type, str) and " " in action_type.strip():
-            return {
-                "status": "failed", 
-                "output": f"Error: '{action_type}' looks like a shell command. Use 'run_shell' as the tool name."
-            }
+            return {"status": "failed", "output": "Error: Could not identify tool name."}
 
         # 3. Збираємо аргументи
         args = {}
-        # Якщо є вкладені параметри - розгортаємо
+        # Розгортаємо вкладені параметри
         for nested in ["params", "arguments", "parameters"]:
             if isinstance(command_dict.get(nested), dict):
                 args.update(command_dict[nested])
-            
-        # Додаємо решту полів (крім службових)
+        
+        # Всі інші ключі (крім службових)
         service_fields = {"action", "type", "command", "params", "arguments", "parameters", 
                          "before_execution", "during_execution", "after_execution", "return_control"}
         
         for k, v in command_dict.items():
             if k not in service_fields:
                 args[k] = v
-        
-        # Окремий випадок для run_shell: якщо в JSON був ключ "command", 
-        # і це не була назва інструмента, то це аргумент для shell
-        if action_type == "run_shell" and "command" in command_dict and "command" not in args:
+
+        # 4. Спеціальна обробка для run_shell: 
+        # переконуємося, що текст команди потрапив у args['command']
+        if action_type == "run_shell" and "command" in command_dict:
             args["command"] = command_dict["command"]
 
-        # 4. Політика безпеки (MiniPicker)
+        # 5. Перевірка політики (MiniPicker)
         normalized_cmd = {"type": action_type, **args}
         if not await self.policy.check(normalized_cmd):
-            return {"status": "failed", "output": "Action denied by user."}
+            return {"status": "denied", "output": "Action denied by user."}
 
-        # 5. Виклик через ToolManager
-        return await self.tools.call(action_type, **args)
+        # 6. Виклик через ToolManager
+        result = await self.tools.call(action_type, ui=self.ui, **args)
+        
+        # 7. Post-processing for specific tools (e.g., read_file)
+        if action_type == 'read_file' and result.get('status') == 'success':
+            file_path = result.get('file_path')
+            content = result.get('output')
+            if file_path and content:
+                version = self.history.add_file_version(file_path, content)
+                if version:
+                    self.history.add_file_context_marker(file_path, version)
+                    self.history.add_transient_file_content(file_path, version, content)
+                    # Modify the output for the main loop - it no longer needs the full content
+                    result['output'] = f"Read file '{file_path}' and added to history as v{version}."
+
+        # 8. Check for ChangeProposal (Diff Preview)
+        from modules.types import ChangeProposal
+        
+        if isinstance(result, ChangeProposal):
+            # Show diff UI
+            approved = await self.ui.show_diff_preview(result)
+            
+            if approved:
+                try:
+                    result.apply()
+                    return {"status": "success", "output": f"Changes applied to {result.file_path}"}
+                except Exception as e:
+                    return {"status": "error", "output": f"Failed to apply changes: {e}"}
+            else:
+                return {"status": "error", "output": "User rejected the file changes."}
+
+        # 9. Output Truncation
+        if not result.get("skip_truncation"):
+            if isinstance(result, dict) and "output" in result and isinstance(result["output"], str) and len(result["output"]) > self.MAX_OUTPUT_LENGTH:
+                if await self.ui.confirm_truncation(action_type, len(result["output"])):
+                    result["output"] = self._truncate_output(result["output"])
+                
+        return result
 
 
 ================================================================================
 END FILE: /home/romankozak/studio/public/code_agent/modules/processor.py
 ================================================================================
 
-## <<FILE_11>>
+## <<FILE_6>>
 ================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/project.py (ID: FILE_11)
+BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/project.py (ID: FILE_6)
 ================================================================================
 
 # modules/project.py
@@ -911,110 +1000,9 @@ class ProjectModule:
 END FILE: /home/romankozak/studio/public/code_agent/modules/project.py
 ================================================================================
 
-## <<FILE_12>>
+## <<FILE_7>>
 ================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/screens.py (ID: FILE_12)
-================================================================================
-
-from textual.app import ComposeResult
-from textual.widgets import Static, Button, ListView, ListItem, Label
-from textual.containers import Horizontal, Vertical
-from textual.screen import ModalScreen
-
-class ConfirmationScreen(ModalScreen[bool]):
-    """Screen to ask the user for confirmation for sensitive actions."""
-
-    CSS = """
-    ConfirmationScreen {
-        align: center middle;
-    }
-    
-    .confirmation-panel {
-        width: 60;
-        height: auto;
-        border: thick $primary;
-        background: $surface;
-        padding: 1 2;
-    }
-    
-    .confirmation-title {
-        text-align: center;
-        margin-bottom: 1;
-    }
-    
-    .confirmation-buttons {
-        align: center middle;
-        margin-top: 1;
-    }
-    
-    Button {
-        margin: 0 1;
-    }
-    """
-
-    def __init__(self, action_details: dict, name: str | None = None, id: str | None = None, classes: str | None = None) -> None:
-        super().__init__(name, id, classes)
-        self.action_details = action_details
-
-    def compose(self) -> ComposeResult:
-        action_type = self.action_details.get("type", "Unknown")
-        details = ""
-        if action_type == "run_command":
-            details = self.action_details.get("command", "")
-        elif action_type in ["write_file", "create_file", "edit_file"]:
-            details = self.action_details.get("path") or self.action_details.get("file_path", "")
-
-        yield Vertical(
-            Static(f"[bold yellow]⚠️  ALLOW this action? ⚠️[/bold yellow]", classes="confirmation-title"),
-            Static(f"   - Type: [bold cyan]{action_type}[/bold cyan]", classes="confirmation-detail"),
-            Static(f"   - Details: [bold red]{details}[/bold red]", classes="confirmation-detail"),
-            Horizontal(
-                Button("Allow", id="allow_button", variant="success"),
-                Button("Deny", id="deny_button", variant="error"),
-                classes="confirmation-buttons"
-            ),
-            classes="confirmation-panel"
-        )
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "allow_button":
-            self.dismiss(True)
-        elif event.button.id == "deny_button":
-            self.dismiss(False)
-
-================================================================================
-END FILE: /home/romankozak/studio/public/code_agent/modules/screens.py
-================================================================================
-
-## <<FILE_13>>
-================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/session.py (ID: FILE_13)
-================================================================================
-
-# modules/session.py
-import json
-
-class SessionManager:
-    def __init__(self, config_dir, history, context, ui):
-        self.dir = config_dir / "sessions"
-        self.dir.mkdir(exist_ok=True)
-        self.history = history
-        self.context = context
-        self.ui = ui
-
-    def save_session(self, name):
-        data = {"history": self.history.messages, "context": self.context.list_files()}
-        with open(self.dir / f"{name}.json", 'w') as f:
-            json.dump(data, f)
-
-
-================================================================================
-END FILE: /home/romankozak/studio/public/code_agent/modules/session.py
-================================================================================
-
-## <<FILE_14>>
-================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/storage.py (ID: FILE_14)
+BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/storage.py (ID: FILE_7)
 ================================================================================
 
 import json
@@ -1044,9 +1032,9 @@ if __name__ == "__main__":
 END FILE: /home/romankozak/studio/public/code_agent/modules/storage.py
 ================================================================================
 
-## <<FILE_15>>
+## <<FILE_8>>
 ================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/tools/base.py (ID: FILE_15)
+BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/tools/base.py (ID: FILE_8)
 ================================================================================
 
 from abc import ABC, abstractmethod
@@ -1074,9 +1062,9 @@ class BaseTool(ABC):
 END FILE: /home/romankozak/studio/public/code_agent/modules/tools/base.py
 ================================================================================
 
-## <<FILE_16>>
+## <<FILE_9>>
 ================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/tools/manager.py (ID: FILE_16)
+BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/tools/manager.py (ID: FILE_9)
 ================================================================================
 
 # modules/tools/manager.py
@@ -1116,13 +1104,17 @@ class ToolManager:
             prompt += f"- {name}: {tool.description}\n"
         return prompt
 
-    async def call(self, name: str, **kwargs):
+    async def call(self, name: str, ui=None, **kwargs):
         """ВИПРАВЛЕНО: Метод тепер називається 'call'"""
         tool = self.tools.get(name)
         if not tool:
             return {"status": "error", "output": f"Unknown tool: {name}"}
         try:
-            return await tool.execute(**kwargs)
+            sig = inspect.signature(tool.execute)
+            if 'ui' in sig.parameters:
+                return await tool.execute(ui=ui, **kwargs)
+            else:
+                return await tool.execute(**kwargs)
         except Exception as e:
             return {"status": "error", "output": f"Tool execution failed: {str(e)}"}
 
@@ -1131,527 +1123,316 @@ class ToolManager:
 END FILE: /home/romankozak/studio/public/code_agent/modules/tools/manager.py
 ================================================================================
 
-## <<FILE_17>>
+## <<FILE_10>>
 ================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/tui_ui.py (ID: FILE_17)
-================================================================================
-
-import threading
-import asyncio
-from textual.widgets import Static
-from textual.containers import Vertical, VerticalScroll, Container, Horizontal
-from textual.app import ComposeResult
-from rich.markdown import Markdown as RichMarkdown
-from rich.text import Text
-
-from modules.screens import ConfirmationScreen
-from modules.ui_components.selection_widget import SelectionScreen
-
-class TuiUI:
-    def __init__(self, app, history_widget: VerticalScroll, loading_container: Container, loading_label: Static):
-        self.app = app
-        self.history = history_widget
-        self.loading_container = loading_container
-        self.loading_label = loading_label
-        self.main_thread = threading.main_thread()
-
-    async def _call_ui(self, func, *args, **kwargs):
-        if threading.current_thread() is self.main_thread:
-            res = func(*args, **kwargs)
-            return await res if asyncio.iscoroutine(res) else res
-        else:
-            return await self.app.call_from_thread(func, *args, **kwargs)
-
-    # --- Методи керування станом індикатора ---
-
-    def _start_thinking(self):
-        self.loading_label.update("Thinking...")
-        self.loading_container.display = True
-
-    def _start_action(self, text: str):
-        self.loading_label.update(text if text else "Processing...")
-        self.loading_container.display = True
-
-    def _stop_loading(self):
-        self.loading_container.display = False
-
-    def _update_header_main_thread(self, text: str):
-        self.app.title = text
-
-    # --- Public API для Agent ---
-
-    async def start_thinking(self):
-        await self._call_ui(self._start_thinking)
-
-    async def start_action(self, text: str):
-        await self._call_ui(self._start_action, text)
-
-    async def stop_loading(self):
-        await self._call_ui(self._stop_loading)
-
-    async def update_header(self, text: str):
-        await self._call_ui(self._update_header_main_thread, text)
-
-    async def _pick_screen_main_thread(self, screen):
-        # Manually manage future to work around push_screen_wait worker requirement
-        self.app.agent.comm_log.info(f"DEBUG: Entering _pick_screen_main_thread with screen: {screen}")
-        loop = asyncio.get_running_loop()
-        future = loop.create_future()
-
-        def callback(result):
-            self.app.agent.comm_log.info(f"DEBUG: Screen callback triggered with result: {result}")
-            if not future.done():
-                future.set_result(result)
-
-        self.app.push_screen(screen, callback=callback)
-        self.app.agent.comm_log.info("DEBUG: Screen pushed, awaiting future")
-        res = await future
-        self.app.agent.comm_log.info(f"DEBUG: Future resolved in _pick_screen_main_thread: {res}")
-        return res
-
-    async def pick_option(self, prompt: str, options: list, current_value: str | None = None) -> str:
-        """Показує меню вибору і повертає вибрану строку."""
-        self.app.agent.comm_log.info(f"DEBUG: pick_option called with prompt: '{prompt}'")
-        screen = SelectionScreen(prompt, options, current_value=current_value)
-        return await self._call_ui(self._pick_screen_main_thread, screen)
-
-    async def confirm_action(self, action_details: dict) -> bool:
-        self.app.agent.comm_log.info(f"DEBUG: confirm_action called for: {action_details.get('type')}")
-        screen = ConfirmationScreen(action_details)
-        return await self._call_ui(self._pick_screen_main_thread, screen)
-
-    async def confirm_continue(self, prompt: str) -> bool:
-        self.app.agent.comm_log.info(f"DEBUG: confirm_continue called with prompt: '{prompt}'")
-        options = ["Continue", "Stop"]
-        screen = SelectionScreen(prompt, options)
-        result = await self._call_ui(self._pick_screen_main_thread, screen)
-        return result == "Continue"
-
-    # --- Методи друку ---
-
-    def _add_message(self, renderable=None, classes="chat-message", widget=None):
-        self.app.agent.comm_log.info(f"DEBUG: _add_message called with classes: {classes}")
-        if widget is None:
-            widget = Static(renderable, classes=classes, expand=False)
-            widget.can_focus = False 
-        self.history.mount(widget)
-        self.history.scroll_end(animate=False)
-        self.app.agent.comm_log.info("DEBUG: Message mounted and scrolled")
-
-    async def print_system(self, text):
-        self.app.agent.comm_log.info(f"DEBUG: print_system: '{text}'")
-        await self._call_ui(self._add_message, f" {text} ", classes="chat-message system-message")
-
-    async def print_error(self, text):
-        self.app.agent.comm_log.info(f"DEBUG: print_error: '{text}'")
-        await self._call_ui(self._add_message, f"[bold red]✘ Error:[/] {text}")
-
-    async def print_message(self, text, role="assistant"):
-        self.app.agent.comm_log.info(f"DEBUG: print_message (role={role}): '{text[:50]}...'")
-        if role == "assistant":
-            await self._call_ui(self._add_message, RichMarkdown(text.strip()), classes="chat-message assistant-message")
-        else:
-            await self._call_ui(self._add_message, Text(f"> {text.strip()}", style="rgb(100,200,100)"), classes="chat-message user-message")
-        self.app.agent.comm_log.info("DEBUG: print_message completed")
-
-    async def print_thought(self, text):
-        if text.strip():
-            await self._call_ui(self._add_message, f"[grey37][italic]{text.strip()}[/italic][/grey37]", classes="chat-message thought-message")
-
-    async def print_plan(self, text):
-        await self._call_ui(self._add_message, f"[bold cyan]🤖 Plan:[/] {text.strip()}")
-
-    async def print_command_result(self, text):
-        await self._call_ui(self._add_message, f"[bold white]SYSTEM RESULT:[/] {text.strip()}")
-
-    async def print_confirmation(self, text):
-        await self._call_ui(self._add_message, f"[bold green]✅ {text.strip()}[/]")
-
-================================================================================
-END FILE: /home/romankozak/studio/public/code_agent/modules/tui_ui.py
+BEGIN FILE: /home/romankozak/studio/public/code_agent/tui.css (ID: FILE_10)
 ================================================================================
 
-## <<FILE_18>>
-================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/ui.py (ID: FILE_18)
-================================================================================
+/* Retro Linux / Hacker Green Theme for Angelica-AI */
+/* =============================================== */
 
-[Помилка читання файлу /home/romankozak/studio/public/code_agent/modules/ui.py: [Errno 2] No such file or directory: '/home/romankozak/studio/public/code_agent/modules/ui.py']
-
-
-================================================================================
-END FILE: /home/romankozak/studio/public/code_agent/modules/ui.py
-================================================================================
-
-## <<FILE_19>>
-================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/ui_components/history_input.py (ID: FILE_19)
-================================================================================
-
-from textual.widgets import Input
-from textual.binding import Binding
-
-class HistoryInput(Input):
-    """
-    Розширене поле вводу з підтримкою історії команд.
-    Використовуйте Ctrl+Up / Ctrl+Down для навігації.
-    """
-    
-    BINDINGS = [
-        Binding("ctrl+up", "history_up", "Previous Command", show=False),
-        Binding("ctrl+down", "history_down", "Next Command", show=False),
-    ]
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._history: list[str] = []
-        self._history_index: int = -1
-        self._draft: str = ""
-
-    def add_entry(self, text: str) -> None:
-        """Додає текст до історії, якщо він не пустий і не дублює останній запис."""
-        text = text.strip()
-        if not text:
-            return
-            
-        # Не додаємо, якщо це те саме, що й остання команда
-        if not self._history or self._history[-1] != text:
-            self._history.append(text)
-        
-        # Скидаємо вказівник
-        self._reset_pointer()
-
-    def _reset_pointer(self):
-        self._history_index = -1
-        self._draft = ""
-
-    def action_history_up(self) -> None:
-        """Перехід до попередньої команди в історії."""
-        if not self._history:
-            return
-
-        # Якщо ми починаємо навігацію (були внизу), зберігаємо поточний ввід як чернетку
-        if self._history_index == -1:
-            self._draft = self.value
-            self._history_index = len(self._history) - 1
-        elif self._history_index > 0:
-            self._history_index -= 1
-        
-        # Оновлюємо значення та переміщуємо курсор в кінець
-        self.value = self._history[self._history_index]
-        self.action_end()
-
-    def action_history_down(self) -> None:
-        """Перехід до наступної команди в історії."""
-        if self._history_index == -1:
-            return # Ми вже в самому низу (на чернетці)
-
-        if self._history_index < len(self._history) - 1:
-            self._history_index += 1
-            self.value = self._history[self._history_index]
-        else:
-            # Повертаємось до чернетки
-            self._history_index = -1
-            self.value = self._draft
-        
-        self.action_end()
-
-    async def on_key(self, event) -> None:
-        if event.key == "enter":
-            event.stop()
-            self.post_message(self.Submitted(self, self.value))
-
-
-================================================================================
-END FILE: /home/romankozak/studio/public/code_agent/modules/ui_components/history_input.py
-================================================================================
-
-## <<FILE_20>>
-================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/ui_components/selection_widget.py (ID: FILE_20)
-================================================================================
-
-from textual.app import ComposeResult
-from textual.widgets import ListView, ListItem, Label
-from textual.containers import Vertical
-from textual.screen import ModalScreen
-
-class SelectionScreen(ModalScreen[str | None]):
-    """Screen for selecting an option from a list, styled to look like a bottom widget."""
-
-    CSS = """
-    SelectionScreen {
-        align: center bottom;
-        background: 0%; /* Transparent background */
-    }
-    
-    .selection-panel {
-        width: 100%;
-        height: auto;
-        max-height: 50vh;
-        margin-bottom: 3; /* Position above the input container */
-        border-top: thick $accent;
-        background: $surface;
-        padding: 1 2;
-    }
-    
-    .selection-prompt {
-        text-align: left;
-        padding-bottom: 1;
-        text-style: bold;
-        color: $text;
-    }
-    
-    ListView {
-        height: auto;
-        max-height: 15;
-        border: none;
-        margin-top: 1;
-        background: $surface;
-    }
-    
-    ListItem {
-        padding: 0 1;
-    }
-    
-    ListItem:hover {
-        background: $primary-darken-2;
-    }
-    
-    /* Highlight the selected item when list is focused */
-    ListView:focus > ListItem.-active {
-        background: $primary;
-        color: white;
-    }
-    """
-
-    def __init__(self, prompt: str, options: list[str], current_value: str | None = None, name: str | None = None, id: str | None = None, classes: str | None = None) -> None:
-        super().__init__(name, id, classes)
-        self.prompt = prompt
-        self.options = options
-        self.current_value = current_value
-
-    def compose(self) -> ComposeResult:
-        yield Vertical(
-            Label(self.prompt, classes="selection-prompt"),
-            ListView(
-                *[ListItem(Label(opt), id=f"opt_{i}") for i, opt in enumerate(self.options)],
-                id="options_list"
-            ),
-            classes="selection-panel"
-        )
-
-    def on_mount(self) -> None:
-        self.app.agent.comm_log.info("DEBUG: SelectionScreen mounted")
-        list_view = self.query_one(ListView)
-        # Focus the list view immediately
-        list_view.focus()
-        
-        # If current_value is provided, highlight it
-        if self.current_value:
-            self.app.agent.comm_log.info(f"DEBUG: Highlighting current_value: {self.current_value}")
-            try:
-                index = self.options.index(self.current_value)
-                list_view.index = index
-            except ValueError:
-                self.app.agent.comm_log.warning(f"DEBUG: current_value '{self.current_value}' not found in options")
-                pass
-
-    def on_list_view_selected(self, event: ListView.Selected) -> None:
-        # Use the index to get the option from our list
-        index = event.list_view.index
-        self.app.agent.comm_log.info(f"DEBUG: ListItem selected at index: {index}")
-        if index is not None and 0 <= index < len(self.options):
-            val = self.options[index]
-            self.app.agent.comm_log.info(f"DEBUG: Dismissing SelectionScreen with value: {val}")
-            self.dismiss(val)
-        else:
-            self.app.agent.comm_log.warning("DEBUG: SelectionScreen index out of bounds")
-            self.dismiss(None)
-
-    def on_key(self, event) -> None:
-        if event.key == "escape":
-            self.app.agent.comm_log.info("DEBUG: Escape key pressed in SelectionScreen")
-            self.dismiss(None)
-
-================================================================================
-END FILE: /home/romankozak/studio/public/code_agent/modules/ui_components/selection_widget.py
-================================================================================
-
-## <<FILE_21>>
-================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/tui.css (ID: FILE_21)
-================================================================================
-
-/* Константи для сумісності */
-$info: #3498db;
-$text-muted: #888888;
+/* --- GLOBAL --- */
 
 Screen {
-    background: $surface;
-    overflow: hidden;
+    background: $background;
+    color: $text;
 }
 
-#app-grid {
-    layout: vertical;
-    height: 100%;
-}
+/* --- CHAT HISTORY --- */
 
-/* ІСТОРІЯ: Максимальна економія місця */
 #history {
-    height: 1fr;
-    margin: 0;
-    padding: 0;
-    border: none;
-    background: $surface;
-    overflow-y: scroll;
-}
-
-.message-separator {
-    height: 1;
-    background: transparent;
+    background: $background;
+    scrollbar-background: $background;
+    scrollbar-color: $primary;
+    scrollbar-size: 1 1;
+    padding: 1;
 }
 
 .chat-message {
-    padding: 0 1;
-    max-width: 100%; 
-    margin: 1 0;
+    background: $background;
+    border: none;
+    padding: 1 2; /* Keep the visual frame */
+    margin: 0; /* Remove all margins, spacing is handled by the separator widget */
 }
+
+/* The physical spacer widget inserted between messages */
+.message-separator {
+    height: 1;
+    background: $background;
+}
+
+/* --- USER MESSAGE --- */
+
+.user-message {
+    background: $surface;
+    color: $text;
+    border-left: wide $primary;
+    margin-right: 2;
+}
+
+/* --- ASSISTANT MESSAGE --- */
 
 .assistant-message {
-    border-left: tall rgb(255,100,200);
-    padding-left: 1;
+    background: $surface;
+    border-left: wide $secondary;
 }
+
+/* --- INITIAL HISTORY MESSAGE --- */
+
+.initial-history-message {
+    background: transparent;
+    color: $warning;
+    text-style: bold;
+    border-top: wide $warning;
+    border-bottom: wide $warning;
+    padding: 1 0; /* Vertical padding to give borders space */
+    margin: 0; /* Ensure no external spacing */
+}
+
+/* --- READ FILE MESSAGE --- */
+
+.read-file-message {
+    background: transparent;
+    color: $primary;
+    padding: 0 1;
+    margin: 0;
+}
+
+/* --- TOOL CALL MESSAGE --- */
+
+.tool-call-message {
+    background: $surface;
+    border-left: wide $warning;
+}
+
+/* --- TOOL RESULT MESSAGE --- */
+
+.tool-result-message {
+    background: $surface;
+    border-left: wide $success;
+}
+
+/* --- THOUGHT / REASONING --- */
 
 .thought-message {
+    background: transparent;
+    border-left: dashed $secondary;
+    color: $text-muted;
+    opacity: 70%;
+    text-style: italic;
+}
+
+/* --- SYSTEM / LOG (Prefix-based) --- */
+.system-message {
+    background: transparent;
     color: $text-muted;
     text-style: italic;
-    margin-left: 1; 
-    border-left: tall $accent; 
-    padding-left: 1;
+    padding: 0 1;
+    margin: 0;
 }
 
-.system-message {
-    color: $info;
+/* --- PLAN / COMMAND --- */
+
+.plan-message {
+    color: $success;
     text-style: bold;
-    margin: 0;
-    padding: 0 1;
 }
 
-/* БЛОК ЗАВАНТАЖЕННЯ ТА СТАТУСУ */
+/* --- COMMAND RESULT --- */
+
+.result-message {
+    background: $background;
+    border-left: wide $primary;
+    color: $text;
+}
+
+/* --- STATUS BAR --- */
+
 #loading-container {
-    display: none;
+    background: $background;
+    color: $primary;
     height: 1;
-    layout: horizontal;
-    margin: 0;
+    margin-top: 1;
     padding: 0 1;
-    background: $accent-darken-3;
-    color: $accent;
+    display: none;
+    layout: horizontal;
 }
 
 LoadingIndicator {
+    color: $primary;
     width: 4;
     height: 1;
 }
 
 #loading-label {
+    text-style: bold;
     margin-left: 1;
     height: 1;
     content-align: left middle;
-    text-style: italic;
-    width: auto;
 }
 
-/* ПОЛЕ ВВОДУ: Впритул до країв */
+/* --- INPUT AREA --- */
+
 #input-container {
-    height: 3;
-    border: round $success;
-    margin: 0;
+    height: auto;
+    max-height: 20;
+    background: $background;
+    border: solid $secondary;
     padding: 0 1;
-    background: $surface;
-    align-vertical: middle;
+    align-vertical: top;
 }
 
 #input-container:focus-within {
-    border: solid rgb(0, 150, 255);
+    background: $background;
+    border: solid $primary;
 }
 
 #input-container > Static {
-    width: 2;
-    height: 100%;
-    content-align: center middle;
+    color: $primary;
+    text-style: bold;
+    margin-right: 1;
+    width: auto;
 }
 
 #input {
     width: 1fr;
-    height: 100%;
+    height: auto;
+    background: $background;
     border: none;
-    background: transparent;
+    color: $text;
     padding: 0;
-    margin: 0;
 }
 
-/* SelectionScreen Styles (Defined in screen class, but overrides here if needed) */
-/* Note: Most styling is now inside modules/screens.py CSS property */
-
-/* Додатково: щоб історія автоматично фокусувалась при появі кнопок */
-#history {
-    scrollbar-gutter: stable;
+#input:focus {
+    border: none;
 }
+
+/* --- SUGGESTIONS --- */
+
+#suggestion-box {
+    background: $surface;
+    border: round $primary;
+    padding: 0 1;
+    margin: 0 1 1 1;
+    display: none;
+}
+
+.suggestion-active {
+    background: $primary;
+    color: $background;
+}
+
+.hidden {
+    display: none;
+}
+
+/* --- HEADER & FOOTER --- */
+
+Header {
+    background: $background;
+    color: $primary;
+    text-style: bold;
+}
+
+Footer {
+    background: $background;
+    color: $text-muted;
+}
+
+#token-status-bar {
+    background: $surface;
+    color: $text-muted;
+    height: 1;
+    padding: 0 1;
+}
+
+/* --- MODALS --- */
+
+ConfirmationScreen {
+    align: center middle;
+    background: rgba(0,0,0,0.9);
+}
+
+.confirmation-box {
+    width: 50;
+    height: auto;
+    background: $surface;
+    border: double $error;
+    padding: 1 2;
+}
+
 
 ================================================================================
 END FILE: /home/romankozak/studio/public/code_agent/tui.css
 ================================================================================
 
-## <<FILE_22>>
+## <<FILE_11>>
 ================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/tui.py (ID: FILE_22)
+BEGIN FILE: /home/romankozak/studio/public/code_agent/tui.py (ID: FILE_11)
 ================================================================================
 
 import os
 import asyncio
+import shlex
 from textual.app import App, ComposeResult
-from textual.widgets import Header, Footer, Input, Static, LoadingIndicator
+from textual.widgets import Header, Footer, Static
 from textual.containers import Container, VerticalScroll, Horizontal
 from agent import AngelicaAgent
 from modules.tui_ui import TuiUI
-from modules.ui_components.history_input import HistoryInput
+from modules.ui_components.history_aware_textarea import HistoryAwareTextArea, SuggestionWidget
+from modules.ui_components.status_bar import StatusBar
+from modules.ui_components.token_status_bar import TokenStatusBar
+from modules.version import __version__
+from modules.theme import HACKER_THEME
+from modules.config_loader import update_settings
+from modules.command_handler import CommandHandler
+from modules.ui_components.command_completer import CommandCompleter
 
 class TUI(App):
     CSS_PATH = "tui.css"
     BINDINGS = [
         ("d", "toggle_dark", "Toggle dark mode"),
         ("q", "quit", "Quit"),
+        ("ctrl+q", "quit", "Quit"),
         ("escape", "interrupt_agent", "Interrupt"),
     ]
-    VERSION = "0.1.0" # Define version here
-
+    
     def __init__(self, agent: AngelicaAgent):
         super().__init__()
         self.agent = agent
+        self.command_handler = CommandHandler(self)
+        self.command_completer = CommandCompleter(self.command_handler.command_names)
 
     def compose(self) -> ComposeResult:
         yield Header()
         with Container():
             yield VerticalScroll(id="history")
-            yield Container(
-                Horizontal(
-                    LoadingIndicator(),
-                    Static("Thinking...", id="loading-label"),
-                    classes="loading-spinner-container"
-                ),
-                id="loading-container",
-            )
+            yield StatusBar(id="loading-container")
+            yield SuggestionWidget(id="suggestion")
             yield Horizontal(
                 Static("> "),
-                HistoryInput(placeholder="Your message...", id="input"),
+                HistoryAwareTextArea(
+                    id="input",
+                    placeholder="Введить запрос або /команду...",
+                ),
                 id="input-container"
             )
-        yield Footer()
+        yield TokenStatusBar(id="token-status-bar")
 
     async def on_mount(self) -> None:
-        self.ui = TuiUI(self, self.query_one("#history", VerticalScroll), self.query_one("#loading-container"), self.query_one("#loading-label"))
-        self.agent.ui = self.ui # Передаємо UI до агента
+        # Register custom themes
+        self.register_theme(HACKER_THEME)
+        
+        # Apply theme from config (default to 'hacker-green')
+        target_theme = self.agent.settings.get("theme", "hacker-green")
+        try:
+            self.theme = target_theme
+        except Exception:
+            self.agent.log.warning(f"Theme '{target_theme}' not found. Falling back to 'hacker-green'.")
+            self.theme = "hacker-green"
+        
+        self.ui = TuiUI(self, self.query_one("#history", VerticalScroll), self.query_one(StatusBar))
+        self.agent.ui = self.ui # Pass UI to agent
         
         # Check if self.agent.chat is None, if so, get_chat_provider failed during agent init
         model_name = self.agent.chat.model_name if self.agent.chat else "N/A (Provider initialization failed)"
@@ -1660,109 +1441,91 @@ class TUI(App):
         current_directory = os.getcwd()
         
         startup_message = (
-            f"✨ Angelica-AI (v{self.VERSION})\n"
+            f"✨ Angelica AI (v{__version__})\n"
             f"Model: {model_name}\n"
             f"Working Directory: {current_directory}"
         )
-        await self.ui.print_system(startup_message)
-        await self.ui.print_system("") # Add an empty line after the startup message
-        self.query_one("#input", HistoryInput).focus()
+        await self.ui.print_initial_system_message(startup_message)
+        
+        # Setup autosuggestion
+        input_area = self.query_one("#input", HistoryAwareTextArea)
+        suggestion_widget = self.query_one("#suggestion", SuggestionWidget)
+        
+        # Передати команди та віджет для підказок
+        input_area._commands = list(self.command_handler.command_names)
+        input_area._suggestion_widget = suggestion_widget
+        
+        input_area.focus()
 
-    async def _handle_context_command(self):
-        """Handles the /context command in a worker to prevent blocking."""
-        self.agent.comm_log.info("DEBUG: Worker started for /context")
-        self.agent.comm_log.info("`/context` command received.")
-        
-        options = ["small", "medium", "large"]
-        current = self.agent.context_size
-        self.agent.comm_log.info("DEBUG: Calling ui.pick_option from worker")
-        
+        # Perform initial token status update
         try:
-            selection = await self.ui.pick_option(
-                "Choose context size (Esc to cancel):", 
-                options,
-                current_value=current
+            initial_history_tokens = self.agent.history.current_token_count
+            max_tokens = self.agent.history.max_tokens
+            token_bar = self.query_one(TokenStatusBar)
+            token_bar.update_tokens(
+                history_tokens=initial_history_tokens,
+                max_tokens=max_tokens,
+                session_tokens=self.agent.session_tokens  # Should be 0
             )
-            self.agent.comm_log.info(f"DEBUG: pick_option returned: {selection}")
-            
-            if selection:
-                self.agent.set_context_size(selection)
-            else:
-                 await self.ui.print_system("Selection cancelled.")
         except Exception as e:
-            self.agent.comm_log.error(f"ERROR in _handle_context_command: {e}")
+            self.agent.log.error(f"Initial token status update failed: {e}")
 
-    async def on_input_submitted(self, message: Input.Submitted) -> None:
+    async def on_history_aware_text_area_submitted(self, message: HistoryAwareTextArea.Submitted) -> None:
         """Called when the user submits a message."""
         user_input = message.value.strip()
         
-        self.agent.comm_log.info(f"DEBUG: on_input_submitted called with: '{user_input}'")
+        self.agent.log.info(f"DEBUG: on_history_aware_text_area_submitted called with: '{user_input}'")
+        
+        input_widget = self.query_one(HistoryAwareTextArea)
         
         # Add to input history if not empty
         if user_input:
-            if hasattr(message.input, 'add_entry'):
-                message.input.add_entry(user_input)
-            else:
-                self.agent.comm_log.warning("WARNING: Input widget does not support add_entry")
+            input_widget.add_entry(user_input)
             
-        message.input.value = ""
+        input_widget.text = ""
 
         if not user_input:
             return
         
-        # --- COMMANDS ---
-
-        if user_input == "/models":
-            self.agent.comm_log.info("`/models` command received.")
+        # --- COMMAND HANDLING DELEGATION ---
+        if user_input.startswith("/"):
+            self.agent.log.info(f"DEBUG: detected command '{user_input}', spawning worker")
             
-            # Fetch models
-            available_models = self.agent.settings.get("available_models", [])
-            if not available_models:
-                await self.ui.print_error("No available models configured in settings.")
-                return
-
-            # Helper to run model selection in a worker
-            async def _select_model_worker():
-                self.agent.comm_log.info("DEBUG: Starting model selection worker")
-                # Identify current model
-                current = self.agent.chat.model_name
-                
-                # Show picker with current value
-                selection = await self.ui.pick_option(
-                    f"Select AI Model (Current: {current})", 
-                    available_models,
-                    current_value=current
-                )
-                
-                if selection:
-                    # Switch model
-                    await self.agent.switch_model(selection)
-                else:
-                    await self.ui.print_system("Model selection cancelled.")
-
-            # Run in worker to avoid blocking
-            self.run_worker(_select_model_worker(), exclusive=True)
-            return
-
-        if user_input == "/context":
-            self.agent.comm_log.info("DEBUG: Scheduling _handle_context_command worker")
-            self.run_worker(self._handle_context_command(), exclusive=True)
+            async def run_command():
+                try:
+                    await self.command_handler.handle(user_input)
+                except Exception as e:
+                    self.agent.log.error(f"Command execution error: {e}")
+                    await self.ui.print_error(f"Command failed: {e}")
+                finally:
+                    # Only restore focus if we aren't quitting and app is running
+                    if self.app._running and not user_input.startswith("/quit"):
+                        self.query_one("#input").focus()
+            
+            self.run_worker(run_command())
             return
 
         # --- DEFAULT: CHAT PROMPT ---
         try:
-            self.agent.comm_log.info(f"DEBUG: Processing regular prompt: '{user_input}'")
+            self.agent.log.info(f"DEBUG: Processing regular prompt: '{user_input}'")
             await self.ui.print_message(user_input, role="user")
-            self.agent.comm_log.info("DEBUG: Message printed to UI, starting agent worker")
+            self.agent.log.info("DEBUG: Message printed to UI, starting agent worker")
             self.run_worker(self.agent.process_user_input(user_input), exclusive=True)
-            self.agent.comm_log.info("DEBUG: Agent worker scheduled")
+            self.agent.log.info("DEBUG: Agent worker scheduled")
         except Exception as e:
-            self.agent.comm_log.error(f"ERROR in prompt processing: {e}")
+            self.agent.log.error(f"ERROR in prompt processing: {e}")
             await self.ui.print_error(f"Critical error: {e}")
 
     async def action_interrupt_agent(self) -> None:
         """Interrupts the agent's current operation."""
         await self.agent.interrupt()
+
+    async def action_quit(self) -> None:
+        """Quit the application immediately."""
+        self.agent.log.info("DEBUG: action_quit called. Saving session...")
+        self.agent.session_manager.save_session()
+        self.agent.log.info("DEBUG: Session saved. Exiting...")
+        self.exit()
 
 if __name__ == "__main__":
     agent = AngelicaAgent() # Instantiate agent without ui

@@ -62,7 +62,8 @@ class AngelicaAgent:
             ui=self._ui, 
             tool_manager=self.tool_manager, 
             chat=self.chat, 
-            policy=self.policy
+            policy=self.policy,
+            history=self.history
         )
         
         # 6. Parser
@@ -321,6 +322,7 @@ class AngelicaAgent:
             self.chat = new_chat_provider
             self.history = HistoryManager(self.chat, logger=self.log, max_tokens=self.settings.get("max_history_tokens", 4000))
             self.processor.chat = self.chat
+            self.processor.history = self.history # Update processor with new history
             await self.ui.update_header(f"{self.chat.model_name}")
             await self.ui.print_system(f"✅ Модель змінено на {model_name}")
     

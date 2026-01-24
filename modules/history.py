@@ -21,28 +21,42 @@ class HistoryManager:
 
     # ------------------ Messages ------------------
 
-    def add_message(self, role, content):
+    def add_message(self, role, content, msg_type=None):
         """Додає чисте повідомлення в історію"""
-        if not content or not isinstance(content, str):
+        if not content and not msg_type:
             return
-        content = content.strip()
-        if not content:
-            return
-        self.messages.append({"role": role, "content": content})
+
+        if isinstance(content, str):
+            content = content.strip()
+            if not content and not msg_type:
+                return
+        
+        message = {"role": role, "content": content}
+        if msg_type:
+            message["type"] = msg_type
+
+        self.messages.append(message)
         if self.logger:
-            self.logger.debug(f"Added message: role={role}, content='{content[:50]}...'")
+            log_content = content
+            if isinstance(content, dict):
+                log_content = json.dumps(content)[:100]
+            elif isinstance(content, str):
+                log_content = content[:50]
+            self.logger.debug(f"Added message: role={role}, type={msg_type}, content='{log_content}...'")
 
     def add_messages(self, messages):
         for msg in messages:
-            self.add_message(msg["role"], msg["content"])
+            self.add_message(msg["role"], msg.get("content"), msg.get("type"))
 
     # ------------------ Files ------------------
 
     def add_file_version(self, filename, content):
-        """Додає нову версію файлу"""
+        """
+        Додає нову версію файлу в self.files і повертає номер версії.
+        """
         content = content.strip()
         if not content:
-            return
+            return None
         version_list = self.files.setdefault(filename, [])
         version_number = (version_list[-1]["version"] + 1) if version_list else 1
         version_list.append({
@@ -55,6 +69,21 @@ class HistoryManager:
             version_list[:] = version_list[-self.max_file_versions:]
         if self.logger:
             self.logger.debug(f"Added file version: {filename} v{version_number}")
+        return version_number
+
+    def add_file_context_marker(self, filename, version):
+        """Додає маркер-посилання на файл в історію повідомлень."""
+        marker = {"filename": filename, "version": version}
+        self.add_message("system", marker, msg_type="file_context")
+
+    def add_transient_file_content(self, filename, version, content):
+        """Додає тимчасове повідомлення з повним вмістом файлу."""
+        transient_content = {
+            "filename": filename,
+            "version": version,
+            "content": content
+        }
+        self.add_message("system", transient_content, msg_type="transient_file_content")
 
     def get_latest_file_content(self, filename):
         """Повертає останню версію файлу"""
@@ -71,16 +100,114 @@ class HistoryManager:
 
     def count_tokens(self, messages=None):
         """Підрахунок токенів історії"""
-        messages = messages or self.messages
+        messages_to_count = messages or self.get_history_for_api()
         tokenizer = getattr(self.chat, "get_tokenizer", lambda: None)()
+        
         if not tokenizer:
-            return sum(len(m["content"]) for m in messages) // 4
-        return sum(len(tokenizer.encode(m["content"])) for m in messages)
+            # Fallback to character-based estimation
+            token_count = 0
+            for m in messages_to_count:
+                if isinstance(m.get('content'), str):
+                    token_count += len(m['content'])
+            return token_count // 4
+        
+        # Sum tokens for all messages
+        return sum(len(tokenizer.encode(m["content"])) for m in messages_to_count if isinstance(m.get('content'), str))
+
+    @property
+    def current_token_count(self):
+        """Повертає поточну кількість токенів в історії, яку буде надіслано в API."""
+        return self.count_tokens()
 
     # ------------------ History for API ------------------
 
     def get_history_for_api(self):
-        return self.messages
+        """
+        Динамічно генерує історію для відправки в API.
+        - "Очищує" старі тимчасові повідомлення з контентом файлів.
+        - Включає контент файлів на основі маркерів `file_context` згідно з правилами.
+        - Гарантує, що контент щойно запитаного файлу буде в кінці історії.
+        """
+        api_history = []
+        included_files = {}  # {"filename": [v1, v2]}
+
+        # 1. Основний прохід: будуємо чисту історію
+        for msg in self.messages:
+            msg_type = msg.get("type")
+
+            if msg_type == "transient_file_content":
+                # Ігноруємо ці повідомлення на основному проході.
+                # Вони будуть оброблені в кінці, якщо потрібно.
+                continue
+            
+            elif msg_type == "file_context":
+                filename = msg["content"]["filename"]
+                version = msg["content"]["version"]
+                
+                # Правило: не більше 2 версій одного файлу
+                if len(included_files.get(filename, [])) >= 2:
+                    continue
+                
+                # Правило: не включати ту саму версію двічі
+                if version in included_files.get(filename, []):
+                    continue
+
+                file_content = self.get_file_version_content(filename, version)
+                if file_content:
+                    api_history.append({
+                        "role": "system",
+                        "content": (
+                            f"The following file '{filename}' (version {version}) is in context:\n"
+                            f"--- start of file ---\n"
+                            f"{file_content}\n"
+                            f"--- end of file ---"
+                        )
+                    })
+                    included_files.setdefault(filename, []).append(version)
+            
+            else: # Звичайні повідомлення
+                # Переконуємось, що content - це рядок
+                content = msg.get('content', '')
+                if not isinstance(content, str):
+                    content = json.dumps(content, indent=2)
+
+                api_history.append({
+                    "role": msg["role"],
+                    "content": content
+                })
+
+        # 2. Фінальна перевірка: задовольняємо очікування моделі
+        last_message = self.messages[-1] if self.messages else None
+        if last_message and last_message.get("type") == "transient_file_content":
+            transient_content = last_message["content"]
+            filename = transient_content["filename"]
+            version = transient_content["version"]
+            content = transient_content["content"]
+            
+            # Перевіряємо, чи цей контент вже не був доданий
+            already_included = False
+            for h_msg in reversed(api_history):
+                if h_msg['content'].startswith(f"The following file '{filename}'"):
+                    if f"(version {version})" in h_msg['content']:
+                        already_included = True
+                        break
+            
+            if not already_included:
+                 api_history.append({
+                    "role": "system",
+                    "content": f"SYSTEM RESULT for `read_file`: File '{filename}' (version {version}) content:\n---\n{content}\n---"
+                })
+
+        return api_history
+    
+    def get_file_version_content(self, filename, version):
+        """Допоміжна функція для отримання контенту конкретної версії файлу."""
+        versions = self.files.get(filename, [])
+        for v in versions:
+            if v["version"] == version:
+                return v["content"]
+        return None
+
 
     # ------------------ Summarization ------------------
 

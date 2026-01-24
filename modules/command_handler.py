@@ -112,13 +112,37 @@ class CommandHandler:
             if not paths:
                 await self.ui.print_error("Usage: /add <path1> [path2 ...]")
                 return
-            
+
             total_added = 0
-            for path in paths:
-                count = self.agent.context_manager.add_path(path)
-                total_added += count
-                
-            await self.ui.print_system(f"✅ Added {total_added} file(s) to context.")
+            for path_str in paths:
+                path = Path(path_str)
+                if not path.exists():
+                    await self.ui.print_error(f"Path not found: {path_str}")
+                    continue
+
+                files_to_add = []
+                if path.is_file():
+                    files_to_add.append(path)
+                elif path.is_dir():
+                    # Basic recursive search for files, could be improved with ignore lists
+                    files_to_add.extend(p for p in path.rglob('*') if p.is_file())
+
+                for file_path in files_to_add:
+                    try:
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            content = f.read()
+                        
+                        # Use the new history manager methods
+                        version = self.agent.history.add_file_version(str(file_path), content)
+                        if version:
+                            self.agent.history.add_file_context_marker(str(file_path), version)
+                            total_added += 1
+
+                    except Exception as e:
+                        await self.ui.print_error(f"Error reading file {file_path}: {e}")
+            
+            if total_added > 0:
+                await self.ui.print_system(f"✅ Added {total_added} file(s) to context.")
         except Exception as e:
             await self.ui.print_error(f"Error adding paths: {e}")
 
