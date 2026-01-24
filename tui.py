@@ -87,7 +87,7 @@ class TUI(App):
         except Exception as e:
             self.agent.log.error(f"Initial token status update failed: {e}")
 
-    async def on_input_submitted(self, message: HistoryAwareTextArea.Submitted) -> None:
+    async def on_history_aware_text_area_submitted(self, message: HistoryAwareTextArea.Submitted) -> None:
         """Called when the user submits a message."""
         user_input = message.value.strip()
         
