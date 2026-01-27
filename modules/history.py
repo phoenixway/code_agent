@@ -1,6 +1,7 @@
 # modules/history.py
 import json
 import time
+from modules.code_parser import CodeParser
 
 class HistoryManager:
     """
@@ -18,6 +19,8 @@ class HistoryManager:
         self.max_tokens = max_tokens
         self.window_size = window_size  # останні N повідомлень залишаються без summary
         self.max_file_versions = max_file_versions
+        self.code_parser = CodeParser() # Ініціалізуємо парсер
+        self.SKELETON_THRESHOLD = 2000 # Поріг символів для великих файлів 
 
     # ------------------ Messages ------------------
 
@@ -118,55 +121,73 @@ class HistoryManager:
     def current_token_count(self):
         """Повертає поточну кількість токенів в історії, яку буде надіслано в API."""
         return self.count_tokens()
+    
+    
 
     # ------------------ History for API ------------------
 
     def get_history_for_api(self):
         """
         Динамічно генерує історію для відправки в API.
-        - "Очищує" старі тимчасові повідомлення з контентом файлів.
-        - Включає контент файлів на основі маркерів `file_context` згідно з правилами.
-        - Гарантує, що контент щойно запитаного файлу буде в кінці історії.
+        Замінює старі або великі версії файлів на XML-скелети[cite: 106].
         """
         api_history = []
-        included_files = {}  # {"filename": [v1, v2]}
+        included_files_count = {} 
+        included_versions = {}
 
-        # 1. Основний прохід: будуємо чисту історію
+        # 1. Основний прохід по повідомленнях історії [cite: 108]
         for msg in self.messages:
             msg_type = msg.get("type")
 
             if msg_type == "transient_file_content":
-                # Ігноруємо ці повідомлення на основному проході.
-                # Вони будуть оброблені в кінці, якщо потрібно.
+                # Тимчасові повідомлення ігноруємо, вони обробляються в кінці [cite: 109]
                 continue
             
             elif msg_type == "file_context":
                 filename = msg["content"]["filename"]
                 version = msg["content"]["version"]
                 
-                # Правило: не більше 2 версій одного файлу
-                if len(included_files.get(filename, [])) >= 2:
-                    continue
-                
-                # Правило: не включати ту саму версію двічі
-                if version in included_files.get(filename, []):
+                if version in included_versions.get(filename, []):
                     continue
 
                 file_content = self.get_file_version_content(filename, version)
-                if file_content:
-                    api_history.append({
-                        "role": "system",
-                        "content": (
-                            f"The following file '{filename}' (version {version}) is in context:\n"
-                            f"--- start of file ---\n"
-                            f"{file_content}\n"
-                            f"--- end of file ---"
-                        )
-                    })
-                    included_files.setdefault(filename, []).append(version)
+                if not file_content:
+                    continue
+
+                v_count = included_files_count.get(filename, 0)
+                is_large = len(file_content) > getattr(self, "LARGE_FILE_THRESHOLD", 2000)
+
+                # Визначаємо, чи використовувати скелет (Signatures only)
+                should_use_skeleton = (v_count >= 2) or (is_large and v_count >= 1)
+
+                if should_use_skeleton:
+                    # Отримуємо сигнатури через наш новий модуль
+                    display_content = self.code_parser.get_skeleton(filename, file_content)
+                    
+                    # Формуємо системне повідомлення через XML-теги для кращого розуміння ШІ
+                    content_str = (
+                        f"<file_skeleton path='{filename}' version='{version}'>\n"
+                        f"{display_content}\n"
+                        f"</file_skeleton>\n"
+                        f"NOTE: Implementation bodies are hidden to save tokens. Use `read_file` to see the full code."
+                    )
+                else:
+                    # Повний вміст файлу
+                    content_str = (
+                        f"<file_content path='{filename}' version='{version}'>\n"
+                        f"{file_content}\n"
+                        f"</file_content>"
+                    )
+
+                api_history.append({
+                    "role": "system",
+                    "content": content_str
+                })
+                
+                included_files_count[filename] = v_count + 1
+                included_versions.setdefault(filename, []).append(version)
             
-            else: # Звичайні повідомлення
-                # Переконуємось, що content - це рядок
+            else: # Звичайні повідомлення (user, assistant, system) [cite: 115]
                 content = msg.get('content', '')
                 if not isinstance(content, str):
                     content = json.dumps(content, indent=2)
@@ -176,26 +197,41 @@ class HistoryManager:
                     "content": content
                 })
 
-        # 2. Фінальна перевірка: задовольняємо очікування моделі
+        # 2. Фінальна перевірка: результат останнього read_file [cite: 116]
         last_message = self.messages[-1] if self.messages else None
         if last_message and last_message.get("type") == "transient_file_content":
-            transient_content = last_message["content"]
-            filename = transient_content["filename"]
-            version = transient_content["version"]
-            content = transient_content["content"]
+            transient = last_message["content"]
+            f_name = transient["filename"]
+            f_ver = transient["version"]
+            f_content = transient["content"]
             
-            # Перевіряємо, чи цей контент вже не був доданий
-            already_included = False
-            for h_msg in reversed(api_history):
-                if h_msg['content'].startswith(f"The following file '{filename}'"):
-                    if f"(version {version})" in h_msg['content']:
-                        already_included = True
-                        break
+            already_included = any(
+                f"path='{f_name}' version='{f_ver}'" in h_msg['content'] 
+                for h_msg in api_history if h_msg['role'] == 'system'
+            )
             
             if not already_included:
-                 api_history.append({
+                # Навіть для щойно прочитаного файлу перевіряємо, чи не завеликий він
+                if len(f_content) > getattr(self, "LARGE_FILE_THRESHOLD", 2000):
+                    f_display = self.code_parser.get_skeleton(f_name, f_content)
+                    api_content = (
+                        f"SYSTEM RESULT for `read_file`:\n"
+                        f"<file_skeleton path='{f_name}' version='{f_ver}'>\n"
+                        f"{f_display}\n"
+                        f"</file_skeleton>\n"
+                        f"NOTE: This file is too large, showing signatures. Use specific tools if you need more details."
+                    )
+                else:
+                    api_content = (
+                        f"SYSTEM RESULT for `read_file`:\n"
+                        f"<file_content path='{f_name}' version='{f_ver}'>\n"
+                        f"{f_content}\n"
+                        f"</file_content>"
+                    )
+                
+                api_history.append({
                     "role": "system",
-                    "content": f"SYSTEM RESULT for `read_file`: File '{filename}' (version {version}) content:\n---\n{content}\n---"
+                    "content": api_content
                 })
 
         return api_history

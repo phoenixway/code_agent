@@ -7,11 +7,8 @@ TABLE OF CONTENTS
 - [/home/romankozak/studio/public/code_agent/modules/history.py](##<<FILE_4>>)
 - [/home/romankozak/studio/public/code_agent/modules/processor.py](##<<FILE_5>>)
 - [/home/romankozak/studio/public/code_agent/modules/project.py](##<<FILE_6>>)
-- [/home/romankozak/studio/public/code_agent/modules/storage.py](##<<FILE_7>>)
-- [/home/romankozak/studio/public/code_agent/modules/tools/base.py](##<<FILE_8>>)
-- [/home/romankozak/studio/public/code_agent/modules/tools/manager.py](##<<FILE_9>>)
-- [/home/romankozak/studio/public/code_agent/tui.css](##<<FILE_10>>)
-- [/home/romankozak/studio/public/code_agent/tui.py](##<<FILE_11>>)
+- [/home/romankozak/studio/public/code_agent/tui.css](##<<FILE_7>>)
+- [/home/romankozak/studio/public/code_agent/tui.py](##<<FILE_8>>)
 
 ================================================================================
 
@@ -1002,130 +999,7 @@ END FILE: /home/romankozak/studio/public/code_agent/modules/project.py
 
 ## <<FILE_7>>
 ================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/storage.py (ID: FILE_7)
-================================================================================
-
-import json
-import os
-from datetime import datetime
-
-class Storage:
-    def __init__(self, session_dir="sessions"):
-        self.session_dir = session_dir
-        if not os.path.exists(session_dir):
-            os.makedirs(session_dir)
-        self.current_session = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        self.history = []
-
-    def save_message(self, role, content):
-        self.history.append({"role": role, "content": content, "timestamp": str(datetime.now())})
-        with open(os.path.join(self.session_dir, self.current_session), "w", encoding="utf-8") as f:
-            json.dump(self.history, f, indent=4, ensure_ascii=False)
-
-# Тестовий виклик
-if __name__ == "__main__":
-    s = Storage()
-    s.save_message("user", "Hello")
-    print(f"Збережено в {s.current_session}")
-
-================================================================================
-END FILE: /home/romankozak/studio/public/code_agent/modules/storage.py
-================================================================================
-
-## <<FILE_8>>
-================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/tools/base.py (ID: FILE_8)
-================================================================================
-
-from abc import ABC, abstractmethod
-
-class BaseTool(ABC):
-    @property
-    @abstractmethod
-    def name(self) -> str:
-        """Назва, за якою ШІ буде викликати інструмент."""
-        pass
-
-    @property
-    @abstractmethod
-    def description(self) -> str:
-        """Опис інструмента для системного промпту."""
-        pass
-
-    @abstractmethod
-    async def execute(self, **kwargs) -> dict:
-        """Логіка виконання. Має повертати словник з ключами 'status' та 'output'."""
-        pass
-
-
-================================================================================
-END FILE: /home/romankozak/studio/public/code_agent/modules/tools/base.py
-================================================================================
-
-## <<FILE_9>>
-================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/modules/tools/manager.py (ID: FILE_9)
-================================================================================
-
-# modules/tools/manager.py
-import importlib
-import inspect
-import pkgutil
-from typing import Dict
-from .base import BaseTool
-
-class ToolManager:
-    def __init__(self, definitions_pkg="modules.tools.definitions"):
-        self.tools: Dict[str, BaseTool] = {}
-        self._pkg = definitions_pkg
-
-    def load_tools(self):
-        """Динамічно завантажує всі класи інструментів."""
-        self.tools.clear()
-        try:
-            package = importlib.import_module(self._pkg)
-            for _, name, _ in pkgutil.iter_modules(package.__path__):
-                mod = importlib.import_module(f"{self._pkg}.{name}")
-                for _, obj in inspect.getmembers(mod):
-                    if inspect.isclass(obj) and issubclass(obj, BaseTool) and obj is not BaseTool:
-                        t = obj()
-                        self.tools[t.name] = t
-            return list(self.tools.keys())
-        except Exception as e:
-            print(f"Error loading tools: {e}")
-            return []
-
-    def get_tools_prompt(self) -> str:
-        """Генерує опис інструментів для ШІ."""
-        if not self.tools:
-            return "No tools available."
-        prompt = "AVAILABLE TOOLS:\n"
-        for name, tool in self.tools.items():
-            prompt += f"- {name}: {tool.description}\n"
-        return prompt
-
-    async def call(self, name: str, ui=None, **kwargs):
-        """ВИПРАВЛЕНО: Метод тепер називається 'call'"""
-        tool = self.tools.get(name)
-        if not tool:
-            return {"status": "error", "output": f"Unknown tool: {name}"}
-        try:
-            sig = inspect.signature(tool.execute)
-            if 'ui' in sig.parameters:
-                return await tool.execute(ui=ui, **kwargs)
-            else:
-                return await tool.execute(**kwargs)
-        except Exception as e:
-            return {"status": "error", "output": f"Tool execution failed: {str(e)}"}
-
-
-================================================================================
-END FILE: /home/romankozak/studio/public/code_agent/modules/tools/manager.py
-================================================================================
-
-## <<FILE_10>>
-================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/tui.css (ID: FILE_10)
+BEGIN FILE: /home/romankozak/studio/public/code_agent/tui.css (ID: FILE_7)
 ================================================================================
 
 /* Retro Linux / Hacker Green Theme for Angelica-AI */
@@ -1366,9 +1240,9 @@ ConfirmationScreen {
 END FILE: /home/romankozak/studio/public/code_agent/tui.css
 ================================================================================
 
-## <<FILE_11>>
+## <<FILE_8>>
 ================================================================================
-BEGIN FILE: /home/romankozak/studio/public/code_agent/tui.py (ID: FILE_11)
+BEGIN FILE: /home/romankozak/studio/public/code_agent/tui.py (ID: FILE_8)
 ================================================================================
 
 import os

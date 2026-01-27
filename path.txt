@@ -4,8 +4,5 @@ modules/defaults.py
 modules/history.py
 modules/processor.py
 modules/project.py
-modules/storage.py
 tui.py
 tui.css
-modules/tools/base.py
-modules/tools/manager.py
