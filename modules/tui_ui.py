@@ -227,11 +227,12 @@ class TuiUI:
             }
         }
 
-        md_lines = [""]  # Empty line before
-        md_lines.append(f"**Tool Call: {tool_name}**")
+        md_lines = []
+        # Add two spaces at the end of each line for Markdown line breaks
+        md_lines.append(f"**Tool Call: {tool_name}**  ")
         
         if args:
-            for key, value in args.items():
+            for i, (key, value) in enumerate(args.items()):
                 # Format value for display
                 if isinstance(value, str):
                     # Escape any markdown in the value
@@ -239,11 +240,13 @@ class TuiUI:
                 else:
                     display_value = escape(json.dumps(value, ensure_ascii=False))
                 # Make key bold and value normal for visual distinction
-                # Add two spaces at the end for Markdown line break
-                md_lines.append(f'**{key}** : {display_value}  ')
+                # Add two spaces at the end for Markdown line break (except for last line)
+                if i < len(args) - 1:
+                    md_lines.append(f'**{key}** : {display_value}  ')
+                else:
+                    md_lines.append(f'**{key}** : {display_value}')
         
-        md_lines.append("")  # Empty line after
-        
+        # Use single newlines with two spaces at the end for line breaks
         renderable = RichMarkdown("\n".join(md_lines))
         widget = Static(renderable, classes="chat-message tool-call-message")
         widget.command = command # Attach command for later use
