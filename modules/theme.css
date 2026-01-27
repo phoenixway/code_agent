@@ -4,16 +4,16 @@
 */
 
 $bg-main: #1e1e1e;
-$bg-card: #252526;
-$bg-input: #3c3c3c;
+$bg-card: #1e1e1e;          /* Same as bg-main */
+$bg-input: #1e1e1e;         /* Same as bg-main */
 
-$accent: #007acc;           /* Blue */
-$accent-secondary: #c586c0; /* Purple/Pink */
+$accent: #005a9e;           /* Muted Blue */
+$accent-secondary: #a37aa9; /* Muted Purple/Pink */
 
 $text-main: #d4d4d4;
 $text-bright: #ffffff;
 $text-muted: #858585;
 
-$success: #4ec9b0;          /* Teal/Green */
-$warning: #cca700;          /* Gold */
-$error: #f48771;            /* Salmon */
+$success: #3da58a;          /* Muted Teal/Green */
+$warning: #a68b00;          /* Muted Gold */
+$error: #d46c5a;            /* Muted Salmon */

@@ -227,26 +227,24 @@ class TuiUI:
             }
         }
 
-        md_lines = [f"**🔧 Tool Call: {tool_name}**"]
-        if args:
-            try:
-                args_json = json.dumps(args, indent=2, ensure_ascii=False)
-                # Remove the first and last line (curly braces)
-                args_lines = args_json.splitlines()
-                if len(args_lines) > 2: # Ensure there's content between braces
-                    # Join lines from index 1 to second-to-last, and unindent by 2 spaces
-                    args_display = "\n".join([line[2:] for line in args_lines[1:-1]])
-                else: # Handle empty or very short JSONs (e.g., just {})
-                    args_display = "" 
-                
-                if args_display:
-                    md_lines.append(f"```json\n{args_display}\n```")
-                # If args_display is empty, don't add the code block, just the tool call header
-            except Exception:
-                # Fallback in case of non-JSON args or error, just print as string
-                md_lines.append(f"```\n{str(args)}\n```")
+        md_lines = [""]  # Empty line before
+        md_lines.append(f"**Tool Call: {tool_name}**")
         
-        renderable = RichMarkdown("\n\n".join(md_lines))
+        if args:
+            for key, value in args.items():
+                # Format value for display
+                if isinstance(value, str):
+                    # Escape any markdown in the value
+                    display_value = escape(str(value))
+                else:
+                    display_value = escape(json.dumps(value, ensure_ascii=False))
+                # Make key bold and value normal for visual distinction
+                # Add two spaces at the end for Markdown line break
+                md_lines.append(f'**{key}** : {display_value}  ')
+        
+        md_lines.append("")  # Empty line after
+        
+        renderable = RichMarkdown("\n".join(md_lines))
         widget = Static(renderable, classes="chat-message tool-call-message")
         widget.command = command # Attach command for later use
         return widget

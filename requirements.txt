@@ -7,3 +7,4 @@ python-dotenv
 textual
 bump-my-version
 pyperclip
+tree_sitter

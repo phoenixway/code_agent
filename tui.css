@@ -71,8 +71,10 @@ Screen {
 /* --- TOOL CALL MESSAGE --- */
 
 .tool-call-message {
-    background: $surface;
-    border-left: wide $warning;
+    background: $background;
+    border-left: solid #858585;
+    color: $text;
+    white-space: pre-wrap;
 }
 
 /* --- TOOL RESULT MESSAGE --- */
