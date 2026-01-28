@@ -1,3 +1,5 @@
+this file content is DEPRECATED.
+
 # Masterplan: A New Architecture for History Management
 
 This document outlines the architecture for a new, robust history management system in the Angelica Agent.

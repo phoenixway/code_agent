@@ -37,7 +37,7 @@ class ActionDispatcher:
                 # Виконання дії
                 cmd_copy, result_text, stop_flag = await self._execute_action(segment.content, state)
                 
-                # Додаємо команду в історію як є (HistoryManager сам вирішить, чи робити скелет)
+                # Додаємо команду в історію
                 segment.content = cmd_copy
                 processed_segments.append(segment)
                 
@@ -55,6 +55,7 @@ class ActionDispatcher:
         state.update_loop_tracker(command, "pending")
         if state.consecutive_failed_repeats >= 1:
             await self.ui.print_error("⚠️ Loop detected: Repeating failed action.")
+            # Тут ми повертаємо True (stop), бо агент зациклився і йому треба допомога людини
             return command, "SYSTEM: CRITICAL Loop detected. Change strategy.", True
 
         # 2. UI Execution Wrapper
@@ -67,33 +68,42 @@ class ActionDispatcher:
         state.update_loop_tracker(command, status)
 
         # 4. Syntax Check (Linting)
-        # Перевіряємо синтаксис Python, але не блокуємо запис в історію
         if cmd_type in ['create_file', 'edit_file'] and status == 'success':
             path = command.get('path', '')
             if path.endswith('.py'):
                 lint_error = self._check_python_syntax(path)
                 if lint_error:
                     output_text += f"\n\n⚠️ SYSTEM WARNING: Syntax check failed for {path}:\n{lint_error}\nPlease fix this immediately."
-                    status = 'error' # Force error status to trigger agent's attention
+                    # Ми НЕ змінюємо статус на error тут глобально, але даємо попередження
+                    # status = 'error' 
 
         # 5. History Handling
-        # Ми НЕ обрізаємо контент тут вручну.
-        # Ваш HistoryManager має вбудовану логіку для створення скелетів (Skeletons),
-        # тому ми повинні передати йому повний зміст, щоб він міг його розпарсити.
         command_for_history = command.copy()
 
-        # 6. Smart Stop Logic
+        # 6. Smart Stop Logic (ВИПРАВЛЕНО)
         is_state_changing = cmd_type in self.config.STATE_CHANGING_OPS
         execution_failed = status in ["failed", "error"]
         action_denied = status == "denied"
         
-        if execution_failed:
-            output_text += "\n[SYSTEM: Action failed. Analyze error in <think> and retry.]"
-        elif action_denied:
+        should_stop = False
+        
+        if action_denied:
+            # Якщо користувач заборонив - стоп
             output_text += "\n[SYSTEM: Action denied by user.]"
-
+            should_stop = True
+            
+        elif execution_failed:
+            # Якщо помилка - ПРОДОВЖУЄМО (повертаємо контроль агенту для виправлення)
+            output_text += "\n[SYSTEM: Action failed. Analyze the error in <think> and retry.]"
+            should_stop = False 
+            
+        elif is_state_changing:
+            # Якщо успішна дія, що змінює стан (create, delete, shell) - СТОП (щоб користувач глянув)
+            # АЛЕ: Якщо ми в автономному циклі, Orchestrator може це ігнорувати,
+            # проте Dispatcher радить зупинитись.
+            should_stop = True
+            
         full_result_text = f"SYSTEM RESULT for `{cmd_type}`: {output_text}"
-        should_stop = execution_failed or is_state_changing or action_denied
 
         return command_for_history, full_result_text, should_stop
 
