@@ -4,7 +4,10 @@ import shlex
 from textual.app import App, ComposeResult
 from textual.widgets import Header, Footer, Static
 from textual.containers import Container, VerticalScroll, Horizontal
-from agent import AngelicaAgent
+
+# --- ЗМІНА 1: Імпорт з нового пакета ---
+from modules.agent import AngelicaAgent
+
 from modules.tui_ui import TuiUI
 from modules.ui_components.history_aware_textarea import HistoryAwareTextArea, SuggestionWidget
 from modules.ui_components.status_bar import StatusBar
@@ -50,8 +53,11 @@ class TUI(App):
         # Register custom themes
         self.register_theme(HACKER_THEME)
         
-        # Apply theme from config (default to 'hacker-green')
-        target_theme = self.agent.settings.get("theme", "hacker-green")
+        # --- ЗМІНА 2: Доступ до налаштувань через config ---
+        # Було: self.agent.settings.get(...)
+        # Стало: self.agent.config.settings.get(...)
+        target_theme = self.agent.config.settings.get("theme", "hacker-green")
+        
         try:
             self.theme = target_theme
         except Exception:
@@ -61,9 +67,9 @@ class TUI(App):
         self.ui = TuiUI(self, self.query_one("#history", VerticalScroll), self.query_one(StatusBar))
         self.agent.ui = self.ui # Pass UI to agent
         
-        # Check if self.agent.chat is None, if so, get_chat_provider failed during agent init
+        # Check if self.agent.chat is None (Facade properties in core.py handle this access)
         model_name = self.agent.chat.model_name if self.agent.chat else "N/A (Provider initialization failed)"
-        # Set the full title including the model name
+        
         await self.ui.update_header(f"{model_name}")
         current_directory = os.getcwd()
         
@@ -78,7 +84,6 @@ class TUI(App):
         input_area = self.query_one("#input", HistoryAwareTextArea)
         suggestion_widget = self.query_one("#suggestion", SuggestionWidget)
         
-        # Передати команди та віджет для підказок
         input_area._commands = list(self.command_handler.command_names)
         input_area._suggestion_widget = suggestion_widget
         
@@ -89,10 +94,14 @@ class TUI(App):
             initial_history_tokens = self.agent.history.current_token_count
             max_tokens = self.agent.history.max_tokens
             token_bar = self.query_one(TokenStatusBar)
+            
+            # --- ЗМІНА 3: Доступ до токенів через state ---
+            # Було: self.agent.session_tokens
+            # Стало: self.agent.state.session_tokens
             token_bar.update_tokens(
                 history_tokens=initial_history_tokens,
                 max_tokens=max_tokens,
-                session_tokens=self.agent.session_tokens  # Should be 0
+                session_tokens=self.agent.state.session_tokens 
             )
         except Exception as e:
             self.agent.log.error(f"Initial token status update failed: {e}")
@@ -105,7 +114,6 @@ class TUI(App):
         
         input_widget = self.query_one(HistoryAwareTextArea)
         
-        # Add to input history if not empty
         if user_input:
             input_widget.add_entry(user_input)
             
@@ -114,7 +122,7 @@ class TUI(App):
         if not user_input:
             return
         
-        # --- COMMAND HANDLING DELEGATION ---
+        # --- COMMAND HANDLING ---
         if user_input.startswith("/"):
             self.agent.log.info(f"DEBUG: detected command '{user_input}', spawning worker")
             
@@ -125,7 +133,6 @@ class TUI(App):
                     self.agent.log.error(f"Command execution error: {e}")
                     await self.ui.print_error(f"Command failed: {e}")
                 finally:
-                    # Only restore focus if we aren't quitting and app is running
                     if self.app._running and not user_input.startswith("/quit"):
                         self.query_one("#input").focus()
             
@@ -137,6 +144,8 @@ class TUI(App):
             self.agent.log.info(f"DEBUG: Processing regular prompt: '{user_input}'")
             await self.ui.print_message(user_input, role="user")
             self.agent.log.info("DEBUG: Message printed to UI, starting agent worker")
+            
+            # Agent.process_user_input делегує це Orchestrator'у, тому інтерфейс виклику не змінюється
             self.run_worker(self.agent.process_user_input(user_input), exclusive=True)
             self.agent.log.info("DEBUG: Agent worker scheduled")
         except Exception as e:
@@ -155,6 +164,6 @@ class TUI(App):
         self.exit()
 
 if __name__ == "__main__":
-    agent = AngelicaAgent() # Instantiate agent without ui
-    app = TUI(agent) # Pass the agent to TUI
+    agent = AngelicaAgent() 
+    app = TUI(agent) 
     app.run()

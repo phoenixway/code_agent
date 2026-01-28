@@ -1,254 +1,282 @@
-# modules/history.py
+"""
+modules/history.py
+
+Ultimate History Manager:
+1. CAS (Content-Addressable Storage): Saves disk space & RAM via deduplication (Blobs).
+2. Smart Context: Dynamic switching between Full Content and Skeletons based on usage frequency.
+3. Tool Compression: 'Hides' the code written by the agent in the chat history to save tokens.
+4. Transient Handling: Ensures `read_file` results are visible immediately but don't clog history later.
+5. Summarization: Long-term memory management.
+"""
+
 import json
 import time
+import hashlib
+import os
+from pathlib import Path
 from modules.code_parser import CodeParser
 
 class HistoryManager:
-    """
-    HistoryManager для code-agent:
-    - зберігає повідомлення (user/assistant/system)
-    - зберігає файли коду з версіями
-    - підтримує token counting, sliding window, summary через LLM
-    """
-
-    def __init__(self, chat_provider, logger=None, max_tokens=4000, window_size=50, max_file_versions=5):
-        self.messages = []         # raw chat messages
-        self.files = {}            # {"filename": [{"version": int, "content": str, "timestamp": float}, ...]}
+    def __init__(self, chat_provider, logger=None, max_tokens=4000, storage_dir=".angelica", window_size=50):
         self.chat = chat_provider
         self.logger = logger
         self.max_tokens = max_tokens
-        self.window_size = window_size  # останні N повідомлень залишаються без summary
-        self.max_file_versions = max_file_versions
-        self.code_parser = CodeParser() # Ініціалізуємо парсер
-        self.SKELETON_THRESHOLD = 2000 # Поріг символів для великих файлів 
+        self.window_size = window_size
+        
+        # --- STORAGE SETUP ---
+        self.storage_root = Path(storage_dir)
+        self.blobs_dir = self.storage_root / "blobs"
+        self.blobs_dir.mkdir(parents=True, exist_ok=True)
+        
+        # --- STATE ---
+        self.messages = []         # Linear chat log
+        self.files = {}            # {filename: [{version, blob_hash, timestamp}, ...]}
+        self.active_files = set()  # Files explicitly edited/read recently
+        
+        # --- TOOLS ---
+        self.code_parser = CodeParser()
+        
+        # --- CONSTANTS ---
+        self.SKELETON_THRESHOLD = 2000  # Bytes. Larger files get skeletonized unless active.
+        self.MAX_ACTIVE_FILES = 5       # Keep top N files in "Full Content" mode in system prompt.
 
-    # ------------------ Messages ------------------
+    # =========================================================================
+    # 1. BLOB STORAGE (Content-Addressable Storage)
+    # =========================================================================
+
+    def _save_blob(self, content: str) -> str:
+        """Saves content to disk using SHA256 hash as filename."""
+        if not content: return None
+        
+        content_bytes = content.encode('utf-8')
+        blob_hash = hashlib.sha256(content_bytes).hexdigest()
+        blob_path = self.blobs_dir / blob_hash
+        
+        if not blob_path.exists():
+            with open(blob_path, "wb") as f:
+                f.write(content_bytes)
+        return blob_hash
+
+    def _load_blob(self, blob_hash: str) -> str:
+        """Retrieves content from disk by hash."""
+        if not blob_hash: return ""
+        blob_path = self.blobs_dir / blob_hash
+        if blob_path.exists():
+            try:
+                with open(blob_path, "rb") as f:
+                    return f.read().decode('utf-8')
+            except Exception as e:
+                if self.logger: self.logger.error(f"Blob load error {blob_hash}: {e}")
+        return ""
+
+    # =========================================================================
+    # 2. MESSAGE MANAGEMENT & COMPRESSION
+    # =========================================================================
 
     def add_message(self, role, content, msg_type=None):
-        """Додає чисте повідомлення в історію"""
-        if not content and not msg_type:
-            return
+        """Adds a message with intelligent compression for tool outputs."""
+        if not content and not msg_type: return
 
-        if isinstance(content, str):
-            content = content.strip()
-            if not content and not msg_type:
-                return
+        final_content = content
+
+        # COMPRESSION: If Assistant wrote a file, replace body with a Stub
+        if role == "assistant" and isinstance(content, str):
+            final_content = self._compress_assistant_tool_call(content)
         
-        message = {"role": role, "content": content}
+        message = {"role": role, "content": final_content}
         if msg_type:
             message["type"] = msg_type
 
         self.messages.append(message)
+        
         if self.logger:
-            log_content = content
-            if isinstance(content, dict):
-                log_content = json.dumps(content)[:100]
-            elif isinstance(content, str):
-                log_content = content[:50]
-            self.logger.debug(f"Added message: role={role}, type={msg_type}, content='{log_content}...'")
+            preview = str(final_content)[:60].replace('\n', ' ')
+            self.logger.debug(f"History+ ({role}): {preview}...")
 
-    def add_messages(self, messages):
-        for msg in messages:
-            self.add_message(msg["role"], msg.get("content"), msg.get("type"))
-
-    # ------------------ Files ------------------
-
-    def add_file_version(self, filename, content):
-        """
-        Додає нову версію файлу в self.files і повертає номер версії.
-        """
-        content = content.strip()
-        if not content:
-            return None
-        version_list = self.files.setdefault(filename, [])
-        version_number = (version_list[-1]["version"] + 1) if version_list else 1
-        version_list.append({
-            "version": version_number,
-            "content": content,
-            "timestamp": time.time()
-        })
-        # Trim old versions
-        if len(version_list) > self.max_file_versions:
-            version_list[:] = version_list[-self.max_file_versions:]
-        if self.logger:
-            self.logger.debug(f"Added file version: {filename} v{version_number}")
-        return version_number
-
-    def add_file_context_marker(self, filename, version):
-        """Додає маркер-посилання на файл в історію повідомлень."""
-        marker = {"filename": filename, "version": version}
-        self.add_message("system", marker, msg_type="file_context")
+    def _compress_assistant_tool_call(self, content: str) -> str:
+        """Parses assistant JSON. If create/edit_file, offloads content to Blob."""
+        try:
+            # Check if it looks like JSON tool call
+            if content.strip().startswith('{') and '"content"' in content:
+                data = json.loads(content)
+                action = data.get("type") or data.get("action")
+                
+                if action in ["create_file", "edit_file", "replace"] and "content" in data:
+                    body = data["content"]
+                    if len(body) > 200:
+                        blob_hash = self._save_blob(body)
+                        size = len(body)
+                        data["content"] = (
+                            f"[CONTENT_SAVED_TO_DISK]\n"
+                            f"Size: {size} bytes | Hash: {blob_hash[:8]}\n"
+                            f"NOTE: Content written to system. Use 'read_file' to view."
+                        )
+                        return json.dumps(data, ensure_ascii=False)
+        except Exception:
+            pass
+        return content
 
     def add_transient_file_content(self, filename, version, content):
-        """Додає тимчасове повідомлення з повним вмістом файлу."""
-        transient_content = {
+        """Adds a temporary message (read_file result) that isn't saved permanently."""
+        self.add_message("system", {
             "filename": filename,
             "version": version,
             "content": content
-        }
-        self.add_message("system", transient_content, msg_type="transient_file_content")
+        }, msg_type="transient_file_content")
 
-    def get_latest_file_content(self, filename):
-        """Повертає останню версію файлу"""
-        versions = self.files.get(filename)
-        if versions:
-            return versions[-1]["content"]
-        return None
+    # =========================================================================
+    # 3. FILE STATE MANAGEMENT
+    # =========================================================================
 
-    def get_file_history(self, filename):
-        """Повертає список всіх версій файлу"""
-        return self.files.get(filename, [])
-
-    # ------------------ Token counting ------------------
-
-    def count_tokens(self, messages=None):
-        """Підрахунок токенів історії"""
-        messages_to_count = messages or self.get_history_for_api()
-        tokenizer = getattr(self.chat, "get_tokenizer", lambda: None)()
+    def add_file_version(self, filename, content):
+        """Saves new file version via Blob and updates context."""
+        content = content.strip()
+        if not content: return None
         
-        if not tokenizer:
-            # Fallback to character-based estimation
-            token_count = 0
-            for m in messages_to_count:
-                if isinstance(m.get('content'), str):
-                    token_count += len(m['content'])
-            return token_count // 4
+        blob_hash = self._save_blob(content)
         
-        # Sum tokens for all messages
-        return sum(len(tokenizer.encode(m["content"])) for m in messages_to_count if isinstance(m.get('content'), str))
+        version_list = self.files.setdefault(filename, [])
+        version_number = (version_list[-1]["version"] + 1) if version_list else 1
+        
+        version_list.append({
+            "version": version_number,
+            "blob_hash": blob_hash,
+            "timestamp": time.time(),
+            "size": len(content)
+        })
+        
+        # Mark as active (LRU logic)
+        self.active_files.add(filename)
+        if len(self.active_files) > self.MAX_ACTIVE_FILES:
+            # Simple eviction: remove one that isn't the current one
+            for f in list(self.active_files):
+                if f != filename:
+                    self.active_files.remove(f)
+                    break
+        return version_number
 
-    @property
-    def current_token_count(self):
-        """Повертає поточну кількість токенів в історії, яку буде надіслано в API."""
-        return self.count_tokens()
-    
-    
-
-    # ------------------ History for API ------------------
-
-    def get_history_for_api(self):
-        """
-        Динамічно генерує історію для відправки в API.
-        Замінює старі або великі версії файлів на XML-скелети[cite: 106].
-        """
-        api_history = []
-        included_files_count = {} 
-        included_versions = {}
-
-        # 1. Основний прохід по повідомленнях історії [cite: 108]
-        for msg in self.messages:
-            msg_type = msg.get("type")
-
-            if msg_type == "transient_file_content":
-                # Тимчасові повідомлення ігноруємо, вони обробляються в кінці [cite: 109]
-                continue
-            
-            elif msg_type == "file_context":
-                filename = msg["content"]["filename"]
-                version = msg["content"]["version"]
-                
-                if version in included_versions.get(filename, []):
-                    continue
-
-                file_content = self.get_file_version_content(filename, version)
-                if not file_content:
-                    continue
-
-                v_count = included_files_count.get(filename, 0)
-                is_large = len(file_content) > getattr(self, "LARGE_FILE_THRESHOLD", 2000)
-
-                # Визначаємо, чи використовувати скелет (Signatures only)
-                should_use_skeleton = (v_count >= 2) or (is_large and v_count >= 1)
-
-                if should_use_skeleton:
-                    # Отримуємо сигнатури через наш новий модуль
-                    display_content = self.code_parser.get_skeleton(filename, file_content)
-                    
-                    # Формуємо системне повідомлення через XML-теги для кращого розуміння ШІ
-                    content_str = (
-                        f"<file_skeleton path='{filename}' version='{version}'>\n"
-                        f"{display_content}\n"
-                        f"</file_skeleton>\n"
-                        f"NOTE: Implementation bodies are hidden to save tokens. Use `read_file` to see the full code."
-                    )
-                else:
-                    # Повний вміст файлу
-                    content_str = (
-                        f"<file_content path='{filename}' version='{version}'>\n"
-                        f"{file_content}\n"
-                        f"</file_content>"
-                    )
-
-                api_history.append({
-                    "role": "system",
-                    "content": content_str
-                })
-                
-                included_files_count[filename] = v_count + 1
-                included_versions.setdefault(filename, []).append(version)
-            
-            else: # Звичайні повідомлення (user, assistant, system) [cite: 115]
-                content = msg.get('content', '')
-                if not isinstance(content, str):
-                    content = json.dumps(content, indent=2)
-
-                api_history.append({
-                    "role": msg["role"],
-                    "content": content
-                })
-
-        # 2. Фінальна перевірка: результат останнього read_file [cite: 116]
-        last_message = self.messages[-1] if self.messages else None
-        if last_message and last_message.get("type") == "transient_file_content":
-            transient = last_message["content"]
-            f_name = transient["filename"]
-            f_ver = transient["version"]
-            f_content = transient["content"]
-            
-            already_included = any(
-                f"path='{f_name}' version='{f_ver}'" in h_msg['content'] 
-                for h_msg in api_history if h_msg['role'] == 'system'
-            )
-            
-            if not already_included:
-                # Навіть для щойно прочитаного файлу перевіряємо, чи не завеликий він
-                if len(f_content) > getattr(self, "LARGE_FILE_THRESHOLD", 2000):
-                    f_display = self.code_parser.get_skeleton(f_name, f_content)
-                    api_content = (
-                        f"SYSTEM RESULT for `read_file`:\n"
-                        f"<file_skeleton path='{f_name}' version='{f_ver}'>\n"
-                        f"{f_display}\n"
-                        f"</file_skeleton>\n"
-                        f"NOTE: This file is too large, showing signatures. Use specific tools if you need more details."
-                    )
-                else:
-                    api_content = (
-                        f"SYSTEM RESULT for `read_file`:\n"
-                        f"<file_content path='{f_name}' version='{f_ver}'>\n"
-                        f"{f_content}\n"
-                        f"</file_content>"
-                    )
-                
-                api_history.append({
-                    "role": "system",
-                    "content": api_content
-                })
-
-        return api_history
-    
     def get_file_version_content(self, filename, version):
-        """Допоміжна функція для отримання контенту конкретної версії файлу."""
+        """Helper to get content for specific version."""
         versions = self.files.get(filename, [])
         for v in versions:
             if v["version"] == version:
-                return v["content"]
+                return self._load_blob(v["blob_hash"])
         return None
 
+    # =========================================================================
+    # 4. API CONTEXT GENERATION (THE BRAIN)
+    # =========================================================================
 
-    # ------------------ Summarization ------------------
+    def get_history_for_api(self):
+        """
+        Dynamically constructs the context window.
+        Logic:
+        1. Parse linear history.
+        2. Identify file references.
+        3. Build 'System Workspace' (Full content vs Skeletons).
+        4. Append Chat Log (skipping redundant transient files).
+        5. Ensure the LAST read_file result is always visible.
+        """
+        api_history = []
+        included_in_system_prompt = set()
+        
+        # --- A. BUILD SYSTEM WORKSPACE (Current Project State) ---
+        workspace_parts = []
+        
+        for filename, versions in self.files.items():
+            if not versions: continue
+            
+            latest = versions[-1]
+            version = latest["version"]
+            content = self._load_blob(latest["blob_hash"])
+            
+            # Logic: Full Content OR Skeleton?
+            # Full if: Active OR Small size
+            is_active = filename in self.active_files
+            is_small = len(content) < self.SKELETON_THRESHOLD
+            
+            if is_active or is_small:
+                workspace_parts.append(
+                    f"<file_content path='{filename}' version='{version}'>\n{content}\n</file_content>"
+                )
+            else:
+                skeleton = self.code_parser.get_skeleton(filename, content)
+                workspace_parts.append(
+                    f"<file_skeleton path='{filename}' version='{version}'>\n{skeleton}\n</file_skeleton>\n"
+                    f""
+                )
+            
+            included_in_system_prompt.add(f"{filename}:{version}")
+
+        if workspace_parts:
+            sys_msg = "## CURRENT FILE STATE\n" + "\n".join(workspace_parts)
+            api_history.append({"role": "system", "content": sys_msg})
+
+        # --- B. PROCESS CHAT LOG ---
+        
+        last_msg_idx = len(self.messages) - 1
+        
+        for idx, msg in enumerate(self.messages):
+            msg_type = msg.get("type")
+            
+            # Skip transient files (read_file results) IF they are already covered in System Workspace
+            # UNLESS it's the very last message (Agent just read it, needs to see it now)
+            if msg_type == "transient_file_content":
+                if idx == last_msg_idx:
+                    # Logic for the LAST message (Immediate feedback)
+                    t_data = msg["content"]
+                    f_name, f_ver, f_content = t_data["filename"], t_data["version"], t_data["content"]
+                    
+                    # Even for immediate feedback, check size
+                    if len(f_content) > self.SKELETON_THRESHOLD * 2: # Very generous limit for immediate read
+                         # Fallback to skeleton even for read if HUGE
+                        skel = self.code_parser.get_skeleton(f_name, f_content)
+                        content_str = (
+                            f"SYSTEM RESULT (read_file):\n"
+                            f"<file_skeleton path='{f_name}' version='{f_ver}'>\n{skel}\n</file_skeleton>\n"
+                            f"NOTE: File is huge. Showing signatures."
+                        )
+                    else:
+                        content_str = (
+                            f"SYSTEM RESULT (read_file):\n"
+                            f"<file_content path='{f_name}' version='{f_ver}'>\n{f_content}\n</file_content>"
+                        )
+                    api_history.append({"role": "system", "content": content_str})
+                
+                continue # Skip transient messages that are not the last one
+
+            elif msg_type == "file_context":
+                # Legacy support: skip, as we built System Workspace
+                continue
+            
+            # Add normal messages
+            content = msg.get('content', '')
+            if not isinstance(content, str):
+                content = json.dumps(content, ensure_ascii=False)
+            
+            api_history.append({"role": msg["role"], "content": content})
+
+        return api_history
+
+    # =========================================================================
+    # 5. SUMMARIZATION & UTILS
+    # =========================================================================
+
+    def count_tokens(self, messages=None):
+        """Approximate token count."""
+        msgs = messages or self.messages
+        total = 0
+        for m in msgs:
+            c = m.get("content", "")
+            total += len(str(c))
+        return total // 4
+
+    @property
+    def current_token_count(self):
+        return self.count_tokens()
 
     async def check_and_summarize(self, ui=None):
-        """Перевірка токенів і запуск summary при перевищенні max_tokens"""
+        """Trigger summarization if limit reached."""
         if self.count_tokens() > self.max_tokens:
             confirm = True
             if ui and hasattr(ui, "confirm_action"):
@@ -257,10 +285,7 @@ class HistoryManager:
                 await self.summarize(ui, window=True)
 
     async def summarize(self, ui=None, window=True):
-        """
-        Структуроване summary історії та файлів.
-        Якщо window=True, summarize старі повідомлення, залишаючи останні window_size.
-        """
+        """Summarize old messages."""
         if window and len(self.messages) > self.window_size:
             to_summarize = self.messages[:-self.window_size]
             keep_messages = self.messages[-self.window_size:]
@@ -268,56 +293,35 @@ class HistoryManager:
             to_summarize = self.messages
             keep_messages = []
 
-        if not to_summarize:
-            return
+        if not to_summarize: return
 
-        # Формуємо історію чатів
-        history_text = "\n".join(f"{m['role']}: {m['content']}" for m in to_summarize)
-
-        # Формуємо список файлів та змін
-        file_changes = {}
-        for fname, versions in self.files.items():
-            file_changes[fname] = [
-                {"version": v["version"], "content_snippet": v["content"][:200]}
-                for v in versions
-            ]
+        # Compress text for prompt
+        history_text = "\n".join(f"{m['role']}: {str(m['content'])[:200]}..." for m in to_summarize)
 
         prompt = (
-            "Summarize the following conversation history and code changes in JSON format, "
-            "keeping key facts, decisions, pending tasks, and latest code snippets.\n\n"
-            f"Chat history:\n{history_text}\n\n"
-            f"Files:\n{json.dumps(file_changes, indent=2)}\n\n"
-            "Output JSON example:\n"
-            "{\n"
-            '  "summary": "...",\n'
-            '  "decisions": ["..."],\n'
-            '  "pending_tasks": ["..."],\n'
-            '  "file_summaries": {"filename": "..."}\n'
-            "}"
+            "Summarize conversation history JSON. Keep tasks/decisions.\n"
+            f"{history_text}\n"
+            "Format: {\"summary\": \"...\", \"pending\": [...]}"
         )
 
-        if ui and hasattr(ui, "print_system"):
-            await ui.print_system(f"Summarizing {len(to_summarize)} messages and {len(file_changes)} files...")
+        if ui: await ui.print_system(f"Summarizing {len(to_summarize)} messages...")
 
-        summary = ""
+        summary_out = ""
         try:
             async for chunk in self.chat.get_streaming_response(prompt, []):
-                summary += chunk
-            try:
-                json_summary = json.loads(summary)
-                summary_text = json.dumps(json_summary, indent=2)
-            except Exception:
-                summary_text = summary  # fallback if JSON invalid
-
-            # Замінюємо старі повідомлення на одне system повідомлення зі summary
-            self.messages = [{"role": "system", "content": f"Previous conversation summary: {summary_text}"}] + keep_messages
-
-            if ui and hasattr(ui, "print_system"):
-                await ui.print_system("History summarized successfully.")
-            if self.logger:
-                self.logger.debug("History summarized successfully.")
+                summary_out += chunk
+            
+            summary_msg = {"role": "system", "content": f"SUMMARY: {summary_out}"}
+            self.messages = [summary_msg] + keep_messages
+            
+            if ui: await ui.print_system("✅ History summarized.")
+            
         except Exception as e:
-            if ui and hasattr(ui, "print_error"):
-                await ui.print_error(f"Failed to summarize history: {str(e)}")
-            elif self.logger:
-                self.logger.error(f"Failed to summarize history: {str(e)}")
+            if ui: await ui.print_error(f"Summarization error: {e}")
+
+    def clear_history(self):
+        """Clear RAM history only."""
+        self.messages = []
+        self.active_files = set()
+        self.files = {} 
+        if self.logger: self.logger.info("History cleared.")
