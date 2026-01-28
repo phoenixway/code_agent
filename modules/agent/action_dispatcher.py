@@ -42,6 +42,8 @@ class ActionDispatcher:
                 processed_segments.append(segment)
                 
                 system_results.append(result_text)
+                
+                # Якщо хоч одна дія вимагає зупинки (наприклад, denied), ми зупиняємось
                 if stop_flag:
                     should_stop = True
         
@@ -55,7 +57,6 @@ class ActionDispatcher:
         state.update_loop_tracker(command, "pending")
         if state.consecutive_failed_repeats >= 1:
             await self.ui.print_error("⚠️ Loop detected: Repeating failed action.")
-            # Тут ми повертаємо True (stop), бо агент зациклився і йому треба допомога людини
             return command, "SYSTEM: CRITICAL Loop detected. Change strategy.", True
 
         # 2. UI Execution Wrapper
@@ -74,13 +75,11 @@ class ActionDispatcher:
                 lint_error = self._check_python_syntax(path)
                 if lint_error:
                     output_text += f"\n\n⚠️ SYSTEM WARNING: Syntax check failed for {path}:\n{lint_error}\nPlease fix this immediately."
-                    # Ми НЕ змінюємо статус на error тут глобально, але даємо попередження
-                    # status = 'error' 
 
         # 5. History Handling
         command_for_history = command.copy()
 
-        # 6. Smart Stop Logic (ВИПРАВЛЕНО)
+        # 6. Smart Stop Logic (ВИПРАВЛЕНО ДЛЯ АВТОНОМНОСТІ)
         is_state_changing = cmd_type in self.config.STATE_CHANGING_OPS
         execution_failed = status in ["failed", "error"]
         action_denied = status == "denied"
@@ -88,20 +87,20 @@ class ActionDispatcher:
         should_stop = False
         
         if action_denied:
-            # Якщо користувач заборонив - стоп
+            # Єдина жорстка причина зупинити цикл - пряма заборона користувача
             output_text += "\n[SYSTEM: Action denied by user.]"
             should_stop = True
             
         elif execution_failed:
-            # Якщо помилка - ПРОДОВЖУЄМО (повертаємо контроль агенту для виправлення)
+            # При помилці ми НЕ зупиняємось, а даємо агенту шанс виправити її
             output_text += "\n[SYSTEM: Action failed. Analyze the error in <think> and retry.]"
             should_stop = False 
             
         elif is_state_changing:
-            # Якщо успішна дія, що змінює стан (create, delete, shell) - СТОП (щоб користувач глянув)
-            # АЛЕ: Якщо ми в автономному циклі, Orchestrator може це ігнорувати,
-            # проте Dispatcher радить зупинитись.
-            should_stop = True
+            # Успішна зміна стану (run_shell, create_file).
+            # Раніше тут було True, що зупиняло цикл.
+            # Тепер False - ми віримо, що якщо Policy пропустила дію, то агент може продовжувати.
+            should_stop = False
             
         full_result_text = f"SYSTEM RESULT for `{cmd_type}`: {output_text}"
 

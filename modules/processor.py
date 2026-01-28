@@ -9,13 +9,16 @@ class ResponseProcessor:
         self.history = history
 
     MAX_OUTPUT_LENGTH = 3000
+    LARGE_FILE_THRESHOLD = 2000000  # ~2 MB in characters
 
-    def _truncate_output(self, text: str) -> str:
+    def _truncate_output(self, text: str, threshold: int = None) -> str:
         if not isinstance(text, str):
             return text
-        if len(text) > self.MAX_OUTPUT_LENGTH:
-            truncated_len = len(text) - self.MAX_OUTPUT_LENGTH
-            return text[:self.MAX_OUTPUT_LENGTH] + f"\n... (truncated {truncated_len} characters) ..."
+        if threshold is None:
+            threshold = self.MAX_OUTPUT_LENGTH
+        if len(text) > threshold:
+            truncated_len = len(text) - threshold
+            return text[:threshold] + f"\n... (truncated {truncated_len} characters) ..."
         return text
 
     async def process_single_action(self, command_dict: dict) -> dict:
@@ -93,8 +96,15 @@ class ResponseProcessor:
 
         # 9. Output Truncation
         if not result.get("skip_truncation"):
-            if isinstance(result, dict) and "output" in result and isinstance(result["output"], str) and len(result["output"]) > self.MAX_OUTPUT_LENGTH:
-                if await self.ui.confirm_truncation(action_type, len(result["output"])):
-                    result["output"] = self._truncate_output(result["output"])
+            if isinstance(result, dict) and "output" in result and isinstance(result["output"], str):
+                # Визначаємо поріг на основі типу дії
+                if action_type in ["read_file", "run_shell"]:
+                    threshold = self.LARGE_FILE_THRESHOLD  # ~2 MB
+                else:
+                    threshold = self.MAX_OUTPUT_LENGTH  # 3000 символів
+                
+                if len(result["output"]) > threshold:
+                    if await self.ui.confirm_truncation(action_type, len(result["output"])):
+                        result["output"] = self._truncate_output(result["output"], threshold)
                 
         return result
