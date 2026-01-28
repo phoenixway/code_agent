@@ -10,7 +10,7 @@ class AgentConfig:
         self.settings = load_settings()
         
         # Константи поведінки
-        self.MAX_CONSECUTIVE_CALLS = 5
+        self.MAX_CONSECUTIVE_CALLS = 1000000  # Вимкнено попередження про завелику кількість кроків
         
         # Операції, що змінюють стан (викликають зупинку циклу для підтвердження або роздумів)
         self.STATE_CHANGING_OPS = {
