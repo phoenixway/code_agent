@@ -110,3 +110,357 @@ The `modules/logger.py` module provides a simple API for logging.
     # In agent.py
     self.comm_log.info(f"--- OUTGOING ---\n{query}\n")
     ```
+
+---
+
+## Future Improvements & Architectural Recommendations
+
+*Дата аналізу: 28 січня 2025*  
+*Автор: Angelica AI (автономний аналіз)*
+
+### 📊 Аналіз поточної архітектури
+
+#### Сильні сторони:
+- ✅ **Модульна структура** (modules/, providers/, tools/)
+- ✅ **Розділення відповідальностей** (UI, агент, тули)
+- ✅ **Підтримка кількох AI провайдерів** (OpenAI, Gemini, Ollama)
+- ✅ **TUI інтерфейс** з Textual (сучасний, крос-платформений)
+- ✅ **Система тулів** з динамічним завантаженням
+- ✅ **Конфігурація через змінні середовища**
+
+#### Слабкі місця (виявлені під час роботи):
+1. **Проблеми з обробкою помилок CSS** - Textual має обмежену підтримку CSS
+2. **Складність тестування UI компонентів** - важко тестувати TUI без реального інтерфейсу
+3. **Відсутність чіткої документації архітектури**
+4. **Можливі проблеми з потокобезпечністю** (async/sync змішування)
+5. **Обмежена підтримка Markdown у Textual**
+6. **Жорсткі залежності** між компонентами
+7. **Розкидана конфігурація** по різних файлах
+8. **Мінімальна обробка помилок** у критичних місцях
+
+### 🚀 Пропозиції щодо покращення архітектури
+
+#### 1. Рефакторинг та покращення модульності
+
+**Пропонована структура:**
+```
+src/
+  core/           # Ядро системи
+    agent/        # Логіка агента
+    orchestration/# Оркестрація тулів
+    memory/       # Історія та контекст
+  
+  ui/             # UI компоненти
+    tui/          # Textual UI
+    widgets/      # Перевикористовувані віджети
+  
+  tools/          # Система тулів
+    base/         # Базові класи
+    builtin/      # Вбудовані тули
+    extensions/   # Розширення
+    
+  providers/      # AI провайдери
+  utils/          # Утиліти
+```
+
+#### 2. Впровадження Dependency Injection
+
+**Пропоноване рішення:**
+```python
+# container.py
+from dependency_injector import containers, providers
+
+class Container(containers.DeclarativeContainer):
+    config = providers.Configuration()
+    
+    # Провайдери
+    ai_provider = providers.Singleton(
+        lambda c: create_provider(c.provider.name, c.provider.api_key),
+        config=config
+    )
+    
+    # Менеджери
+    tool_manager = providers.Singleton(
+        ToolManager,
+        provider=ai_provider
+    )
+```
+
+#### 3. Покращення системи тулів
+
+**Пропозиції:**
+```python
+# 1. Тули з типами даних та валідацією
+@tool
+def search_files(
+    pattern: Annotated[str, "Шаблон пошуку"],
+    path: Annotated[Optional[str], "Шлях для пошуку"] = "."
+) -> List[str]:
+    """Пошук файлів за шаблоном"""
+    pass
+
+# 2. Тули з безпекою (sandboxing)
+@tool(sandbox=True, timeout=30)
+def run_shell(command: str):
+    """Виконання shell команди з обмеженнями"""
+    pass
+```
+
+#### 4. Покращення UI/UX
+
+**Пропозиції:**
+```python
+# 1. Абстрактний UI слой
+class UIAdapter(ABC):
+    @abstractmethod
+    def display_message(self, message: Message):
+        pass
+    
+    @abstractmethod
+    def display_tool_call(self, tool_call: ToolCall):
+        pass
+
+# 2. Підтримка кількох UI бекендів
+class TextualUI(UIAdapter):
+    # Поточний Textual UI
+    pass
+
+class RichCLI(UIAdapter):
+    # Простий CLI з Rich
+    pass
+```
+
+#### 5. Покращення системи конфігурації
+
+**Пропозиції:**
+```yaml
+# config.yaml
+provider:
+  name: "openai"
+  api_key: "${OPENAI_API_KEY}"
+  model: "gpt-4"
+
+tools:
+  enabled:
+    - search_files
+    - read_file
+    - edit_file
+    - run_shell
+  disabled:
+    - git_commit  # Небезпечні тули вимкнено за замовчуванням
+
+ui:
+  theme: "dark"
+  compact_mode: true
+  show_timestamps: false
+```
+
+#### 6. Покращення обробки помилок та логування
+
+```python
+class ErrorHandler:
+    def __init__(self):
+        self.logger = structlog.get_logger()
+    
+    async def handle_tool_error(self, tool_name: str, error: Exception):
+        self.logger.error(
+            "tool_execution_failed",
+            tool=tool_name,
+            error_type=type(error).__name__,
+            error_message=str(error)
+        )
+        
+        # Користувацькі повідомлення про помилки
+        error_messages = {
+            "FileNotFoundError": "Файл не знайдено",
+            "PermissionError": "Немає доступу до файлу",
+        }
+        
+        return error_messages.get(type(error).__name__, "Сталася помилка")
+```
+
+#### 7. Додавання плагінов та розширень
+
+```python
+# Структура плагінів:
+# plugins/
+#   code_analysis/
+#     __init__.py
+#     plugin.py
+#   git_integration/
+#     __init__.py
+#     plugin.py
+
+# Реєстрація плагінів:
+class PluginManager:
+    def __init__(self):
+        self.plugins = []
+    
+    def load_plugin(self, plugin_path: str):
+        # Динамічне завантаження плагінів
+        pass
+```
+
+### 🎯 Нові функціональні можливості
+
+#### 1. Система контексту та пам'яті
+```python
+class ContextManager:
+    def __init__(self):
+        self.conversation_history = []
+        self.file_context = {}  # Контекст файлів
+        self.project_context = {}  # Контекст проекту
+    
+    def add_to_context(self, file_path: str, content: str):
+        """Додавання файлу до контексту"""
+        self.file_context[file_path] = {
+            "content": content,
+            "last_modified": datetime.now(),
+            "tokens": count_tokens(content)
+        }
+```
+
+#### 2. Багатоагентна система
+```python
+class MultiAgentSystem:
+    def __init__(self):
+        self.agents = {
+            "coder": CodeAgent(),
+            "tester": TestingAgent(),
+            "reviewer": CodeReviewAgent(),
+        }
+    
+    async def collaborate(self, task: str):
+        """Колаборація між агентами"""
+        # Кодер пише код
+        code = await self.agents["coder"].solve(task)
+        
+        # Тестер тестує
+        test_results = await self.agents["tester"].test(code)
+        
+        # Ревьюер перевіряє
+        review = await self.agents["reviewer"].review(code)
+        
+        return {
+            "code": code,
+            "tests": test_results,
+            "review": review
+        }
+```
+
+#### 3. Інтеграція з IDE та редакторами
+```python
+# Плагін для VS Code/Neovim
+# - Автодоповнення на основі контексту
+# - Швидкі команди через хоткеї
+# - Інтеграція з LSP
+```
+
+#### 4. Офлайн режим та локальні моделі
+```python
+class LocalProvider(AIProvider):
+    def __init__(self, model_path: str):
+        self.model = load_local_model(model_path)
+    
+    async def generate(self, prompt: str) -> str:
+        # Генерація з локальної моделі
+        return await self.model.generate(prompt)
+```
+
+#### 5. Система навчання та адаптації
+```python
+class LearningSystem:
+    def __init__(self):
+        self.feedback_history = []
+        self.success_patterns = []
+    
+    def learn_from_feedback(self, task: str, solution: str, feedback: str):
+        """Навчання на основі зворотного зв'язку"""
+        self.feedback_history.append({
+            "task": task,
+            "solution": solution,
+            "feedback": feedback
+        })
+```
+
+### 🔧 Технічні покращення
+
+#### 1. Тестування
+```python
+# Пропоновано:
+# 1. Модульні тести для кожного компонента
+# 2. Інтеграційні тести для тулів
+# 3. E2E тести для UI
+# 4. Property-based тести для критичних компонентів
+# 5. Тести продуктивності
+```
+
+#### 2. Документація
+```python
+# 1. Автоматична генерація документації з docstrings
+# 2. Документація архітектури
+# 3. Приклади використання
+# 4. Туторіали для розробників
+```
+
+#### 3. CI/CD Pipeline
+```yaml
+# GitHub Actions workflow:
+# 1. Лінтери (black, isort, flake8)
+# 2. Тести (pytest з покриттям)
+# 3. Білд для різних платформ
+# 4. Автоматичне релізування
+```
+
+### 📈 Roadmap покращень
+
+**Фаза 1: Стабілізація (1-2 тижні)**
+1. Рефакторинг agent.py на менші модулі
+2. Покращення обробки помилок
+3. Додавання структурованого логування
+4. Покращення тестів
+
+**Фаза 2: Розширення (2-4 тижні)**
+1. Система плагінів
+2. Покращена система конфігурації
+3. Багатоагентна архітектура
+4. Система контексту
+
+**Фаза 3: Інтеграції (1-2 місяці)**
+1. IDE плагіни
+2. Веб-інтерфейс
+3. API для інтеграції з іншими інструментами
+4. Офлайн режим
+
+### 🎨 UI/UX покращення
+
+1. **Теми оформлення** - темна/світла теми, кастомні кольори
+2. **Швидкі команди** - хоткеї для частовикористовуваних дій
+3. **Історія команд** - пошук та повторне використання
+4. **Автодоповнення** - контекстне автодоповнення команд
+5. **Візуалізація** - графіки для аналізу коду, діаграми залежностей
+
+### 🔒 Безпека
+
+1. **Sandboxing** - ізоляція виконання тулів
+2. **Аудит дій** - логування всіх операцій
+3. **Контроль доступу** - обмеження доступу до файлів
+4. **Валідація вводу** - перевірка параметрів тулів
+
+### 💡 Висновок
+
+**Ключові напрямки покращення:**
+
+1. **Архітектура:** Рефакторинг на більш модульну структуру з DI
+2. **Розширюваність:** Система плагінів та кастомних тулів
+3. **UI/UX:** Абстрактний UI слой для підтримки різних інтерфейсів
+4. **Безпека:** Sandboxing та контроль доступу
+5. **Продуктивність:** Кешування, оптимізація, локальні моделі
+
+**Найважливіші перші кроки:**
+1. Рефакторинг agent.py на менші компоненти
+2. Впровадження Dependency Injection
+3. Покращення системи конфігурації
+4. Додавання структурованого логування
+
+Ці зміни зроблять додаток більш стійким, розширюваним та зручним для розробки нових функцій.
