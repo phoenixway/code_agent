@@ -240,7 +240,7 @@ class CommandHandler:
             await self.ui.print_error(f"Error importing history: {e}")
 
     async def _handle_models(self, user_input):
-        available_models = self.agent.settings.get("available_models", [])
+        available_models = self.agent.config.settings.get("available_models", [])
         if not available_models:
             await self.ui.print_error("No available models configured in settings.")
             return
