@@ -8,6 +8,7 @@ from modules.processor import ResponseProcessor
 from modules.tools.manager import ToolManager
 from modules.policy import PermissionPolicy
 from modules.tools.definitions.shell import ShellTool
+from modules.code_parser import CodeParser
 
 class TestFileTools(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
@@ -99,12 +100,12 @@ class TestFileTools(unittest.IsolatedAsyncioTestCase):
     async def test_read_file_skeleton_success(self):
         file_path = Path(self.test_dir) / "sample.py"
         file_path.write_text("def foo():\n    return 1\n")
-        with patch("modules.tools.definitions.files.CodeParser") as mock_parser_cls:
-            parser_inst = mock_parser_cls.return_value
-            parser_inst.configs = {".py": {"name": "python"}}
-            parser_inst.get_skeleton.return_value = "ƒ def foo() : # ... implementation hidden ..."
-            command = {"type": "read_file_skeleton", "path": str(file_path)}
-            result = await self.processor.process_single_action(command)
+        parser_mock = MagicMock()
+        parser_mock.configs = {".py": {"name": "python"}}
+        parser_mock.get_skeleton.return_value = "ƒ def foo() : # ... implementation hidden ..."
+        self.tool_manager.tools["read_file_skeleton"].code_parser = parser_mock
+        command = {"type": "read_file_skeleton", "path": str(file_path)}
+        result = await self.processor.process_single_action(command)
         self.assertEqual(result["status"], "success")
         self.assertEqual(result.get("view"), "skeleton")
         self.assertIn("Skeleton for", result["output"])
@@ -118,6 +119,28 @@ class TestFileTools(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["status"], "error")
         self.assertEqual(result.get("error_code"), "VALIDATION_ERROR")
         self.assertIn("not supported", result["output"].lower())
+
+    async def test_read_file_skeleton_kotlin_real_parser(self):
+        parser = CodeParser()
+        if parser._get_language(".kt") is None:
+            self.skipTest("Kotlin parser runtime is unavailable in this environment.")
+
+        file_path = Path(self.test_dir) / "sample.kt"
+        file_path.write_text(
+            "class Greeter {\n"
+            "    fun hi(): String {\n"
+            "        return \"hi\"\n"
+            "    }\n"
+            "}\n"
+        )
+
+        command = {"type": "read_file_skeleton", "path": str(file_path)}
+        result = await self.processor.process_single_action(command)
+
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result.get("view"), "skeleton")
+        self.assertIn("Greeter", result["output"])
+        self.assertNotIn("skeleton not supported for this file type", result["output"].lower())
 
 class TestShellTool(unittest.IsolatedAsyncioTestCase):
     def setUp(self):

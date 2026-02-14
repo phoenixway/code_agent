@@ -30,13 +30,31 @@ class CodeParser:
     def _get_lib_path(self, so_filename):
         """Визначає шлях до бібліотеки залежно від архітектури."""
         machine = platform.machine().lower()
-        if machine in ['arm64', 'aarch64']: machine = 'aarch64'
-        system = "android" if 'android' in os.environ.get('PREFIX', '').lower() else "linux"
-        arch_folder = f"{system}_{machine}"
+        if machine in ["arm64", "aarch64"]:
+            machine = "aarch64"
+        system = "android" if "android" in os.environ.get("PREFIX", "").lower() else "linux"
 
         # Шукаємо libs в корені проекту (на рівень вище від modules/)
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        return os.path.join(base_dir, "libs", arch_folder, so_filename)
+        libs_dir = os.path.join(base_dir, "libs")
+
+        candidates = [
+            f"{system}_{machine}",
+            f"android_{machine}",
+            f"linux_{machine}",
+        ]
+
+        checked = set()
+        for arch_folder in candidates:
+            if arch_folder in checked:
+                continue
+            checked.add(arch_folder)
+            candidate_path = os.path.join(libs_dir, arch_folder, so_filename)
+            if os.path.exists(candidate_path):
+                return candidate_path
+
+        # Повертаємо перший очікуваний шлях для зрозумілого логування вище.
+        return os.path.join(libs_dir, candidates[0], so_filename)
 
     def _get_language(self, ext):
         """Завантажує мову з підтримкою різних версій API tree-sitter."""
