@@ -1,15 +1,61 @@
 # modules/tools/definitions/shell.py
 import asyncio
 from modules.tools.base import BaseTool
+from modules.config_loader import load_settings
 
 class ShellTool(BaseTool):
     name = "run_shell"
-    description = "Executes a shell command in the current environment. Params: 'command' (str)"
+    description = (
+        "Executes a shell command in the current environment. "
+        "Params: 'command' (str), 'timeout' (int, optional, seconds)"
+    )
 
-    async def execute(self, command: str):
+    async def execute(self, command: str, timeout: int = 30):
         if not command:
-            return {"status": "error", "output": "No command provided."}
+            return {
+                "status": "error",
+                "error_code": "VALIDATION_ERROR",
+                "recoverable": True,
+                "output": "No command provided.",
+            }
+        if not isinstance(timeout, int) or timeout <= 0:
+            timeout = 30
+
+        settings = load_settings()
+        max_command_length = settings.get("max_shell_command_length", 1000)
+        if isinstance(max_command_length, int) and len(command) > max_command_length:
+            return {
+                "status": "error",
+                "error_code": "VALIDATION_ERROR",
+                "recoverable": False,
+                "output": f"Command blocked: length exceeds {max_command_length} characters.",
+            }
+
+        blocked_patterns = settings.get("shell_blocklist", []) or []
+        for pattern in blocked_patterns:
+            if isinstance(pattern, str) and pattern and pattern.lower() in command.lower():
+                return {
+                    "status": "error",
+                    "error_code": "PERMISSION_DENIED",
+                    "recoverable": False,
+                    "output": f"Command blocked by policy pattern: {pattern}",
+                }
+
+        allowlist_prefixes = settings.get("shell_allowlist_prefixes", []) or []
+        if allowlist_prefixes:
+            normalized = command.strip()
+            if not any(
+                isinstance(prefix, str) and prefix and normalized.startswith(prefix)
+                for prefix in allowlist_prefixes
+            ):
+                return {
+                    "status": "error",
+                    "error_code": "PERMISSION_DENIED",
+                    "recoverable": False,
+                    "output": "Command blocked: not allowed by shell allowlist prefixes.",
+                }
             
+        process = None
         try:
             # Виконуємо команду в підпроцесі
             process = await asyncio.create_subprocess_shell(
@@ -17,7 +63,7 @@ class ShellTool(BaseTool):
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-            stdout, stderr = await process.communicate()
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
             
             output = stdout.decode().strip() or stderr.decode().strip()
             if not output and process.returncode == 0:
@@ -25,7 +71,29 @@ class ShellTool(BaseTool):
                 
             return {
                 "status": "success" if process.returncode == 0 else "error",
-                "output": output
+                "error_code": None if process.returncode == 0 else "INTERNAL",
+                "recoverable": bool(process.returncode != 0),
+                "output": output,
             }
+        except asyncio.TimeoutError:
+            if process is not None and process.returncode is None:
+                process.kill()
+                await process.communicate()
+            return {
+                "status": "error",
+                "error_code": "TRANSIENT_IO",
+                "recoverable": True,
+                "output": f"Command timed out after {timeout} seconds.",
+            }
+        except asyncio.CancelledError:
+            if process is not None and process.returncode is None:
+                process.kill()
+                await process.communicate()
+            raise
         except Exception as e:
-            return {"status": "error", "output": str(e)}
+            return {
+                "status": "error",
+                "error_code": "INTERNAL",
+                "recoverable": True,
+                "output": str(e),
+            }

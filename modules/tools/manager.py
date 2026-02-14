@@ -39,7 +39,12 @@ class ToolManager:
         """ВИПРАВЛЕНО: Метод тепер називається 'call'"""
         tool = self.tools.get(name)
         if not tool:
-            return {"status": "error", "output": f"Unknown tool: {name}"}
+            return {
+                "status": "error",
+                "error_code": "VALIDATION_ERROR",
+                "recoverable": True,
+                "output": f"Unknown tool: {name}",
+            }
         try:
             sig = inspect.signature(tool.execute)
             if 'ui' in sig.parameters:
@@ -47,4 +52,9 @@ class ToolManager:
             else:
                 return await tool.execute(**kwargs)
         except Exception as e:
-            return {"status": "error", "output": f"Tool execution failed: {str(e)}"}
+            return {
+                "status": "error",
+                "error_code": "INTERNAL",
+                "recoverable": True,
+                "output": f"Tool execution failed: {str(e)}",
+            }

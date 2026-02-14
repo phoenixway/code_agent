@@ -11,6 +11,7 @@ class ModelClient:
         self.log = logger
         self.comm_log = comm_logger # Відновлено логер комунікації
         self.chat = get_chat_provider(config.default_model)
+        self._tokenizer_warning_logged = False
         
     async def get_streaming_response(self, query: str, history_manager: HistoryManager, ui=None, state=None):
         """Отримує відповідь від моделі частинами з підтримкою Smart Stop."""
@@ -52,13 +53,8 @@ class ModelClient:
     async def _update_token_stats(self, query, response, history_manager, ui, state):
         """Підраховує токени та оновлює UI."""
         try:
-            tokenizer = self.chat.get_tokenizer()
-            if tokenizer:
-                p_tokens = len(tokenizer.encode(query))
-                c_tokens = len(tokenizer.encode(response))
-            else:
-                p_tokens = len(query) // 4
-                c_tokens = len(response) // 4
+            p_tokens = self._estimate_tokens(query)
+            c_tokens = self._estimate_tokens(response)
             
             state.add_tokens(p_tokens, c_tokens)
             
@@ -70,6 +66,33 @@ class ModelClient:
                 )
         except Exception as e:
             if self.log: self.log.warning(f"Token update failed: {e}")
+
+    def _estimate_tokens(self, text: str) -> int:
+        """Estimate tokens safely even if provider has no tokenizer support."""
+        tokenizer = None
+        get_tokenizer = getattr(self.chat, "get_tokenizer", None)
+        if callable(get_tokenizer):
+            try:
+                tokenizer = get_tokenizer()
+            except Exception as e:
+                if self.log and not self._tokenizer_warning_logged:
+                    self.log.warning(f"Tokenizer unavailable, using fallback estimation: {e}")
+                    self._tokenizer_warning_logged = True
+        elif self.log and not self._tokenizer_warning_logged:
+            self.log.info(
+                "Provider has no get_tokenizer(); using character-based token estimation."
+            )
+            self._tokenizer_warning_logged = True
+
+        if tokenizer and hasattr(tokenizer, "encode"):
+            try:
+                return len(tokenizer.encode(text))
+            except Exception:
+                # If tokenizer fails for some text, fallback to approximation.
+                pass
+        if not text:
+            return 0
+        return max(1, len(text) // 4)
 
     async def switch_model(self, model_name: str, ui=None):
         """Перемикає провайдера моделі."""

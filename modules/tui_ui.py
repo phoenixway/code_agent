@@ -52,12 +52,24 @@ class TuiUI:
         "confirmation": {"prefix": "✅ ", "prefix_style": "bold green", "classes": "chat-message confirmation-message"},
         "user":      {"prefix": "> ", "style": "", "classes": "chat-message user-message"},
     }
+    CHAT_OUTPUT_PREVIEW_MAX_CHARS = 4000
 
     def __init__(self, app, history_widget: VerticalScroll, status_bar: StatusBar):
         self.app = app
         self.history = history_widget
         self.status_bar = status_bar
         self.main_thread = threading.main_thread()
+
+    def _count_confirmation(self):
+        """Track how many confirmation dialogs were shown in current session."""
+        try:
+            agent = getattr(self.app, "agent", None)
+            state = getattr(agent, "state", None)
+            if state and hasattr(state, "add_confirmation"):
+                state.add_confirmation()
+        except Exception:
+            # Metrics should never break UI flow.
+            pass
 
     # ---------------------------------------------------------------------
     # Helper: Message Mounting
@@ -89,6 +101,17 @@ class TuiUI:
         widget = Static(rich_text, classes=config["classes"], expand=False)
         widget.can_focus = False
         return widget
+
+    def _truncate_chat_output(self, text: str, limit: int | None = None) -> tuple[str, int]:
+        """Returns output preview and number of hidden characters."""
+        if not isinstance(text, str):
+            text = str(text)
+        if limit is None:
+            limit = self.CHAT_OUTPUT_PREVIEW_MAX_CHARS
+        if len(text) <= limit:
+            return text, 0
+        hidden = len(text) - limit
+        return text[:limit], hidden
 
     # ---------------------------------------------------------------------
     # Status bar control
@@ -141,7 +164,8 @@ class TuiUI:
         screen = SelectionScreen(prompt, options, current_value=current_value)
         return await self._push_screen_wait(screen)
 
-    async def confirm_action(self, action_details: dict) -> bool:
+    async def confirm_action(self, action_details: dict) -> bool | str:
+        self._count_confirmation()
         action_type = action_details.get("type", "unknown")
         details = (
             action_details.get("command")
@@ -149,6 +173,40 @@ class TuiUI:
             or action_details.get("file_path")
             or ""
         )
+
+        if action_type == "summarize_history":
+            prompt = (
+                "[bold yellow]History is near context limit[/]\n\n"
+                "Choose what to do with automatic summarization."
+            )
+            screen = SelectionScreen(prompt, ["Summarize now", "Not now", "Do not suggest again"])
+            result = await self._push_screen_wait(screen)
+            if result == "Summarize now":
+                return "summarize"
+            if result == "Do not suggest again":
+                return "never"
+            return "later"
+
+        if action_type in {"run_shell", "search_content", "search_files", "list_directory", "read_file"}:
+            prompt = (
+                "[bold yellow]⚠ Action confirmation[/]\n\n"
+                f"[bold]Type:[/] {action_type}\n"
+                f"[bold]Details:[/] {details}\n\n"
+                "Choose output policy."
+            )
+            options = [
+                "Allow truncated",
+                "Full allow",
+                "Deny",
+            ]
+            screen = SelectionScreen(prompt, options)
+            result = await self._push_screen_wait(screen)
+            if result == options[0]:
+                return "allow_truncated"
+            if result == options[1]:
+                return "allow_full"
+            return False
+
         prompt = (
             "[bold yellow]⚠ Action confirmation[/]\n\n"
             f"[bold]Type:[/] {action_type}\n"
@@ -158,12 +216,30 @@ class TuiUI:
         result = await self._push_screen_wait(screen)
         return result == "Allow"
 
-    async def confirm_continue(self, prompt: str) -> bool:
-        screen = SelectionScreen(prompt, ["Continue", "Stop"])
+    async def confirm_continue(self, prompt: str) -> bool | str:
+        self._count_confirmation()
+        options = ["Continue", "Continue and don't ask again this session", "Stop"]
+        screen = SelectionScreen(prompt, options)
         result = await self._push_screen_wait(screen)
-        return result == "Continue"
+        if result == options[0]:
+            return "continue"
+        if result == options[1]:
+            return "continue_silent"
+        return "stop"
+
+    async def confirm_loop_recovery(self, prompt: str) -> str:
+        self._count_confirmation()
+        options = ["Retry with recovery", "Open file search", "Stop"]
+        screen = SelectionScreen(prompt, options)
+        result = await self._push_screen_wait(screen)
+        if result == options[0]:
+            return "retry_recovery"
+        if result == options[1]:
+            return "open_search"
+        return "stop"
 
     async def confirm_truncation(self, action_type: str, output_length: int) -> bool:
+        self._count_confirmation()
         prompt = (
             f"The output of '{action_type}' is very long "
             f"({output_length} characters).\nWhat would you like to do?"
@@ -173,6 +249,7 @@ class TuiUI:
         return result == "Truncate"
 
     async def show_diff_preview(self, proposal) -> bool:
+        self._count_confirmation()
         screen = DiffViewer(proposal)
         return await self._push_screen_wait(screen)
 
@@ -285,14 +362,17 @@ class TuiUI:
         after_execution = command.get('after_execution')
         output = result.get('output', '')
         status = result.get('status')
+        output_preview, hidden = self._truncate_chat_output(output)
 
         md_parts = []
         if status == 'success' and after_execution:
             md_parts.append(f"✅ {after_execution.strip()}")
 
         icon_char = '✔' if status == 'success' else '✘'
-        result_box = f"```sh\n{icon_char} run_shell: {shell_command}\n---\n{escape(output.strip())}\n```"
+        result_box = f"```sh\n{icon_char} run_shell: {shell_command}\n---\n{escape(output_preview.strip())}\n```"
         md_parts.append(result_box)
+        if hidden > 0:
+            md_parts.append(f"[dim]... output truncated in chat: {hidden} chars hidden.[/dim]")
 
         new_renderable = RichMarkdown("\n\n".join(md_parts))
         widget.update(new_renderable)
@@ -333,11 +413,18 @@ class TuiUI:
 
     @ui_task
     async def print_command_result(self, text: str, truncated: bool = False):
+        content_raw = text if text is not None else ""
+        content_preview, hidden = self._truncate_chat_output(content_raw)
+        if hidden > 0:
+            truncated = True
+
         subtitle = " (truncated)" if truncated else ""
         md_lines = [f"**✅ Result**{subtitle}"]
         
-        content = text.strip() if text and text.strip() else "(empty)"
+        content = content_preview.strip() if content_preview and content_preview.strip() else "(empty)"
         md_lines.append(f"```\n{escape(content)}\n```")
+        if hidden > 0:
+            md_lines.append(f"[dim]... output truncated in chat: {hidden} chars hidden.[/dim]")
 
         renderable = RichMarkdown("\n\n".join(md_lines))
         widget = Static(renderable, classes="chat-message tool-result-message", expand=False)

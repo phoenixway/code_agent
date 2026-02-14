@@ -4,6 +4,7 @@ import asyncio
 import os
 import tempfile
 import shutil
+from pathlib import Path
 from modules.command_handler import CommandHandler
 
 class TestCLICommands(unittest.IsolatedAsyncioTestCase):
@@ -61,6 +62,97 @@ class TestCLICommands(unittest.IsolatedAsyncioTestCase):
                 self.assertIn("Working directory changed to", call_args)
             finally:
                 os.chdir(original_dir)
+
+    async def test_dump_command_creates_dump_file(self):
+        """Test /dump creates a diagnostics dump file."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_dir = os.getcwd()
+            os.chdir(tmpdir)
+            try:
+                with patch("modules.command_handler.get_log_files", return_value=[]):
+                    handled = await self.command_handler.handle("/dump")
+                    self.assertTrue(handled)
+
+                dumps_dir = os.path.join(tmpdir, "dumps")
+                self.assertTrue(os.path.isdir(dumps_dir))
+                files = os.listdir(dumps_dir)
+                self.assertTrue(any(name.startswith("agent_dump_") and name.endswith(".txt") for name in files))
+                self.app.ui.print_system.assert_called()
+            finally:
+                os.chdir(original_dir)
+
+    async def test_dump_full_with_custom_filename(self):
+        """Test /dump --full writes to provided filename."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_dir = os.getcwd()
+            os.chdir(tmpdir)
+            try:
+                target = "custom_dump.txt"
+                with patch("modules.command_handler.get_log_files", return_value=[]):
+                    handled = await self.command_handler.handle(f"/dump --full {target}")
+                    self.assertTrue(handled)
+                self.assertTrue(os.path.exists(target))
+                with open(target, "r", encoding="utf-8") as f:
+                    content = f.read()
+                self.assertIn("Dump mode: full", content)
+            finally:
+                os.chdir(original_dir)
+
+    async def test_dump_skips_empty_logs(self):
+        """Test empty log files are reported as skipped."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_dir = os.getcwd()
+            os.chdir(tmpdir)
+            try:
+                empty_log = os.path.join(tmpdir, "debug.log")
+                with open(empty_log, "w", encoding="utf-8") as f:
+                    f.write("")
+                with patch("modules.command_handler.get_log_files", return_value=[Path(empty_log)]):
+                    await self.command_handler.handle("/dump")
+                dumps_dir = os.path.join(tmpdir, "dumps")
+                dump_name = sorted(os.listdir(dumps_dir))[-1]
+                with open(os.path.join(dumps_dir, dump_name), "r", encoding="utf-8") as f:
+                    content = f.read()
+                self.assertIn("Skipped empty log files:", content)
+            finally:
+                os.chdir(original_dir)
+
+    async def test_filter_log_for_session_handles_multiline_records(self):
+        """Session filter should keep full multiline records for current session only."""
+        log_text = (
+            "2026-02-14 09:00:00,000 - --- OUTGOING ---\n"
+            "old line 1\n"
+            "old line 2\n"
+            "2026-02-14 10:30:00,000 - --- OUTGOING ---\n"
+            "new line 1\n"
+            "new line 2\n"
+        )
+        self.command_handler.session_started_at = self.command_handler.session_started_at.replace(
+            hour=10, minute=0, second=0, microsecond=0
+        )
+        filtered = self.command_handler._filter_log_for_session(Path("communication.log"), log_text)
+        self.assertIn("2026-02-14 10:30:00,000 - --- OUTGOING ---", filtered)
+        self.assertIn("new line 1", filtered)
+        self.assertNotIn("old line 1", filtered)
+
+    async def test_clearsession_resets_runtime_state(self):
+        """Test /clearsession clears runtime memory, not only session file."""
+        self.app.agent.session_manager = MagicMock()
+        self.app.agent.session_manager.clear_session.return_value = True
+        self.app.agent.history = MagicMock()
+        self.app.agent.context_manager = MagicMock()
+        self.app.agent.state = MagicMock()
+        self.app.agent.state.session_tokens = 123
+        self.app.agent.state.confirmation_count = 7
+
+        handled = await self.command_handler.handle("/clearsession")
+        self.assertTrue(handled)
+        self.app.agent.session_manager.clear_session.assert_called_once()
+        self.app.agent.history.clear_history.assert_called_once()
+        self.app.agent.context_manager.clear.assert_called_once()
+        self.assertEqual(self.app.agent.state.session_tokens, 0)
+        self.assertEqual(self.app.agent.state.confirmation_count, 0)
+        self.app.ui.update_token_status.assert_called_once()
 
 if __name__ == "__main__":
     unittest.main()

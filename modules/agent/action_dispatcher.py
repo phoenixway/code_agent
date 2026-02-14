@@ -2,6 +2,7 @@
 
 import ast
 import asyncio
+import hashlib
 
 class ActionDispatcher:
     def __init__(self, agent):
@@ -52,23 +53,29 @@ class ActionDispatcher:
     async def _execute_action(self, command, state):
         """Виконує одну дію, керує UI та повертає результат."""
         cmd_type = command.get("type") or command.get("action", "unknown")
-        
-        # 1. Loop Detection
-        state.update_loop_tracker(command, "pending")
-        if state.consecutive_failed_repeats >= 1:
-            await self.ui.print_error("⚠️ Loop detected: Repeating failed action.")
-            return command, "SYSTEM: CRITICAL Loop detected. Change strategy.", True
+        if self.agent.log:
+            self.agent.log.debug(f"Action.start type={cmd_type} command={command}")
 
-        # 2. UI Execution Wrapper
+        # 1. UI Execution Wrapper
         handler = self._handlers.get(cmd_type, self._handle_default)
         result = await handler(command)
-        
-        # 3. Post-Processing
+
+        # 2. Post-Processing
         output_text = result.get('output', '')
         status = result.get('status')
-        state.update_loop_tracker(command, status)
+        error_code = result.get("error_code")
+        recoverable = bool(result.get("recoverable", False))
+        next_actions = result.get("next_actions") or []
+        if not isinstance(next_actions, list):
+            next_actions = []
+        if self.agent.log:
+            self.agent.log.debug(
+                f"Action.result type={cmd_type} status={status} "
+                f"error_code={error_code} recoverable={recoverable}"
+            )
+        state_metrics = state.record_action_result(command, result)
 
-        # 4. Syntax Check (Linting)
+        # 3. Syntax Check (Linting)
         if cmd_type in ['create_file', 'edit_file'] and status == 'success':
             path = command.get('path', '')
             if path.endswith('.py'):
@@ -76,34 +83,91 @@ class ActionDispatcher:
                 if lint_error:
                     output_text += f"\n\n⚠️ SYSTEM WARNING: Syntax check failed for {path}:\n{lint_error}\nPlease fix this immediately."
 
-        # 5. History Handling
-        command_for_history = command.copy()
+        # 4. History Handling
+        command_for_history = self._sanitize_command_for_history(command)
 
-        # 6. Smart Stop Logic (ВИПРАВЛЕНО ДЛЯ АВТОНОМНОСТІ)
+        # 5. Smart Stop Logic
         is_state_changing = cmd_type in self.config.STATE_CHANGING_OPS
         execution_failed = status in ["failed", "error"]
         action_denied = status == "denied"
-        
+
         should_stop = False
-        
+        state.pending_loop_stop_info = None
+
         if action_denied:
-            # Єдина жорстка причина зупинити цикл - пряма заборона користувача
             output_text += "\n[SYSTEM: Action denied by user.]"
             should_stop = True
-            
+
         elif execution_failed:
-            # При помилці ми НЕ зупиняємось, а даємо агенту шанс виправити її
             output_text += "\n[SYSTEM: Action failed. Analyze the error in <think> and retry.]"
-            should_stop = False 
-            
+            same_error_repeats = state_metrics.get("same_error_repeats", 0)
+            loop_threshold = max(2, int(getattr(self.config, "LOOP_ERROR_REPEAT_THRESHOLD", 2)))
+            threshold_reached = same_error_repeats >= loop_threshold
+
+            if threshold_reached:
+                # Do not hard-stop immediately after malformed-action recovery.
+                if state.consume_malformed_grace():
+                    output_text += (
+                        "\n[SYSTEM: Grace retry granted after malformed action recovery. "
+                        "Try a different command/arguments now.]"
+                    )
+                else:
+                    budget_ok = state.consume_retry_budget(recoverable)
+                    if not budget_ok:
+                        should_stop = True
+                        output_text += (
+                            "\n[SYSTEM: Repeated no-progress failure detected and retry budget exhausted.]"
+                        )
+                        state.pending_loop_stop_info = {
+                            "reason": "repeating_failure",
+                            "recoverable": recoverable,
+                            "error_code": error_code,
+                            "next_actions": next_actions,
+                            "command": command.copy(),
+                        }
+                    else:
+                        output_text += (
+                            "\n[SYSTEM: Repeated failure detected. Retry budget remains, "
+                            "but you must change strategy/arguments.]"
+                        )
+
+            feedback_lines = [
+                "[SYSTEM_FEEDBACK]",
+                f"last_tool_error_code={error_code or 'UNSPECIFIED'}",
+                f"last_tool_error_message={str(result.get('output', ''))[:300]}",
+            ]
+            if next_actions:
+                feedback_lines.append(
+                    "suggested_recovery_actions=" + ",".join(str(x) for x in next_actions[:6])
+                )
+            feedback_lines.append(
+                "instruction=Do not repeat the same tool call with the same arguments."
+            )
+            output_text += "\n" + "\n".join(feedback_lines)
+
+            if cmd_type == "edit_file" and "Search block not found" in str(output_text):
+                output_text += (
+                    "\n[SYSTEM: edit_file search block mismatch. "
+                    "Next step must be deterministic: read the file, copy the exact block, "
+                    "then retry edit_file with exact whitespace or use write_file with full updated content.]"
+                )
+
         elif is_state_changing:
-            # Успішна зміна стану (run_shell, create_file).
-            # Раніше тут було True, що зупиняло цикл.
-            # Тепер False - ми віримо, що якщо Policy пропустила дію, то агент може продовжувати.
+            state.reset_retry_budgets(
+                self.config.RECOVERABLE_ERROR_RETRY_BUDGET,
+                self.config.CRITICAL_ERROR_RETRY_BUDGET,
+            )
             should_stop = False
-            
+        else:
+            state.reset_retry_budgets(
+                self.config.RECOVERABLE_ERROR_RETRY_BUDGET,
+                self.config.CRITICAL_ERROR_RETRY_BUDGET,
+            )
+
         full_result_text = f"SYSTEM RESULT for `{cmd_type}`: {output_text}"
 
+        if self.agent.log:
+            self.agent.log.debug(f"Action.finish type={cmd_type} should_stop={should_stop}")
         return command_for_history, full_result_text, should_stop
 
     # --- Specific Handlers ---
@@ -130,7 +194,7 @@ class ActionDispatcher:
         return result
     
     async def _handle_create_file(self, command):
-        await self.ui.print_tool_call(command)
+        await self.ui.print_tool_call(self._sanitize_create_file_payload(command))
         await self.ui.start_action(f"Creating {command.get('path')}...")
         result = await self.processor.process_single_action(command)
         
@@ -139,6 +203,26 @@ class ActionDispatcher:
         else:
              await self.ui.print_command_result(result.get('output'))
         return result
+
+    def _sanitize_create_file_payload(self, command: dict) -> dict:
+        """Replace large create_file content with compact metadata for chat/history."""
+        safe = command.copy()
+        content = safe.get("content")
+        if not isinstance(content, str):
+            return safe
+        size = len(content)
+        digest = hashlib.sha256(content.encode("utf-8")).hexdigest()[:12]
+        preview = content[:80].replace("\n", "\\n")
+        safe["content"] = (
+            f"[content omitted: {size} chars, sha256:{digest}, preview:'{preview}']"
+        )
+        return safe
+
+    def _sanitize_command_for_history(self, command: dict) -> dict:
+        cmd_type = command.get("type") or command.get("action", "unknown")
+        if cmd_type == "create_file":
+            return self._sanitize_create_file_payload(command)
+        return command.copy()
 
     async def _handle_default(self, command):
         await self.ui.print_tool_call(command)

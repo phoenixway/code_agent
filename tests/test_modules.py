@@ -137,5 +137,83 @@ class TestPermissionPolicy(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result)
         self.ui.confirm_action.assert_called_once_with(action)
 
+    async def test_check_ui_async_confirm_passthrough_string(self):
+        """Policy should pass through advanced UI decision values."""
+        self.ui.confirm_action = AsyncMock(return_value="allow_truncated")
+        policy = PermissionPolicy(self.ui, mode="ask")
+        action = {"type": "create_file", "path": "tmp.txt", "content": "x"}
+        result = await policy.check(action)
+        self.assertEqual(result, "allow_truncated")
+
+    @patch("modules.policy.load_settings", return_value={"allow_side_effect_tools": False})
+    async def test_global_side_effect_kill_switch(self, _mock_settings):
+        self.ui.print_error = AsyncMock()
+        policy = PermissionPolicy(self.ui, mode="always")
+        result = await policy.check({"type": "run_shell", "command": "echo hi"})
+        self.assertFalse(result)
+        self.ui.print_error.assert_called_once()
+
+    @patch(
+        "modules.policy.load_settings",
+        return_value={
+            "allow_side_effect_tools": True,
+            "auto_allow_read_only_actions": True,
+            "auto_allow_safe_shell_read_only": True,
+        },
+    )
+    async def test_ask_mode_auto_allows_read_only_actions(self, _mock_settings):
+        self.ui.confirm_action = AsyncMock(return_value=False)
+        policy = PermissionPolicy(self.ui, mode="ask")
+        result = await policy.check({"type": "read_file", "path": "README.md"})
+        self.assertTrue(result)
+        self.ui.confirm_action.assert_not_called()
+
+    @patch(
+        "modules.policy.load_settings",
+        return_value={
+            "allow_side_effect_tools": True,
+            "auto_allow_read_only_actions": True,
+            "auto_allow_safe_shell_read_only": True,
+        },
+    )
+    async def test_ask_mode_auto_allows_safe_shell_read_only(self, _mock_settings):
+        self.ui.confirm_action = AsyncMock(return_value=False)
+        policy = PermissionPolicy(self.ui, mode="ask")
+        result = await policy.check({"type": "run_shell", "command": "tail -10 README.md"})
+        self.assertTrue(result)
+        self.ui.confirm_action.assert_not_called()
+
+    @patch(
+        "modules.policy.load_settings",
+        return_value={
+            "allow_side_effect_tools": True,
+            "auto_allow_read_only_actions": True,
+            "auto_allow_safe_shell_read_only": True,
+        },
+    )
+    async def test_ask_mode_auto_allows_search_content(self, _mock_settings):
+        self.ui.confirm_action = AsyncMock(return_value=False)
+        policy = PermissionPolicy(self.ui, mode="ask")
+        result = await policy.check({"type": "search_content", "pattern": "context", "path": "."})
+        self.assertEqual(result, "allow_truncated")
+        self.ui.confirm_action.assert_not_called()
+
+    @patch(
+        "modules.policy.load_settings",
+        return_value={
+            "allow_side_effect_tools": True,
+            "auto_allow_read_only_actions": False,
+            "auto_allow_safe_shell_read_only": False,
+        },
+    )
+    async def test_ask_mode_recovery_probe_auto_allows_truncated(self, _mock_settings):
+        self.ui.confirm_action = AsyncMock(return_value=False)
+        policy = PermissionPolicy(self.ui, mode="ask")
+        result = await policy.check(
+            {"type": "read_file", "path": "README.md", "_recovery_context": True}
+        )
+        self.assertEqual(result, "allow_truncated")
+        self.ui.confirm_action.assert_not_called()
+
 if __name__ == "__main__":
     unittest.main()

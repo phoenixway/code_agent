@@ -34,6 +34,8 @@ All actions must include:
 2. **Loop Prevention**:
    - If an action fails, DO NOT repeat it identically[cite: 89].
    - Analyze the error in `<think>`, check your assumptions, and try a different approach[cite: 90].
+   - If system feedback includes `last_tool_error_code` and `suggested_recovery_actions`, prioritize those recovery actions and change arguments.
+   - Never repeat the same tool call with the same arguments after an error.
 
 3. **Self-Correction**:
    - If you see a system message starting with "CRITICAL" or "SYSTEM INSTRUCTION", prioritize it immediately[cite: 91].

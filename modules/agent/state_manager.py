@@ -9,11 +9,27 @@ class AgentState:
     def __init__(self):
         # Відстеження токенів
         self.session_tokens = 0
+        self.confirmation_count = 0
+        self.suppress_step_limit_warning = False
+        self.consecutive_same_action_count = 0
+        self.last_completed_fingerprint = None
+        self.pending_loop_stop_info = None
         
         # Виявлення нескінченних циклів
         self.last_action_fingerprint = None
         self.last_action_status = None
         self.consecutive_failed_repeats = 0
+        self.last_error_fingerprint = None
+        self.consecutive_same_error_count = 0
+        self.last_error_code = None
+        self.last_error_message = None
+        self.last_error_recoverable = False
+        self.last_error_next_actions = []
+        self.malformed_recovery_grace_remaining = 0
+
+        # Retry budgets
+        self.recoverable_retry_budget_remaining = 2
+        self.critical_retry_budget_remaining = 1
         
         # Асинхронні задачі
         self.current_task = None
@@ -48,6 +64,87 @@ class AgentState:
         
         self.last_action_fingerprint = fingerprint
         self.last_action_status = status
+
+    def set_retry_budgets(self, recoverable_budget: int, critical_budget: int):
+        self.recoverable_retry_budget_remaining = max(0, int(recoverable_budget))
+        self.critical_retry_budget_remaining = max(0, int(critical_budget))
+
+    def reset_retry_budgets(self, recoverable_budget: int, critical_budget: int):
+        self.set_retry_budgets(recoverable_budget, critical_budget)
+
+    def set_malformed_grace(self, steps: int):
+        self.malformed_recovery_grace_remaining = max(0, int(steps))
+
+    def consume_malformed_grace(self) -> bool:
+        if self.malformed_recovery_grace_remaining > 0:
+            self.malformed_recovery_grace_remaining -= 1
+            return True
+        return False
         
     def add_tokens(self, prompt: int, completion: int):
         self.session_tokens += (prompt + completion)
+
+    def add_confirmation(self, count: int = 1):
+        self.confirmation_count += count
+
+    def update_action_repetition(self, command: dict):
+        """Track repeated actions regardless of status to spot potential loops."""
+        fingerprint = self.get_action_fingerprint(command)
+        if fingerprint == self.last_completed_fingerprint:
+            self.consecutive_same_action_count += 1
+        else:
+            self.consecutive_same_action_count = 1
+        self.last_completed_fingerprint = fingerprint
+
+    def record_action_result(self, command: dict, result: dict):
+        """Record result details for loop/no-progress detection and recovery hints."""
+        status = result.get("status")
+        error_code = result.get("error_code")
+        error_message = result.get("output", "")
+        recoverable = bool(result.get("recoverable", False))
+        next_actions = result.get("next_actions") or []
+        if not isinstance(next_actions, list):
+            next_actions = []
+
+        self.update_loop_tracker(command, status)
+        self.update_action_repetition(command)
+
+        if status in {"failed", "error"}:
+            fingerprint = self.get_action_fingerprint(command)
+            error_fp = f"{fingerprint}|{error_code or 'UNSPECIFIED'}"
+            if error_fp == self.last_error_fingerprint:
+                self.consecutive_same_error_count += 1
+            else:
+                self.consecutive_same_error_count = 1
+            self.last_error_fingerprint = error_fp
+            self.last_error_code = error_code
+            self.last_error_message = str(error_message)[:1000]
+            self.last_error_recoverable = recoverable
+            self.last_error_next_actions = next_actions
+        else:
+            self.consecutive_same_error_count = 0
+            self.last_error_fingerprint = None
+            self.last_error_code = None
+            self.last_error_message = None
+            self.last_error_recoverable = False
+            self.last_error_next_actions = []
+
+        return {
+            "status": status,
+            "error_code": error_code,
+            "recoverable": recoverable,
+            "next_actions": next_actions,
+            "same_error_repeats": self.consecutive_same_error_count,
+        }
+
+    def consume_retry_budget(self, recoverable: bool) -> bool:
+        """Returns True when retry is still allowed after decrement."""
+        if recoverable:
+            if self.recoverable_retry_budget_remaining <= 0:
+                return False
+            self.recoverable_retry_budget_remaining -= 1
+            return True
+        if self.critical_retry_budget_remaining <= 0:
+            return False
+        self.critical_retry_budget_remaining -= 1
+        return True

@@ -5,7 +5,7 @@ This document tracks planned improvements and feature ideas for Angelica AI.
 ## Architecture & Refactoring
 
 - [ ] **Modularize Chat Providers**: Refactor `modules/chat.py` into a plugin-based system (e.g., `modules/providers/`). Create an abstract base class for providers to allow easier addition of new services (Anthropic, Azure, etc.) without modifying core logic.
-- [ ] **Cleanup**: Remove or relocate `app.py` (currently a demo file) to `examples/` or delete it to avoid confusion.
+- [x] **Cleanup**: `app.py` demo entry point was removed to avoid confusion with the real `tui.py` entry point.
 
 ## User Experience (UX)
 

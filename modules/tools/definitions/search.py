@@ -54,9 +54,21 @@ class FileSearchTool(BaseTool):
             return {"status": "success", "output": output}
             
         except subprocess.CalledProcessError as e:
-            return {"status": "error", "output": f"Error searching files: {e.stderr}"}
+            return {
+                "status": "error",
+                "error_code": "INTERNAL",
+                "recoverable": True,
+                "next_actions": ["list_directory"],
+                "output": f"Error searching files: {e.stderr}",
+            }
         except Exception as e:
-            return {"status": "error", "output": str(e)}
+            return {
+                "status": "error",
+                "error_code": "INTERNAL",
+                "recoverable": True,
+                "next_actions": ["list_directory"],
+                "output": str(e),
+            }
 
 
 class ContentSearchTool(BaseTool):
@@ -98,7 +110,13 @@ class ContentSearchTool(BaseTool):
                 return {"status": "success", "output": "No matches found."}
             
             if result.returncode != 0 and result.stderr:
-                return {"status": "error", "output": f"ripgrep failed: {result.stderr}"}
+                return {
+                    "status": "error",
+                    "error_code": "INTERNAL",
+                    "recoverable": True,
+                    "next_actions": ["list_directory", "search_files"],
+                    "output": f"ripgrep failed: {result.stderr}",
+                }
 
             output = result.stdout.strip()
             if not output:
@@ -116,4 +134,10 @@ class ContentSearchTool(BaseTool):
             return {"status": "success", "output": output}
 
         except Exception as e:
-            return {"status": "error", "output": str(e)}
+            return {
+                "status": "error",
+                "error_code": "INTERNAL",
+                "recoverable": True,
+                "next_actions": ["list_directory", "search_files"],
+                "output": str(e),
+            }

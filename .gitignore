@@ -7,3 +7,4 @@ target.py
 debug.log
 communication.log
 .angelica_session.json
+.angelica/

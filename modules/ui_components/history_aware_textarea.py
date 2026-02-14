@@ -13,6 +13,13 @@ try:
 except ImportError:
     logger = None
 
+try:
+    from modules.config_loader import load_settings
+    _settings = load_settings()
+    DEBUG_LOG_KEYPRESSES = bool(_settings.get("debug_log_keypresses", False))
+except Exception:
+    DEBUG_LOG_KEYPRESSES = False
+
 
 # ---------------------------------------------------------------------
 # History file
@@ -210,7 +217,7 @@ class HistoryAwareTextArea(TextArea):
     def on_key(self, event: Key) -> None:
         """Перехоплюємо всі варіанти Enter для Android/Termux."""
         # Логуємо кожне натискання клавіші (можна вимкнути після налаштування)
-        if logger:
+        if logger and DEBUG_LOG_KEYPRESSES:
             logger.info(f"--- KEY PRESSED ---\nkey: {event.key!r}\ncharacter: {event.character!r}\nname: {event.name!r}\n")
         
         # Shift+Enter або Ctrl+Enter - новий рядок
@@ -219,7 +226,7 @@ class HistoryAwareTextArea(TextArea):
             event.prevent_default()
             event.stop()
             
-            if logger:
+            if logger and DEBUG_LOG_KEYPRESSES:
                 logger.info(f"--- SHIFT/CTRL+ENTER DETECTED ---\nInserting newline\n")
             
             if self.text == self._placeholder:
@@ -232,14 +239,14 @@ class HistoryAwareTextArea(TextArea):
             event.prevent_default()
             event.stop()
             
-            if logger:
+            if logger and DEBUG_LOG_KEYPRESSES:
                 logger.info(f"--- ENTER DETECTED ---\nSubmitting text: {self.text!r}\n")
             
             value = self.text
             if value == self._placeholder:
                 value = ""
             
-            if logger:
+            if logger and DEBUG_LOG_KEYPRESSES:
                 logger.info(f"--- POSTING SUBMITTED MESSAGE ---\nvalue: {value!r}\n")
             
             self.post_message(self.Submitted(self, value))

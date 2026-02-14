@@ -43,8 +43,18 @@ Settings are loaded from `~/.config/angelica-ai/config.yaml`.
 default_model: "ollama/qwen2.5-coder:7b"
 max_history_tokens: 4000
 permission_policy: "ask" # options: ask, always, never
+autosummarize_requires_confirmation: false # when true, asks before non-emergency auto-summary
 theme: "hacker-green" # options: hacker-green, textual-dark, textual-light
 history_size: "small" # options: small, medium, large
+max_consecutive_calls: 12
+max_step_seconds: 120
+max_session_seconds: 900
+allow_side_effect_tools: true
+max_shell_command_length: 1000
+shell_blocklist:
+  - "rm -rf /"
+  - "mkfs"
+shell_allowlist_prefixes: [] # optional; when not empty, only these command prefixes are allowed
 available_models: 
   - "ollama/qwen2.5-coder:7b"
   - "openai/gpt-4o"
@@ -55,6 +65,8 @@ available_models:
 Run the agent:
 ```bash
 make run
+# or directly:
+python tui.py
 ```
 
 ### CLI Commands:
@@ -65,6 +77,7 @@ make run
 - `/history-size`: Change history context window size.
 - `/cd <path>`: Change current working directory.
 - `/export [filename]`: Save chat history to a Markdown file.
+- `/dump [--full] [filename]`: Save runtime log dump (default: current session only; `--full` includes full logs).
 - `/import <filename>`: Load chat history from a file.
 
 ## 🧪 Testing & Development
@@ -73,6 +86,7 @@ Comprehensive tests and development tools are available via `Makefile`.
 
 ```bash
 make test          # Run all 40+ tests
+make smoke         # Run end-to-end smoke flow (/add -> tool -> /drop)
 make test-core     # Core logic (parser, processor, context)
 make test-tools    # Tool definitions (files, shell, search)
 make test-commands # CLI command logic
@@ -93,7 +107,8 @@ Detailed guides are available in the `docs/` folder:
 
 ## 🧩 Modules
 
-- `agent.py`: Orchestrator and main logic.
+- `tui.py`: Main TUI application entry point.
+- `modules/agent/`: Modular orchestrator and main agent logic.
 - `modules/processor.py`: Action parsing and execution management.
 - `modules/tools/`: Dynamic tool loading and definitions.
 - `modules/context.py`: Project tree and file basket management.

@@ -2,7 +2,11 @@ import os
 import shlex
 import asyncio
 import tempfile
+from datetime import datetime
+from pathlib import Path
+import re
 from modules.config_loader import update_settings
+from modules.logger import get_log_files
 
 class CommandHandler:
     def __init__(self, app):
@@ -11,11 +15,13 @@ class CommandHandler:
         :param app: The main TUI App instance (provides access to agent, ui, theme, etc.)
         """
         self.app = app
+        self.session_started_at = datetime.now()
         self.handlers = {
             "/add": self._handle_add,
             "/drop": self._handle_drop,
             "/cd": self._handle_cd,
             "/export": self._handle_export,
+            "/dump": self._handle_dump,
             "/import": self._handle_import,
             "/models": self._handle_models,
             "/theme": self._handle_theme,
@@ -100,10 +106,57 @@ class CommandHandler:
             await self.ui.print_error(f"An error occurred with fzf: {e}")
 
     async def _handle_clear_session(self, user_input):
-        if self.agent.session_manager.clear_session():
-            await self.ui.print_system("✅ Saved session cleared. It will not be loaded on the next start.")
+        file_cleared = self.agent.session_manager.clear_session()
+
+        # Also clear runtime state to avoid immediate post-clear summarization
+        # due to stale in-memory history/context.
+        if hasattr(self.agent, "history") and hasattr(self.agent.history, "clear_history"):
+            self.agent.history.clear_history()
+        if hasattr(self.agent, "context_manager") and hasattr(self.agent.context_manager, "clear"):
+            self.agent.context_manager.clear()
+        if hasattr(self.agent, "state"):
+            self.agent.state.session_tokens = 0
+            if hasattr(self.agent.state, "confirmation_count"):
+                self.agent.state.confirmation_count = 0
+            if hasattr(self.agent.state, "suppress_step_limit_warning"):
+                self.agent.state.suppress_step_limit_warning = False
+            if hasattr(self.agent.state, "consecutive_same_action_count"):
+                self.agent.state.consecutive_same_action_count = 0
+            if hasattr(self.agent.state, "last_completed_fingerprint"):
+                self.agent.state.last_completed_fingerprint = None
+            if hasattr(self.agent.state, "last_error_fingerprint"):
+                self.agent.state.last_error_fingerprint = None
+            if hasattr(self.agent.state, "consecutive_same_error_count"):
+                self.agent.state.consecutive_same_error_count = 0
+            if hasattr(self.agent.state, "pending_loop_stop_info"):
+                self.agent.state.pending_loop_stop_info = None
+            if hasattr(self.agent.state, "malformed_recovery_grace_remaining"):
+                self.agent.state.malformed_recovery_grace_remaining = 0
+            if hasattr(self.agent.state, "set_retry_budgets") and hasattr(self.agent, "config"):
+                self.agent.state.set_retry_budgets(
+                    getattr(self.agent.config, "RECOVERABLE_ERROR_RETRY_BUDGET", 2),
+                    getattr(self.agent.config, "CRITICAL_ERROR_RETRY_BUDGET", 1),
+                )
+
+        # Reset dump session window after hard reset.
+        self.session_started_at = datetime.now()
+
+        # Refresh token indicator immediately after reset.
+        if hasattr(self.ui, "update_token_status"):
+            await self.ui.update_token_status(
+                history_tokens=self.agent.history.current_token_count,
+                max_tokens=self.agent.history.max_tokens,
+                session_tokens=getattr(self.agent.state, "session_tokens", 0),
+            )
+
+        if file_cleared:
+            await self.ui.print_system(
+                "✅ Saved session removed and runtime context reset."
+            )
         else:
-            await self.ui.print_system("No saved session found to clear.")
+            await self.ui.print_system(
+                "✅ Runtime context reset. No saved session file was found."
+            )
 
     async def _handle_add(self, user_input):
         try:
@@ -115,31 +168,13 @@ class CommandHandler:
 
             total_added = 0
             for path_str in paths:
-                path = Path(path_str)
-                if not path.exists():
-                    await self.ui.print_error(f"Path not found: {path_str}")
-                    continue
-
-                files_to_add = []
-                if path.is_file():
-                    files_to_add.append(path)
-                elif path.is_dir():
-                    # Basic recursive search for files, could be improved with ignore lists
-                    files_to_add.extend(p for p in path.rglob('*') if p.is_file())
-
-                for file_path in files_to_add:
-                    try:
-                        with open(file_path, 'r', encoding='utf-8') as f:
-                            content = f.read()
-                        
-                        # Use the new history manager methods
-                        version = self.agent.history.add_file_version(str(file_path), content)
-                        if version:
-                            self.agent.history.add_file_context_marker(str(file_path), version)
-                            total_added += 1
-
-                    except Exception as e:
-                        await self.ui.print_error(f"Error reading file {file_path}: {e}")
+                try:
+                    count = self.agent.context_manager.add_path(path_str)
+                    if count == 0:
+                        await self.ui.print_error(f"Path not found or empty: {path_str}")
+                    total_added += count
+                except Exception as e:
+                    await self.ui.print_error(f"Error adding path {path_str}: {e}")
             
             if total_added > 0:
                 await self.ui.print_system(f"✅ Added {total_added} file(s) to context.")
@@ -154,11 +189,19 @@ class CommandHandler:
             if not paths:
                 # Clear all
                 self.agent.context_manager.clear()
+                if hasattr(self.agent.history, "clear_file_state"):
+                    self.agent.history.clear_file_state()
                 await self.ui.print_system("🗑️ Context cleared (all files removed).")
             else:
                 total_removed = 0
                 for path in paths:
                     count = self.agent.context_manager.remove_path(path)
+                    if not isinstance(count, int):
+                        count = 0
+                    if hasattr(self.agent.history, "remove_file_state"):
+                        history_count = self.agent.history.remove_file_state(path)
+                        if isinstance(history_count, int):
+                            count += history_count
                     total_removed += count
                 await self.ui.print_system(f"🗑️ Removed {total_removed} file(s) from context.")
         except Exception as e:
@@ -194,6 +237,126 @@ class CommandHandler:
             await self.ui.print_system(f"✅ Chat history exported to [bold cyan]{filename}[/]")
         except Exception as e:
             await self.ui.print_error(f"Error exporting history: {e}")
+
+    def _rotate_dump_files(self, dump_dir: Path, keep_last: int = 10) -> None:
+        """Keep only the most recent dump files."""
+        dump_files = sorted(
+            dump_dir.glob("agent_dump_*.txt"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        for old_file in dump_files[keep_last:]:
+            try:
+                old_file.unlink()
+            except Exception:
+                # Rotation should never break the command.
+                pass
+
+    @staticmethod
+    def _parse_log_timestamp(line: str) -> datetime | None:
+        """Extract timestamp from log line prefix: YYYY-MM-DD HH:MM:SS,mmm - ..."""
+        match = re.match(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d{3}\s+-\s+", line)
+        if not match:
+            return None
+        try:
+            return datetime.strptime(match.group(1), "%Y-%m-%d %H:%M:%S")
+        except Exception:
+            return None
+
+    def _filter_log_for_session(self, path: Path, content: str) -> str:
+        """Keep only current-session records using timestamped log entries."""
+        lines = content.splitlines()
+        if not lines:
+            return ""
+
+        kept: list[str] = []
+        current_record_allowed = False
+        saw_timestamped_line = False
+
+        for line in lines:
+            ts = self._parse_log_timestamp(line)
+            if ts is not None:
+                saw_timestamped_line = True
+                current_record_allowed = ts >= self.session_started_at
+                if current_record_allowed:
+                    kept.append(line)
+            else:
+                # Continuation line of previous record (multiline log message)
+                if not saw_timestamped_line:
+                    # File without timestamps -> fallback to keeping content.
+                    kept.append(line)
+                elif current_record_allowed:
+                    kept.append(line)
+
+        return "\n".join(kept).strip()
+
+    async def _handle_dump(self, user_input):
+        """
+        Save a full diagnostics dump from runtime logs.
+        Usage: /dump [--full] [filename]
+        """
+        try:
+            parts = shlex.split(user_input)
+            full_dump = "--full" in parts
+            user_paths = [p for p in parts[1:] if p != "--full"]
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            dump_dir = Path("dumps")
+            dump_dir.mkdir(parents=True, exist_ok=True)
+
+            if user_paths:
+                dump_path = Path(user_paths[0])
+            else:
+                dump_path = dump_dir / f"agent_dump_{timestamp}.txt"
+
+            dump_path.parent.mkdir(parents=True, exist_ok=True)
+
+            log_files = get_log_files(include_rotated=True)
+            with open(dump_path, "w", encoding="utf-8") as out:
+                out.write(f"Angelica dump generated: {datetime.now().isoformat()}\n")
+                out.write(f"CWD: {os.getcwd()}\n")
+                out.write(f"Dump mode: {'full' if full_dump else 'session-only'}\n")
+                out.write(f"Session started at: {self.session_started_at.isoformat()}\n")
+                out.write(f"Log files found: {len(log_files)}\n\n")
+
+                if not log_files:
+                    out.write("No log files were found.\n")
+                else:
+                    included_files = 0
+                    skipped_empty = []
+                    for path in log_files:
+                        raw_text = ""
+                        try:
+                            raw_text = path.read_text(encoding="utf-8")
+                        except Exception as read_error:
+                            out.write("=" * 80 + "\n")
+                            out.write(f"FILE: {path}\n")
+                            out.write("=" * 80 + "\n")
+                            out.write(f"[ERROR READING FILE: {read_error}]\n\n")
+                            continue
+
+                        text = raw_text if full_dump else self._filter_log_for_session(path, raw_text)
+                        if not text.strip():
+                            skipped_empty.append(str(path))
+                            continue
+
+                        out.write("=" * 80 + "\n")
+                        out.write(f"FILE: {path}\n")
+                        out.write("=" * 80 + "\n")
+                        out.write(text)
+                        out.write("\n\n")
+                        included_files += 1
+
+                    if skipped_empty:
+                        out.write("Skipped empty log files:\n")
+                        for skipped in skipped_empty:
+                            out.write(f"- {skipped}\n")
+                        out.write("\n")
+                    out.write(f"Included log files: {included_files}\n")
+
+            self._rotate_dump_files(dump_dir)
+            await self.ui.print_system(f"✅ Log dump saved to [bold cyan]{dump_path}[/]")
+        except Exception as e:
+            await self.ui.print_error(f"Error saving dump: {e}")
 
     async def _handle_import(self, user_input):
         try:
@@ -320,6 +483,7 @@ class CommandHandler:
             "  /drop <path>      - Remove files/dirs (or all if empty)\n"
             "  /cd <path>        - Change working directory\n"
             "  /export [file]    - Export chat history to markdown\n"
+            "  /dump [--full] [file] - Save logs dump (default: current session only)\n"
             "  /import <file>    - Import chat history from markdown\n"
             "  /models           - Switch AI model\n"
             "  /theme            - Switch UI theme\n"

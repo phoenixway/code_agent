@@ -18,6 +18,12 @@ class TestLoopDetection(unittest.IsolatedAsyncioTestCase):
         self.ui.print_thought = AsyncMock()
         self.ui.print_confirmation = AsyncMock()
         self.ui.print_command_result = AsyncMock()
+        self.ui.print_shell_start = AsyncMock(return_value=MagicMock())
+        self.ui.update_shell_result = AsyncMock()
+        self.ui.print_read_file_start = AsyncMock(return_value=MagicMock())
+        self.ui.update_read_file_result = AsyncMock()
+        self.ui.print_edit_file_start = AsyncMock(return_value=MagicMock())
+        self.ui.update_edit_file_result = AsyncMock()
         # Stop loop after limits if reached
         self.ui.confirm_continue = AsyncMock(return_value=False)
 

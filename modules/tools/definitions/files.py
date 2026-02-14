@@ -11,7 +11,15 @@ class ReadFileTool(BaseTool):
         try:
             p = Path(path)
             if not p.exists():
-                return {"status": "error", "output": f"File not found: {path}"}
+                parent = str(p.parent) if str(p.parent) else "."
+                return {
+                    "status": "error",
+                    "error_code": "NOT_FOUND",
+                    "recoverable": True,
+                    "next_actions": ["list_directory", "search_files", "create_file"],
+                    "output": f"File not found: {path}",
+                    "error_details": {"path": path, "suggested_path": parent},
+                }
 
             # Check file size
             file_size = p.stat().st_size
@@ -22,11 +30,21 @@ class ReadFileTool(BaseTool):
                         "path": path,
                         "size": f"{file_size / (1024 * 1024):.2f} MB"
                     }):
-                        return {"status": "error", "output": "User denied reading large file."}
+                        return {
+                            "status": "error",
+                            "error_code": "PERMISSION_DENIED",
+                            "recoverable": False,
+                            "output": "User denied reading large file.",
+                        }
                     else:
                         # User confirmed reading the large file, so we should not truncate it.
                         content = p.read_text(encoding='utf-8')
-                        return {"status": "success", "output": content, "skip_truncation": True}
+                        return {
+                            "status": "success",
+                            "output": content,
+                            "skip_truncation": True,
+                            "file_path": str(p),
+                        }
                 else:
                     # No UI, so we can't ask for confirmation.
                     # For now, we will proceed with reading the file.
@@ -34,9 +52,14 @@ class ReadFileTool(BaseTool):
                     pass
 
             content = p.read_text(encoding='utf-8')
-            return {"status": "success", "output": content}
+            return {"status": "success", "output": content, "file_path": str(p)}
         except Exception as e:
-            return {"status": "error", "output": str(e)}
+            return {
+                "status": "error",
+                "error_code": "INTERNAL",
+                "recoverable": False,
+                "output": str(e),
+            }
 
 class CreateFileTool(BaseTool):
     name = "create_file"
@@ -45,7 +68,13 @@ class CreateFileTool(BaseTool):
     async def execute(self, path: str, content: str):
         p = Path(path)
         if p.exists():
-            return {"status": "error", "output": f"File {path} already exists. Use 'edit_file' or 'run_shell' to modify."}
+            return {
+                "status": "error",
+                "error_code": "VALIDATION_ERROR",
+                "recoverable": True,
+                "next_actions": ["read_file", "edit_file", "write_file"],
+                "output": f"File {path} already exists. Use 'edit_file' or 'run_shell' to modify.",
+            }
         
         # Return proposal instead of writing directly
         proposal = ChangeProposal(
@@ -84,7 +113,15 @@ class EditFileTool(BaseTool):
     async def execute(self, path: str, search_text: str, replace_text: str):
         p = Path(path)
         if not p.exists():
-            return {"status": "error", "output": f"File not found: {path}"}
+            parent = str(p.parent) if str(p.parent) else "."
+            return {
+                "status": "error",
+                "error_code": "NOT_FOUND",
+                "recoverable": True,
+                "next_actions": ["list_directory", "search_files", "create_file"],
+                "output": f"File not found: {path}",
+                "error_details": {"path": path, "suggested_path": parent},
+            }
         
         try:
             content = p.read_text(encoding='utf-8')
@@ -99,7 +136,10 @@ class EditFileTool(BaseTool):
                     pass
                 
                 return {
-                    "status": "error", 
+                    "status": "error",
+                    "error_code": "VALIDATION_ERROR",
+                    "recoverable": True,
+                    "next_actions": ["read_file", "edit_file", "write_file"],
                     "output": "Search block not found. Ensure whitespace and indentation match exactly."
                 }
             
@@ -115,4 +155,9 @@ class EditFileTool(BaseTool):
             return proposal
             
         except Exception as e:
-            return {"status": "error", "output": f"Edit failed: {str(e)}"}
+            return {
+                "status": "error",
+                "error_code": "INTERNAL",
+                "recoverable": False,
+                "output": f"Edit failed: {str(e)}",
+            }

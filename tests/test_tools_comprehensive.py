@@ -34,6 +34,8 @@ class TestFileTools(unittest.IsolatedAsyncioTestCase):
         command = {"type": "read_file", "path": str(Path(self.test_dir) / "missing.txt")}
         result = await self.processor.process_single_action(command)
         self.assertEqual(result["status"], "error")
+        self.assertEqual(result.get("error_code"), "NOT_FOUND")
+        self.assertTrue(result.get("recoverable"))
         self.assertIn("File not found", result["output"])
 
     async def test_create_file_already_exists(self):
@@ -83,6 +85,17 @@ class TestFileTools(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["status"], "success")
         self.assertEqual(file_path.read_text(), "Hello Universe")
 
+    async def test_list_directory_success(self):
+        subdir = Path(self.test_dir) / "src"
+        subdir.mkdir(parents=True, exist_ok=True)
+        file_path = subdir / "main.py"
+        file_path.write_text("print('ok')")
+
+        command = {"type": "list_directory", "path": str(self.test_dir)}
+        result = await self.processor.process_single_action(command)
+        self.assertEqual(result["status"], "success")
+        self.assertIn("src/", result["output"])
+
 class TestShellTool(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.shell_tool = ShellTool()
@@ -121,6 +134,44 @@ class TestShellTool(unittest.IsolatedAsyncioTestCase):
             result = await self.shell_tool.execute(command="ls")
             self.assertEqual(result["status"], "error")
             self.assertIn("System overloaded", result["output"])
+
+    async def test_shell_timeout_kills_process(self):
+        with patch('asyncio.create_subprocess_shell') as mock_shell:
+            mock_proc = MagicMock()
+            mock_proc.communicate = AsyncMock(side_effect=[asyncio.TimeoutError(), (b"", b"")])
+            mock_proc.returncode = None
+            mock_proc.kill = MagicMock()
+            mock_shell.return_value = mock_proc
+
+            result = await self.shell_tool.execute(command="sleep 60", timeout=1)
+
+            self.assertEqual(result["status"], "error")
+            self.assertIn("timed out", result["output"])
+            mock_proc.kill.assert_called_once()
+
+    async def test_shell_blocks_too_long_command(self):
+        with patch("modules.tools.definitions.shell.load_settings", return_value={"max_shell_command_length": 5}):
+            result = await self.shell_tool.execute(command="echo too long")
+            self.assertEqual(result["status"], "error")
+            self.assertIn("length exceeds 5", result["output"])
+
+    async def test_shell_blocklist_pattern(self):
+        with patch(
+            "modules.tools.definitions.shell.load_settings",
+            return_value={"shell_blocklist": ["danger_cmd"]},
+        ):
+            result = await self.shell_tool.execute(command="danger_cmd --flag")
+            self.assertEqual(result["status"], "error")
+            self.assertIn("blocked by policy pattern", result["output"])
+
+    async def test_shell_allowlist_prefixes(self):
+        with patch(
+            "modules.tools.definitions.shell.load_settings",
+            return_value={"shell_allowlist_prefixes": ["echo", "ls"]},
+        ):
+            blocked = await self.shell_tool.execute(command="cat /etc/hosts")
+            self.assertEqual(blocked["status"], "error")
+            self.assertIn("allowlist prefixes", blocked["output"])
 
 if __name__ == "__main__":
     unittest.main()

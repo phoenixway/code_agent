@@ -23,6 +23,10 @@ class AngelicaAgent:
         self._ui = ui
         self.config = AgentConfig()
         self.state = AgentState()
+        self.state.set_retry_budgets(
+            self.config.RECOVERABLE_ERROR_RETRY_BUDGET,
+            self.config.CRITICAL_ERROR_RETRY_BUDGET,
+        )
         
         # Логування
         setup_loggers(clear_communication_log=True)
@@ -43,7 +47,8 @@ class AngelicaAgent:
         self.history = HistoryManager(
             self.chat, 
             logger=self.log, 
-            max_tokens=self.config.max_history_tokens
+            max_tokens=self.config.max_history_tokens,
+            autosummarize_requires_confirmation=self.config.autosummarize_requires_confirmation,
         )
         
         self.session_manager = SessionManager(self.history, self.context_manager, self._ui)
@@ -80,6 +85,8 @@ class AngelicaAgent:
         if hasattr(self, 'processor'): self.processor.ui = value
         if hasattr(self, 'policy'): self.policy.ui = value
         if hasattr(self, 'session_manager'): self.session_manager.ui = value
+        if hasattr(self, 'session_manager') and hasattr(self.session_manager, '_emit_load_notice'):
+            self.session_manager._emit_load_notice()
         
         # New modular architecture FIX
         if hasattr(self, 'orchestrator'): self.orchestrator.ui = value
@@ -112,7 +119,8 @@ class AngelicaAgent:
             self.history = HistoryManager(
                 self.chat, 
                 logger=self.log, 
-                max_tokens=self.config.max_history_tokens
+                max_tokens=self.config.max_history_tokens,
+                autosummarize_requires_confirmation=self.config.autosummarize_requires_confirmation,
             )
             # Важливо оновити посилання в інших модулях
             self.processor.history = self.history

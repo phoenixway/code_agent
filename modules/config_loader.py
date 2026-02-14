@@ -1,5 +1,4 @@
-# modules/config_loader.py
-import os
+import logging
 import yaml
 from pathlib import Path
 from dotenv import load_dotenv
@@ -7,6 +6,7 @@ from dotenv import load_dotenv
 CONFIG_DIR = Path.home() / ".config" / "angelica-ai"
 CONFIG_FILE = CONFIG_DIR / "config.yaml"
 ENV_FILE = CONFIG_DIR / ".env"
+log = logging.getLogger(__name__)
 
 def load_settings():
     if not CONFIG_DIR.exists():
@@ -23,7 +23,19 @@ def load_settings():
             ],
             "permission_policy": "ask", 
             "max_history_tokens": 4000,
-            "history_size": "small"
+            "history_size": "small",
+            "autosummarize_requires_confirmation": False,
+            "max_consecutive_calls": 12,
+            "max_step_seconds": 120,
+            "max_session_seconds": 900,
+            "allow_side_effect_tools": True,
+            "max_shell_command_length": 1000,
+            "shell_blocklist": [
+                "rm -rf /",
+                "mkfs",
+                ":(){ :|:& };:"
+            ],
+            "shell_allowlist_prefixes": []
         }
         with open(CONFIG_FILE, 'w') as f:
             yaml.dump(default, f)
@@ -35,9 +47,32 @@ def load_settings():
         settings = yaml.safe_load(f) or {}
         
     # Migration: rename context_size to history_size if it exists
+    changed = False
     if "context_size" in settings and "history_size" not in settings:
         settings["history_size"] = settings.pop("context_size")
-        # Save migrated settings
+        changed = True
+        log.info("Config migration: renamed 'context_size' to 'history_size'.")
+
+    runtime_defaults = {
+        "max_consecutive_calls": 12,
+        "max_step_seconds": 120,
+        "max_session_seconds": 900,
+        "autosummarize_requires_confirmation": False,
+        "allow_side_effect_tools": True,
+        "auto_allow_read_only_actions": True,
+        "auto_allow_safe_shell_read_only": True,
+        "debug_log_keypresses": False,
+        "max_shell_command_length": 1000,
+        "shell_blocklist": ["rm -rf /", "mkfs", ":(){ :|:& };:"],
+        "shell_allowlist_prefixes": [],
+    }
+    for key, value in runtime_defaults.items():
+        if key not in settings:
+            settings[key] = value
+            changed = True
+            log.info(f"Config migration: added missing '{key}' with default value.")
+
+    if changed:
         with open(CONFIG_FILE, 'w') as f:
             yaml.dump(settings, f, default_flow_style=False)
             

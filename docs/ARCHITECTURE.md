@@ -8,7 +8,7 @@ The application is structured around a central **Agent** class that coordinates 
 
 ### Core Components
 
-1.  **Agent (`agent.py` / `AngelicaAgent`)**
+1.  **Agent (`modules/agent/core.py` / `AngelicaAgent`)**
     -   The main entry point and orchestrator.
     -   Manages the main execution loop: `User Input -> Context Assembly -> LLM Request -> Response Parsing -> Action Execution -> Output Feedback`.
     -   Handles high-level error catching and session management.
@@ -43,6 +43,8 @@ The application is structured around a central **Agent** class that coordinates 
         -   `ask`: Prompts the user for confirmation (default).
         -   `always`: Executes everything automatically.
         -   `never`: Denies all side-effect actions.
+    -   Global safety switch:
+        -   `allow_side_effect_tools: false` blocks side-effect tools (shell/file writes/git changes) regardless of mode.
 
 7.  **File System (`modules/files.py`)**
     -   A wrapper around `pathlib` to perform safe file operations (read, write, edit).
@@ -58,12 +60,26 @@ The application is structured around a central **Agent** class that coordinates 
 7.  **Execution**: `ToolManager` calls the appropriate tool.
 8.  **Feedback**: The result (stdout/stderr/file content) is fed back into the history as a "System" message, allowing the agent to react to the result.
 
+## Safety Model
+
+Execution is bounded by three runtime limits (from `config.yaml`):
+
+- `max_consecutive_calls`: maximum autonomous loop steps before forced confirmation.
+- `max_step_seconds`: timeout for one model step.
+- `max_session_seconds`: timeout for the whole orchestration session.
+
+Shell execution is additionally constrained by:
+
+- `max_shell_command_length`
+- `shell_blocklist`
+- optional `shell_allowlist_prefixes`
+
 ## Directory Structure
 
 ```text
 /
-├── agent.py            # Main application logic
-├── app.py              # TUI entry point
+├── tui.py              # TUI entry point
+├── agent.py            # Legacy orchestrator
 ├── modules/            # Core logic modules
 │   ├── processor.py    # Parsing and execution logic
 │   ├── context.py      # Context management

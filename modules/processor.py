@@ -1,7 +1,7 @@
 # modules/processor.py
 
 class ResponseProcessor:
-    def __init__(self, ui, tool_manager, chat, policy, history):
+    def __init__(self, ui, tool_manager, chat, policy, history=None):
         self.ui = ui
         self.tools = tool_manager
         self.chat = chat
@@ -36,7 +36,12 @@ class ResponseProcessor:
                 action_type = cmd_text
 
         if not action_type:
-            return {"status": "failed", "output": "Error: Could not identify tool name."}
+            return {
+                "status": "failed",
+                "error_code": "VALIDATION_ERROR",
+                "recoverable": True,
+                "output": "Error: Could not identify tool name.",
+            }
 
         # 3. Збираємо аргументи
         args = {}
@@ -60,20 +65,27 @@ class ResponseProcessor:
 
         # 5. Перевірка політики (MiniPicker)
         normalized_cmd = {"type": action_type, **args}
-        if not await self.policy.check(normalized_cmd):
+        policy_decision = await self.policy.check(normalized_cmd)
+        if policy_decision is False:
             return {"status": "denied", "output": "Action denied by user."}
+        force_truncate = isinstance(policy_decision, str) and policy_decision in {"allow_truncated", "truncated"}
+        force_full_output = isinstance(policy_decision, str) and policy_decision in {"allow_full", "full"}
 
         # 6. Виклик через ToolManager
         result = await self.tools.call(action_type, ui=self.ui, **args)
         
         # 7. Post-processing for specific tools (e.g., read_file)
         if action_type == 'read_file' and result.get('status') == 'success':
-            file_path = result.get('file_path')
+            file_path = result.get('file_path') or args.get('path')
             content = result.get('output')
-            if file_path and content:
+            has_history_api = (
+                self.history is not None
+                and hasattr(self.history, "add_file_version")
+                and hasattr(self.history, "add_transient_file_content")
+            )
+            if file_path and content and has_history_api:
                 version = self.history.add_file_version(file_path, content)
                 if version:
-                    self.history.add_file_context_marker(file_path, version)
                     self.history.add_transient_file_content(file_path, version, content)
                     # Modify the output for the main loop - it no longer needs the full content
                     result['output'] = f"Read file '{file_path}' and added to history as v{version}."
@@ -90,9 +102,23 @@ class ResponseProcessor:
                     result.apply()
                     return {"status": "success", "output": f"Changes applied to {result.file_path}"}
                 except Exception as e:
-                    return {"status": "error", "output": f"Failed to apply changes: {e}"}
+                    return {
+                        "status": "error",
+                        "error_code": "INTERNAL",
+                        "recoverable": True,
+                        "output": f"Failed to apply changes: {e}",
+                    }
             else:
-                return {"status": "error", "output": "User rejected the file changes."}
+                return {
+                    "status": "error",
+                    "error_code": "PERMISSION_DENIED",
+                    "recoverable": False,
+                    "output": "User rejected the file changes.",
+                }
+
+        if not isinstance(result, dict):
+            result = {"status": "error", "error_code": "INTERNAL", "recoverable": False, "output": str(result)}
+        self._normalize_error_payload(result)
 
         # 9. Output Truncation
         if not result.get("skip_truncation"):
@@ -104,7 +130,47 @@ class ResponseProcessor:
                     threshold = self.MAX_OUTPUT_LENGTH  # 3000 символів
                 
                 if len(result["output"]) > threshold:
-                    if await self.ui.confirm_truncation(action_type, len(result["output"])):
+                    if force_full_output:
+                        pass
+                    elif force_truncate:
+                        result["output"] = self._truncate_output(result["output"], threshold)
+                    elif await self.ui.confirm_truncation(action_type, len(result["output"])):
                         result["output"] = self._truncate_output(result["output"], threshold)
                 
         return result
+
+    def _normalize_error_payload(self, result: dict) -> None:
+        """Ensure action result has consistent error metadata for loop recovery logic."""
+        status = result.get("status")
+        if status not in {"failed", "error", "denied"}:
+            return
+
+        if status == "denied":
+            result.setdefault("error_code", "PERMISSION_DENIED")
+            result.setdefault("recoverable", False)
+            return
+
+        output = str(result.get("output", ""))
+        lower_output = output.lower()
+
+        if "error_code" not in result or not result.get("error_code"):
+            if "not found" in lower_output:
+                result["error_code"] = "NOT_FOUND"
+            elif "denied" in lower_output or "permission" in lower_output:
+                result["error_code"] = "PERMISSION_DENIED"
+            elif "timeout" in lower_output or "timed out" in lower_output:
+                result["error_code"] = "TRANSIENT_IO"
+            elif "invalid" in lower_output or "missing" in lower_output:
+                result["error_code"] = "VALIDATION_ERROR"
+            else:
+                result["error_code"] = "INTERNAL"
+
+        if "recoverable" not in result:
+            result["recoverable"] = result["error_code"] in {
+                "NOT_FOUND",
+                "VALIDATION_ERROR",
+                "TRANSIENT_IO",
+            }
+
+        if result["error_code"] == "NOT_FOUND":
+            result.setdefault("next_actions", ["list_directory", "search_files", "create_file"])

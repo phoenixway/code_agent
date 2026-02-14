@@ -17,11 +17,20 @@ from pathlib import Path
 from modules.code_parser import CodeParser
 
 class HistoryManager:
-    def __init__(self, chat_provider, logger=None, max_tokens=4000, storage_dir=".angelica", window_size=50):
+    def __init__(
+        self,
+        chat_provider,
+        logger=None,
+        max_tokens=4000,
+        storage_dir=".angelica",
+        window_size=50,
+        autosummarize_requires_confirmation=False,
+    ):
         self.chat = chat_provider
         self.logger = logger
         self.max_tokens = max_tokens
         self.window_size = window_size
+        self.autosummarize_requires_confirmation = autosummarize_requires_confirmation
         
         # --- STORAGE SETUP ---
         self.storage_root = Path(storage_dir)
@@ -39,6 +48,13 @@ class HistoryManager:
         # --- CONSTANTS ---
         self.SKELETON_THRESHOLD = 2000  # Bytes. Larger files get skeletonized unless active.
         self.MAX_ACTIVE_FILES = 5       # Keep top N files in "Full Content" mode in system prompt.
+        self.SUMMARY_PROMPT_RATIO = 1.15
+        self.SUMMARY_PROMPT_COOLDOWN_MIN = 200
+        self.EMERGENCY_SUMMARY_RATIO = 1.5
+        self.EMERGENCY_SUMMARY_COOLDOWN_MIN = 500
+        self.disable_summary_prompts = False
+        self._next_summary_prompt_tokens = int(self.max_tokens * self.SUMMARY_PROMPT_RATIO)
+        self._next_emergency_summary_tokens = int(self.max_tokens * self.EMERGENCY_SUMMARY_RATIO)
 
     # =========================================================================
     # 1. BLOB STORAGE (Content-Addressable Storage)
@@ -75,7 +91,11 @@ class HistoryManager:
 
     def add_message(self, role, content, msg_type=None):
         """Adds a message with intelligent compression for tool outputs."""
-        if not content and not msg_type: return
+        if msg_type is None:
+            if content is None:
+                return
+            if isinstance(content, str) and not content.strip():
+                return
 
         final_content = content
 
@@ -277,12 +297,49 @@ class HistoryManager:
 
     async def check_and_summarize(self, ui=None):
         """Trigger summarization if limit reached."""
-        if self.count_tokens() > self.max_tokens:
+        tokens = self.count_tokens()
+        if tokens <= self.max_tokens:
+            self._next_summary_prompt_tokens = int(self.max_tokens * self.SUMMARY_PROMPT_RATIO)
+            self._next_emergency_summary_tokens = int(self.max_tokens * self.EMERGENCY_SUMMARY_RATIO)
+            return
+
+        # Hard guard: if history is heavily overflown, summarize immediately.
+        emergency_threshold = int(self.max_tokens * self.EMERGENCY_SUMMARY_RATIO)
+        if tokens >= emergency_threshold and tokens >= self._next_emergency_summary_tokens:
+            if ui:
+                await ui.print_system("History is critically over limit. Running emergency compact...")
+            await self.summarize(ui, window=True)
+            cooldown = max(self.EMERGENCY_SUMMARY_COOLDOWN_MIN, self.max_tokens // 8)
+            self._next_emergency_summary_tokens = self.count_tokens() + cooldown
+            return
+
+        # Avoid prompting too early right after crossing the hard limit.
+        if tokens < int(self.max_tokens * self.SUMMARY_PROMPT_RATIO):
+            return
+
+        if tokens < self._next_summary_prompt_tokens:
+            return
+
+        if self.autosummarize_requires_confirmation:
             confirm = True
-            if ui and hasattr(ui, "confirm_action"):
-                confirm = await ui.confirm_action({"type": "summarize_history"})
-            if confirm:
-                await self.summarize(ui, window=True)
+            can_confirm = (
+                ui
+                and hasattr(type(ui), "confirm_action")
+                and callable(getattr(ui, "confirm_action", None))
+            )
+            if can_confirm:
+                response = await ui.confirm_action({"type": "summarize_history"})
+                if response in (False, "later", None):
+                    confirm = False
+                elif isinstance(response, str):
+                    confirm = response.lower().strip() in {"summarize", "yes", "allow", "ok", "confirm", "true"}
+            if not confirm:
+                cooldown = max(self.SUMMARY_PROMPT_COOLDOWN_MIN, self.max_tokens // 10)
+                self._next_summary_prompt_tokens = tokens + cooldown
+                return
+
+        # Default mode: keep control in AI loop (no modal confirmation).
+        await self.summarize(ui, window=True)
 
     async def summarize(self, ui=None, window=True):
         """Summarize old messages."""
@@ -311,8 +368,13 @@ class HistoryManager:
             async for chunk in self.chat.get_streaming_response(prompt, []):
                 summary_out += chunk
             
-            summary_msg = {"role": "system", "content": f"SUMMARY: {summary_out}"}
+            summary_msg = {
+                "role": "system",
+                "content": f"Previous conversation summary: {summary_out}",
+            }
             self.messages = [summary_msg] + keep_messages
+            self._next_summary_prompt_tokens = int(self.max_tokens * self.SUMMARY_PROMPT_RATIO)
+            self._next_emergency_summary_tokens = int(self.max_tokens * self.EMERGENCY_SUMMARY_RATIO)
             
             if ui: await ui.print_system("✅ History summarized.")
             
@@ -325,3 +387,18 @@ class HistoryManager:
         self.active_files = set()
         self.files = {} 
         if self.logger: self.logger.info("History cleared.")
+
+    def remove_file_state(self, path_prefix: str) -> int:
+        """Remove tracked file-state entries matching an exact path or prefix."""
+        removed = 0
+        for filename in list(self.files.keys()):
+            if filename == path_prefix or filename.startswith(path_prefix):
+                self.files.pop(filename, None)
+                self.active_files.discard(filename)
+                removed += 1
+        return removed
+
+    def clear_file_state(self):
+        """Remove all tracked file-state entries without touching chat messages."""
+        self.files = {}
+        self.active_files = set()

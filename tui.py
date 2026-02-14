@@ -43,7 +43,7 @@ class TUI(App):
                 Static("> "),
                 HistoryAwareTextArea(
                     id="input",
-                    placeholder="Введить запрос або /команду...",
+                    placeholder="Enter a prompt or /command...",
                 ),
                 id="input-container"
             )

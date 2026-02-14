@@ -1,8 +1,10 @@
-# modules/chat.py
+import logging
 from modules.providers.base import ProviderAPIError
 from modules.providers.openai import OpenAICompatibleProvider
 from modules.providers.ollama import OllamaProvider
 from modules.providers.gemini import GeminiProvider
+
+log = logging.getLogger(__name__)
 
 # A dictionary to map model name keywords to provider classes and their arguments
 # This configuration logic is kept here to act as a Registry/Factory
@@ -30,12 +32,12 @@ def get_chat_provider(model_name):
                 # Standard instantiation
                 return provider_class(model_name, *args)
             except ValueError as e:
-                print(f"Error initializing chat provider for {model_name}: {e}")
+                log.warning(f"Error initializing chat provider for {model_name}: {e}")
                 return None
             
     # Default fallback provider
     try:
         return GeminiProvider("gemini-1.5-pro")
     except ValueError as e:
-        print(f"Error initializing default Gemini chat provider: {e}")
+        log.warning(f"Error initializing default Gemini chat provider: {e}")
         return None

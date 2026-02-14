@@ -1,5 +1,6 @@
 import re
 import json
+import logging
 from dataclasses import dataclass
 from typing import List, Any, Optional
 
@@ -9,6 +10,9 @@ class Segment:
     content: Any
 
 class ResponseParser:
+    def __init__(self):
+        self.log = logging.getLogger("debug")
+
     def parse(self, text: str) -> List[Segment]:
         """
         Parses the LLM response into a sequence of Segments (Thought, Text, Action).
@@ -103,8 +107,14 @@ class ResponseParser:
                     if any(k in json_obj for k in ["type", "command", "action"]):
                         segments.append(Segment('action', json_obj))
                     else:
+                        if self.log:
+                            preview = part.strip().replace("\n", " ")[:240]
+                            self.log.warning(f"Parser warning: action block missing required keys. Preview: {preview}")
                         segments.append(Segment('text', part)) # Not a valid command, treat as text
                 else:
+                    if self.log:
+                        preview = part.strip().replace("\n", " ")[:240]
+                        self.log.warning(f"Parser warning: failed to parse action JSON. Preview: {preview}")
                     segments.append(Segment('text', part)) # Not valid JSON, treat as text
             else:
                 # This is a text part

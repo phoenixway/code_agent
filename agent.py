@@ -46,7 +46,12 @@ class AngelicaAgent:
         self.chat = get_chat_provider(model_name)
         
         # 4. Управління історією та сесіями
-        self.history = HistoryManager(self.chat, logger=self.log, max_tokens=self.settings.get("max_history_tokens", 4000))
+        self.history = HistoryManager(
+            self.chat,
+            logger=self.log,
+            max_tokens=self.settings.get("max_history_tokens", 4000),
+            autosummarize_requires_confirmation=self.settings.get("autosummarize_requires_confirmation", False),
+        )
         self.session_manager = SessionManager(self.history, self.context_manager, self._ui)
         self.session_manager.load_session()
         
@@ -98,6 +103,8 @@ class AngelicaAgent:
         if hasattr(self, 'processor'): self.processor.ui = value
         if hasattr(self, 'policy'): self.policy.ui = value
         if hasattr(self, 'session_manager'): self.session_manager.ui = value
+        if hasattr(self, 'session_manager') and hasattr(self.session_manager, '_emit_load_notice'):
+            self.session_manager._emit_load_notice()
 
     async def get_response(self, query):
         """Отримує стрімінгову відповідь від ШІ."""
@@ -150,7 +157,8 @@ class AngelicaAgent:
                     if self.ui and hasattr(self.ui, 'update_token_status'):
                         prompt_tokens = 0
                         completion_tokens = 0
-                        tokenizer = self.chat.get_tokenizer()
+                        get_tokenizer = getattr(self.chat, "get_tokenizer", None)
+                        tokenizer = get_tokenizer() if callable(get_tokenizer) else None
 
                         if tokenizer:
                             prompt_tokens = len(tokenizer.encode(current_query))
@@ -320,7 +328,12 @@ class AngelicaAgent:
         
         if new_chat_provider:
             self.chat = new_chat_provider
-            self.history = HistoryManager(self.chat, logger=self.log, max_tokens=self.settings.get("max_history_tokens", 4000))
+            self.history = HistoryManager(
+                self.chat,
+                logger=self.log,
+                max_tokens=self.settings.get("max_history_tokens", 4000),
+                autosummarize_requires_confirmation=self.settings.get("autosummarize_requires_confirmation", False),
+            )
             self.processor.chat = self.chat
             self.processor.history = self.history # Update processor with new history
             await self.ui.update_header(f"{self.chat.model_name}")
