@@ -187,7 +187,7 @@ class TuiUI:
                 return "never"
             return "later"
 
-        if action_type in {"run_shell", "search_content", "search_files", "list_directory", "read_file"}:
+        if action_type in {"run_shell", "search_content", "search_files", "list_directory", "read_file", "read_file_skeleton"}:
             prompt = (
                 "[bold yellow]⚠ Action confirmation[/]\n\n"
                 f"[bold]Type:[/] {action_type}\n"

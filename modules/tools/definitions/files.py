@@ -2,10 +2,16 @@ import os
 from pathlib import Path
 from ..base import BaseTool
 from modules.types import ChangeProposal
+from modules.code_parser import CodeParser
 
 class ReadFileTool(BaseTool):
     name = "read_file"
-    description = "Reads the full content of a file. Use this before editing. Params: 'path' (str)"
+    description = (
+        "Reads the full content of a file. "
+        "Use only when full source is strictly required for exact edits. "
+        "Prefer `read_file_skeleton` first for supported languages. "
+        "Params: 'path' (str)"
+    )
 
     async def execute(self, path: str, ui=None):
         try:
@@ -59,6 +65,76 @@ class ReadFileTool(BaseTool):
                 "error_code": "INTERNAL",
                 "recoverable": False,
                 "output": str(e),
+            }
+
+
+class ReadFileSkeletonTool(BaseTool):
+    name = "read_file_skeleton"
+    description = (
+        "Extracts a structural skeleton (classes/functions/signatures) from a source file "
+        "using tree-sitter for supported languages. "
+        "Preferred first step before full `read_file` to save context tokens. "
+        "Params: 'path' (str)"
+    )
+
+    def __init__(self):
+        self.code_parser = CodeParser()
+
+    async def execute(self, path: str, **kwargs):
+        try:
+            p = Path(path)
+            if not p.exists():
+                parent = str(p.parent) if str(p.parent) else "."
+                return {
+                    "status": "error",
+                    "error_code": "NOT_FOUND",
+                    "recoverable": True,
+                    "next_actions": ["list_directory", "search_files", "read_file"],
+                    "output": f"File not found: {path}",
+                    "error_details": {"path": path, "suggested_path": parent},
+                }
+            if not p.is_file():
+                return {
+                    "status": "error",
+                    "error_code": "VALIDATION_ERROR",
+                    "recoverable": True,
+                    "next_actions": ["list_directory", "read_file"],
+                    "output": f"Not a file: {path}",
+                }
+
+            ext = p.suffix.lower()
+            if ext not in self.code_parser.configs:
+                supported = ", ".join(sorted(self.code_parser.configs.keys()))
+                return {
+                    "status": "error",
+                    "error_code": "VALIDATION_ERROR",
+                    "recoverable": True,
+                    "next_actions": ["read_file"],
+                    "output": (
+                        f"Skeleton extraction is not supported for '{ext or '(no extension)'}'. "
+                        f"Supported: {supported}."
+                    ),
+                }
+
+            content = p.read_text(encoding="utf-8")
+            skeleton = self.code_parser.get_skeleton(str(p), content)
+            return {
+                "status": "success",
+                "output": (
+                    f"Skeleton for {p}:\n"
+                    f"{skeleton}\n\n"
+                    "Note: this is a structural view. Use read_file for exact implementation details."
+                ),
+                "file_path": str(p),
+                "view": "skeleton",
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "error_code": "INTERNAL",
+                "recoverable": True,
+                "next_actions": ["read_file"],
+                "output": f"Failed to extract skeleton: {e}",
             }
 
 class CreateFileTool(BaseTool):

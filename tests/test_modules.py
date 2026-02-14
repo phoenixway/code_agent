@@ -176,6 +176,21 @@ class TestPermissionPolicy(unittest.IsolatedAsyncioTestCase):
             "auto_allow_safe_shell_read_only": True,
         },
     )
+    async def test_ask_mode_auto_allows_read_file_skeleton(self, _mock_settings):
+        self.ui.confirm_action = AsyncMock(return_value=False)
+        policy = PermissionPolicy(self.ui, mode="ask")
+        result = await policy.check({"type": "read_file_skeleton", "path": "main.py"})
+        self.assertTrue(result)
+        self.ui.confirm_action.assert_not_called()
+
+    @patch(
+        "modules.policy.load_settings",
+        return_value={
+            "allow_side_effect_tools": True,
+            "auto_allow_read_only_actions": True,
+            "auto_allow_safe_shell_read_only": True,
+        },
+    )
     async def test_ask_mode_auto_allows_safe_shell_read_only(self, _mock_settings):
         self.ui.confirm_action = AsyncMock(return_value=False)
         policy = PermissionPolicy(self.ui, mode="ask")

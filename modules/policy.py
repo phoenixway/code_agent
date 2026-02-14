@@ -13,6 +13,7 @@ class PermissionPolicy:
         self.auto_allow_safe_shell_read_only = settings.get("auto_allow_safe_shell_read_only", True)
         self._read_only_actions = {
             "read_file",
+            "read_file_skeleton",
             "list_directory",
             "search_files",
             "search_content",
@@ -35,10 +36,10 @@ class PermissionPolicy:
     async def check(self, action): # Make it async
         """Checks if the action is allowed based on the current policy."""
         action_type = action.get("type")
-        force_truncated_readonly = {"search_content", "search_files", "list_directory"}
+        force_truncated_readonly = {"search_content", "search_files", "list_directory", "read_file_skeleton"}
         is_recovery_probe = bool(action.get("_recovery_context"))
 
-        if self.mode == "ask" and is_recovery_probe and action_type in {"search_content", "search_files", "list_directory", "read_file"}:
+        if self.mode == "ask" and is_recovery_probe and action_type in {"search_content", "search_files", "list_directory", "read_file", "read_file_skeleton"}:
             return "allow_truncated"
 
         if self.mode == "ask" and action_type in force_truncated_readonly:

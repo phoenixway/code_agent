@@ -96,6 +96,29 @@ class TestFileTools(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["status"], "success")
         self.assertIn("src/", result["output"])
 
+    async def test_read_file_skeleton_success(self):
+        file_path = Path(self.test_dir) / "sample.py"
+        file_path.write_text("def foo():\n    return 1\n")
+        with patch("modules.tools.definitions.files.CodeParser") as mock_parser_cls:
+            parser_inst = mock_parser_cls.return_value
+            parser_inst.configs = {".py": {"name": "python"}}
+            parser_inst.get_skeleton.return_value = "ƒ def foo() : # ... implementation hidden ..."
+            command = {"type": "read_file_skeleton", "path": str(file_path)}
+            result = await self.processor.process_single_action(command)
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result.get("view"), "skeleton")
+        self.assertIn("Skeleton for", result["output"])
+        self.assertIn("def foo", result["output"])
+
+    async def test_read_file_skeleton_unsupported_extension(self):
+        file_path = Path(self.test_dir) / "sample.txt"
+        file_path.write_text("plain text")
+        command = {"type": "read_file_skeleton", "path": str(file_path)}
+        result = await self.processor.process_single_action(command)
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result.get("error_code"), "VALIDATION_ERROR")
+        self.assertIn("not supported", result["output"].lower())
+
 class TestShellTool(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.shell_tool = ShellTool()

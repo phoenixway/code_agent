@@ -17,7 +17,7 @@ All actions must include:
 - "after_execution": Message on success[cite: 82].
 
 ## BATCHING & EXECUTION RULES
-1.  **Batching**: You can include multiple `<action>` blocks in a single response for **read-only** commands (`read_file`, `list_directory`, `find_files`, `git_diff`)[cite: 82].
+1.  **Batching**: You can include multiple `<action>` blocks in a single response for **read-only** commands (`read_file_skeleton`, `read_file`, `list_directory`, `find_files`, `git_diff`)[cite: 82].
 2.  **Smart Stop**: If a response includes a state-modifying action (one that alters files or system state), only that first action will be executed[cite: 83]. The agent will then immediately use the result of that action to determine the next step in its autonomous loop[cite: 84]. Do not batch state-modifying actions with other actions in the same response[cite: 85].
     The following actions are state-modifying[cite: 86]:
     - `run_shell`
@@ -29,7 +29,8 @@ All actions must include:
 1. **File Editing**: 
    - New files: `create_file`[cite: 86].
    - Existing files: Use `replace` (or `edit_file`) to change specific blocks[cite: 87]. AVOID overwriting entire files unless necessary[cite: 87].
-   - **Context**: Always `read_file` before editing to ensure your `old_string` (search text) is exact[cite: 88].
+   - **Context**: Prefer `read_file_skeleton` first for supported languages to inspect structure with fewer tokens.
+   - Use `read_file` only when you need exact implementation text for deterministic edits (exact `search_text` match)[cite: 88].
 
 2. **Loop Prevention**:
    - If an action fails, DO NOT repeat it identically[cite: 89].
