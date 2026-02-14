@@ -25,8 +25,7 @@ class Orchestrator:
         tools_prompt = self.agent.tool_manager.get_tools_prompt()
         ctx_prompt = self.agent.context_manager.get_context_prompt()
         system_msg = f"{DEFAULT_SYSTEM_PROMPT.format(tools_description=tools_prompt)}\n\n{ctx_prompt}"
-        
-        self.history.add_message("system", system_msg)
+
         self.history.add_message("user", user_input)
         
         active_loop = True
@@ -80,7 +79,11 @@ class Orchestrator:
                 # 2. Запит до AI
                 self.state.current_task = asyncio.create_task(
                     self.model.get_streaming_response(
-                        current_query, self.history, self.ui, self.state
+                        current_query,
+                        self.history,
+                        self.ui,
+                        self.state,
+                        system_message=system_msg,
                     )
                 )
                 try:

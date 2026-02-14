@@ -268,6 +268,23 @@ class TuiUI:
     async def print_system(self, text: str):
         await self._print_styled(text, "system")
 
+    @ui_task
+    async def start_system_progress(self, text: str) -> Static:
+        """Print a system message and return widget for in-place updates."""
+        widget = self._create_styled_widget(text, "system")
+        return self._mount_widget(widget)
+
+    @ui_task
+    async def update_system_progress(self, widget: Static, text: str):
+        """Update previously printed system progress message."""
+        if widget is None:
+            return
+        content = text.strip() if isinstance(text, str) else str(text)
+        rich_text = Text()
+        rich_text.append("• ")
+        rich_text.append(content)
+        widget.update(rich_text)
+
     async def print_initial_system_message(self, text: str):
         await self._print_styled(text, "initial")
 

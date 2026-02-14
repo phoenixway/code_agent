@@ -13,10 +13,19 @@ class ModelClient:
         self.chat = get_chat_provider(config.default_model)
         self._tokenizer_warning_logged = False
         
-    async def get_streaming_response(self, query: str, history_manager: HistoryManager, ui=None, state=None):
+    async def get_streaming_response(
+        self,
+        query: str,
+        history_manager: HistoryManager,
+        ui=None,
+        state=None,
+        system_message: str | None = None,
+    ):
         """Отримує відповідь від моделі частинами з підтримкою Smart Stop."""
         full_text = ""
         history_data = history_manager.get_history_for_api()
+        if system_message and isinstance(system_message, str):
+            history_data = [{"role": "system", "content": system_message}] + history_data
         
         # 1. Логування вихідного запиту
         if self.comm_log:

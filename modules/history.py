@@ -13,6 +13,7 @@ import json
 import time
 import hashlib
 import os
+import re
 from pathlib import Path
 from modules.code_parser import CodeParser
 
@@ -52,9 +53,14 @@ class HistoryManager:
         self.SUMMARY_PROMPT_COOLDOWN_MIN = 200
         self.EMERGENCY_SUMMARY_RATIO = 1.5
         self.EMERGENCY_SUMMARY_COOLDOWN_MIN = 500
+        self.SUMMARY_TARGET_RATIO = 0.5
+        self.SUMMARY_MIN_INTERVAL_SEC = 45
+        self.SUMMARY_MIN_TOKEN_GROWTH = max(256, self.max_tokens // 16)
         self.disable_summary_prompts = False
         self._next_summary_prompt_tokens = int(self.max_tokens * self.SUMMARY_PROMPT_RATIO)
         self._next_emergency_summary_tokens = int(self.max_tokens * self.EMERGENCY_SUMMARY_RATIO)
+        self._last_summary_at = 0.0
+        self._last_summary_tokens = 0
 
     # =========================================================================
     # 1. BLOB STORAGE (Content-Addressable Storage)
@@ -102,6 +108,7 @@ class HistoryManager:
         # COMPRESSION: If Assistant wrote a file, replace body with a Stub
         if role == "assistant" and isinstance(content, str):
             final_content = self._compress_assistant_tool_call(content)
+            final_content = self._sanitize_action_blocks_for_history(final_content)
         
         message = {"role": role, "content": final_content}
         if msg_type:
@@ -135,6 +142,32 @@ class HistoryManager:
         except Exception:
             pass
         return content
+
+    def _sanitize_action_blocks_for_history(self, content: str) -> str:
+        """Sanitize large create/edit action payloads in <action> blocks."""
+        if not isinstance(content, str) or "<action" not in content:
+            return content
+
+        def _replace(match):
+            action_type = (match.group(1) or "").strip().lower()
+            body = match.group(2).strip()
+            try:
+                data = json.loads(body)
+            except Exception:
+                return match.group(0)
+            if action_type in {"create_file", "write_file", "edit_file", "replace"} and isinstance(data, dict):
+                payload = data.get("content")
+                if isinstance(payload, str) and len(payload) > 200:
+                    digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:12]
+                    preview = payload[:80].replace("\n", "\\n")
+                    data["content"] = (
+                        f"[content omitted: {len(payload)} chars, sha256:{digest}, preview:'{preview}']"
+                    )
+                    return f'<action type="{action_type}">\n{json.dumps(data, ensure_ascii=False, indent=2)}\n</action>'
+            return match.group(0)
+
+        pattern = re.compile(r'<action(?:\s+type="([^"]+)")?>(.*?)</action>', re.DOTALL | re.IGNORECASE)
+        return re.sub(pattern, _replace, content)
 
     def add_transient_file_content(self, filename, version, content):
         """Adds a temporary message (read_file result) that isn't saved permanently."""
@@ -199,6 +232,9 @@ class HistoryManager:
         """
         api_history = []
         included_in_system_prompt = set()
+        over_limit_pressure = self.current_token_count > self.max_tokens
+        active_limit = self._effective_active_file_limit(over_limit_pressure)
+        active_set = self._select_recent_active_files(active_limit)
         
         # --- A. BUILD SYSTEM WORKSPACE (Current Project State) ---
         workspace_parts = []
@@ -212,8 +248,9 @@ class HistoryManager:
             
             # Logic: Full Content OR Skeleton?
             # Full if: Active OR Small size
-            is_active = filename in self.active_files
-            is_small = len(content) < self.SKELETON_THRESHOLD
+            is_active = filename in active_set
+            small_threshold = self.SKELETON_THRESHOLD if not over_limit_pressure else min(self.SKELETON_THRESHOLD, 400)
+            is_small = len(content) < small_threshold
             
             if is_active or is_small:
                 workspace_parts.append(
@@ -278,6 +315,25 @@ class HistoryManager:
 
         return api_history
 
+    def _effective_active_file_limit(self, over_limit_pressure: bool) -> int:
+        if not over_limit_pressure:
+            return self.MAX_ACTIVE_FILES
+        tokens = self.current_token_count
+        if tokens > int(self.max_tokens * 1.5):
+            return 1
+        return min(2, self.MAX_ACTIVE_FILES)
+
+    def _select_recent_active_files(self, limit: int) -> set[str]:
+        if limit <= 0:
+            return set()
+        ranked = []
+        for filename in self.active_files:
+            versions = self.files.get(filename) or []
+            ts = versions[-1]["timestamp"] if versions else 0
+            ranked.append((ts, filename))
+        ranked.sort(reverse=True)
+        return {name for _, name in ranked[:limit]}
+
     # =========================================================================
     # 5. SUMMARIZATION & UTILS
     # =========================================================================
@@ -302,6 +358,7 @@ class HistoryManager:
             self._next_summary_prompt_tokens = int(self.max_tokens * self.SUMMARY_PROMPT_RATIO)
             self._next_emergency_summary_tokens = int(self.max_tokens * self.EMERGENCY_SUMMARY_RATIO)
             return
+        now = time.time()
 
         # Hard guard: if history is heavily overflown, summarize immediately.
         emergency_threshold = int(self.max_tokens * self.EMERGENCY_SUMMARY_RATIO)
@@ -311,6 +368,13 @@ class HistoryManager:
             await self.summarize(ui, window=True)
             cooldown = max(self.EMERGENCY_SUMMARY_COOLDOWN_MIN, self.max_tokens // 8)
             self._next_emergency_summary_tokens = self.count_tokens() + cooldown
+            return
+
+        if (
+            self._last_summary_at > 0
+            and now - self._last_summary_at < self.SUMMARY_MIN_INTERVAL_SEC
+            and tokens - self._last_summary_tokens < self.SUMMARY_MIN_TOKEN_GROWTH
+        ):
             return
 
         # Avoid prompting too early right after crossing the hard limit.
@@ -361,25 +425,88 @@ class HistoryManager:
             "Format: {\"summary\": \"...\", \"pending\": [...]}"
         )
 
-        if ui: await ui.print_system(f"Summarizing {len(to_summarize)} messages...")
+        summary_count = len(to_summarize)
+        progress_widget = None
+        progress_text = f"Summarizing {summary_count} messages..."
+        if ui:
+            start_progress = getattr(ui, "start_system_progress", None)
+            if callable(start_progress):
+                try:
+                    progress_widget = await start_progress(progress_text)
+                except Exception:
+                    progress_widget = None
+            if progress_widget is None:
+                await ui.print_system(progress_text)
 
         summary_out = ""
+        tokens_before = self.count_tokens()
+        started_at = time.time()
+        if self.logger:
+            self.logger.info(
+                "Summary.start "
+                f"tokens_before={tokens_before} "
+                f"messages_to_summarize={summary_count} "
+                f"window_mode={bool(window)}"
+            )
         try:
             async for chunk in self.chat.get_streaming_response(prompt, []):
                 summary_out += chunk
-            
-            summary_msg = {
-                "role": "system",
-                "content": f"Previous conversation summary: {summary_out}",
-            }
-            self.messages = [summary_msg] + keep_messages
+
+            target_tokens = max(256, int(self.max_tokens * self.SUMMARY_TARGET_RATIO))
+            summary_out = self._truncate_text_to_tokens(summary_out, max(128, target_tokens // 2))
+            summary_msg = {"role": "system", "content": f"Previous conversation summary: {summary_out}"}
+
+            kept = list(keep_messages)
+            while kept and self.count_tokens([summary_msg] + kept) > target_tokens:
+                kept.pop(0)
+            if self.count_tokens([summary_msg] + kept) > target_tokens:
+                kept = []
+            self.messages = [summary_msg] + kept
+            self._shrink_active_files_for_pressure(limit=1 if self.count_tokens() > self.max_tokens else 2)
             self._next_summary_prompt_tokens = int(self.max_tokens * self.SUMMARY_PROMPT_RATIO)
             self._next_emergency_summary_tokens = int(self.max_tokens * self.EMERGENCY_SUMMARY_RATIO)
+            self._last_summary_at = time.time()
+            self._last_summary_tokens = self.count_tokens()
+
+            tokens_after = self._last_summary_tokens
+            duration_ms = int((time.time() - started_at) * 1000)
+            reduction_pct = 0.0
+            if tokens_before > 0:
+                reduction_pct = max(0.0, (tokens_before - tokens_after) / tokens_before * 100.0)
+            if self.logger:
+                self.logger.info(
+                    "Summary.done "
+                    f"duration_ms={duration_ms} "
+                    f"tokens_before={tokens_before} "
+                    f"tokens_after={tokens_after} "
+                    f"reduction_pct={reduction_pct:.1f}"
+                )
             
-            if ui: await ui.print_system("✅ History summarized.")
+            if ui:
+                update_progress = getattr(ui, "update_system_progress", None)
+                done_text = f"{progress_text} Done."
+                if progress_widget is not None and callable(update_progress):
+                    await update_progress(progress_widget, done_text)
+                else:
+                    await ui.print_system(done_text)
             
         except Exception as e:
             if ui: await ui.print_error(f"Summarization error: {e}")
+
+    def _truncate_text_to_tokens(self, text: str, max_tokens: int) -> str:
+        if not isinstance(text, str) or max_tokens <= 0:
+            return ""
+        max_chars = max_tokens * 4
+        if len(text) <= max_chars:
+            return text
+        hidden = len(text) - max_chars
+        return text[:max_chars] + f"\n... [summary truncated: {hidden} chars hidden]"
+
+    def _shrink_active_files_for_pressure(self, limit: int):
+        if limit <= 0:
+            self.active_files = set()
+            return
+        self.active_files = self._select_recent_active_files(limit)
 
     def clear_history(self):
         """Clear RAM history only."""
