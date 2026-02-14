@@ -137,9 +137,10 @@ class Orchestrator:
                     malformed_action_retries = 0
                 
                 # 4. Виконання дій (через Dispatcher)
-                processed_segs, sys_results, should_stop = await self.dispatcher.dispatch_segments(
-                    segments, self.state
+                self.state.current_task = asyncio.create_task(
+                    self.dispatcher.dispatch_segments(segments, self.state)
                 )
+                processed_segs, sys_results, should_stop = await self.state.current_task
                 action_count = sum(1 for seg in processed_segs if seg.type == "action")
                 
                 # 5. Оновлення історії
@@ -227,6 +228,9 @@ class Orchestrator:
                 await self.history.check_and_summarize(self.ui)
             except Exception as e:
                 if self.agent.log: self.agent.log.warning(f"Summarization error: {e}")
+        except asyncio.CancelledError:
+            if self.agent.log:
+                self.agent.log.info("Orchestrator interrupted by user.")
                 
         finally:
             if self.agent.log:

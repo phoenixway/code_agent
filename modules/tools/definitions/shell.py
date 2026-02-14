@@ -1,5 +1,7 @@
 # modules/tools/definitions/shell.py
 import asyncio
+import os
+import signal
 from modules.tools.base import BaseTool
 from modules.config_loader import load_settings
 
@@ -9,6 +11,26 @@ class ShellTool(BaseTool):
         "Executes a shell command in the current environment. "
         "Params: 'command' (str), 'timeout' (int, optional, seconds)"
     )
+
+    async def _terminate_process(self, process) -> None:
+        """Stops shell process and, where possible, its whole process group."""
+        if process is None or process.returncode is not None:
+            return
+
+        pid = getattr(process, "pid", None)
+        killed_group = False
+        if isinstance(pid, int):
+            try:
+                pgid = os.getpgid(pid)
+                os.killpg(pgid, signal.SIGKILL)
+                killed_group = True
+            except Exception:
+                killed_group = False
+
+        if not killed_group:
+            process.kill()
+
+        await process.communicate()
 
     async def execute(self, command: str, timeout: int = 30):
         if not command:
@@ -58,10 +80,12 @@ class ShellTool(BaseTool):
         process = None
         try:
             # Виконуємо команду в підпроцесі
+            preexec_fn = os.setsid if hasattr(os, "setsid") else None
             process = await asyncio.create_subprocess_shell(
                 command,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
+                preexec_fn=preexec_fn,
             )
             stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
             
@@ -76,9 +100,7 @@ class ShellTool(BaseTool):
                 "output": output,
             }
         except asyncio.TimeoutError:
-            if process is not None and process.returncode is None:
-                process.kill()
-                await process.communicate()
+            await self._terminate_process(process)
             return {
                 "status": "error",
                 "error_code": "TRANSIENT_IO",
@@ -86,9 +108,7 @@ class ShellTool(BaseTool):
                 "output": f"Command timed out after {timeout} seconds.",
             }
         except asyncio.CancelledError:
-            if process is not None and process.returncode is None:
-                process.kill()
-                await process.communicate()
+            await self._terminate_process(process)
             raise
         except Exception as e:
             return {
