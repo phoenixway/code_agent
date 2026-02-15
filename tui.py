@@ -1,6 +1,7 @@
 import os
 import asyncio
 import shlex
+from datetime import datetime
 from textual.app import App, ComposeResult
 from textual.widgets import Header, Footer, Static
 from textual.containers import Container, VerticalScroll, Horizontal
@@ -57,6 +58,11 @@ class TUI(App):
         # Було: self.agent.settings.get(...)
         # Стало: self.agent.config.settings.get(...)
         target_theme = self.agent.config.settings.get("theme", "hacker-green")
+        theme_mode = str(target_theme or "").strip().lower()
+        if theme_mode in {"auto", "day-night", "by-time"}:
+            hour = datetime.now().hour
+            # Daytime: 07:00-18:59 -> light theme, otherwise dark.
+            target_theme = "textual-light" if 7 <= hour < 19 else "hacker-green"
         
         try:
             self.theme = target_theme

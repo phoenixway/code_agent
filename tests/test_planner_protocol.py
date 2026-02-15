@@ -58,6 +58,23 @@ class TestPlannerProtocol(unittest.TestCase):
         snapshot = self.planner.render_runtime_snapshot(state.task_board)
         self.assertIn("SYSTEM TASKBOARD SNAPSHOT", snapshot)
         self.assertIn("s2 [in_progress]", snapshot)
+        self.assertIn("initialized", self.planner.render_update_delta(None, state.task_board))
+
+        next_update = {
+            "version": 1,
+            "goal": "Refactor module",
+            "planner_enabled": True,
+            "active_step_id": "s3",
+            "steps": [
+                {"id": "s1", "title": "Inspect files", "status": "done"},
+                {"id": "s2", "title": "Edit implementation", "status": "done"},
+                {"id": "s3", "title": "Run tests", "status": "in_progress"},
+            ],
+        }
+        self.planner.apply_update(state, next_update)
+        delta = self.planner.render_update_delta(update, next_update)
+        self.assertIn("status_changes=", delta)
+        self.assertIn("active=s2->s3", delta)
 
 
 if __name__ == "__main__":

@@ -100,6 +100,53 @@ class TestActionDispatcherLoopGuard(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Repeated read_file calls detected", result_text)
         self.assertEqual(state.pending_loop_stop_info.get("reason"), "repeating_no_progress")
 
+    async def test_repeated_read_file_no_progress_stops_for_10_repeats(self):
+        ui = SimpleNamespace(
+            print_edit_file_start=AsyncMock(return_value=object()),
+            start_action=AsyncMock(),
+            update_edit_file_result=AsyncMock(),
+            print_tool_call=AsyncMock(),
+            print_plan=AsyncMock(),
+            print_command_result=AsyncMock(),
+            print_confirmation=AsyncMock(),
+            print_shell_start=AsyncMock(return_value=object()),
+            update_shell_result=AsyncMock(),
+            print_read_file_start=AsyncMock(return_value=object()),
+            update_read_file_result=AsyncMock(),
+        )
+        processor = SimpleNamespace(
+            process_single_action=AsyncMock(
+                return_value={"status": "success", "output": "Read file 'a.txt' and added to history as v1."}
+            )
+        )
+        config = SimpleNamespace(
+            STATE_CHANGING_OPS={"edit_file", "create_file", "run_shell"},
+            LOOP_ERROR_REPEAT_THRESHOLD=2,
+            READ_ONLY_REPEAT_THRESHOLD=3,
+            RECOVERABLE_ERROR_RETRY_BUDGET=2,
+            CRITICAL_ERROR_RETRY_BUDGET=1,
+        )
+        agent = SimpleNamespace(ui=ui, processor=processor, config=config, log=None)
+        dispatcher = ActionDispatcher(agent)
+        state = AgentState()
+        state.record_action_result = MagicMock(
+            return_value={
+                "status": "success",
+                "error_code": None,
+                "recoverable": False,
+                "next_actions": [],
+                "same_error_repeats": 0,
+                "same_action_repeats": 10,
+            }
+        )
+
+        command = {"type": "read_file", "path": "a.txt"}
+        _cmd_copy, result_text, should_stop = await dispatcher._execute_action(command, state)
+
+        self.assertTrue(should_stop)
+        self.assertIn("Repeated read_file calls detected", result_text)
+        self.assertEqual(state.pending_loop_stop_info.get("reason"), "repeating_no_progress")
+
     async def test_blocks_repeated_action_after_malformed_recovery(self):
         ui = SimpleNamespace(
             print_edit_file_start=AsyncMock(return_value=object()),
@@ -133,7 +180,7 @@ class TestActionDispatcherLoopGuard(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(should_stop)
         self.assertIn("repeating the previous action immediately after malformed-action recovery", result_text)
         processor.process_single_action.assert_not_called()
-        self.assertEqual(state.pending_loop_stop_info.get("reason"), "repeating_no_progress")
+        self.assertEqual(state.pending_loop_stop_info.get("reason"), "recover_repeated_fingerprint")
 
     async def test_repeated_edit_validation_mismatch_stops_early(self):
         ui = SimpleNamespace(

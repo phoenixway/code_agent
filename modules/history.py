@@ -160,9 +160,11 @@ class HistoryManager:
                 if isinstance(payload, str) and len(payload) > 200:
                     digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:12]
                     preview = payload[:80].replace("\n", "\\n")
-                    data["content"] = (
-                        f"[content omitted: {len(payload)} chars, sha256:{digest}, preview:'{preview}']"
-                    )
+                    data.pop("content", None)
+                    data["content_omitted"] = True
+                    data["content_size"] = len(payload)
+                    data["content_sha256"] = digest
+                    data["content_preview"] = preview
                     return f'<action type="{action_type}">\n{json.dumps(data, ensure_ascii=False, indent=2)}\n</action>'
             return match.group(0)
 

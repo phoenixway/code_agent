@@ -1,4 +1,5 @@
 # modules/processor.py
+import json
 
 class ResponseProcessor:
     def __init__(self, ui, tool_manager, chat, policy, history=None):
@@ -10,6 +11,11 @@ class ResponseProcessor:
 
     MAX_OUTPUT_LENGTH = 3000
     LARGE_FILE_THRESHOLD = 2000000  # ~2 MB in characters
+    OMITTED_PAYLOAD_MARKERS = (
+        "[content omitted:",
+        "[content omitted in ui:",
+    )
+    FILE_TOOLS = {"create_file", "write_file", "edit_file", "replace"}
 
     def _truncate_output(self, text: str, threshold: int = None) -> str:
         if not isinstance(text, str):
@@ -63,7 +69,24 @@ class ResponseProcessor:
         if action_type == "run_shell" and "command" in command_dict:
             args["command"] = command_dict["command"]
 
+        # 4.1. Recovery for malformed file-tool payloads:
+        # models sometimes put proper file args inside `command` as JSON string/object.
+        normalize_error = self._normalize_file_tool_args_from_command(action_type, command_dict, args)
+        if normalize_error:
+            return normalize_error
+
         # 5. Перевірка політики (MiniPicker)
+        file_payload_error = self._validate_file_tool_payload(action_type, command_dict, args)
+        if file_payload_error:
+            return file_payload_error
+
+        payload_error = self._reject_sanitized_payload(action_type, args)
+        if payload_error:
+            return payload_error
+
+        # Internal marker used only for validation/recovery logic.
+        args.pop("_normalized_from_command", None)
+
         normalized_cmd = {"type": action_type, **args}
         policy_decision = await self.policy.check(normalized_cmd)
         if policy_decision is False:
@@ -149,6 +172,141 @@ class ResponseProcessor:
                         result["output"] = self._truncate_output(result["output"], threshold)
                 
         return result
+
+    def _reject_sanitized_payload(self, action_type: str, args: dict) -> dict | None:
+        """Block destructive actions if model tries to write sanitized history/UI placeholders."""
+        if action_type not in {"create_file", "write_file", "edit_file", "replace"}:
+            return None
+
+        candidate_fields = []
+        if action_type in {"create_file", "write_file"}:
+            candidate_fields.append(("content", args.get("content")))
+        if action_type in {"edit_file", "replace"}:
+            candidate_fields.append(("replace_text", args.get("replace_text")))
+            candidate_fields.append(("content", args.get("content")))
+
+        for field_name, raw_value in candidate_fields:
+            if not isinstance(raw_value, str):
+                continue
+            normalized = raw_value.strip().lower()
+            if any(marker in normalized for marker in self.OMITTED_PAYLOAD_MARKERS):
+                return {
+                    "status": "failed",
+                    "error_code": "VALIDATION_ERROR",
+                    "recoverable": True,
+                    "output": (
+                        f"Refusing to execute {action_type}: field '{field_name}' contains a "
+                        "sanitized placeholder ('content omitted') instead of real code. "
+                        "Regenerate the full file content and retry."
+                    ),
+                    "next_actions": ["read_file", "write_file", "edit_file"],
+                }
+        return None
+
+    def _validate_file_tool_payload(self, action_type: str, command_dict: dict, args: dict) -> dict | None:
+        """Reject malformed file-tool payloads early with explicit guidance."""
+        if action_type not in self.FILE_TOOLS:
+            return None
+
+        if "command" in command_dict and not bool(args.get("_normalized_from_command", False)):
+            return {
+                "status": "failed",
+                "error_code": "VALIDATION_ERROR",
+                "recoverable": True,
+                "output": (
+                    f"Refusing to execute {action_type}: nested 'command' payload is not allowed for file tools. "
+                    "Pass file arguments directly in the action JSON."
+                ),
+                "next_actions": ["read_file", "create_file", "write_file", "edit_file"],
+            }
+
+        if action_type in {"create_file", "write_file"}:
+            if not isinstance(args.get("path"), str) or not args.get("path"):
+                return {
+                    "status": "failed",
+                    "error_code": "VALIDATION_ERROR",
+                    "recoverable": True,
+                    "output": f"{action_type} requires 'path' (string).",
+                    "next_actions": ["list_directory", "search_files"],
+                }
+            if not isinstance(args.get("content"), str):
+                return {
+                    "status": "failed",
+                    "error_code": "VALIDATION_ERROR",
+                    "recoverable": True,
+                    "output": f"{action_type} requires 'content' (string) with full file text.",
+                    "next_actions": ["read_file", "write_file"],
+                }
+            return None
+
+        # edit_file / replace
+        if not isinstance(args.get("path"), str) or not args.get("path"):
+            return {
+                "status": "failed",
+                "error_code": "VALIDATION_ERROR",
+                "recoverable": True,
+                "output": f"{action_type} requires 'path' (string).",
+                "next_actions": ["list_directory", "search_files", "read_file"],
+            }
+        if not isinstance(args.get("search_text"), str) or not isinstance(args.get("replace_text"), str):
+            return {
+                "status": "failed",
+                "error_code": "VALIDATION_ERROR",
+                "recoverable": True,
+                "output": f"{action_type} requires both 'search_text' and 'replace_text' as strings.",
+                "next_actions": ["read_file", "edit_file"],
+            }
+        return None
+
+    def _normalize_file_tool_args_from_command(
+        self, action_type: str, command_dict: dict, args: dict
+    ) -> dict | None:
+        """Try to recover file-tool arguments from nested `command` JSON payload."""
+        if action_type not in self.FILE_TOOLS:
+            return None
+        if "command" not in command_dict:
+            return None
+
+        nested = command_dict.get("command")
+        payload = None
+        if isinstance(nested, dict):
+            payload = nested
+        elif isinstance(nested, str):
+            text = nested.strip()
+            if text.startswith("{") and text.endswith("}"):
+                try:
+                    payload = json.loads(text)
+                except Exception:
+                    payload = None
+
+        if payload is None:
+            return {
+                "status": "failed",
+                "error_code": "VALIDATION_ERROR",
+                "recoverable": True,
+                "output": (
+                    f"Malformed {action_type} payload: nested `command` could not be parsed as JSON object. "
+                    "Provide `path`/`content` (or `search_text`/`replace_text`) directly in action JSON."
+                ),
+                "next_actions": ["read_file", "create_file", "write_file", "edit_file"],
+            }
+
+        if not isinstance(payload, dict):
+            return {
+                "status": "failed",
+                "error_code": "VALIDATION_ERROR",
+                "recoverable": True,
+                "output": f"Malformed {action_type} payload: nested `command` must be a JSON object.",
+                "next_actions": ["read_file", "create_file", "write_file", "edit_file"],
+            }
+
+        # Merge recovered keys only when direct args are missing.
+        for key in ("path", "content", "search_text", "replace_text"):
+            if key not in args and key in payload:
+                args[key] = payload[key]
+
+        args["_normalized_from_command"] = True
+        return None
 
     def _normalize_error_payload(self, result: dict) -> None:
         """Ensure action result has consistent error metadata for loop recovery logic."""

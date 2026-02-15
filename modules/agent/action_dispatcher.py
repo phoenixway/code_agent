@@ -80,7 +80,7 @@ class ActionDispatcher:
                 "is not allowed. Change tool or arguments."
             )
             state.pending_loop_stop_info = {
-                "reason": "repeating_no_progress",
+                "reason": "recover_repeated_fingerprint",
                 "recoverable": True,
                 "error_code": "REPEATED_ACTION_AFTER_MALFORMED",
                 "next_actions": ["search_content", "search_files", "edit_file", "write_file"],
@@ -290,9 +290,11 @@ class ActionDispatcher:
         size = len(content)
         digest = hashlib.sha256(content.encode("utf-8")).hexdigest()[:12]
         preview = content[:80].replace("\n", "\\n")
-        safe["content"] = (
-            f"[content omitted: {size} chars, sha256:{digest}, preview:'{preview}']"
-        )
+        safe.pop("content", None)
+        safe["content_omitted"] = True
+        safe["content_size"] = size
+        safe["content_sha256"] = digest
+        safe["content_preview"] = preview
         return safe
 
     def _sanitize_command_for_history(self, command: dict) -> dict:

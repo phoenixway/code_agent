@@ -1,6 +1,7 @@
 """Оркестратор основного циклу."""
 
 import asyncio
+import re
 from modules.defaults import DEFAULT_SYSTEM_PROMPT
 
 class Orchestrator:
@@ -14,6 +15,21 @@ class Orchestrator:
         self.dispatcher = agent.action_dispatcher
         self.parser = agent.parser
         self.config = agent.config
+
+    @staticmethod
+    def _normalize_model_response(response: str) -> str:
+        """Best-effort normalization for near-valid model outputs before parsing."""
+        if not isinstance(response, str) or not response:
+            return response
+        text = response
+        # Common case: model wraps action JSON body with ```json ... ```
+        text = re.sub(
+            r"(<action[^>]*>\s*)```(?:json)?\s*(.*?)\s*```\s*(</action>)",
+            r"\1\2\3",
+            text,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        return text
         
     async def process(self, user_input):
         """Головний цикл: Think -> Act -> Loop."""
@@ -28,7 +44,11 @@ class Orchestrator:
         planner = getattr(self.agent, "planner", None)
         planner_enabled = bool(planner and planner.enabled)
         if planner_enabled:
+            self.state.taskboard_missing_streak = 0
             system_msg = f"{system_msg}\n\n{planner.build_protocol_instructions()}"
+            planner_state_msg = f"Планувальник увімкнено (режим: {planner.mode})."
+            await self.ui.print_plan(planner_state_msg)
+            self.history.add_message("system", planner_state_msg)
 
         self.history.add_message("user", user_input)
         sm = getattr(self.state, "state_machine", None)
@@ -120,18 +140,56 @@ class Orchestrator:
                         await self.ui.print_system("Execution finished: model returned no further response.")
                     break
 
+                normalized_response = self._normalize_model_response(response)
+                if normalized_response != response and self.agent.log:
+                    self.agent.log.debug("Normalized model response before parsing.")
+                response = normalized_response
+
                 if planner_enabled:
                     response, board_update, board_error = planner.extract_update_and_strip(response)
-                    if board_error and self.agent.log:
-                        self.agent.log.warning(f"Planner update ignored: {board_error}")
+                    if board_error:
+                        planner_err = "Оновлення плану пропущено: формат відповіді некоректний."
+                        await self.ui.print_plan(planner_err)
+                        self.history.add_message("system", planner_err)
+                        if self.agent.log:
+                            self.agent.log.warning(f"Planner update ignored: {board_error}")
                     if board_update:
+                        self.state.taskboard_missing_streak = 0
                         _applied, planner_msg = planner.apply_update(self.state, board_update)
                         await self.ui.print_plan(planner_msg)
+                        self.history.add_message("system", planner_msg)
+                        board_text = planner.render_board_for_chat(getattr(self.state, "task_board", None))
+                        await self.ui.print_plan(board_text)
+                        self.history.add_message("system", board_text)
                         if not response.strip():
                             current_query = (
                                 "SYSTEM: Taskboard accepted. Return EXACTLY ONE valid <action> for the current active step."
                             )
                             continue
+                    elif planner.mode == "always":
+                        self.state.taskboard_missing_streak = int(
+                            getattr(self.state, "taskboard_missing_streak", 0)
+                        ) + 1
+                        miss_limit = max(
+                            1, int(getattr(self.config, "PLANNER_ALWAYS_MISSING_RETRY_LIMIT", 2))
+                        )
+                        planner_miss_msg = (
+                            "План у відповіді відсутній, повторюю запит у строгому форматі "
+                            f"({self.state.taskboard_missing_streak}/{miss_limit})."
+                        )
+                        await self.ui.print_plan(planner_miss_msg)
+                        self.history.add_message("system", planner_miss_msg)
+                        if self.state.taskboard_missing_streak >= miss_limit:
+                            await self.ui.print_error(
+                                "Execution stopped: planner_mode=always but model repeatedly omitted <taskboard>."
+                            )
+                            break
+                        current_query = (
+                            "SYSTEM: planner_mode=always is enforced.\n"
+                            "Return EXACTLY one <taskboard> JSON block and EXACTLY one valid <action>.\n"
+                            "No prose outside <think>, <taskboard>, and <action>."
+                        )
+                        continue
                     
                 # 3. Парсинг
                 segments = self.parser.parse(response)
@@ -152,16 +210,37 @@ class Orchestrator:
                             "Execution stopped: model returned malformed action format repeatedly."
                         )
                         break
+                    required_tags = "<think>,<action>"
+                    response_template = (
+                        "<think>Short reasoning.</think>\n"
+                        "<action type=\"TOOL_NAME\">{\"before_execution\":\"...\",\"during_execution\":\"...\","
+                        "\"after_execution\":\"...\", \"...tool_args...\"}</action>"
+                    )
+                    if planner_enabled and planner.mode == "always":
+                        required_tags = "<think>,<taskboard>,<action>"
+                        response_template = (
+                            "<think>Short reasoning.</think>\n"
+                            "<taskboard>{\"version\":1,\"goal\":\"...\",\"planner_enabled\":true,"
+                            "\"active_step_id\":\"s1\",\"steps\":[{\"id\":\"s1\",\"title\":\"...\","
+                            "\"status\":\"in_progress\",\"notes\":\"\"}]}</taskboard>\n"
+                            "<action type=\"TOOL_NAME\">{\"before_execution\":\"...\",\"during_execution\":\"...\","
+                            "\"after_execution\":\"...\", \"...tool_args...\"}</action>"
+                        )
                     current_query = (
-                        "SYSTEM: Your last response contained a malformed <action> block.\n"
-                        "Return EXACTLY ONE valid <action> JSON block for the next step.\n"
-                        "No prose outside <action>."
+                        "SYSTEM: Your last response contained malformed action format.\n"
+                        "[FORMAT_CONTRACT]\n"
+                        f"required_tags={required_tags}\n"
+                        "required_action_fields=type,before_execution,during_execution,after_execution,tool_arguments\n"
+                        "forbidden_patterns=markdown_fences_inside_action,nested_json_in_command_for_file_tools\n"
+                        "instruction=Return exactly one valid step matching the template below.\n"
+                        f"response_template=\n{response_template}"
                     )
                     self.state.set_malformed_grace(self.config.MALFORMED_ACTION_GRACE_STEPS)
-                    # Prevent immediate repetition of the previous action after malformed retry.
-                    self.state.forbid_next_action_fingerprint(
-                        getattr(self.state, "last_completed_fingerprint", None)
-                    )
+                    # Prevent immediate repetition only for previous state-changing action.
+                    last_fp = getattr(self.state, "last_completed_fingerprint", None)
+                    last_type = getattr(self.state, "last_completed_action_type", None)
+                    if last_fp and last_type in self.config.STATE_CHANGING_OPS:
+                        self.state.forbid_next_action_fingerprint(last_fp)
                     continue
                 else:
                     malformed_action_retries = 0

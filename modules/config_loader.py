@@ -39,7 +39,8 @@ def load_settings():
             "planner_enabled": False,
             "planner_mode": "auto",
             "planner_max_steps": 12,
-            "planner_max_visible_steps": 4
+            "planner_max_visible_steps": 4,
+            "planner_always_missing_retry_limit": 2
         }
         with open(CONFIG_FILE, 'w') as f:
             yaml.dump(default, f)
@@ -76,6 +77,7 @@ def load_settings():
         "planner_max_goal_chars": 240,
         "planner_max_step_title_chars": 160,
         "planner_max_step_notes_chars": 240,
+        "planner_always_missing_retry_limit": 2,
     }
     for key, value in runtime_defaults.items():
         if key not in settings:

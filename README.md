@@ -44,15 +44,16 @@ default_model: "ollama/qwen2.5-coder:7b"
 max_history_tokens: 4000
 permission_policy: "ask" # options: ask, always, never
 autosummarize_requires_confirmation: false # when true, asks before non-emergency auto-summary
-theme: "hacker-green" # options: hacker-green, textual-dark, textual-light
+theme: "hacker-green" # options: hacker-green, textual-dark, textual-light, auto(day/night)
 history_size: "small" # options: small, medium, large
 max_consecutive_calls: 12
 max_step_seconds: 120
 max_session_seconds: 900
-planner_enabled: false # enable optional taskboard planner protocol
+planner_enabled: false # bool; enable taskboard planner protocol
 planner_mode: "auto" # auto | always
 planner_max_steps: 12
 planner_max_visible_steps: 4
+planner_always_missing_retry_limit: 2 # stop if model repeatedly omits <taskboard> in always mode
 allow_side_effect_tools: true
 max_shell_command_length: 1000
 shell_blocklist:

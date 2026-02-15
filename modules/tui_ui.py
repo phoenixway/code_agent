@@ -48,7 +48,7 @@ class TuiUI:
         "initial":   {"prefix": "", "style": "center", "classes": "chat-message initial-history-message"},
         "error":     {"prefix": "✘ Error: ", "prefix_style": "bold red", "classes": "chat-message error-message"},
         "thought":   {"prefix": "", "style": "italic grey37", "classes": "chat-message thought-message"},
-        "plan":      {"prefix": "🤖 Plan: ", "prefix_style": "bold cyan", "classes": "chat-message plan-message"},
+        "plan":      {"prefix": "План: ", "prefix_style": "bold cyan", "classes": "chat-message plan-message"},
         "confirmation": {"prefix": "✅ ", "prefix_style": "bold green", "classes": "chat-message confirmation-message"},
         "user":      {"prefix": "> ", "style": "", "classes": "chat-message user-message"},
     }
@@ -378,7 +378,7 @@ class TuiUI:
         # Use Rich JSON for better formatting of arguments
         if args:
             for key, value in args.items():
-                key_text = Text(f"\n{key}: ", style="bold green")
+                key_text = Text(f"{key}: ", style="bold green")
                 if isinstance(value, (dict, list)):
                     # Elegant JSON rendering
                     val_render = JSON.from_data(value)

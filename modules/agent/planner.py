@@ -32,11 +32,24 @@ class TaskBoardPlanner:
 
     def build_protocol_instructions(self) -> str:
         """Protocol block appended to system prompt when planner is enabled."""
+        if self.mode == "always":
+            mode_rules = (
+                "Planner mode is ALWAYS.\n"
+                "You MUST include exactly one <taskboard> JSON block in every response.\n"
+                "If you return an <action>, return <taskboard> before it.\n"
+            )
+        else:
+            mode_rules = (
+                "Planner mode is AUTO.\n"
+                "If the task is complex, you MAY include exactly one <taskboard> JSON block.\n"
+                "For simple tasks, do not include <taskboard>.\n"
+            )
         return (
             "## OPTIONAL TASKBOARD PROTOCOL\n"
-            "If the task is complex, you MAY include exactly one <taskboard> JSON block.\n"
-            "For simple tasks, do not include <taskboard>.\n"
+            f"{mode_rules}"
             "Use strict JSON only.\n"
+            "For simple requests, keep the taskboard minimal: 1 short step, empty notes, no extra detail.\n"
+            "Do not bloat taskboard text for trivial read-only tasks.\n"
             "Schema:\n"
             "{\n"
             '  "version": 1,\n'
@@ -143,15 +156,17 @@ class TaskBoardPlanner:
 
     def apply_update(self, state, update_payload: dict) -> tuple[bool, str]:
         """Applies validated planner payload to runtime state."""
+        previous = deepcopy(getattr(state, "task_board", None))
         if not self.should_activate_board(update_payload):
             state.task_board = None
             state.task_board_enabled = False
-            return True, "Planner disabled by model for this task."
+            return True, "Планувальник вимкнено для цього завдання."
 
         state.task_board = deepcopy(update_payload)
         state.task_board_enabled = True
-        summary = self.render_compact_summary(state.task_board)
-        return True, f"Planner updated. {summary}"
+        summary = self.render_human_summary(state.task_board)
+        delta = self.render_update_delta(previous, state.task_board)
+        return True, f"{summary}\n{delta}"
 
     def render_compact_summary(self, board: dict) -> str:
         steps = board.get("steps") or []
@@ -196,3 +211,89 @@ class TaskBoardPlanner:
         for step in ordered[:max_visible]:
             lines.append(_line(step))
         return "\n".join(lines)
+
+    def render_board_for_chat(self, board: dict) -> str:
+        """Human-friendly compact board for visible chat messages."""
+        if not isinstance(board, dict):
+            return "План зараз порожній."
+        goal = str(board.get("goal", "")).strip()
+        active = board.get("active_step_id")
+        steps = board.get("steps") or []
+        max_visible = int(getattr(self.config, "PLANNER_MAX_VISIBLE_STEPS", 4))
+        lines = ["План задач"]
+        if goal:
+            lines.append(f"Ціль: {goal[:120]}")
+
+        active_step = None
+        if active:
+            active_step = next((s for s in steps if s.get("id") == active), None)
+        if active_step:
+            lines.append(f"Зараз у роботі: {str(active_step.get('title', '')).strip()[:120]}")
+
+        upcoming = []
+        for step in steps:
+            if step is active_step:
+                continue
+            if step.get("status") in {"todo", "in_progress", "blocked"}:
+                upcoming.append(step)
+            if len(upcoming) >= max_visible:
+                break
+
+        if upcoming:
+            lines.append("Наступні кроки:")
+            for step in upcoming:
+                status = step.get("status")
+                prefix = "•"
+                if status == "blocked":
+                    prefix = "⚠"
+                elif status == "in_progress":
+                    prefix = "→"
+                lines.append(f"{prefix} {str(step.get('title', '')).strip()[:110]}")
+
+        done = sum(1 for s in steps if s.get("status") == "done")
+        blocked = sum(1 for s in steps if s.get("status") == "blocked")
+        lines.append(f"Прогрес: виконано {done} з {len(steps)}" + (f", заблоковано {blocked}" if blocked else ""))
+        return "\n".join(lines)
+
+    def render_update_delta(self, previous: dict | None, current: dict) -> str:
+        """Short update summary for chat/history."""
+        if not isinstance(previous, dict):
+            return "План створено."
+        prev_steps = {str(s.get("id")): s for s in (previous.get("steps") or []) if isinstance(s, dict)}
+        curr_steps = {str(s.get("id")): s for s in (current.get("steps") or []) if isinstance(s, dict)}
+
+        added = [sid for sid in curr_steps.keys() if sid not in prev_steps]
+        changed = []
+        for sid, step in curr_steps.items():
+            prev = prev_steps.get(sid)
+            if not prev:
+                continue
+            if prev.get("status") != step.get("status"):
+                changed.append(f"{sid}:{prev.get('status')}->{step.get('status')}")
+
+        active_prev = previous.get("active_step_id")
+        active_curr = current.get("active_step_id")
+        parts = []
+        if added:
+            parts.append(f"додано кроків: {len(added)}")
+        if changed:
+            parts.append("змінено статуси: " + ", ".join(changed[:4]))
+        if active_prev != active_curr:
+            curr = curr_steps.get(str(active_curr), {})
+            parts.append(f"поточний крок: {str(curr.get('title', '')).strip()[:90] or '-'}")
+        if not parts:
+            parts.append("План уточнено.")
+        return " ".join(parts)
+
+    def render_human_summary(self, board: dict) -> str:
+        steps = board.get("steps") or []
+        done = sum(1 for s in steps if s.get("status") == "done")
+        active = board.get("active_step_id")
+        active_title = ""
+        if active:
+            active_step = next((s for s in steps if s.get("id") == active), None)
+            if active_step:
+                active_title = str(active_step.get("title", "")).strip()[:100]
+        if active_title:
+            return f"План оновлено. Зараз: {active_title}. Прогрес {done}/{len(steps)}."
+        return f"План оновлено. Прогрес {done}/{len(steps)}."

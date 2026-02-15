@@ -29,6 +29,9 @@ class AgentConfig:
         self.PLANNER_MAX_GOAL_CHARS = self._get_positive_int("planner_max_goal_chars", 240)
         self.PLANNER_MAX_STEP_TITLE_CHARS = self._get_positive_int("planner_max_step_title_chars", 160)
         self.PLANNER_MAX_STEP_NOTES_CHARS = self._get_positive_int("planner_max_step_notes_chars", 240)
+        self.PLANNER_ALWAYS_MISSING_RETRY_LIMIT = self._get_positive_int(
+            "planner_always_missing_retry_limit", 2
+        )
         
         # Операції, що змінюють стан (викликають зупинку циклу для підтвердження або роздумів)
         self.STATE_CHANGING_OPS = {

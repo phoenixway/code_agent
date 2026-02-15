@@ -177,6 +177,29 @@ class TestEdgeCases(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(call_kwargs["arg1"], "val1")
         self.assertEqual(call_kwargs["arg2"], "val2")
 
+    async def test_processor_rejects_sanitized_write_payload(self):
+        cmd = {
+            "type": "write_file",
+            "path": "structs_methods.go",
+            "content": "[content omitted: 5483 chars, sha256:8d69e3d59365, preview:'// structs_methods.go']",
+        }
+        result = await self.processor.process_single_action(cmd)
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["error_code"], "VALIDATION_ERROR")
+        self.assertIn("sanitized placeholder", result["output"])
+        self.tool_manager.call.assert_not_called()
+
+    async def test_processor_normalizes_nested_command_for_file_tool(self):
+        cmd = {
+            "type": "create_file",
+            "command": "{\"path\":\"a.go\",\"content\":\"package main\"}"
+        }
+        result = await self.processor.process_single_action(cmd)
+        self.assertEqual(result["status"], "success")
+        self.tool_manager.call.assert_called_with(
+            "create_file", ui=self.ui, path="a.go", content="package main"
+        )
+
     def test_file_module_binary_read(self):
         """Test reading a binary file raises error gracefully (or handled)."""
         # Create a temp binary file

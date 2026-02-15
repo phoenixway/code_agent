@@ -74,6 +74,7 @@ Screen {
     background: $background;
     border-left: solid #858585;
     color: $text;
+    padding: 0 2;
 }
 
 /* --- TOOL RESULT MESSAGE --- */
@@ -91,6 +92,7 @@ Screen {
     color: $text-muted;
     opacity: 70%;
     text-style: italic;
+    padding: 0 2;
 }
 
 /* --- SYSTEM / LOG (Prefix-based) --- */
@@ -105,8 +107,11 @@ Screen {
 /* --- PLAN / COMMAND --- */
 
 .plan-message {
+    background: $background;
+    border-left: solid #858585;
     color: $success;
     text-style: bold;
+    padding: 0 2;
 }
 
 /* --- COMMAND RESULT --- */
