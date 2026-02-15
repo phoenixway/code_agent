@@ -35,7 +35,11 @@ def load_settings():
                 "mkfs",
                 ":(){ :|:& };:"
             ],
-            "shell_allowlist_prefixes": []
+            "shell_allowlist_prefixes": [],
+            "planner_enabled": False,
+            "planner_mode": "auto",
+            "planner_max_steps": 12,
+            "planner_max_visible_steps": 4
         }
         with open(CONFIG_FILE, 'w') as f:
             yaml.dump(default, f)
@@ -65,6 +69,13 @@ def load_settings():
         "max_shell_command_length": 1000,
         "shell_blocklist": ["rm -rf /", "mkfs", ":(){ :|:& };:"],
         "shell_allowlist_prefixes": [],
+        "planner_enabled": False,
+        "planner_mode": "auto",
+        "planner_max_steps": 12,
+        "planner_max_visible_steps": 4,
+        "planner_max_goal_chars": 240,
+        "planner_max_step_title_chars": 160,
+        "planner_max_step_notes_chars": 240,
     }
     for key, value in runtime_defaults.items():
         if key not in settings:

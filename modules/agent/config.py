@@ -22,6 +22,13 @@ class AgentConfig:
         self.RESEARCH_STAGNATION_LIMIT = self._get_positive_int("research_stagnation_limit", 6)
         self.STAGNATION_MAX_DIAGNOSTICS = self._get_positive_int("stagnation_max_diagnostics", 1)
         self.INVARIANT_VIOLATION_LIMIT = self._get_positive_int("invariant_violation_limit", 1)
+        self.PLANNER_ENABLED = bool(self.settings.get("planner_enabled", False))
+        self.PLANNER_MODE = str(self.settings.get("planner_mode", "auto") or "auto").lower()
+        self.PLANNER_MAX_STEPS = self._get_positive_int("planner_max_steps", 12)
+        self.PLANNER_MAX_VISIBLE_STEPS = self._get_positive_int("planner_max_visible_steps", 4)
+        self.PLANNER_MAX_GOAL_CHARS = self._get_positive_int("planner_max_goal_chars", 240)
+        self.PLANNER_MAX_STEP_TITLE_CHARS = self._get_positive_int("planner_max_step_title_chars", 160)
+        self.PLANNER_MAX_STEP_NOTES_CHARS = self._get_positive_int("planner_max_step_notes_chars", 240)
         
         # Операції, що змінюють стан (викликають зупинку циклу для підтвердження або роздумів)
         self.STATE_CHANGING_OPS = {

@@ -49,6 +49,10 @@ history_size: "small" # options: small, medium, large
 max_consecutive_calls: 12
 max_step_seconds: 120
 max_session_seconds: 900
+planner_enabled: false # enable optional taskboard planner protocol
+planner_mode: "auto" # auto | always
+planner_max_steps: 12
+planner_max_visible_steps: 4
 allow_side_effect_tools: true
 max_shell_command_length: 1000
 shell_blocklist:

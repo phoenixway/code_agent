@@ -4,11 +4,12 @@ import os
 import asyncio
 
 class SessionManager:
-    def __init__(self, history, context, ui):
+    def __init__(self, history, context, ui, state=None):
         self.session_file = os.path.join(os.getcwd(), ".angelica_session.json")
         self.history = history
         self.context = context
         self.ui = ui
+        self.state = state
         self.loaded_session = False
         self.loaded_messages_count = 0
         self.loaded_context_count = 0
@@ -16,6 +17,9 @@ class SessionManager:
 
     def save_session(self):
         data = {"history": self.history.messages, "context": list(self.context.basket.keys())}
+        if self.state is not None:
+            data["task_board"] = getattr(self.state, "task_board", None)
+            data["task_board_enabled"] = bool(getattr(self.state, "task_board_enabled", False))
         with open(self.session_file, 'w') as f:
             json.dump(data, f)
 
@@ -36,7 +40,12 @@ class SessionManager:
             for file_path in loaded_context:
                 self.context.add_path(file_path)
             self.loaded_context_count = len(loaded_context)
-            self.loaded_session = bool(self.loaded_messages_count or self.loaded_context_count)
+
+            if self.state is not None:
+                self.state.task_board = data.get("task_board")
+                self.state.task_board_enabled = bool(data.get("task_board_enabled", False))
+            board_loaded = bool(getattr(self.state, "task_board_enabled", False)) if self.state is not None else False
+            self.loaded_session = bool(self.loaded_messages_count or self.loaded_context_count or board_loaded)
             
             # Optionally, notify UI
             if self.ui:

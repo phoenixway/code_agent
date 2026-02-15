@@ -8,6 +8,7 @@ from .policy_engine import PolicyEngine
 from .model_client import ModelClient
 from .action_dispatcher import ActionDispatcher
 from .config import AgentConfig
+from .planner import TaskBoardPlanner
 
 __all__ = [
     'AngelicaAgent',
@@ -18,4 +19,5 @@ __all__ = [
     'ModelClient',
     'ActionDispatcher',
     'AgentConfig',
+    'TaskBoardPlanner',
 ]

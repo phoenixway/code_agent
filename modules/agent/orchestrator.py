@@ -25,6 +25,10 @@ class Orchestrator:
         tools_prompt = self.agent.tool_manager.get_tools_prompt()
         ctx_prompt = self.agent.context_manager.get_context_prompt()
         system_msg = f"{DEFAULT_SYSTEM_PROMPT.format(tools_description=tools_prompt)}\n\n{ctx_prompt}"
+        planner = getattr(self.agent, "planner", None)
+        planner_enabled = bool(planner and planner.enabled)
+        if planner_enabled:
+            system_msg = f"{system_msg}\n\n{planner.build_protocol_instructions()}"
 
         self.history.add_message("user", user_input)
         sm = getattr(self.state, "state_machine", None)
@@ -78,11 +82,17 @@ class Orchestrator:
                             self.state.suppress_step_limit_warning = True
                 
                 await self.ui.start_thinking()
+                effective_query = current_query
+                if planner_enabled and getattr(self.state, "task_board_enabled", False):
+                    board = getattr(self.state, "task_board", None)
+                    snapshot = planner.render_runtime_snapshot(board) if board else ""
+                    if snapshot:
+                        effective_query = f"{snapshot}\n\n{current_query}"
                 
                 # 2. Запит до AI
                 self.state.current_task = asyncio.create_task(
                     self.model.get_streaming_response(
-                        current_query,
+                        effective_query,
                         self.history,
                         self.ui,
                         self.state,
@@ -109,6 +119,19 @@ class Orchestrator:
                     else:
                         await self.ui.print_system("Execution finished: model returned no further response.")
                     break
+
+                if planner_enabled:
+                    response, board_update, board_error = planner.extract_update_and_strip(response)
+                    if board_error and self.agent.log:
+                        self.agent.log.warning(f"Planner update ignored: {board_error}")
+                    if board_update:
+                        _applied, planner_msg = planner.apply_update(self.state, board_update)
+                        await self.ui.print_plan(planner_msg)
+                        if not response.strip():
+                            current_query = (
+                                "SYSTEM: Taskboard accepted. Return EXACTLY ONE valid <action> for the current active step."
+                            )
+                            continue
                     
                 # 3. Парсинг
                 segments = self.parser.parse(response)

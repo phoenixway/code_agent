@@ -18,6 +18,7 @@ from .state_machine import AgentStateMachine
 from .model_client import ModelClient
 from .action_dispatcher import ActionDispatcher
 from .orchestrator import Orchestrator
+from .planner import TaskBoardPlanner
 
 class AngelicaAgent:
     def __init__(self, ui=None):
@@ -34,6 +35,7 @@ class AngelicaAgent:
         setup_loggers(clear_communication_log=True)
         self.comm_log = get_comm_logger()
         self.log = get_debug_logger()
+        self.planner = TaskBoardPlanner(self.config, logger=self.log)
         
         # Основні модулі
         self.tool_manager = ToolManager()
@@ -53,7 +55,12 @@ class AngelicaAgent:
             autosummarize_requires_confirmation=self.config.autosummarize_requires_confirmation,
         )
         
-        self.session_manager = SessionManager(self.history, self.context_manager, self._ui)
+        self.session_manager = SessionManager(
+            self.history,
+            self.context_manager,
+            self._ui,
+            state=self.state,
+        )
         self.session_manager.load_session()
         
         self.policy = PermissionPolicy(self._ui, self.config.permission_policy)

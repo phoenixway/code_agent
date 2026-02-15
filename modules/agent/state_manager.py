@@ -40,6 +40,8 @@ class AgentState:
         self.malformed_recovery_grace_remaining = 0
         self.forbidden_next_action_fingerprint = None
         self.state_machine = None
+        self.task_board = None
+        self.task_board_enabled = False
 
         # Retry budgets
         self.recoverable_retry_budget_remaining = 2
