@@ -84,11 +84,22 @@ class ResponseProcessor:
                 and hasattr(self.history, "add_transient_file_content")
             )
             if file_path and content and has_history_api:
-                version = self.history.add_file_version(file_path, content)
+                meta = self.history.add_file_version(file_path, content, return_metadata=True)
+                if isinstance(meta, dict):
+                    version = meta.get("version")
+                    is_new_version = bool(meta.get("is_new_version"))
+                else:
+                    version = meta
+                    is_new_version = bool(version)
                 if version:
-                    self.history.add_transient_file_content(file_path, version, content)
-                    # Modify the output for the main loop - it no longer needs the full content
-                    result['output'] = f"Read file '{file_path}' and added to history as v{version}."
+                    if is_new_version:
+                        self.history.add_transient_file_content(file_path, version, content)
+                        result['output'] = f"Read file '{file_path}' and added to history as v{version}."
+                    else:
+                        # Keep context compact: identical content re-reads do not add transient payload again.
+                        result['output'] = (
+                            f"Read file '{file_path}' (unchanged, already in history as v{version})."
+                        )
 
         # 8. Check for ChangeProposal (Diff Preview)
         from modules.types import ChangeProposal

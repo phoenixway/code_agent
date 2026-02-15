@@ -2,6 +2,16 @@
 
 import json
 
+READ_ONLY_RECOVERY_ACTIONS = {
+    "read_file",
+    "read_file_skeleton",
+    "search_content",
+    "search_files",
+    "list_directory",
+    "find_files",
+    "git_diff",
+}
+
 
 class AgentState:
     """Зберігає динамічний стан агента: токени, циклічність, задачі."""
@@ -25,7 +35,11 @@ class AgentState:
         self.last_error_message = None
         self.last_error_recoverable = False
         self.last_error_next_actions = []
+        self.last_failed_action_command = None
+        self.last_failed_action_result = None
         self.malformed_recovery_grace_remaining = 0
+        self.forbidden_next_action_fingerprint = None
+        self.state_machine = None
 
         # Retry budgets
         self.recoverable_retry_budget_remaining = 2
@@ -80,6 +94,17 @@ class AgentState:
             self.malformed_recovery_grace_remaining -= 1
             return True
         return False
+
+    def forbid_next_action_fingerprint(self, fingerprint: str | None):
+        self.forbidden_next_action_fingerprint = fingerprint
+
+    def consume_forbidden_action_if_matches(self, command: dict) -> bool:
+        forbidden = self.forbidden_next_action_fingerprint
+        if not forbidden:
+            return False
+        current = self.get_action_fingerprint(command)
+        self.forbidden_next_action_fingerprint = None
+        return current == forbidden
         
     def add_tokens(self, prompt: int, completion: int):
         self.session_tokens += (prompt + completion)
@@ -98,6 +123,7 @@ class AgentState:
 
     def record_action_result(self, command: dict, result: dict):
         """Record result details for loop/no-progress detection and recovery hints."""
+        cmd_type = command.get("type") or command.get("action") or "unknown"
         status = result.get("status")
         error_code = result.get("error_code")
         error_message = result.get("output", "")
@@ -121,13 +147,23 @@ class AgentState:
             self.last_error_message = str(error_message)[:1000]
             self.last_error_recoverable = recoverable
             self.last_error_next_actions = next_actions
+            self.last_failed_action_command = command.copy()
+            self.last_failed_action_result = {
+                k: v for k, v in result.items() if k != "output"
+            }
+            self.last_failed_action_result["output"] = str(error_message)[:4000]
         else:
-            self.consecutive_same_error_count = 0
-            self.last_error_fingerprint = None
-            self.last_error_code = None
-            self.last_error_message = None
-            self.last_error_recoverable = False
-            self.last_error_next_actions = []
+            # Keep error-repeat counters across read-only reconnaissance steps:
+            # this catches loops like edit_file(error)->read_file(success)->same edit_file(error).
+            if cmd_type not in READ_ONLY_RECOVERY_ACTIONS:
+                self.consecutive_same_error_count = 0
+                self.last_error_fingerprint = None
+                self.last_error_code = None
+                self.last_error_message = None
+                self.last_error_recoverable = False
+                self.last_error_next_actions = []
+                self.last_failed_action_command = None
+                self.last_failed_action_result = None
 
         return {
             "status": status,
@@ -135,6 +171,7 @@ class AgentState:
             "recoverable": recoverable,
             "next_actions": next_actions,
             "same_error_repeats": self.consecutive_same_error_count,
+            "same_action_repeats": self.consecutive_same_action_count,
         }
 
     def consume_retry_budget(self, recoverable: bool) -> bool:

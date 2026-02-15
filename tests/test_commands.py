@@ -5,6 +5,7 @@ import os
 import tempfile
 import shutil
 from pathlib import Path
+from types import SimpleNamespace
 from modules.command_handler import CommandHandler
 
 class TestCLICommands(unittest.IsolatedAsyncioTestCase):
@@ -95,6 +96,41 @@ class TestCLICommands(unittest.IsolatedAsyncioTestCase):
                 with open(target, "r", encoding="utf-8") as f:
                     content = f.read()
                 self.assertIn("Dump mode: full", content)
+                self.assertIn("RUNTIME DIAGNOSTICS", content)
+            finally:
+                os.chdir(original_dir)
+
+    async def test_dump_full_includes_failed_action_and_file_snapshot(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            original_dir = os.getcwd()
+            os.chdir(tmpdir)
+            try:
+                target_file = Path(tmpdir) / "target.txt"
+                target_file.write_text("alpha\nbeta\n", encoding="utf-8")
+                self.app.agent.state = SimpleNamespace(
+                    last_error_code="VALIDATION_ERROR",
+                    last_error_recoverable=True,
+                    consecutive_same_error_count=2,
+                    last_failed_action_command={
+                        "type": "edit_file",
+                        "path": str(target_file),
+                        "search_text": "gamma",
+                        "replace_text": "delta",
+                    },
+                    last_failed_action_result={
+                        "status": "error",
+                        "error_code": "VALIDATION_ERROR",
+                        "output": "Search block not found",
+                    },
+                )
+                target = "full_dump_with_failed_action.txt"
+                with patch("modules.command_handler.get_log_files", return_value=[]):
+                    await self.command_handler.handle(f"/dump --full {target}")
+                content = Path(target).read_text(encoding="utf-8")
+                self.assertIn("LAST FAILED ACTION COMMAND:", content)
+                self.assertIn("\"search_text\": \"gamma\"", content)
+                self.assertIn("FAILED ACTION FILE SNAPSHOT:", content)
+                self.assertIn("alpha", content)
             finally:
                 os.chdir(original_dir)
 

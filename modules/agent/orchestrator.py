@@ -27,6 +27,9 @@ class Orchestrator:
         system_msg = f"{DEFAULT_SYSTEM_PROMPT.format(tools_description=tools_prompt)}\n\n{ctx_prompt}"
 
         self.history.add_message("user", user_input)
+        sm = getattr(self.state, "state_machine", None)
+        if sm is not None:
+            sm.start_turn(user_input)
         
         active_loop = True
         consecutive_calls = 0
@@ -132,6 +135,10 @@ class Orchestrator:
                         "No prose outside <action>."
                     )
                     self.state.set_malformed_grace(self.config.MALFORMED_ACTION_GRACE_STEPS)
+                    # Prevent immediate repetition of the previous action after malformed retry.
+                    self.state.forbid_next_action_fingerprint(
+                        getattr(self.state, "last_completed_fingerprint", None)
+                    )
                     continue
                 else:
                     malformed_action_retries = 0
@@ -158,11 +165,13 @@ class Orchestrator:
                     
                     if should_stop:
                         stop_info = getattr(self.state, "pending_loop_stop_info", None)
-                        if stop_info and stop_info.get("reason") == "repeating_failure":
+                        if stop_info and stop_info.get("reason") in {"repeating_failure", "repeating_no_progress"}:
                             decision = await self.ui.confirm_loop_recovery(
                                 "Detected repeated no-progress failures. Choose next step."
                             )
                             if decision == "retry_recovery":
+                                if sm is not None:
+                                    sm.on_user_recovery_choice(decision)
                                 self.state.set_retry_budgets(
                                     self.config.RECOVERABLE_ERROR_RETRY_BUDGET,
                                     self.config.CRITICAL_ERROR_RETRY_BUDGET,
@@ -182,6 +191,8 @@ class Orchestrator:
                                     )
                                 continue
                             if decision == "open_search":
+                                if sm is not None:
+                                    sm.on_user_recovery_choice(decision)
                                 self.state.set_retry_budgets(
                                     self.config.RECOVERABLE_ERROR_RETRY_BUDGET,
                                     self.config.CRITICAL_ERROR_RETRY_BUDGET,
@@ -198,12 +209,61 @@ class Orchestrator:
                                     f"Last error: {error_details}"
                                 )
                                 continue
+                        if stop_info and stop_info.get("reason") in {
+                            "cross_target_read_without_reason",
+                            "recover_repeated_fingerprint",
+                            "policy_denied",
+                        }:
+                            required = stop_info.get("next_actions") or []
+                            required_hint = (
+                                f"Required next actions: {', '.join(required)}.\n" if required else ""
+                            )
+                            current_query = (
+                                "SYSTEM: Previous action violated orchestration policy.\n"
+                                f"{required_hint}"
+                                "Choose a different strategy and return EXACTLY ONE valid <action>."
+                            )
+                            should_stop = False
+                            self.state.pending_loop_stop_info = None
+                            continue
 
                         await self.ui.print_system(
                             "Execution stopped by control policy (for example, denied action)."
                         )
                         active_loop = False
                     else:
+                        if sm is not None:
+                            sm_decision = sm.decide()
+                            if sm_decision.decision.name == "MODEL_DIAGNOSTIC":
+                                current_query = sm_decision.prompt
+                                continue
+                            if sm_decision.decision.name == "USER_HANDOFF":
+                                decision = await self.ui.confirm_loop_recovery(
+                                    "Detected repeated read-only stagnation. Choose next step."
+                                )
+                                if decision == "retry_recovery":
+                                    sm.on_user_recovery_choice(decision)
+                                    current_query = sm.build_diagnostic_prompt()
+                                    continue
+                                if decision == "continue_diagnosis":
+                                    sm.on_user_recovery_choice(decision)
+                                    current_query = sm.build_diagnostic_prompt()
+                                    continue
+                                if decision == "open_search":
+                                    sm.on_user_recovery_choice(decision)
+                                    current_query = (
+                                        "SYSTEM: Switch strategy.\n"
+                                        "Do not call read_file with the same path/arguments.\n"
+                                        "Use search_content or edit_file with exact targeted arguments."
+                                    )
+                                    continue
+                                if decision == "pin_target_edit":
+                                    sm.on_user_recovery_choice(decision)
+                                    current_query = sm.build_pin_target_prompt()
+                                    continue
+                                await self.ui.print_system("Execution stopped by user after stagnation warning.")
+                                active_loop = False
+                                continue
                         # Продовжуємо цикл з результатами
                         current_query = "\n---\n".join(sys_results)
                 else:

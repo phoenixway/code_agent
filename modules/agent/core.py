@@ -14,6 +14,7 @@ from modules.files import FileModule
 # Імпорт підмодулів
 from .config import AgentConfig
 from .state_manager import AgentState
+from .state_machine import AgentStateMachine
 from .model_client import ModelClient
 from .action_dispatcher import ActionDispatcher
 from .orchestrator import Orchestrator
@@ -23,6 +24,7 @@ class AngelicaAgent:
         self._ui = ui
         self.config = AgentConfig()
         self.state = AgentState()
+        self.state.state_machine = AgentStateMachine(self.config)
         self.state.set_retry_budgets(
             self.config.RECOVERABLE_ERROR_RETRY_BUDGET,
             self.config.CRITICAL_ERROR_RETRY_BUDGET,

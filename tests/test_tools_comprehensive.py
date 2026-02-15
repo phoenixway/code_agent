@@ -77,6 +77,11 @@ class TestFileTools(unittest.IsolatedAsyncioTestCase):
         result = await self.processor.process_single_action(command)
         self.assertEqual(result["status"], "error")
         self.assertIn("Search block not found", result["output"])
+        self.assertEqual(result.get("error_code"), "VALIDATION_ERROR")
+        self.assertIn("search_content", result.get("next_actions", []))
+        self.assertIsInstance(result.get("error_details"), dict)
+        self.assertEqual(result["error_details"].get("path"), str(file_path))
+        self.assertIn("mismatch_type", result["error_details"])
 
     async def test_edit_file_success(self):
         file_path = Path(self.test_dir) / "test.txt"
@@ -218,6 +223,45 @@ class TestShellTool(unittest.IsolatedAsyncioTestCase):
             blocked = await self.shell_tool.execute(command="cat /etc/hosts")
             self.assertEqual(blocked["status"], "error")
             self.assertIn("allowlist prefixes", blocked["output"])
+
+
+class TestReadFileHistoryDedup(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.test_dir = tempfile.mkdtemp()
+        self.ui = MagicMock()
+        self.ui.show_diff_preview = AsyncMock(return_value=True)
+        self.ui.confirm_truncation = AsyncMock(return_value=False)
+        self.tool_manager = ToolManager()
+        self.tool_manager.load_tools()
+        self.policy = PermissionPolicy(self.ui, mode="always")
+        self.history = MagicMock()
+        self.history.add_file_version = MagicMock(
+            side_effect=[
+                {"version": 1, "is_new_version": True, "blob_hash": "h1"},
+                {"version": 1, "is_new_version": False, "blob_hash": "h1"},
+            ]
+        )
+        self.history.add_transient_file_content = MagicMock()
+        self.processor = ResponseProcessor(
+            self.ui, self.tool_manager, chat=None, policy=self.policy, history=self.history
+        )
+
+    def tearDown(self):
+        shutil.rmtree(self.test_dir)
+
+    async def test_read_file_unchanged_does_not_add_transient_again(self):
+        file_path = Path(self.test_dir) / "stable.txt"
+        file_path.write_text("constant-content", encoding="utf-8")
+        command = {"type": "read_file", "path": str(file_path)}
+
+        first = await self.processor.process_single_action(command)
+        second = await self.processor.process_single_action(command)
+
+        self.assertEqual(first["status"], "success")
+        self.assertEqual(second["status"], "success")
+        self.assertIn("added to history as v1", first["output"])
+        self.assertIn("unchanged, already in history as v1", second["output"])
+        self.assertEqual(self.history.add_transient_file_content.call_count, 1)
 
 if __name__ == "__main__":
     unittest.main()

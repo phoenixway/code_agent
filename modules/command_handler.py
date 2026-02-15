@@ -1,4 +1,5 @@
 import os
+import json
 import shlex
 import asyncio
 import tempfile
@@ -128,6 +129,10 @@ class CommandHandler:
                 self.agent.state.last_error_fingerprint = None
             if hasattr(self.agent.state, "consecutive_same_error_count"):
                 self.agent.state.consecutive_same_error_count = 0
+            if hasattr(self.agent.state, "last_failed_action_command"):
+                self.agent.state.last_failed_action_command = None
+            if hasattr(self.agent.state, "last_failed_action_result"):
+                self.agent.state.last_failed_action_result = None
             if hasattr(self.agent.state, "pending_loop_stop_info"):
                 self.agent.state.pending_loop_stop_info = None
             if hasattr(self.agent.state, "malformed_recovery_grace_remaining"):
@@ -290,6 +295,80 @@ class CommandHandler:
 
         return "\n".join(kept).strip()
 
+    @staticmethod
+    def _to_pretty_json(data) -> str:
+        try:
+            return json.dumps(data, ensure_ascii=False, indent=2, default=str)
+        except Exception:
+            return str(data)
+
+    @staticmethod
+    def _safe_file_snapshot(path: Path, max_chars: int = 250000) -> tuple[str | None, bool, str | None]:
+        if not path.exists():
+            return None, False, f"File does not exist: {path}"
+        if not path.is_file():
+            return None, False, f"Not a regular file: {path}"
+        try:
+            text = path.read_text(encoding="utf-8")
+        except Exception as e:
+            return None, False, f"Failed to read file: {e}"
+        if len(text) <= max_chars:
+            return text, False, None
+        return text[:max_chars], True, None
+
+    def _write_runtime_diagnostics(self, out, full_dump: bool) -> None:
+        out.write("=" * 80 + "\n")
+        out.write("RUNTIME DIAGNOSTICS\n")
+        out.write("=" * 80 + "\n")
+
+        state = getattr(self.agent, "state", None)
+        if state is None:
+            out.write("State unavailable.\n\n")
+            return
+
+        last_failed_command = getattr(state, "last_failed_action_command", None)
+        last_failed_result = getattr(state, "last_failed_action_result", None)
+        out.write(f"last_error_code: {getattr(state, 'last_error_code', None)}\n")
+        out.write(f"last_error_recoverable: {getattr(state, 'last_error_recoverable', None)}\n")
+        out.write(f"consecutive_same_error_count: {getattr(state, 'consecutive_same_error_count', None)}\n")
+        out.write("\n")
+
+        if isinstance(last_failed_command, dict):
+            out.write("LAST FAILED ACTION COMMAND:\n")
+            out.write(self._to_pretty_json(last_failed_command))
+            out.write("\n\n")
+        else:
+            out.write("LAST FAILED ACTION COMMAND: unavailable\n\n")
+
+        if isinstance(last_failed_result, dict):
+            out.write("LAST FAILED ACTION RESULT:\n")
+            out.write(self._to_pretty_json(last_failed_result))
+            out.write("\n\n")
+        else:
+            out.write("LAST FAILED ACTION RESULT: unavailable\n\n")
+
+        if not full_dump or not isinstance(last_failed_command, dict):
+            out.write("\n")
+            return
+
+        target_path = last_failed_command.get("path")
+        if not isinstance(target_path, str) or not target_path.strip():
+            out.write("FAILED ACTION FILE SNAPSHOT: skipped (no path in failed command)\n\n")
+            return
+
+        snapshot, truncated, error = self._safe_file_snapshot(Path(target_path))
+        if error:
+            out.write(f"FAILED ACTION FILE SNAPSHOT: {error}\n\n")
+            return
+
+        out.write("FAILED ACTION FILE SNAPSHOT:\n")
+        out.write(f"path: {target_path}\n")
+        if truncated:
+            out.write("note: content truncated to first 250000 chars.\n")
+        out.write("-" * 80 + "\n")
+        out.write(snapshot or "")
+        out.write("\n" + "-" * 80 + "\n\n")
+
     async def _handle_dump(self, user_input):
         """
         Save a full diagnostics dump from runtime logs.
@@ -317,6 +396,7 @@ class CommandHandler:
                 out.write(f"Dump mode: {'full' if full_dump else 'session-only'}\n")
                 out.write(f"Session started at: {self.session_started_at.isoformat()}\n")
                 out.write(f"Log files found: {len(log_files)}\n\n")
+                self._write_runtime_diagnostics(out, full_dump=full_dump)
 
                 if not log_files:
                     out.write("No log files were found.\n")

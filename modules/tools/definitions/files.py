@@ -1,8 +1,96 @@
 import os
+import difflib
 from pathlib import Path
 from ..base import BaseTool
 from modules.types import ChangeProposal
 from modules.code_parser import CodeParser
+
+
+def _detect_line_endings(text: str) -> str:
+    has_crlf = "\r\n" in text
+    has_lf = "\n" in text
+    if has_crlf and has_lf:
+        return "mixed"
+    if has_crlf:
+        return "CRLF"
+    if has_lf:
+        return "LF"
+    return "none"
+
+
+def _normalize_line_endings(text: str) -> str:
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def _line_col_from_index(text: str, index: int) -> tuple[int, int]:
+    index = max(0, min(index, len(text)))
+    line = text.count("\n", 0, index) + 1
+    last_nl = text.rfind("\n", 0, index)
+    col = index + 1 if last_nl < 0 else index - last_nl
+    return line, col
+
+
+def _classify_search_mismatch(content: str, search_text: str) -> tuple[str, dict]:
+    if not search_text:
+        return "empty_search_text", {"first_diff": None}
+
+    details: dict = {}
+    normalized_content = _normalize_line_endings(content)
+    normalized_search = _normalize_line_endings(search_text)
+
+    if normalized_search in normalized_content and search_text not in content:
+        details["line_endings_in_file"] = _detect_line_endings(content)
+        return "line_ending_mismatch", details
+
+    stripped = search_text.strip()
+    if stripped and stripped in content:
+        return "whitespace_mismatch", details
+
+    first_search_line = search_text.splitlines()[0] if search_text.splitlines() else ""
+    if first_search_line:
+        if content.count(first_search_line) > 1:
+            return "multiple_similar_blocks", details
+        if first_search_line in content:
+            return "indentation_or_partial_block_mismatch", details
+
+    matcher = difflib.SequenceMatcher(None, search_text, content)
+    best = matcher.find_longest_match(0, len(search_text), 0, len(content))
+    similarity = matcher.ratio()
+    details["similarity"] = round(float(similarity), 4)
+
+    if best.size > 0:
+        start = max(0, best.b - 120)
+        end = min(len(content), best.b + best.size + 120)
+        preview = content[start:end]
+        details["best_match_preview"] = preview
+        details["best_match_span"] = [best.b, best.b + best.size]
+
+    if similarity >= 0.55:
+        return "search_text_stale_or_block_modified", details
+    return "no_similar_block_found", details
+
+
+def _build_first_diff(search_text: str, content: str) -> dict | None:
+    limit = min(len(search_text), len(content))
+    diff_idx = None
+    for i in range(limit):
+        if search_text[i] != content[i]:
+            diff_idx = i
+            break
+    if diff_idx is None:
+        if len(search_text) == len(content):
+            return None
+        diff_idx = limit
+
+    line, col = _line_col_from_index(search_text, diff_idx)
+    return {
+        "index": diff_idx,
+        "line": line,
+        "col": col,
+        "search_char": search_text[diff_idx:diff_idx + 1] or "",
+        "file_char": content[diff_idx:diff_idx + 1] or "",
+    }
+
 
 class ReadFileTool(BaseTool):
     name = "read_file"
@@ -204,19 +292,42 @@ class EditFileTool(BaseTool):
             
             # Verify search text exists
             if search_text not in content:
-                # If exact match fails, try relaxed matching (strip)
-                if search_text.strip() in content:
-                    # Adjust search_text to match content exactly
-                    # This is tricky without knowing exact whitespace. 
-                    # Let's stick to strict matching for safety, but improve error message.
-                    pass
-                
+                mismatch_type, mismatch_details = _classify_search_mismatch(content, search_text)
+                first_diff = _build_first_diff(search_text, content)
+                mismatch_details["first_diff"] = first_diff
+
+                output_lines = [
+                    "Search block not found. Ensure whitespace and indentation match exactly.",
+                    f"Mismatch type: {mismatch_type}.",
+                ]
+                similarity = mismatch_details.get("similarity")
+                if isinstance(similarity, (float, int)):
+                    output_lines.append(f"Similarity hint: {similarity:.2f}.")
+                if first_diff:
+                    output_lines.append(
+                        "First diff at search_text "
+                        f"line {first_diff['line']}, col {first_diff['col']}."
+                    )
+
                 return {
                     "status": "error",
                     "error_code": "VALIDATION_ERROR",
                     "recoverable": True,
-                    "next_actions": ["read_file", "edit_file", "write_file"],
-                    "output": "Search block not found. Ensure whitespace and indentation match exactly."
+                    "next_actions": [
+                        "read_file",
+                        "search_content",
+                        "edit_file",
+                        "write_file",
+                    ],
+                    "output": "\n".join(output_lines),
+                    "error_details": {
+                        "path": path,
+                        "mismatch_type": mismatch_type,
+                        "search_text_length": len(search_text),
+                        "replace_text_length": len(replace_text),
+                        "line_endings_in_file": _detect_line_endings(content),
+                        **mismatch_details,
+                    },
                 }
             
             # Perform replacement

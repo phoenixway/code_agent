@@ -181,16 +181,26 @@ class HistoryManager:
     # 3. FILE STATE MANAGEMENT
     # =========================================================================
 
-    def add_file_version(self, filename, content):
-        """Saves new file version via Blob and updates context."""
-        content = content.strip()
-        if not content: return None
-        
+    def add_file_version(self, filename, content, return_metadata=False):
+        """Saves new file version via Blob and updates context with dedup for identical content."""
+        if content is None:
+            return None if not return_metadata else {"version": None, "is_new_version": False, "blob_hash": None}
+        if not isinstance(content, str):
+            content = str(content)
+
         blob_hash = self._save_blob(content)
-        
         version_list = self.files.setdefault(filename, [])
+
+        # Deduplicate identical content: do not create extra versions for the same blob.
+        if version_list and version_list[-1].get("blob_hash") == blob_hash:
+            current_version = version_list[-1]["version"]
+            version_list[-1]["timestamp"] = time.time()
+            self.active_files.add(filename)
+            if return_metadata:
+                return {"version": current_version, "is_new_version": False, "blob_hash": blob_hash}
+            return current_version
+
         version_number = (version_list[-1]["version"] + 1) if version_list else 1
-        
         version_list.append({
             "version": version_number,
             "blob_hash": blob_hash,
@@ -206,6 +216,8 @@ class HistoryManager:
                 if f != filename:
                     self.active_files.remove(f)
                     break
+        if return_metadata:
+            return {"version": version_number, "is_new_version": True, "blob_hash": blob_hash}
         return version_number
 
     def get_file_version_content(self, filename, version):

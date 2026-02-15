@@ -53,6 +53,44 @@ class ActionDispatcher:
     async def _execute_action(self, command, state):
         """Виконує одну дію, керує UI та повертає результат."""
         cmd_type = command.get("type") or command.get("action", "unknown")
+        command_for_history = self._sanitize_command_for_history(command)
+        sm = getattr(state, "state_machine", None)
+
+        if sm is not None:
+            pre_decision = sm.pre_action_policy(command)
+            if not pre_decision.allow:
+                output_text = pre_decision.recovery_prompt or "Action blocked by state machine policy."
+                state.pending_loop_stop_info = {
+                    "reason": pre_decision.stop_reason or "policy_denied",
+                    "recoverable": True,
+                    "error_code": "STATE_MACHINE_POLICY_DENY",
+                    "next_actions": pre_decision.required_next_action_types or [],
+                    "command": command.copy(),
+                }
+                full_result_text = f"SYSTEM RESULT for `{cmd_type}`: {output_text}"
+                if self.agent.log:
+                    self.agent.log.debug(
+                        f"Action.finish type={cmd_type} should_stop=True reason={pre_decision.stop_reason}"
+                    )
+                return command_for_history, full_result_text, True
+
+        if state.consume_forbidden_action_if_matches(command):
+            output_text = (
+                "Action blocked: repeating the previous action immediately after malformed-action recovery "
+                "is not allowed. Change tool or arguments."
+            )
+            state.pending_loop_stop_info = {
+                "reason": "repeating_no_progress",
+                "recoverable": True,
+                "error_code": "REPEATED_ACTION_AFTER_MALFORMED",
+                "next_actions": ["search_content", "search_files", "edit_file", "write_file"],
+                "command": command.copy(),
+            }
+            full_result_text = f"SYSTEM RESULT for `{cmd_type}`: {output_text}"
+            if self.agent.log:
+                self.agent.log.debug(f"Action.finish type={cmd_type} should_stop=True")
+            return command_for_history, full_result_text, True
+
         if self.agent.log:
             self.agent.log.debug(f"Action.start type={cmd_type} command={command}")
 
@@ -74,6 +112,8 @@ class ActionDispatcher:
                 f"error_code={error_code} recoverable={recoverable}"
             )
         state_metrics = state.record_action_result(command, result)
+        if sm is not None:
+            sm.note_action(command, result, self.config.STATE_CHANGING_OPS)
 
         # 3. Syntax Check (Linting)
         if cmd_type in ['create_file', 'edit_file'] and status == 'success':
@@ -83,18 +123,37 @@ class ActionDispatcher:
                 if lint_error:
                     output_text += f"\n\n⚠️ SYSTEM WARNING: Syntax check failed for {path}:\n{lint_error}\nPlease fix this immediately."
 
-        # 4. History Handling
-        command_for_history = self._sanitize_command_for_history(command)
-
-        # 5. Smart Stop Logic
+        # 4. Smart Stop Logic
         is_state_changing = cmd_type in self.config.STATE_CHANGING_OPS
         execution_failed = status in ["failed", "error"]
         action_denied = status == "denied"
+        same_action_repeats = state_metrics.get("same_action_repeats", 0)
+        read_only_repeat_threshold = max(
+            2, int(getattr(self.config, "READ_ONLY_REPEAT_THRESHOLD", 3))
+        )
+        repeated_read_file_no_progress = (
+            cmd_type == "read_file"
+            and status == "success"
+            and same_action_repeats >= read_only_repeat_threshold
+        )
 
         should_stop = False
         state.pending_loop_stop_info = None
 
-        if action_denied:
+        if repeated_read_file_no_progress:
+            should_stop = True
+            output_text += (
+                "\n[SYSTEM: Repeated read_file calls detected with no progress. "
+                "Stop and switch to a different strategy.]"
+            )
+            state.pending_loop_stop_info = {
+                "reason": "repeating_no_progress",
+                "recoverable": True,
+                "error_code": "READ_ONLY_LOOP",
+                "next_actions": ["search_content", "edit_file", "write_file"],
+                "command": command.copy(),
+            }
+        elif action_denied:
             output_text += "\n[SYSTEM: Action denied by user.]"
             should_stop = True
 
@@ -103,10 +162,28 @@ class ActionDispatcher:
             same_error_repeats = state_metrics.get("same_error_repeats", 0)
             loop_threshold = max(2, int(getattr(self.config, "LOOP_ERROR_REPEAT_THRESHOLD", 2)))
             threshold_reached = same_error_repeats >= loop_threshold
+            is_repeated_edit_search_mismatch = (
+                cmd_type == "edit_file"
+                and error_code == "VALIDATION_ERROR"
+                and "Search block not found" in str(result.get("output", ""))
+            )
 
             if threshold_reached:
+                if is_repeated_edit_search_mismatch:
+                    should_stop = True
+                    output_text += (
+                        "\n[SYSTEM: Repeated edit_file search mismatch detected. "
+                        "Stop this loop and switch to deterministic recovery.]"
+                    )
+                    state.pending_loop_stop_info = {
+                        "reason": "repeating_failure",
+                        "recoverable": recoverable,
+                        "error_code": error_code,
+                        "next_actions": next_actions,
+                        "command": command.copy(),
+                    }
                 # Do not hard-stop immediately after malformed-action recovery.
-                if state.consume_malformed_grace():
+                elif state.consume_malformed_grace():
                     output_text += (
                         "\n[SYSTEM: Grace retry granted after malformed action recovery. "
                         "Try a different command/arguments now.]"

@@ -53,6 +53,7 @@ class TuiUI:
         "user":      {"prefix": "> ", "style": "", "classes": "chat-message user-message"},
     }
     CHAT_OUTPUT_PREVIEW_MAX_CHARS = 4000
+    TOOL_ARG_PREVIEW_MAX_CHARS = 1200
 
     def __init__(self, app, history_widget: VerticalScroll, status_bar: StatusBar):
         self.app = app
@@ -112,6 +113,24 @@ class TuiUI:
             return text, 0
         hidden = len(text) - limit
         return text[:limit], hidden
+
+    @staticmethod
+    def sanitize_tool_call_for_display(command: dict, preview_limit: int = 1200) -> dict:
+        """Returns a UI-safe copy of tool call payload without mutating original command."""
+        if not isinstance(command, dict):
+            return {"type": "unknown", "value": str(command)}
+
+        safe = command.copy()
+        tool_name = safe.get("type") or safe.get("action", "unknown")
+
+        if tool_name == "write_file":
+            content = safe.get("content")
+            if isinstance(content, str) and len(content) > preview_limit:
+                safe["content"] = (
+                    f"[content omitted in UI: {len(content)} chars; preview: {content[:120].replace(chr(10), '\\n')}]"
+                )
+
+        return safe
 
     # ---------------------------------------------------------------------
     # Status bar control
@@ -229,12 +248,19 @@ class TuiUI:
 
     async def confirm_loop_recovery(self, prompt: str) -> str:
         self._count_confirmation()
-        options = ["Retry with recovery", "Open file search", "Stop"]
+        options = [
+            "Continue with model diagnosis",
+            "Pin target file + edit strategy",
+            "Open file search",
+            "Stop",
+        ]
         screen = SelectionScreen(prompt, options)
         result = await self._push_screen_wait(screen)
         if result == options[0]:
-            return "retry_recovery"
+            return "continue_diagnosis"
         if result == options[1]:
+            return "pin_target_edit"
+        if result == options[2]:
             return "open_search"
         return "stop"
 
@@ -328,10 +354,14 @@ class TuiUI:
 
     @ui_task
     async def print_tool_call(self, command: dict) -> Static:
-        tool_name = command.get("type") or command.get("action", "unknown")
+        display_command = self.sanitize_tool_call_for_display(
+            command,
+            preview_limit=self.TOOL_ARG_PREVIEW_MAX_CHARS,
+        )
+        tool_name = display_command.get("type") or display_command.get("action", "unknown")
         
         args = {
-            k: v for k, v in command.items()
+            k: v for k, v in display_command.items()
             if k not in {
                 "type", "action", "before_execution", 
                 "during_execution", "after_execution", "return_control"
@@ -359,7 +389,7 @@ class TuiUI:
                     renderables.append(key_text)
 
         widget = Static(Group(*renderables), classes="chat-message tool-call-message", expand=False)
-        widget.command = command 
+        widget.command = command
         widget.can_focus = False
         return self._mount_widget(widget)
 

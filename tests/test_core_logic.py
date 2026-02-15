@@ -65,6 +65,16 @@ class TestHistoryManager(unittest.IsolatedAsyncioTestCase):
         self.history.add_message("user", "   ")
         self.assertEqual(len(self.history.messages), 0)
 
+    def test_add_file_version_deduplicates_identical_content(self):
+        v1 = self.history.add_file_version("a.txt", "same-content")
+        v2 = self.history.add_file_version("a.txt", "same-content")
+        v3 = self.history.add_file_version("a.txt", "changed-content")
+
+        self.assertEqual(v1, 1)
+        self.assertEqual(v2, 1)
+        self.assertEqual(v3, 2)
+        self.assertEqual(len(self.history.files["a.txt"]), 2)
+
     async def test_summarize_history(self):
         """Test history summarization when limit is exceeded."""
         # Add messages to exceed 10 tokens (approx)
