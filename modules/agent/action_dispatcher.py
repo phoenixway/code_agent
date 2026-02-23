@@ -3,6 +3,10 @@
 import ast
 import asyncio
 import hashlib
+import json
+import re
+import shlex
+from types import SimpleNamespace
 
 class ActionDispatcher:
     def __init__(self, agent):
@@ -24,6 +28,16 @@ class ActionDispatcher:
         processed_segments = []
         system_results = []
         should_stop = False
+        action_segments = [seg for seg in segments if seg.type == "action"]
+        action_commands = [seg.content for seg in action_segments]
+        execute_indices, batch_notes = self._plan_action_batch(action_commands)
+        execute_set = set(execute_indices)
+        total_exec = len(execute_indices)
+        state.last_batch_actions_executed = 0
+        state.last_batch_actions_total = len(action_segments)
+        action_ordinal = 0
+        if batch_notes:
+            system_results.extend(batch_notes)
         
         for segment in segments:
             if segment.type == 'thought':
@@ -35,24 +49,140 @@ class ActionDispatcher:
                 processed_segments.append(segment)
                 
             elif segment.type == 'action':
+                current_idx = action_ordinal
+                action_ordinal += 1
+                cmd_type = (
+                    segment.content.get("type")
+                    or segment.content.get("action")
+                    or "unknown"
+                    if isinstance(segment.content, dict)
+                    else "unknown"
+                )
+                if current_idx not in execute_set:
+                    system_results.append(
+                        f"SYSTEM RESULT for `{cmd_type}`: Skipped by batch policy."
+                    )
+                    continue
+
                 # Виконання дії
                 cmd_copy, result_text, stop_flag = await self._execute_action(segment.content, state)
+                state.last_batch_actions_executed += 1
+                if total_exec > 1:
+                    batch_pos = execute_indices.index(current_idx) + 1
+                    result_text = f"[BATCH {batch_pos}/{total_exec}] {result_text}"
                 
-                # Додаємо команду в історію
-                segment.content = cmd_copy
-                processed_segments.append(segment)
+                # Do not persist raw tool JSON into model history.
+                # Keep only a compact audit line so the model cannot reuse
+                # internal metadata fields as tool-call arguments.
+                processed_segments.append(
+                    SimpleNamespace(type="text", content=self._build_history_audit_line(cmd_copy))
+                )
                 
                 system_results.append(result_text)
                 
                 # Якщо хоч одна дія вимагає зупинки (наприклад, denied), ми зупиняємось
                 if stop_flag:
                     should_stop = True
+                    if total_exec > 1 and batch_pos < total_exec:
+                        system_results.append(
+                            f"SYSTEM RESULT for `{cmd_type}`: Batch aborted after action {batch_pos}/{total_exec} due to stop condition."
+                        )
+                    break
         
         return processed_segments, system_results, should_stop
+
+    def _plan_action_batch(self, action_commands: list[dict]) -> tuple[list[int], list[str]]:
+        if not action_commands:
+            return [], []
+        if len(action_commands) == 1:
+            return [0], []
+
+        notes: list[str] = []
+        readonly_indices = [
+            idx for idx, cmd in enumerate(action_commands)
+            if self._is_read_only_action(cmd)
+        ]
+        if len(readonly_indices) != len(action_commands):
+            first_state_changing = next(
+                idx for idx, cmd in enumerate(action_commands)
+                if not self._is_read_only_action(cmd)
+            )
+            notes.append(
+                "SYSTEM RESULT for `batch_policy`: Mixed batch detected; executing only the first state-changing action."
+            )
+            return [first_state_changing], notes
+
+        max_batch = max(1, int(getattr(self.config, "MAX_READONLY_BATCH_ACTIONS", 6)))
+        if len(action_commands) > max_batch:
+            notes.append(
+                f"SYSTEM RESULT for `batch_policy`: Read-only batch limited to {max_batch} actions."
+            )
+            return list(range(max_batch)), notes
+
+        return list(range(len(action_commands))), notes
+
+    def _is_read_only_action(self, command: dict) -> bool:
+        if not isinstance(command, dict):
+            return False
+        cmd_type = command.get("type") or command.get("action") or "unknown"
+        read_only_tools = {
+            "read_file",
+            "read_file_skeleton",
+            "search_content",
+            "search_files",
+            "list_directory",
+            "find_files",
+            "git_diff",
+        }
+        if cmd_type == "run_shell":
+            return self._is_read_only_shell_command(command.get("command"))
+        return cmd_type in read_only_tools
+
+    def _build_history_audit_line(self, command: dict) -> str:
+        def _esc(value: object) -> str:
+            return str(value).replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;").replace(">", "&gt;")
+
+        cmd_type = command.get("type") or command.get("action", "unknown")
+        path = command.get("path")
+        attrs = [f'type="{_esc(cmd_type)}"']
+        if isinstance(path, str) and path:
+            attrs.append(f'path="{_esc(path)}"')
+
+        if command.get("content_redacted") is True:
+            size = command.get("content_size")
+            blob = command.get("content_blob_hash")
+            blob_short = (str(blob)[:12] + "...") if blob else "unknown"
+            attrs.append(f'content="{_esc(f"REDACTED(size={size}, blob={blob_short})")}"')
+        else:
+            attrs.append('content="none"')
+
+        return f"<previously_performed_action {' '.join(attrs)} />"
 
     async def _execute_action(self, command, state):
         """Виконує одну дію, керує UI та повертає результат."""
         cmd_type = command.get("type") or command.get("action", "unknown")
+        if cmd_type == "read_file":
+            command = self._normalize_read_file_command(command)
+            if not command.get("path"):
+                output_text = (
+                    "SYSTEM: Invalid read_file payload. Provide `path` as a top-level field.\n"
+                    "Example:\n"
+                    '<action type="read_file">{"path":"relative/or/absolute/path"}</action>'
+                )
+                state.pending_loop_stop_info = {
+                    "reason": "malformed_read_file_payload",
+                    "recoverable": True,
+                    "error_code": "MALFORMED_READ_FILE_PAYLOAD",
+                    "next_actions": ["read_file", "search_content", "list_directory"],
+                    "command": command.copy(),
+                }
+                full_result_text = f"SYSTEM RESULT for `{cmd_type}`: {output_text}"
+                if self.agent.log:
+                    self.agent.log.debug(
+                        "Action.finish type=read_file should_stop=True reason=malformed_read_file_payload"
+                    )
+                return self._sanitize_command_for_history(command), full_result_text, True
+
         command_for_history = self._sanitize_command_for_history(command)
         sm = getattr(state, "state_machine", None)
 
@@ -80,7 +210,7 @@ class ActionDispatcher:
                 "is not allowed. Change tool or arguments."
             )
             state.pending_loop_stop_info = {
-                "reason": "recover_repeated_fingerprint",
+                "reason": "repeating_no_progress",
                 "recoverable": True,
                 "error_code": "REPEATED_ACTION_AFTER_MALFORMED",
                 "next_actions": ["search_content", "search_files", "edit_file", "write_file"],
@@ -136,6 +266,19 @@ class ActionDispatcher:
             and status == "success"
             and same_action_repeats >= read_only_repeat_threshold
         )
+        search_no_matches = "no matches found" in str(output_text).lower()
+        repeated_search_no_match_no_progress = (
+            cmd_type == "search_content"
+            and status == "success"
+            and search_no_matches
+            and same_action_repeats >= read_only_repeat_threshold
+        )
+        repeated_readonly_shell_no_progress = (
+            cmd_type == "run_shell"
+            and status == "success"
+            and same_action_repeats >= read_only_repeat_threshold
+            and self._is_read_only_shell_command(command.get("command"))
+        )
 
         should_stop = False
         state.pending_loop_stop_info = None
@@ -151,6 +294,32 @@ class ActionDispatcher:
                 "recoverable": True,
                 "error_code": "READ_ONLY_LOOP",
                 "next_actions": ["search_content", "edit_file", "write_file"],
+                "command": command.copy(),
+            }
+        elif repeated_search_no_match_no_progress:
+            should_stop = True
+            output_text += (
+                "\n[SYSTEM: Repeated search_content calls returned no matches. "
+                "Stop and switch to deterministic recovery.]"
+            )
+            state.pending_loop_stop_info = {
+                "reason": "repeating_no_progress",
+                "recoverable": True,
+                "error_code": "SEARCH_NO_MATCH_LOOP",
+                "next_actions": ["search_files", "read_file", "edit_file", "write_file"],
+                "command": command.copy(),
+            }
+        elif repeated_readonly_shell_no_progress:
+            should_stop = True
+            output_text += (
+                "\n[SYSTEM: Repeated read-only run_shell commands detected with no progress. "
+                "Stop and switch to deterministic edit/write step.]"
+            )
+            state.pending_loop_stop_info = {
+                "reason": "repeating_no_progress",
+                "recoverable": True,
+                "error_code": "READONLY_SHELL_LOOP",
+                "next_actions": ["read_file", "edit_file", "write_file"],
                 "command": command.copy(),
             }
         elif action_denied:
@@ -247,6 +416,67 @@ class ActionDispatcher:
             self.agent.log.debug(f"Action.finish type={cmd_type} should_stop={should_stop}")
         return command_for_history, full_result_text, should_stop
 
+    def _is_read_only_shell_command(self, raw_command: object) -> bool:
+        if not isinstance(raw_command, str):
+            return False
+        cmd = raw_command.strip()
+        if not cmd:
+            return False
+        lowered = cmd.lower()
+        if any(tok in lowered for tok in (">", "| tee", ">>", "sed -i", "perl -i", "mkdir ", "rm ", "mv ", "cp ", "touch ")):
+            return False
+
+        segments = re.split(r"\s*(?:&&|\|\||;|\n)\s*", lowered)
+        if not segments:
+            return False
+        allowed_bins = {"cd", "cat", "head", "tail", "grep", "rg", "wc", "find", "stat", "file", "pwd", "ls", "sed", "awk"}
+        saw_reader = False
+
+        for segment in segments:
+            segment = segment.strip()
+            if not segment:
+                continue
+            try:
+                tokens = shlex.split(segment)
+            except Exception:
+                return False
+            if not tokens:
+                continue
+            bin_name = tokens[0]
+            if bin_name not in allowed_bins:
+                return False
+            if bin_name == "sed" and "-n" not in tokens:
+                return False
+            if bin_name != "cd":
+                saw_reader = True
+        return saw_reader
+
+    def _normalize_read_file_command(self, command: dict) -> dict:
+        """Recover malformed read_file payloads where JSON is nested under `command`."""
+        if not isinstance(command, dict):
+            return {"type": "read_file"}
+        if command.get("path"):
+            return command
+
+        raw = command.get("command")
+        if not isinstance(raw, str):
+            return command
+        text = raw.strip()
+        if not text.startswith("{"):
+            return command
+        try:
+            nested = json.loads(text)
+        except Exception:
+            return command
+        if not isinstance(nested, dict):
+            return command
+
+        merged = command.copy()
+        for key in ("path", "before_execution", "during_execution", "after_execution"):
+            if merged.get(key) in (None, "") and nested.get(key):
+                merged[key] = nested.get(key)
+        return merged
+
     # --- Specific Handlers ---
 
     async def _handle_shell(self, command):
@@ -282,24 +512,34 @@ class ActionDispatcher:
         return result
 
     def _sanitize_create_file_payload(self, command: dict) -> dict:
-        """Replace large create_file content with compact metadata for chat/history."""
+        """Replace large file-content payload with compact metadata for chat/history."""
         safe = command.copy()
         content = safe.get("content")
         if not isinstance(content, str):
             return safe
-        size = len(content)
-        digest = hashlib.sha256(content.encode("utf-8")).hexdigest()[:12]
-        preview = content[:80].replace("\n", "\\n")
+        if len(content) <= 200:
+            return safe
+
+        blob_hash = None
+        history = getattr(self.agent, "history", None)
+        save_blob = getattr(history, "_save_blob", None)
+        if callable(save_blob):
+            try:
+                blob_hash = save_blob(content)
+            except Exception:
+                blob_hash = None
+        if not blob_hash:
+            blob_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+
         safe.pop("content", None)
-        safe["content_omitted"] = True
-        safe["content_size"] = size
-        safe["content_sha256"] = digest
-        safe["content_preview"] = preview
+        safe["content_redacted"] = True
+        safe["content_size"] = len(content)
+        safe["content_blob_hash"] = blob_hash
         return safe
 
     def _sanitize_command_for_history(self, command: dict) -> dict:
         cmd_type = command.get("type") or command.get("action", "unknown")
-        if cmd_type == "create_file":
+        if cmd_type in {"create_file", "write_file", "edit_file", "replace"}:
             return self._sanitize_create_file_payload(command)
         return command.copy()
 

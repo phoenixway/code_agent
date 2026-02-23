@@ -12,6 +12,7 @@ class ModelClient:
         self.comm_log = comm_logger # Відновлено логер комунікації
         self.chat = get_chat_provider(config.default_model)
         self._tokenizer_warning_logged = False
+        self._smart_stop_trailing_text_limit = 200
         
     async def get_streaming_response(
         self,
@@ -36,11 +37,12 @@ class ModelClient:
                 full_text += chunk
                 
                 # --- SMART STOP LOGIC ---
-                # Перевіряємо останні 50 символів на наявність закриваючого тегу дії.
-                # Це запобігає "галюцинаціям" (коли агент продовжує говорити після дії).
-                if "</action>" in chunk or "</action>" in full_text[-50:]:
+                # Зупиняємо достроково лише коли вже є повні action-блоки
+                # і модель продовжує "балакати" поза ними.
+                # Це не ріже multi-action батчі (кілька <action>...</action> підряд).
+                if self._should_smart_stop(full_text):
                     if self.comm_log:
-                        self.comm_log.info("--- SMART STOP TRIGGERED (</action> detected) ---")
+                        self.comm_log.info("--- SMART STOP TRIGGERED (trailing non-action text detected) ---")
                     # Примусово обриваємо генерацію
                     break
                 # ------------------------
@@ -58,6 +60,28 @@ class ModelClient:
             await self._update_token_stats(query, full_text, history_manager, ui, state)
             
         return full_text
+
+    def _should_smart_stop(self, full_text: str) -> bool:
+        if not full_text or "</action>" not in full_text:
+            return False
+        lower = full_text.lower()
+        open_count = lower.count("<action")
+        close_count = lower.count("</action>")
+        # Якщо ще незакриті action-блоки, чекати далі.
+        if close_count < open_count:
+            return False
+        last_close = lower.rfind("</action>")
+        if last_close == -1:
+            return False
+        trailing = full_text[last_close + len("</action>"):]
+        trailing_stripped = trailing.lstrip()
+        if not trailing_stripped:
+            return False
+        # Якщо далі одразу стартує наступний action-блок — це валідний батч.
+        if trailing_stripped.lower().startswith("<action"):
+            return False
+        # Дозволяємо короткі пробіли/службовий шум; блокуємо довгий "хвіст" поза action.
+        return len(trailing_stripped) >= self._smart_stop_trailing_text_limit
     
     async def _update_token_stats(self, query, response, history_manager, ui, state):
         """Підраховує токени та оновлює UI."""

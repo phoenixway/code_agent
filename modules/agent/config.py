@@ -18,6 +18,7 @@ class AgentConfig:
         self.RECOVERABLE_ERROR_RETRY_BUDGET = self._get_positive_int("recoverable_error_retry_budget", 2)
         self.CRITICAL_ERROR_RETRY_BUDGET = self._get_positive_int("critical_error_retry_budget", 1)
         self.READ_ONLY_REPEAT_THRESHOLD = self._get_positive_int("read_only_repeat_threshold", 3)
+        self.MAX_READONLY_BATCH_ACTIONS = self._get_positive_int("max_readonly_batch_actions", 6)
         self.IMPLEMENT_STAGNATION_LIMIT = self._get_positive_int("implement_stagnation_limit", 3)
         self.RESEARCH_STAGNATION_LIMIT = self._get_positive_int("research_stagnation_limit", 6)
         self.STAGNATION_MAX_DIAGNOSTICS = self._get_positive_int("stagnation_max_diagnostics", 1)
@@ -36,7 +37,7 @@ class AgentConfig:
         # Операції, що змінюють стан (викликають зупинку циклу для підтвердження або роздумів)
         self.STATE_CHANGING_OPS = {
             "run_shell", "create_file", "replace", 
-            "edit_file", "git_add", "git_commit", 
+            "edit_file", "write_file", "git_add", "git_commit", 
             "git_checkout", "delete_file"
         }
 

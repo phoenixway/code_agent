@@ -23,7 +23,6 @@ class AgentState:
         self.suppress_step_limit_warning = False
         self.consecutive_same_action_count = 0
         self.last_completed_fingerprint = None
-        self.last_completed_action_type = None
         self.pending_loop_stop_info = None
         
         # Виявлення нескінченних циклів
@@ -41,9 +40,8 @@ class AgentState:
         self.malformed_recovery_grace_remaining = 0
         self.forbidden_next_action_fingerprint = None
         self.state_machine = None
-        self.task_board = None
-        self.task_board_enabled = False
-        self.taskboard_missing_streak = 0
+        self.last_batch_actions_executed = 0
+        self.last_batch_actions_total = 0
 
         # Retry budgets
         self.recoverable_retry_budget_remaining = 2
@@ -118,14 +116,12 @@ class AgentState:
 
     def update_action_repetition(self, command: dict):
         """Track repeated actions regardless of status to spot potential loops."""
-        cmd_type = command.get("type") or command.get("action") or "unknown"
         fingerprint = self.get_action_fingerprint(command)
         if fingerprint == self.last_completed_fingerprint:
             self.consecutive_same_action_count += 1
         else:
             self.consecutive_same_action_count = 1
         self.last_completed_fingerprint = fingerprint
-        self.last_completed_action_type = cmd_type
 
     def record_action_result(self, command: dict, result: dict):
         """Record result details for loop/no-progress detection and recovery hints."""

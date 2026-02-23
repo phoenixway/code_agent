@@ -53,6 +53,21 @@ class TestPolicyEngine(unittest.TestCase):
         self.assertEqual(decision.decision, "MODEL_DIAGNOSTIC")
         self.assertEqual(decision.prompt, "diag")
 
+    def test_pre_action_allows_cross_target_in_multi_file_scope(self):
+        decision = self.engine.evaluate_pre_action(
+            PreActionPolicyInput(
+                phase="OBSERVE",
+                cmd_type="read_file",
+                path="b.txt",
+                fingerprint="fp-3",
+                target_file="a.txt",
+                forbidden_recover_fingerprint=None,
+                has_cross_target_reason=False,
+                multi_file_scope=True,
+            )
+        )
+        self.assertTrue(decision.allow)
+
     def test_loop_returns_handoff_after_diagnostics_exhausted(self):
         decision = self.engine.evaluate_loop(
             LoopPolicyInput(
@@ -71,4 +86,3 @@ class TestPolicyEngine(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

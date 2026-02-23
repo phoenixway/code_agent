@@ -65,6 +65,24 @@ class TestStateMachine(unittest.TestCase):
         )
         self.assertEqual(self.sm.stagnation_count, 0)
 
+    def test_write_file_success_updates_target_file(self):
+        self.sm.start_turn("fix code")
+        state_ops = self.state_ops | {"write_file"}
+
+        self.sm.note_action(
+            {"type": "edit_file", "path": "a.txt", "search_text": "x", "replace_text": "y"},
+            {"status": "success", "output": "applied"},
+            state_ops,
+        )
+        self.assertEqual(self.sm.target_file, "a.txt")
+
+        self.sm.note_action(
+            {"type": "write_file", "path": "b.txt", "content": "updated"},
+            {"status": "success", "output": "written"},
+            state_ops,
+        )
+        self.assertEqual(self.sm.target_file, "b.txt")
+
     def test_progress_score_keeps_exploration_alive(self):
         self.sm.start_turn("analyze module boundaries")
         for idx in range(8):
@@ -99,6 +117,78 @@ class TestStateMachine(unittest.TestCase):
             {"type": "read_file", "path": "b.txt", "reason": "because symbol moved"}
         )
         self.assertTrue(pre.allow)
+
+    def test_multi_file_scope_does_not_pin_target_for_cross_reads(self):
+        self.sm.start_turn("fix multiple files in folder go_examples")
+        self.sm.note_action(
+            {"type": "edit_file", "path": "a.txt", "search_text": "x", "replace_text": "y"},
+            {"status": "success", "output": "ok"},
+            self.state_ops,
+        )
+        self.assertIsNone(self.sm.target_file)
+        pre = self.sm.pre_action_policy({"type": "read_file", "path": "b.txt"})
+        self.assertTrue(pre.allow)
+
+    def test_new_turn_resets_target_file(self):
+        self.sm.start_turn("fix this bug")
+        self.sm.note_action(
+            {"type": "edit_file", "path": "a.txt", "search_text": "x", "replace_text": "y"},
+            {"status": "success", "output": "ok"},
+            self.state_ops,
+        )
+        self.assertEqual(self.sm.target_file, "a.txt")
+
+        self.sm.start_turn("fix another file")
+        self.assertIsNone(self.sm.target_file)
+
+    def test_search_no_matches_counts_as_stagnation_with_pattern_variants(self):
+        self.sm.start_turn("fix this bug")
+        no_match = {"status": "success", "output": "No matches found."}
+
+        self.sm.note_action(
+            {"type": "search_content", "path": "README.md", "pattern": "foo|bar"},
+            no_match,
+            self.state_ops,
+        )
+        self.sm.note_action(
+            {"type": "search_content", "path": "README.md", "pattern": "foo\\.go|bar\\.go"},
+            no_match,
+            self.state_ops,
+        )
+        self.sm.note_action(
+            {"type": "search_content", "path": "README.md", "pattern": "bar|foo"},
+            no_match,
+            self.state_ops,
+        )
+        self.sm.note_action(
+            {"type": "search_content", "path": "README.md", "pattern": "foo|bar|baz"},
+            no_match,
+            self.state_ops,
+        )
+
+        self.assertGreaterEqual(self.sm.stagnation_count, 3)
+        decision = self.sm.decide()
+        self.assertEqual(decision.decision, DecisionType.MODEL_DIAGNOSTIC)
+
+    def test_multi_file_diagnostic_prompt_demands_plan(self):
+        self.sm.start_turn("fix multiple files in folder")
+        self.sm.stagnation_count = 3
+        prompt = self.sm.build_diagnostic_prompt()
+        self.assertIn("MULTI_FILE_EXECUTION_RULE", prompt)
+        self.assertIn("<plan>", prompt)
+
+    def test_multi_file_reconnaissance_on_same_file_escalates(self):
+        self.sm.start_turn("fix multiple files in folder")
+        no_change = {"status": "success", "output": "Found 100 matches. Showing first 50:"}
+        for _ in range(3):
+            self.sm.note_action(
+                {"type": "search_content", "path": "a.go", "pattern": "."},
+                no_change,
+                self.state_ops,
+            )
+
+        decision = self.sm.decide()
+        self.assertEqual(decision.decision, DecisionType.MODEL_DIAGNOSTIC)
 
     def test_recover_forbids_repeating_last_fingerprint(self):
         self.sm.start_turn("fix bug")

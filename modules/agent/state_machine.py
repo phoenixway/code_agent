@@ -82,7 +82,11 @@ class AgentStateMachine:
         self.recent_signatures = deque(maxlen=40)
         self.seen_paths: set[str] = set()
         self.seen_search_signatures: set[str] = set()
+        self.seen_search_result_signatures: set[str] = set()
         self.seen_action_fingerprints: set[str] = set()
+        self.multi_file_scope = False
+        self.current_file_focus: str | None = None
+        self.per_file_readonly_streak = 0
 
     def start_turn(self, user_input: str):
         text = (user_input or "").lower()
@@ -103,6 +107,22 @@ class AgentStateMachine:
             if any(k in text for k in research_keywords)
             else WorkMode.IMPLEMENT
         )
+        multi_file_keywords = (
+            "folder",
+            "directory",
+            "files",
+            "multiple files",
+            "multi-file",
+            "папк",
+            "директор",
+            "файлів",
+            "кілька файлів",
+            "кожен файл",
+            "кожен аспект",
+            "one aspect",
+        )
+        self.multi_file_scope = any(k in text for k in multi_file_keywords)
+        self.target_file = None
         self.phase = AgentPhase.OBSERVE
         self.stagnation_count = 0
         self.diagnostic_attempts = 0
@@ -114,7 +134,10 @@ class AgentStateMachine:
         self.recent_signatures.clear()
         self.seen_paths.clear()
         self.seen_search_signatures.clear()
+        self.seen_search_result_signatures.clear()
         self.seen_action_fingerprints.clear()
+        self.current_file_focus = None
+        self.per_file_readonly_streak = 0
 
     @staticmethod
     def _fingerprint(command: dict) -> str:
@@ -150,6 +173,7 @@ class AgentStateMachine:
                 target_file=self.target_file,
                 forbidden_recover_fingerprint=self.forbidden_recover_fingerprint,
                 has_cross_target_reason=self._has_cross_target_reason(command),
+                multi_file_scope=self.multi_file_scope,
             )
         )
         return PreActionDecision(
@@ -160,6 +184,8 @@ class AgentStateMachine:
         )
 
     def _update_target_file(self, command: dict, cmd_type: str, state_changing_ops: set[str]):
+        if self.multi_file_scope:
+            return
         path = command.get("path")
         if not isinstance(path, str) or not path:
             return
@@ -174,10 +200,34 @@ class AgentStateMachine:
         }:
             self.target_file = path
 
-    def _compute_progress_score(self, command: dict, fingerprint: str) -> int:
+    @staticmethod
+    def _normalize_search_pattern(value: object) -> str:
+        if not isinstance(value, str):
+            return ""
+        normalized = value.lower()
+        normalized = normalized.replace("\\.", ".").replace("\\|", "|")
+        parts = [p.strip() for p in normalized.split("|") if p.strip()]
+        if not parts:
+            return normalized.strip()
+        return "|".join(sorted(set(parts)))
+
+    @staticmethod
+    def _normalize_search_result(value: object) -> str:
+        if not isinstance(value, str):
+            return ""
+        normalized = value.lower().strip()
+        if "no matches found" in normalized:
+            return "no_matches"
+        # Collapse numeric noise to compare same result shape across line-number changes.
+        normalized = "".join("#" if ch.isdigit() else ch for ch in normalized)
+        return normalized[:240]
+
+    def _compute_progress_score(self, command: dict, fingerprint: str, result: dict) -> int:
         cmd_type = command.get("type") or command.get("action") or "unknown"
         path = command.get("path")
         score = 0
+        output_text = str((result or {}).get("output", "")).lower()
+        no_matches_found = "no matches found" in output_text
 
         if isinstance(path, str) and path:
             if path not in self.seen_paths:
@@ -195,22 +245,39 @@ class AgentStateMachine:
         if cmd_type in {"search_content", "search_files"}:
             query_sig = json.dumps(
                 {
-                    "pattern": command.get("pattern"),
-                    "query": command.get("query"),
+                    "pattern": self._normalize_search_pattern(command.get("pattern")),
+                    "query": self._normalize_search_pattern(command.get("query")),
                     "path": command.get("path"),
                 },
                 sort_keys=True,
                 ensure_ascii=False,
             )
             if query_sig not in self.seen_search_signatures:
-                score += 1
                 self.seen_search_signatures.add(query_sig)
+                # New query shape is progress only if it yields some signal.
+                if not no_matches_found:
+                    score += 1
+            else:
+                score -= 1
+
+            if no_matches_found:
+                score -= 2
+
+            result_sig = self._normalize_search_result((result or {}).get("output", ""))
+            if result_sig:
+                if result_sig in self.seen_search_result_signatures:
+                    score -= 2
+                else:
+                    self.seen_search_result_signatures.add(result_sig)
+                    if not no_matches_found:
+                        score += 1
 
         return score
 
     def note_action(self, command: dict, result: dict, state_changing_ops: set[str]):
         cmd_type = command.get("type") or command.get("action") or "unknown"
         status = result.get("status")
+        path = command.get("path") if isinstance(command.get("path"), str) else None
         fingerprint = self._fingerprint(command)
         self.last_action_fingerprint = fingerprint
         self._update_target_file(command, cmd_type, state_changing_ops)
@@ -231,11 +298,13 @@ class AgentStateMachine:
             self.last_progress_signature = f"APPLY:{fingerprint}"
             self.last_progress_score = 3
             self.recent_signatures.append(fingerprint)
+            self.current_file_focus = None
+            self.per_file_readonly_streak = 0
             return
 
         if cmd_type in READ_ONLY_ACTIONS and status == "success":
             self.phase = AgentPhase.OBSERVE
-            progress_score = self._compute_progress_score(command, fingerprint)
+            progress_score = self._compute_progress_score(command, fingerprint, result)
             self.last_progress_score = progress_score
             progress_signature = f"{cmd_type}:{command.get('path') or ''}:{fingerprint}"
 
@@ -247,6 +316,22 @@ class AgentStateMachine:
                 self.stagnation_count += 1
                 if self.target_file and command.get("path") and command.get("path") != self.target_file:
                     self.invariant_violations += 1
+
+            if self.multi_file_scope and path:
+                if path == self.current_file_focus:
+                    self.per_file_readonly_streak += 1
+                else:
+                    self.current_file_focus = path
+                    self.per_file_readonly_streak = 1
+                per_file_limit = max(
+                    2,
+                    int(getattr(self.config, "MULTI_FILE_PER_FILE_READ_ONLY_LIMIT", 3)),
+                )
+                if self.per_file_readonly_streak >= per_file_limit:
+                    # Escalate quickly: in multi-file mode we must move from reconnaissance
+                    # to deterministic fix/skip for the current file.
+                    self.stagnation_count = max(self.stagnation_count, self._read_only_limit())
+                    self.last_progress_score = min(self.last_progress_score, -2)
             self.recent_signatures.append(progress_signature)
             return
 
@@ -257,10 +342,12 @@ class AgentStateMachine:
         self.last_progress_signature = f"{cmd_type}:{fingerprint}"
         self.last_progress_score = 1
         self.recent_signatures.append(fingerprint)
+        self.current_file_focus = None
+        self.per_file_readonly_streak = 0
 
     def build_diagnostic_prompt(self) -> str:
         target = self.target_file or "<unknown>"
-        return (
+        base = (
             "SYSTEM_DIAGNOSTIC: You are in a no-progress loop.\n"
             f"Stagnation count: {self.stagnation_count}. Target file: {target}.\n"
             f"Last progress score: {self.last_progress_score}.\n"
@@ -268,6 +355,16 @@ class AgentStateMachine:
             "Respond with EXACTLY ONE action and avoid repeating previous read_file fingerprints.\n"
             "First explain briefly in <think> why progress stalled, then choose one of:\n"
             "1) search_content with a tighter pattern, 2) edit_file with exact block, 3) write_file with concise validated content."
+        )
+        if not self.multi_file_scope:
+            return base
+        return (
+            f"{base}\n"
+            "MULTI_FILE_EXECUTION_RULE:\n"
+            "Use a compact <plan> to list candidate files and current file index, then return EXACTLY ONE action.\n"
+            "Execute strictly per file: read -> decide -> edit/write -> verify -> move to next file.\n"
+            "Do not restart broad project-wide search once a candidate list exists.\n"
+            "After at most 2 read-only checks for the same file, do edit/write or explicitly skip that file and move on."
         )
 
     def build_pin_target_prompt(self) -> str:

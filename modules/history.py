@@ -49,6 +49,7 @@ class HistoryManager:
         # --- CONSTANTS ---
         self.SKELETON_THRESHOLD = 2000  # Bytes. Larger files get skeletonized unless active.
         self.MAX_ACTIVE_FILES = 5       # Keep top N files in "Full Content" mode in system prompt.
+        self.MAX_RECENT_TRANSIENT_SKELETON_CONTEXT = 6
         self.SUMMARY_PROMPT_RATIO = 1.15
         self.SUMMARY_PROMPT_COOLDOWN_MIN = 200
         self.EMERGENCY_SUMMARY_RATIO = 1.5
@@ -73,6 +74,14 @@ class HistoryManager:
         content_bytes = content.encode('utf-8')
         blob_hash = hashlib.sha256(content_bytes).hexdigest()
         blob_path = self.blobs_dir / blob_hash
+
+        # blobs_dir may be removed between turns (cleanup, concurrent process).
+        # Ensure it exists right before writing.
+        try:
+            self.blobs_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Blob dir ensure error {self.blobs_dir}: {e}")
         
         if not blob_path.exists():
             with open(blob_path, "wb") as f:
@@ -128,16 +137,14 @@ class HistoryManager:
                 data = json.loads(content)
                 action = data.get("type") or data.get("action")
                 
-                if action in ["create_file", "edit_file", "replace"] and "content" in data:
+                if action in ["create_file", "write_file", "edit_file", "replace"] and "content" in data:
                     body = data["content"]
-                    if len(body) > 200:
+                    if isinstance(body, str) and len(body) > 200:
                         blob_hash = self._save_blob(body)
-                        size = len(body)
-                        data["content"] = (
-                            f"[CONTENT_SAVED_TO_DISK]\n"
-                            f"Size: {size} bytes | Hash: {blob_hash[:8]}\n"
-                            f"NOTE: Content written to system. Use 'read_file' to view."
-                        )
+                        data.pop("content", None)
+                        data["content_redacted"] = True
+                        data["content_size"] = len(body)
+                        data["content_blob_hash"] = blob_hash
                         return json.dumps(data, ensure_ascii=False)
         except Exception:
             pass
@@ -158,13 +165,11 @@ class HistoryManager:
             if action_type in {"create_file", "write_file", "edit_file", "replace"} and isinstance(data, dict):
                 payload = data.get("content")
                 if isinstance(payload, str) and len(payload) > 200:
-                    digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:12]
-                    preview = payload[:80].replace("\n", "\\n")
+                    blob_hash = self._save_blob(payload)
                     data.pop("content", None)
-                    data["content_omitted"] = True
+                    data["content_redacted"] = True
                     data["content_size"] = len(payload)
-                    data["content_sha256"] = digest
-                    data["content_preview"] = preview
+                    data["content_blob_hash"] = blob_hash
                     return f'<action type="{action_type}">\n{json.dumps(data, ensure_ascii=False, indent=2)}\n</action>'
             return match.group(0)
 
@@ -213,11 +218,10 @@ class HistoryManager:
         # Mark as active (LRU logic)
         self.active_files.add(filename)
         if len(self.active_files) > self.MAX_ACTIVE_FILES:
-            # Simple eviction: remove one that isn't the current one
-            for f in list(self.active_files):
-                if f != filename:
-                    self.active_files.remove(f)
-                    break
+            # Deterministic eviction: drop the oldest active file except current.
+            oldest = self._pick_oldest_active_file(exclude=filename)
+            if oldest:
+                self.active_files.discard(oldest)
         if return_metadata:
             return {"version": version_number, "is_new_version": True, "blob_hash": blob_hash}
         return version_number
@@ -252,6 +256,7 @@ class HistoryManager:
         
         # --- A. BUILD SYSTEM WORKSPACE (Current Project State) ---
         workspace_parts = []
+        file_render_mode = {}
         
         for filename, versions in self.files.items():
             if not versions: continue
@@ -270,12 +275,14 @@ class HistoryManager:
                 workspace_parts.append(
                     f"<file_content path='{filename}' version='{version}'>\n{content}\n</file_content>"
                 )
+                file_render_mode[filename] = "full"
             else:
                 skeleton = self.code_parser.get_skeleton(filename, content)
                 workspace_parts.append(
                     f"<file_skeleton path='{filename}' version='{version}'>\n{skeleton}\n</file_skeleton>\n"
                     f""
                 )
+                file_render_mode[filename] = "skeleton"
             
             included_in_system_prompt.add(f"{filename}:{version}")
 
@@ -286,6 +293,7 @@ class HistoryManager:
         # --- B. PROCESS CHAT LOG ---
         
         last_msg_idx = len(self.messages) - 1
+        recent_transient_indices = self._recent_transient_indices()
         
         for idx, msg in enumerate(self.messages):
             msg_type = msg.get("type")
@@ -293,14 +301,16 @@ class HistoryManager:
             # Skip transient files (read_file results) IF they are already covered in System Workspace
             # UNLESS it's the very last message (Agent just read it, needs to see it now)
             if msg_type == "transient_file_content":
-                if idx == last_msg_idx:
-                    # Logic for the LAST message (Immediate feedback)
-                    t_data = msg["content"]
-                    f_name, f_ver, f_content = t_data["filename"], t_data["version"], t_data["content"]
-                    
-                    # Even for immediate feedback, check size
-                    if len(f_content) > self.SKELETON_THRESHOLD * 2: # Very generous limit for immediate read
-                         # Fallback to skeleton even for read if HUGE
+                t_data = msg["content"]
+                f_name, f_ver, f_content = t_data["filename"], t_data["version"], t_data["content"]
+                show_for_immediate_feedback = idx == last_msg_idx
+                show_for_recent_skeleton_context = (
+                    idx in recent_transient_indices
+                    and file_render_mode.get(f_name) == "skeleton"
+                )
+                if show_for_immediate_feedback or show_for_recent_skeleton_context:
+                    # Even for immediate/recent feedback, check size
+                    if len(f_content) > self.SKELETON_THRESHOLD * 2:
                         skel = self.code_parser.get_skeleton(f_name, f_content)
                         content_str = (
                             f"SYSTEM RESULT (read_file):\n"
@@ -347,6 +357,29 @@ class HistoryManager:
             ranked.append((ts, filename))
         ranked.sort(reverse=True)
         return {name for _, name in ranked[:limit]}
+
+    def _pick_oldest_active_file(self, exclude: str | None = None) -> str | None:
+        oldest_name = None
+        oldest_ts = None
+        for filename in self.active_files:
+            if exclude and filename == exclude:
+                continue
+            versions = self.files.get(filename) or []
+            ts = versions[-1]["timestamp"] if versions else 0
+            if oldest_ts is None or ts < oldest_ts:
+                oldest_ts = ts
+                oldest_name = filename
+        return oldest_name
+
+    def _recent_transient_indices(self) -> set[int]:
+        indices = []
+        for idx in range(len(self.messages) - 1, -1, -1):
+            msg = self.messages[idx]
+            if msg.get("type") == "transient_file_content":
+                indices.append(idx)
+                if len(indices) >= self.MAX_RECENT_TRANSIENT_SKELETON_CONTEXT:
+                    break
+        return set(indices)
 
     # =========================================================================
     # 5. SUMMARIZATION & UTILS

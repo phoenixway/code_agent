@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+import shutil
 from pathlib import Path
 
 from modules.history import HistoryManager
@@ -47,6 +48,35 @@ class TestHistoryContext(unittest.TestCase):
         self.assertNotIn("SYSTEM RESULT (read_file):", joined)
         self.assertIn("next step", joined)
 
+    def test_recent_transient_is_kept_when_workspace_has_skeleton_for_that_file(self):
+        self.history.SKELETON_THRESHOLD = 20
+        self.history.add_file_version("big.kt", "x" * 500)
+        self.history.active_files.discard("big.kt")  # force skeleton in workspace
+        self.history.add_transient_file_content("big.kt", 1, "x" * 500)
+        self.history.add_message("user", "analyze big file")
+
+        api_history = self.history.get_history_for_api()
+        joined = "\n".join(m["content"] for m in api_history if isinstance(m.get("content"), str))
+        self.assertIn("<file_skeleton path='big.kt' version='1'>", joined)
+        self.assertIn("SYSTEM RESULT (read_file):", joined)
+
+    def test_recent_transient_cap_limits_kept_read_context(self):
+        self.history.SKELETON_THRESHOLD = 20
+        self.history.MAX_RECENT_TRANSIENT_SKELETON_CONTEXT = 2
+
+        for i in range(3):
+            name = f"f{i}.kt"
+            self.history.add_file_version(name, "x" * 200)
+            self.history.active_files.discard(name)  # force skeleton in workspace
+            self.history.add_transient_file_content(name, 1, "x" * 200)
+        self.history.add_message("user", "next")
+
+        api_history = self.history.get_history_for_api()
+        joined = "\n".join(m["content"] for m in api_history if isinstance(m.get("content"), str))
+        self.assertEqual(joined.count("SYSTEM RESULT (read_file):"), 2)
+        self.assertIn("path='f1.kt'", joined)
+        self.assertIn("path='f2.kt'", joined)
+
     def test_large_inactive_file_uses_skeleton(self):
         self.history.SKELETON_THRESHOLD = 20
         self.history.add_file_version("big.kt", "x" * 500)
@@ -84,7 +114,17 @@ class TestHistoryContext(unittest.TestCase):
         blob_file = Path(self.history.blobs_dir) / blob_hash
         self.assertTrue(blob_file.exists())
 
+    def test_blob_storage_recovers_if_blobs_dir_removed(self):
+        shutil.rmtree(self.history.blobs_dir, ignore_errors=True)
+        self.assertFalse(Path(self.history.blobs_dir).exists())
+
+        version = self.history.add_file_version("recovered.txt", "hello world")
+
+        self.assertEqual(version, 1)
+        blob_hash = self.history.files["recovered.txt"][0]["blob_hash"]
+        blob_file = Path(self.history.blobs_dir) / blob_hash
+        self.assertTrue(blob_file.exists())
+
 
 if __name__ == "__main__":
     unittest.main()
-

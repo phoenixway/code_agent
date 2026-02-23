@@ -31,6 +31,7 @@ class PreActionPolicyInput:
     target_file: str | None
     forbidden_recover_fingerprint: str | None
     has_cross_target_reason: bool
+    multi_file_scope: bool = False
 
 
 @dataclass
@@ -75,6 +76,7 @@ class PolicyEngine:
             _Rule(
                 predicate=lambda c: (
                     bool(c.target_file)
+                    and not c.multi_file_scope
                     and c.cmd_type in {"read_file", "read_file_skeleton"}
                     and bool(c.path)
                     and c.path != c.target_file
@@ -137,4 +139,3 @@ class PolicyEngine:
             if rule.predicate(ctx):
                 return rule.build(ctx)
         return EngineLoopDecision(decision="CONTINUE")
-

@@ -58,7 +58,10 @@ class Orchestrator:
         active_loop = True
         consecutive_calls = 0
         malformed_action_retries = 0
+        audit_marker_retries = 0
+        malformed_read_file_retries = 0
         current_query = user_input
+        consecutive_single_readonly_steps = 0
         loop = asyncio.get_running_loop()
         session_started_at = loop.time()
         
@@ -195,6 +198,7 @@ class Orchestrator:
                 segments = self.parser.parse(response)
                 if self.agent.log:
                     self.agent.log.debug(f"Parsed segments count={len(segments)}")
+                parsed_action_count = sum(1 for seg in segments if seg.type == "action")
 
                 # Recovery: model returned an <action> tag but parser extracted no action.
                 has_action_tag = "<action" in response.lower()
@@ -244,13 +248,60 @@ class Orchestrator:
                     continue
                 else:
                     malformed_action_retries = 0
+
+                # Recovery: model echoed audit trail marker but produced no tool call.
+                response_lower = response.lower()
+                contains_audit_marker = (
+                    "system_tool_audit:" in response_lower
+                    or "<previously_performed_action" in response_lower
+                )
+                if contains_audit_marker and not has_action_segment:
+                    audit_marker_retries += 1
+                    if self.agent.log:
+                        self.agent.log.warning(
+                            f"Audit-marker echo without action detected (retry {audit_marker_retries}/1)."
+                        )
+                    if audit_marker_retries > 1:
+                        await self.ui.print_error(
+                            "Execution stopped: model repeatedly echoed audit trail without a valid action."
+                        )
+                        break
+                    current_query = (
+                        "SYSTEM: Your last response echoed an internal audit marker instead of a tool call.\n"
+                        "Return EXACTLY ONE valid <action> JSON block for the next step.\n"
+                        "Do not output audit markers like SYSTEM_TOOL_AUDIT or <previously_performed_action>."
+                    )
+                    continue
+                audit_marker_retries = 0
                 
                 # 4. Виконання дій (через Dispatcher)
                 self.state.current_task = asyncio.create_task(
                     self.dispatcher.dispatch_segments(segments, self.state)
                 )
                 processed_segs, sys_results, should_stop = await self.state.current_task
-                action_count = sum(1 for seg in processed_segs if seg.type == "action")
+                action_count = parsed_action_count
+                action_commands = [seg.content for seg in segments if seg.type == "action" and isinstance(seg.content, dict)]
+                is_read_only_action = getattr(self.dispatcher, "_is_read_only_action", None)
+                if not callable(is_read_only_action):
+                    def is_read_only_action(cmd):
+                        cmd_type = cmd.get("type") or cmd.get("action") or "unknown"
+                        return cmd_type in {
+                            "read_file",
+                            "read_file_skeleton",
+                            "search_content",
+                            "search_files",
+                            "list_directory",
+                            "find_files",
+                            "git_diff",
+                        }
+                single_readonly_step = (
+                    len(action_commands) == 1
+                    and is_read_only_action(action_commands[0])
+                )
+                if single_readonly_step:
+                    consecutive_single_readonly_steps += 1
+                else:
+                    consecutive_single_readonly_steps = 0
                 
                 # 5. Оновлення історії
                 # Асистент "пам'ятає" свої дії (але create_file може бути стиснутий)
@@ -315,7 +366,27 @@ class Orchestrator:
                             "cross_target_read_without_reason",
                             "recover_repeated_fingerprint",
                             "policy_denied",
+                            "malformed_read_file_payload",
                         }:
+                            if stop_info.get("reason") == "malformed_read_file_payload":
+                                malformed_read_file_retries += 1
+                                if malformed_read_file_retries > 1:
+                                    await self.ui.print_error(
+                                        "Execution stopped: malformed read_file payload repeated."
+                                    )
+                                    active_loop = False
+                                    continue
+                                current_query = (
+                                    "SYSTEM: Your last read_file call used invalid payload.\n"
+                                    "Return EXACTLY ONE valid read_file action now.\n"
+                                    "Required format:\n"
+                                    '<action type="read_file">{"path":"go_examples/target.go"}</action>\n'
+                                    "Do not nest JSON under `command`."
+                                )
+                                should_stop = False
+                                self.state.pending_loop_stop_info = None
+                                continue
+
                             required = stop_info.get("next_actions") or []
                             required_hint = (
                                 f"Required next actions: {', '.join(required)}.\n" if required else ""
@@ -367,7 +438,15 @@ class Orchestrator:
                                 active_loop = False
                                 continue
                         # Продовжуємо цикл з результатами
-                        current_query = "\n---\n".join(sys_results)
+                        if consecutive_single_readonly_steps >= 3:
+                            current_query = (
+                                "SYSTEM: You are executing single read-only actions repeatedly.\n"
+                                "For this multi-file investigation, return a compact batch of 3-5 read-only <action> blocks now.\n"
+                                "Prioritize distinct files/targets; avoid repeating the same file in this batch.\n"
+                                "After batching, move to a deterministic edit/write step."
+                            )
+                        else:
+                            current_query = "\n---\n".join(sys_results)
                 else:
                     await self.ui.print_system("Execution finished: no further actions returned by the model.")
                     active_loop = False # Немає дій = кінець розмови
@@ -380,6 +459,8 @@ class Orchestrator:
                         f"elapsed_sec={elapsed:.2f} "
                         f"history_tokens={self.history.current_token_count}/{self.history.max_tokens} "
                         f"actions_in_step={action_count} "
+                        f"batch_actions_executed={getattr(self.state, 'last_batch_actions_executed', 0)}/"
+                        f"{getattr(self.state, 'last_batch_actions_total', 0)} "
                         f"same_action_streak={getattr(self.state, 'consecutive_same_action_count', 0)} "
                         f"confirmations={self.state.confirmation_count} "
                         f"session_tokens={self.state.session_tokens}"
