@@ -1,5 +1,6 @@
 import os
 import difflib
+import re
 from pathlib import Path
 from ..base import BaseTool
 from modules.types import ChangeProposal
@@ -89,6 +90,51 @@ def _build_first_diff(search_text: str, content: str) -> dict | None:
         "col": col,
         "search_char": search_text[diff_idx:diff_idx + 1] or "",
         "file_char": content[diff_idx:diff_idx + 1] or "",
+    }
+
+
+_COMPACT_OMITTED_MARKER_RE = re.compile(
+    r"\[content omitted:\s*\d+\s*chars,\s*sha256:[0-9a-f]{8,}",
+    re.IGNORECASE,
+)
+
+
+def _compact_omitted_marker_count(text: str) -> int:
+    if not isinstance(text, str) or not text:
+        return 0
+    return len(_COMPACT_OMITTED_MARKER_RE.findall(text))
+
+
+def _validate_no_compact_markers(path: str, new_content: str, previous_content: str | None = None) -> dict | None:
+    """
+    Prevent accidental writes of compact placeholders like:
+    [content omitted: N chars, sha256:...]
+    """
+    new_count = _compact_omitted_marker_count(new_content)
+    if new_count == 0:
+        return None
+
+    prev_count = _compact_omitted_marker_count(previous_content or "")
+    # Allow remediation edits that reduce already-corrupted markers.
+    if previous_content is not None and new_count < prev_count:
+        return None
+
+    return {
+        "status": "error",
+        "error_code": "VALIDATION_ERROR",
+        "recoverable": True,
+        "next_actions": ["read_file", "write_file", "edit_file"],
+        "output": (
+            "Refusing to write compact placeholder markers "
+            "('[content omitted: ... sha256: ...]') into workspace files. "
+            "Use full file content instead."
+        ),
+        "error_details": {
+            "path": path,
+            "detected_marker": "content_omitted_placeholder",
+            "marker_count_new": new_count,
+            "marker_count_previous": prev_count,
+        },
     }
 
 
@@ -239,6 +285,10 @@ class CreateFileTool(BaseTool):
                 "next_actions": ["read_file", "edit_file", "write_file"],
                 "output": f"File {path} already exists. Use 'edit_file' or 'run_shell' to modify.",
             }
+
+        marker_error = _validate_no_compact_markers(path, content)
+        if marker_error:
+            return marker_error
         
         # Return proposal instead of writing directly
         proposal = ChangeProposal(
@@ -257,6 +307,10 @@ class WriteFileTool(BaseTool):
         original = ""
         if p.exists():
             original = p.read_text(encoding='utf-8')
+
+        marker_error = _validate_no_compact_markers(path, content, previous_content=original)
+        if marker_error:
+            return marker_error
         
         # Return proposal
         proposal = ChangeProposal(
@@ -332,6 +386,10 @@ class EditFileTool(BaseTool):
             
             # Perform replacement
             new_content = content.replace(search_text, replace_text, 1)
+
+            marker_error = _validate_no_compact_markers(path, new_content, previous_content=content)
+            if marker_error:
+                return marker_error
             
             # Return proposal
             proposal = ChangeProposal(

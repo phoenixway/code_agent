@@ -55,6 +55,19 @@ class TestFileTools(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(file_path.exists())
         self.assertEqual(file_path.read_text(), "content")
 
+    async def test_create_file_rejects_compact_omitted_placeholder(self):
+        file_path = Path(self.test_dir) / "bad.go"
+        command = {
+            "type": "create_file",
+            "path": str(file_path),
+            "content": "[content omitted: 123 chars, sha256:abcdef123456]",
+        }
+        result = await self.processor.process_single_action(command)
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result.get("error_code"), "VALIDATION_ERROR")
+        self.assertIn("Refusing to write compact placeholder markers", result["output"])
+        self.assertFalse(file_path.exists())
+
     async def test_create_file_permission_error(self):
         # This is hard to test reliably without changing file system permissions.
         # We will mock the apply method to simulate the error.
@@ -90,6 +103,20 @@ class TestFileTools(unittest.IsolatedAsyncioTestCase):
         result = await self.processor.process_single_action(command)
         self.assertEqual(result["status"], "success")
         self.assertEqual(file_path.read_text(), "Hello Universe")
+
+    async def test_write_file_rejects_compact_omitted_placeholder(self):
+        file_path = Path(self.test_dir) / "bad.go"
+        file_path.write_text("package main\n")
+        command = {
+            "type": "write_file",
+            "path": str(file_path),
+            "content": "[content omitted: 2339 chars, sha256:6c8d4e5d5b5c, preview:'...']",
+        }
+        result = await self.processor.process_single_action(command)
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result.get("error_code"), "VALIDATION_ERROR")
+        self.assertIn("Refusing to write compact placeholder markers", result["output"])
+        self.assertEqual(file_path.read_text(), "package main\n")
 
     async def test_list_directory_success(self):
         subdir = Path(self.test_dir) / "src"
@@ -242,6 +269,7 @@ class TestReadFileHistoryDedup(unittest.IsolatedAsyncioTestCase):
             ]
         )
         self.history.add_transient_file_content = MagicMock()
+        self.history.ensure_transient_file_content = MagicMock(return_value=False)
         self.processor = ResponseProcessor(
             self.ui, self.tool_manager, chat=None, policy=self.policy, history=self.history
         )
@@ -262,6 +290,7 @@ class TestReadFileHistoryDedup(unittest.IsolatedAsyncioTestCase):
         self.assertIn("added to history as v1", first["output"])
         self.assertIn("unchanged, already in history as v1", second["output"])
         self.assertEqual(self.history.add_transient_file_content.call_count, 1)
+        self.history.ensure_transient_file_content.assert_called_once()
 
 if __name__ == "__main__":
     unittest.main()

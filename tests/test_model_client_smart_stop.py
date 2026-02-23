@@ -39,6 +39,11 @@ class TestModelClientSmartStop(unittest.TestCase):
         text = '<action type="read_file">{"path":"a.txt"}'
         self.assertFalse(client._should_smart_stop(text))
 
+    def test_format_comm_block_trims_outer_newlines(self):
+        client = self._make_client()
+        block = client._format_comm_block("OUTGOING", "\n\npayload\n\n")
+        self.assertEqual(block, "--- OUTGOING ---\npayload")
+
 
 if __name__ == "__main__":
     unittest.main()

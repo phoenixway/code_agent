@@ -30,7 +30,7 @@ class ModelClient:
         
         # 1. Логування вихідного запиту
         if self.comm_log:
-            self.comm_log.info(f"--- OUTGOING ---\n{query}\n")
+            self.comm_log.info(self._format_comm_block("OUTGOING", query))
         
         try:
             async for chunk in self.chat.get_streaming_response(query, history_data):
@@ -53,13 +53,23 @@ class ModelClient:
         
         # 2. Логування вхідної відповіді (вже обрізаної)
         if self.comm_log:
-            self.comm_log.info(f"--- INCOMING ---\n{full_text}\n")
+            self.comm_log.info(self._format_comm_block("INCOMING", full_text))
             
         # 3. Оновлення статистики токенів
         if state and ui:
             await self._update_token_stats(query, full_text, history_manager, ui, state)
             
         return full_text
+
+    def _format_comm_block(self, direction: str, payload: str) -> str:
+        """
+        Build a compact communication-log block without extra empty lines
+        above/below payload.
+        """
+        body = "" if payload is None else str(payload).strip("\n")
+        if not body:
+            return f"--- {direction} ---"
+        return f"--- {direction} ---\n{body}"
 
     def _should_smart_stop(self, full_text: str) -> bool:
         if not full_text or "</action>" not in full_text:

@@ -92,5 +92,48 @@ class TestResponseParser(unittest.TestCase):
         # Parser implementation: text "Here is data:", then text '<action>{"key": "value"}</action>'
         self.assertTrue(all(s.type == 'text' for s in segments))
 
+    def test_cdata_json_payload_keeps_structured_fields(self):
+        text = (
+            '<action type="read_file_skeleton"><![CDATA[{'
+            '"path":"go_examples/00_basic_types.go","before_execution":"x"'
+            '}]]></action>'
+        )
+        segments = self.parser.parse(text)
+        self.assertEqual(len(segments), 1)
+        self.assertEqual(segments[0].type, "action")
+        self.assertEqual(segments[0].content["type"], "read_file_skeleton")
+        self.assertEqual(segments[0].content["path"], "go_examples/00_basic_types.go")
+        self.assertNotIn("command", segments[0].content)
+
+    def test_value_name_tags_are_parsed_as_action_fields(self):
+        text = (
+            '<action type="read_file">'
+            '<value name="path">go_examples/00_operations.go</value>'
+            '<value name="before_execution">b</value>'
+            '<value name="during_execution">d</value>'
+            '<value name="after_execution">a</value>'
+            "</action>"
+        )
+        segments = self.parser.parse(text)
+        self.assertEqual(len(segments), 1)
+        self.assertEqual(segments[0].type, "action")
+        self.assertEqual(segments[0].content["type"], "read_file")
+        self.assertEqual(segments[0].content["path"], "go_examples/00_operations.go")
+        self.assertEqual(segments[0].content["before_execution"], "b")
+
+    def test_action_attributes_include_path_when_payload_uses_xml_tags(self):
+        text = (
+            '<action type="read_file" path="go_examples/05_control_flow.go">'
+            "<before_execution>b</before_execution>"
+            "<during_execution>d</during_execution>"
+            "<after_execution>a</after_execution>"
+            "</action>"
+        )
+        segments = self.parser.parse(text)
+        self.assertEqual(len(segments), 1)
+        self.assertEqual(segments[0].type, "action")
+        self.assertEqual(segments[0].content["type"], "read_file")
+        self.assertEqual(segments[0].content["path"], "go_examples/05_control_flow.go")
+
 if __name__ == "__main__":
     unittest.main()

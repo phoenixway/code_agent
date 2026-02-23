@@ -21,7 +21,7 @@ Screen {
 .chat-message {
     background: $background;
     border: none;
-    padding: 1 2; /* Keep the visual frame */
+    padding: 0;
     margin: 0; /* Remove all margins, spacing is handled by the separator widget */
 }
 
@@ -38,6 +38,7 @@ Screen {
     color: $text;
     border-left: wide $primary;
     margin-right: 2;
+    padding: 1 2;
 }
 
 /* --- ASSISTANT MESSAGE --- */
@@ -45,6 +46,7 @@ Screen {
 .assistant-message {
     background: $surface;
     border-left: wide $secondary;
+    padding: 1 2;
 }
 
 /* --- INITIAL HISTORY MESSAGE --- */
@@ -82,6 +84,7 @@ Screen {
 .tool-result-message {
     background: $surface;
     border-left: wide $success;
+    padding: 0 2;
 }
 
 /* --- THOUGHT / REASONING --- */
@@ -92,7 +95,7 @@ Screen {
     color: $text-muted;
     opacity: 70%;
     text-style: italic;
-    padding: 0 2;
+    padding: 0 1;
 }
 
 /* --- SYSTEM / LOG (Prefix-based) --- */
@@ -107,11 +110,8 @@ Screen {
 /* --- PLAN / COMMAND --- */
 
 .plan-message {
-    background: $background;
-    border-left: solid #858585;
     color: $success;
     text-style: bold;
-    padding: 0 2;
 }
 
 /* --- COMMAND RESULT --- */

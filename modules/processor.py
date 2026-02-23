@@ -119,7 +119,12 @@ class ResponseProcessor:
                         self.history.add_transient_file_content(file_path, version, content)
                         result['output'] = f"Read file '{file_path}' and added to history as v{version}."
                     else:
-                        # Keep context compact: identical content re-reads do not add transient payload again.
+                        ensure_transient = getattr(self.history, "ensure_transient_file_content", None)
+                        if callable(ensure_transient):
+                            ensure_transient(file_path, version, content)
+                        else:
+                            # Fallback for tests/mocks: refresh transient to keep context visible.
+                            self.history.add_transient_file_content(file_path, version, content)
                         result['output'] = (
                             f"Read file '{file_path}' (unchanged, already in history as v{version})."
                         )

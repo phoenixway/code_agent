@@ -1,1 +1,0 @@
-[content omitted: 2339 chars, sha256:6c8d4e5d5b5c, preview:'[content omitted: 1179 chars, sha256:9c6e0f5e4a8e, preview:'// Приклад 10: Інтер']

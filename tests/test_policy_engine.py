@@ -83,6 +83,41 @@ class TestPolicyEngine(unittest.TestCase):
         )
         self.assertEqual(decision.decision, "USER_HANDOFF")
 
+    def test_pre_action_denies_readonly_when_multi_file_budget_exhausted(self):
+        decision = self.engine.evaluate_pre_action(
+            PreActionPolicyInput(
+                phase="OBSERVE",
+                cmd_type="read_file",
+                path="a.txt",
+                fingerprint="fp-4",
+                target_file=None,
+                forbidden_recover_fingerprint=None,
+                has_cross_target_reason=False,
+                multi_file_scope=True,
+                block_readonly_until_state_change=True,
+                allow_readonly_probe=False,
+            )
+        )
+        self.assertFalse(decision.allow)
+        self.assertEqual(decision.stop_reason, "multi_file_readonly_budget_exhausted")
+
+    def test_pre_action_allows_new_readonly_probe_when_budget_exhausted(self):
+        decision = self.engine.evaluate_pre_action(
+            PreActionPolicyInput(
+                phase="OBSERVE",
+                cmd_type="read_file",
+                path="fresh.txt",
+                fingerprint="fp-5",
+                target_file=None,
+                forbidden_recover_fingerprint=None,
+                has_cross_target_reason=False,
+                multi_file_scope=True,
+                block_readonly_until_state_change=True,
+                allow_readonly_probe=True,
+            )
+        )
+        self.assertTrue(decision.allow)
+
 
 if __name__ == "__main__":
     unittest.main()

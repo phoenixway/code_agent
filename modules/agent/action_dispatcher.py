@@ -6,6 +6,7 @@ import hashlib
 import json
 import re
 import shlex
+from pathlib import Path
 from types import SimpleNamespace
 
 class ActionDispatcher:
@@ -475,7 +476,46 @@ class ActionDispatcher:
         for key in ("path", "before_execution", "during_execution", "after_execution"):
             if merged.get(key) in (None, "") and nested.get(key):
                 merged[key] = nested.get(key)
+        if not merged.get("path"):
+            inferred = self._infer_read_file_path(merged)
+            if inferred:
+                merged["path"] = inferred
         return merged
+
+    def _infer_read_file_path(self, command: dict) -> str | None:
+        """Best-effort path inference for malformed read_file payloads."""
+        if not isinstance(command, dict):
+            return None
+
+        direct_keys = ("path", "file", "file_path", "target", "target_path")
+        for key in direct_keys:
+            value = command.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+
+        text_parts = []
+        for key in ("before_execution", "during_execution", "after_execution", "reason", "note", "command"):
+            value = command.get(key)
+            if isinstance(value, str) and value.strip():
+                text_parts.append(value.strip())
+        blob = "\n".join(text_parts)
+        if not blob:
+            return None
+
+        path_match = re.search(r'([A-Za-z0-9._/\-]+/[A-Za-z0-9._/\-]+\.[A-Za-z0-9]+)', blob)
+        if path_match:
+            return path_match.group(1)
+
+        filename_matches = re.findall(r'\b([A-Za-z0-9._-]+\.[A-Za-z0-9]+)\b', blob)
+        unique_filenames = sorted(set(filename_matches))
+        if len(unique_filenames) != 1:
+            return None
+        filename = unique_filenames[0]
+        if re.match(r'^\d{2}_[A-Za-z0-9_-]+\.go$', filename):
+            return f"go_examples/{filename}"
+        if Path(filename).exists():
+            return filename
+        return None
 
     # --- Specific Handlers ---
 

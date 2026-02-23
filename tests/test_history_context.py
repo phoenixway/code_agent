@@ -125,6 +125,13 @@ class TestHistoryContext(unittest.TestCase):
         blob_file = Path(self.history.blobs_dir) / blob_hash
         self.assertTrue(blob_file.exists())
 
+    def test_ensure_transient_file_content_deduplicates_recent_duplicate(self):
+        self.history.add_transient_file_content("a.txt", 1, "same-content")
+        added = self.history.ensure_transient_file_content("a.txt", 1, "same-content", recent_window=8)
+        self.assertFalse(added)
+        transient_count = sum(1 for m in self.history.messages if m.get("type") == "transient_file_content")
+        self.assertEqual(transient_count, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

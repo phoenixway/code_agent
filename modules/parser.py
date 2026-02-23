@@ -89,23 +89,27 @@ class ResponseParser:
                 continue
 
             # More specific regex to extract data from the potential action block
-            action_match = re.match(r'<action(?:\s+type="([^"]+)")?>(.*?)</action>', part, flags=re.DOTALL | re.IGNORECASE)
+            action_match = re.match(r'<action([^>]*)>(.*?)</action>', part, flags=re.DOTALL | re.IGNORECASE)
             
             if action_match:
-                action_type = action_match.group(1) # This might be None
+                action_attrs_raw = action_match.group(1) or ""
                 json_content = action_match.group(2).strip()
+                action_attrs = self._parse_action_attributes(action_attrs_raw)
+                action_type = action_attrs.get("type")
                 
                 json_obj = self._extract_json(json_content)
                 
                 if json_obj and isinstance(json_obj, dict):
-                    # If type was captured from attribute, add it to the object.
-                    # This is the key fix: ensuring the type from the tag is in the dictionary.
-                    if action_type:
-                        json_obj['type'] = action_type.strip()
+                    # Merge attributes from <action ...> first (e.g., path="..."),
+                    # then let payload fields override if present.
+                    merged_obj = dict(action_attrs)
+                    merged_obj.update(json_obj)
+                    if action_type and "type" not in merged_obj:
+                        merged_obj["type"] = action_type.strip()
                     
                     # Now, check if the object is a valid action by looking for a 'type' or 'command' key.
-                    if any(k in json_obj for k in ["type", "command", "action"]):
-                        segments.append(Segment('action', json_obj))
+                    if any(k in merged_obj for k in ["type", "command", "action"]):
+                        segments.append(Segment('action', merged_obj))
                     else:
                         if self.log:
                             preview = part.strip().replace("\n", " ")[:240]
@@ -124,16 +128,38 @@ class ResponseParser:
 
         return segments
 
+    def _parse_action_attributes(self, attrs_raw: str) -> dict:
+        """Parses attributes from <action ...> into a dict, e.g. type/path."""
+        attrs = {}
+        if not isinstance(attrs_raw, str) or not attrs_raw.strip():
+            return attrs
+        for key, value in re.findall(r'([a-zA-Z_][\w\-]*)\s*=\s*"([^"]*)"', attrs_raw):
+            attrs[key.strip()] = value.strip()
+        return attrs
+
     def _parse_key_value_tags(self, text: str) -> Optional[dict]:
-        """Parses a string of <key>value</key> tags into a dictionary."""
+        """Parses XML-like key/value tags into a dictionary."""
         data = {}
-        # Regex to find <tag>value</tag>
-        pattern = re.compile(r'<([^>]+)>(.*?)</\1>', re.DOTALL | re.IGNORECASE)
-        matches = pattern.findall(text)
-        if not matches:
-            return None
-        for key, value in matches:
+
+        # Format A: <value name="path">file.txt</value>
+        named_value_pattern = re.compile(
+            r'<value\s+name="([^"]+)">(.*?)</value>',
+            re.DOTALL | re.IGNORECASE,
+        )
+        for key, value in named_value_pattern.findall(text):
             data[key.strip()] = value.strip()
+
+        # Format B: <path>file.txt</path>
+        simple_tag_pattern = re.compile(r'<([a-zA-Z_][\w\-]*)>(.*?)</\1>', re.DOTALL | re.IGNORECASE)
+        for key, value in simple_tag_pattern.findall(text):
+            key_clean = key.strip()
+            if key_clean.lower() == "value":
+                # Already handled above to avoid collisions.
+                continue
+            data[key_clean] = value.strip()
+
+        if not data:
+            return None
         return data
 
     def reconstruct(self, segments: List[Segment]) -> str:
@@ -173,10 +199,16 @@ class ResponseParser:
         # First, check for CDATA block
         cdata_match = re.match(r'^\s*<!\[CDATA\[(.*?)\]\]>\s*$', text, re.DOTALL)
         if cdata_match:
-            # If it's CDATA, assume it's a raw command string
-            # and wrap it in a JSON object with a 'command' key.
-            # This is specific to run_shell tools with CDATA.
-            return {"command": cdata_match.group(1).strip()}
+            cdata_body = cdata_match.group(1).strip()
+            # Prefer structured JSON payload if CDATA contains JSON.
+            # Fallback to raw command string for shell-like payloads.
+            try:
+                parsed = json.loads(cdata_body)
+                if isinstance(parsed, dict):
+                    return parsed
+            except Exception:
+                pass
+            return {"command": cdata_body}
 
         try:
             # First, try to load directly

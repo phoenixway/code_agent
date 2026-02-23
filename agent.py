@@ -109,7 +109,7 @@ class AngelicaAgent:
     async def get_response(self, query):
         """Отримує стрімінгову відповідь від ШІ."""
         full_text = ""
-        self.comm_log.info(f"--- OUTGOING ---\n{query}\n")
+        self.comm_log.info(self._format_comm_block("OUTGOING", query))
         try:
             async for chunk in self.chat.get_streaming_response(query, self.history.get_history_for_api()):
                 full_text += chunk
@@ -117,8 +117,14 @@ class AngelicaAgent:
             self.log.error(f"Chat error: {e}")
             return f"Error: {e}"
         
-        self.comm_log.info(f"--- INCOMING ---\n{full_text}\n")
+        self.comm_log.info(self._format_comm_block("INCOMING", full_text))
         return full_text
+
+    def _format_comm_block(self, direction: str, payload: str) -> str:
+        body = "" if payload is None else str(payload).strip("\n")
+        if not body:
+            return f"--- {direction} ---"
+        return f"--- {direction} ---\n{body}"
 
     async def process_user_input(self, user_input):
         """Головний цикл обробки вводу: Промпт -> ШІ -> Парсинг -> Послідовне виконання -> ШІ."""

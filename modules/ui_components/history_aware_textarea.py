@@ -69,6 +69,8 @@ class HistoryAwareTextArea(TextArea):
             return self.text_area
 
     BINDINGS = [
+        Binding("up", "history_up", show=False),
+        Binding("down", "history_down", show=False),
         Binding("ctrl+up", "history_up", show=False),
         Binding("ctrl+down", "history_down", show=False),
         Binding("tab", "accept_suggestion", show=False),
@@ -183,6 +185,13 @@ class HistoryAwareTextArea(TextArea):
         self._draft = ""
 
     def action_history_up(self) -> None:
+        # Keep native multiline cursor navigation unless we are at the first line
+        # or already browsing history.
+        if self._history_index == -1 and self.cursor_location[0] > 0:
+            if hasattr(super(), "action_cursor_up"):
+                super().action_cursor_up()
+            return
+
         if not self._history:
             return
 
@@ -198,7 +207,10 @@ class HistoryAwareTextArea(TextArea):
         self.move_cursor_to_end()
 
     def action_history_down(self) -> None:
+        # If history browsing is not active, preserve native cursor navigation.
         if self._history_index == -1:
+            if hasattr(super(), "action_cursor_down"):
+                super().action_cursor_down()
             return
 
         if self._history_index < len(self._history) - 1:

@@ -87,6 +87,10 @@ class AgentStateMachine:
         self.multi_file_scope = False
         self.current_file_focus: str | None = None
         self.per_file_readonly_streak = 0
+        self.multi_file_readonly_total = 0
+        self.block_readonly_until_state_change = False
+        self.multi_file_target_dir: str | None = None
+        self.multi_file_target_file_count = 0
 
     def start_turn(self, user_input: str):
         text = (user_input or "").lower()
@@ -138,6 +142,10 @@ class AgentStateMachine:
         self.seen_action_fingerprints.clear()
         self.current_file_focus = None
         self.per_file_readonly_streak = 0
+        self.multi_file_readonly_total = 0
+        self.block_readonly_until_state_change = False
+        self.multi_file_target_dir = None
+        self.multi_file_target_file_count = 0
 
     @staticmethod
     def _fingerprint(command: dict) -> str:
@@ -164,6 +172,13 @@ class AgentStateMachine:
         cmd_type = command.get("type") or command.get("action") or "unknown"
         fingerprint = self._fingerprint(command)
         path = command.get("path")
+        allow_readonly_probe = (
+            self.multi_file_scope
+            and cmd_type in {"read_file", "read_file_skeleton"}
+            and isinstance(path, str)
+            and bool(path)
+            and path not in self.seen_paths
+        )
         engine_decision: EnginePreActionDecision = self.policy_engine.evaluate_pre_action(
             PreActionPolicyInput(
                 phase=self.phase.value,
@@ -174,6 +189,8 @@ class AgentStateMachine:
                 forbidden_recover_fingerprint=self.forbidden_recover_fingerprint,
                 has_cross_target_reason=self._has_cross_target_reason(command),
                 multi_file_scope=self.multi_file_scope,
+                block_readonly_until_state_change=self.block_readonly_until_state_change,
+                allow_readonly_probe=allow_readonly_probe,
             )
         )
         return PreActionDecision(
@@ -274,6 +291,32 @@ class AgentStateMachine:
 
         return score
 
+    @staticmethod
+    def _count_listed_files(output_text: object) -> int:
+        text = str(output_text or "")
+        if not text:
+            return 0
+        count = 0
+        for line in text.splitlines():
+            line = line.strip()
+            if line.startswith("[F] "):
+                count += 1
+        return count
+
+    def _effective_multi_file_readonly_limit(self) -> int:
+        base_limit = max(
+            4,
+            int(getattr(self.config, "MULTI_FILE_READ_ONLY_GLOBAL_LIMIT", 10)),
+        )
+        if not self.multi_file_scope or self.mode != WorkMode.IMPLEMENT:
+            return base_limit
+        file_count = int(self.multi_file_target_file_count or 0)
+        if file_count <= 0:
+            return base_limit
+        # Dynamic budget: enough room to inspect most files once before forcing edit/write.
+        dynamic_limit = min(64, file_count + 4)
+        return max(base_limit, dynamic_limit)
+
     def note_action(self, command: dict, result: dict, state_changing_ops: set[str]):
         cmd_type = command.get("type") or command.get("action") or "unknown"
         status = result.get("status")
@@ -300,10 +343,18 @@ class AgentStateMachine:
             self.recent_signatures.append(fingerprint)
             self.current_file_focus = None
             self.per_file_readonly_streak = 0
+            self.multi_file_readonly_total = 0
+            self.block_readonly_until_state_change = False
             return
 
         if cmd_type in READ_ONLY_ACTIONS and status == "success":
             self.phase = AgentPhase.OBSERVE
+            if self.multi_file_scope and cmd_type == "list_directory":
+                listed = self._count_listed_files((result or {}).get("output", ""))
+                if listed > 0:
+                    self.multi_file_target_file_count = listed
+                    if path:
+                        self.multi_file_target_dir = path
             progress_score = self._compute_progress_score(command, fingerprint, result)
             self.last_progress_score = progress_score
             progress_signature = f"{cmd_type}:{command.get('path') or ''}:{fingerprint}"
@@ -318,6 +369,8 @@ class AgentStateMachine:
                     self.invariant_violations += 1
 
             if self.multi_file_scope and path:
+                if self.mode == WorkMode.IMPLEMENT:
+                    self.multi_file_readonly_total += 1
                 if path == self.current_file_focus:
                     self.per_file_readonly_streak += 1
                 else:
@@ -332,6 +385,13 @@ class AgentStateMachine:
                     # to deterministic fix/skip for the current file.
                     self.stagnation_count = max(self.stagnation_count, self._read_only_limit())
                     self.last_progress_score = min(self.last_progress_score, -2)
+                global_limit = self._effective_multi_file_readonly_limit()
+                if self.multi_file_readonly_total >= global_limit:
+                    # Hard escalation: in implementation mode, too many read-only actions
+                    # across many files means we must switch to edit/write or finalize.
+                    self.stagnation_count = max(self.stagnation_count, self._read_only_limit())
+                    self.last_progress_score = min(self.last_progress_score, -3)
+                    self.block_readonly_until_state_change = True
             self.recent_signatures.append(progress_signature)
             return
 
@@ -344,6 +404,7 @@ class AgentStateMachine:
         self.recent_signatures.append(fingerprint)
         self.current_file_focus = None
         self.per_file_readonly_streak = 0
+        self.block_readonly_until_state_change = False
 
     def build_diagnostic_prompt(self) -> str:
         target = self.target_file or "<unknown>"
@@ -354,7 +415,8 @@ class AgentStateMachine:
             "You repeated read-only actions without measurable progress.\n"
             "Respond with EXACTLY ONE action and avoid repeating previous read_file fingerprints.\n"
             "First explain briefly in <think> why progress stalled, then choose one of:\n"
-            "1) search_content with a tighter pattern, 2) edit_file with exact block, 3) write_file with concise validated content."
+            "1) search_content with a tighter pattern, 2) edit_file with exact block, 3) write_file with concise validated content.\n"
+            "For large rewrites prefer write_file. If using edit_file, keep search_text/replace_text short and exact."
         )
         if not self.multi_file_scope:
             return base
@@ -364,7 +426,9 @@ class AgentStateMachine:
             "Use a compact <plan> to list candidate files and current file index, then return EXACTLY ONE action.\n"
             "Execute strictly per file: read -> decide -> edit/write -> verify -> move to next file.\n"
             "Do not restart broad project-wide search once a candidate list exists.\n"
-            "After at most 2 read-only checks for the same file, do edit/write or explicitly skip that file and move on."
+            "After at most 2 read-only checks for the same file, do edit/write or explicitly skip that file and move on.\n"
+            "HARD RULE: In IMPLEMENT mode, avoid repeated read-only checks for already inspected files.\n"
+            "Next step must be edit_file/write_file, or finish with plain text summary if no edits are needed."
         )
 
     def build_pin_target_prompt(self) -> str:

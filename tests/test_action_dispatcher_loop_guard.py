@@ -1,4 +1,5 @@
 import unittest
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -217,6 +218,50 @@ class TestActionDispatcherLoopGuard(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Invalid read_file payload", result_text)
         self.assertEqual(state.pending_loop_stop_info.get("reason"), "malformed_read_file_payload")
         processor.process_single_action.assert_not_called()
+
+    async def test_read_file_infers_go_example_path_from_filename_hint(self):
+        ui = SimpleNamespace(
+            print_edit_file_start=AsyncMock(return_value=object()),
+            start_action=AsyncMock(),
+            update_edit_file_result=AsyncMock(),
+            print_tool_call=AsyncMock(),
+            print_plan=AsyncMock(),
+            print_command_result=AsyncMock(),
+            print_confirmation=AsyncMock(),
+            print_shell_start=AsyncMock(return_value=object()),
+            update_shell_result=AsyncMock(),
+            print_read_file_start=AsyncMock(return_value=object()),
+            update_read_file_result=AsyncMock(),
+        )
+        processor = SimpleNamespace(process_single_action=AsyncMock(return_value={"status": "success", "output": "ok"}))
+        config = SimpleNamespace(
+            STATE_CHANGING_OPS={"edit_file", "create_file", "run_shell"},
+            LOOP_ERROR_REPEAT_THRESHOLD=2,
+            READ_ONLY_REPEAT_THRESHOLD=3,
+            RECOVERABLE_ERROR_RETRY_BUDGET=2,
+            CRITICAL_ERROR_RETRY_BUDGET=1,
+        )
+        agent = SimpleNamespace(ui=ui, processor=processor, config=config, log=None)
+        dispatcher = ActionDispatcher(agent)
+        state = AgentState()
+
+        command = {
+            "type": "read_file",
+            "command": json.dumps(
+                {
+                    "type": "read_file",
+                    "before_execution": "Читаю файл 00_strings.go для перевірки",
+                    "during_execution": "Читання файлу...",
+                    "after_execution": "Файл прочитано",
+                },
+                ensure_ascii=False,
+            ),
+        }
+        cmd_copy, _result_text, should_stop = await dispatcher._execute_action(command, state)
+
+        self.assertFalse(should_stop)
+        self.assertEqual(cmd_copy.get("path"), "go_examples/00_strings.go")
+        processor.process_single_action.assert_awaited()
 
     async def test_repeated_read_only_run_shell_stops(self):
         ui = SimpleNamespace(

@@ -32,6 +32,8 @@ class PreActionPolicyInput:
     forbidden_recover_fingerprint: str | None
     has_cross_target_reason: bool
     multi_file_scope: bool = False
+    block_readonly_until_state_change: bool = False
+    allow_readonly_probe: bool = False
 
 
 @dataclass
@@ -57,6 +59,33 @@ class PolicyEngine:
 
     def evaluate_pre_action(self, ctx: PreActionPolicyInput) -> EnginePreActionDecision:
         rules = [
+            _Rule(
+                predicate=lambda c: (
+                    c.multi_file_scope
+                    and c.block_readonly_until_state_change
+                    and c.cmd_type in {
+                        "read_file",
+                        "read_file_skeleton",
+                        "search_content",
+                        "search_files",
+                        "list_directory",
+                        "find_files",
+                        "git_diff",
+                    }
+                    and not c.allow_readonly_probe
+                ),
+                build=lambda _c: EnginePreActionDecision(
+                    allow=False,
+                    stop_reason="multi_file_readonly_budget_exhausted",
+                    recovery_prompt=(
+                        "SYSTEM: Multi-file read-only budget is exhausted in IMPLEMENT mode. "
+                        "Do not repeat already checked read/search/list actions now. "
+                        "Reading a NEW target is allowed, but repeated probes are blocked. "
+                        "Next step must be edit_file or write_file, or finish with plain text if no edits are needed."
+                    ),
+                    required_next_action_types=["edit_file", "write_file"],
+                ),
+            ),
             _Rule(
                 predicate=lambda c: (
                     c.phase == "RECOVER"

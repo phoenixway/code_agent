@@ -184,6 +184,27 @@ class HistoryManager:
             "content": content
         }, msg_type="transient_file_content")
 
+    def ensure_transient_file_content(self, filename, version, content, recent_window: int = 8) -> bool:
+        """
+        Ensure transient read_file content is available in recent history.
+        Returns True if a new transient message was added, False if already present.
+        """
+        if not filename or version is None:
+            return False
+        window = max(1, int(recent_window))
+        for msg in reversed(self.messages[-window:]):
+            if msg.get("type") != "transient_file_content":
+                continue
+            data = msg.get("content") or {}
+            if (
+                data.get("filename") == filename
+                and data.get("version") == version
+                and data.get("content") == content
+            ):
+                return False
+        self.add_transient_file_content(filename, version, content)
+        return True
+
     # =========================================================================
     # 3. FILE STATE MANAGEMENT
     # =========================================================================

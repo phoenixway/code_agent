@@ -11,6 +11,7 @@ class TestStateMachine(unittest.TestCase):
             RESEARCH_STAGNATION_LIMIT=6,
             STAGNATION_MAX_DIAGNOSTICS=1,
             INVARIANT_VIOLATION_LIMIT=1,
+            MULTI_FILE_READ_ONLY_GLOBAL_LIMIT=6,
         )
         self.sm = AgentStateMachine(self.config)
         self.read_cmd = {"type": "read_file", "path": "a.txt"}
@@ -189,6 +190,59 @@ class TestStateMachine(unittest.TestCase):
 
         decision = self.sm.decide()
         self.assertEqual(decision.decision, DecisionType.MODEL_DIAGNOSTIC)
+
+    def test_multi_file_global_readonly_limit_escalates_to_diagnostic(self):
+        self.sm.start_turn("fix multiple files in folder")
+        for idx in range(6):
+            self.sm.note_action(
+                {"type": "read_file", "path": f"f{idx}.go"},
+                self.read_ok,
+                self.state_ops,
+            )
+        decision = self.sm.decide()
+        self.assertEqual(decision.decision, DecisionType.MODEL_DIAGNOSTIC)
+
+    def test_multi_file_budget_exhaustion_allows_new_file_probe(self):
+        self.sm.start_turn("fix multiple files in folder")
+        for idx in range(6):
+            self.sm.note_action(
+                {"type": "read_file", "path": f"f{idx}.go"},
+                self.read_ok,
+                self.state_ops,
+            )
+        pre = self.sm.pre_action_policy({"type": "read_file", "path": "next.go"})
+        self.assertTrue(pre.allow)
+
+    def test_multi_file_budget_exhaustion_blocks_repeated_file_probe(self):
+        self.sm.start_turn("fix multiple files in folder")
+        for idx in range(6):
+            self.sm.note_action(
+                {"type": "read_file", "path": f"f{idx}.go"},
+                self.read_ok,
+                self.state_ops,
+            )
+        pre = self.sm.pre_action_policy({"type": "read_file", "path": "f5.go"})
+        self.assertFalse(pre.allow)
+        self.assertEqual(pre.stop_reason, "multi_file_readonly_budget_exhausted")
+        self.assertIn("edit_file", pre.required_next_action_types)
+
+    def test_multi_file_readonly_limit_scales_with_directory_size(self):
+        self.sm.start_turn("fix multiple files in folder go_examples")
+        listing = "\n".join([f"[F] f{i}.go" for i in range(20)])
+        self.sm.note_action(
+            {"type": "list_directory", "path": "go_examples"},
+            {"status": "success", "output": f"Directory listing for go_examples:\n{listing}"},
+            self.state_ops,
+        )
+
+        for i in range(12):
+            self.sm.note_action(
+                {"type": "read_file", "path": f"go_examples/f{i}.go"},
+                self.read_ok,
+                self.state_ops,
+            )
+
+        self.assertFalse(self.sm.block_readonly_until_state_change)
 
     def test_recover_forbids_repeating_last_fingerprint(self):
         self.sm.start_turn("fix bug")
