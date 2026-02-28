@@ -8,3 +8,5 @@ debug.log
 communication.log
 .angelica_session.json
 .angelica/
+backups/
+*.zip
