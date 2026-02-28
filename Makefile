@@ -3,8 +3,10 @@
 PYTHON := python
 UNITTEST := -m unittest
 TEST_DIR := tests
+BACKUP_MAX_FILE_MB ?= 25
+BACKUP_OUTPUT ?=
 
-.PHONY: all run test smoke test-core test-modules test-tools test-commands lint clean help
+.PHONY: all run test smoke test-core test-modules test-tools test-commands lint clean help backup
 
 help:
 	@echo "Angelica AI Makefile"
@@ -18,6 +20,7 @@ help:
 	@echo "  make test-commands - Run CLI command tests (/add, /drop)"
 	@echo "  make smoke         - Run end-to-end smoke user flow test"
 	@echo "  make clean         - Remove temporary files (pycache, etc.)"
+	@echo "  make backup        - Create filtered zip backup (see backup.exclude)"
 
 # Run the application
 run:
@@ -48,6 +51,10 @@ clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +
 	find . -type d -name ".pytest_cache" -exec rm -rf {} +
 	rm -f communication.log
+
+# Backup
+backup:
+	$(PYTHON) scripts/backup.py --exclude-file backup.exclude --max-size-mb $(BACKUP_MAX_FILE_MB) $(if $(BACKUP_OUTPUT),--output $(BACKUP_OUTPUT),)
 
 # Versioning
 bump-patch:

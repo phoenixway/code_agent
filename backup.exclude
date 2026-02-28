@@ -1,0 +1,30 @@
+# Logs and runtime noise
+*.log
+*.log.*
+
+# Python caches and virtual env
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+venv/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# VCS and editor/system metadata
+.git/
+.idea/
+.vscode/
+.DS_Store
+
+# Generated dumps / sessions / tmp
+dumps/
+sessions/
+*.tmp
+
+# Keep backups clean (no nested zips)
+backups/
+*.zip
