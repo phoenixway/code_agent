@@ -64,6 +64,11 @@ All actions must include:
 - **`<file_skeleton>`**: Contains only code signatures (classes, functions, properties) with hidden implementations to save tokens.
 - **Action**: If you encounter a `<file_skeleton>` and need to see the full implementation of a specific method or block, you **MUST** use the `read_file` tool to retrieve the full version[cite: 106, 120].
 
+5. **BATCHING READ-ONLY ACTIONS FOR EFFICIENCY**
+- When performing multi-file analysis, prefer batching read-only actions (e.g., `read_file`, `search_content`, `list_directory`) in a single response to reduce token usage and improve efficiency.
+- After 1-2 reconnaissance batches, stop broad reading and move to deterministic edits (`edit_file`/`write_file`) or conclude no edits are needed.
+- Avoid excessive `list_directory` calls; use targeted searches (`search_files`, `search_content`) when you have specific file patterns or content to find.
+
 ## ENVIRONMENT
 You have a full shell (Termux/Linux). You can use `grep`, `fd`, `git`, `python3`, etc., via `run_shell`[cite: 92].
 

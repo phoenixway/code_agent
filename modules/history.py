@@ -62,6 +62,8 @@ class HistoryManager:
         self._next_emergency_summary_tokens = int(self.max_tokens * self.EMERGENCY_SUMMARY_RATIO)
         self._last_summary_at = 0.0
         self._last_summary_tokens = 0
+        self._observe_summary_deferrals_remaining = 0
+        self._last_summary_execution_snapshot = ""
 
     # =========================================================================
     # 1. BLOB STORAGE (Content-Addressable Storage)
@@ -419,7 +421,54 @@ class HistoryManager:
     def current_token_count(self):
         return self.count_tokens()
 
-    async def check_and_summarize(self, ui=None):
+    def has_current_file_version(self, filename: str) -> bool:
+        versions = self.files.get(filename) or []
+        return bool(versions)
+
+    def was_recently_summarized(self, window_sec: int = 90) -> bool:
+        if self._last_summary_at <= 0:
+            return False
+        return (time.time() - self._last_summary_at) <= max(1, int(window_sec))
+
+    def _recent_read_file_count(self, window: int = 10) -> int:
+        count = 0
+        for msg in self.messages[-max(1, int(window)):]:
+            if msg.get("type") == "transient_file_content":
+                count += 1
+        return count
+
+    def _build_execution_snapshot(self, state=None) -> str:
+        phase = None
+        target = None
+        if state is not None:
+            sm = getattr(state, "state_machine", None)
+            if sm is not None:
+                phase = getattr(sm, "phase", None)
+                target = getattr(sm, "target_file", None)
+        recent_files = []
+        for msg in reversed(self.messages):
+            if msg.get("type") == "transient_file_content":
+                data = msg.get("content") or {}
+                name = data.get("filename")
+                ver = data.get("version")
+                if name:
+                    token = f"{name}@v{ver}"
+                    if token not in recent_files:
+                        recent_files.append(token)
+                if len(recent_files) >= 6:
+                    break
+        recent_files.reverse()
+        lines = ["EXECUTION SNAPSHOT"]
+        if phase is not None:
+            lines.append(f"phase={getattr(phase, 'value', phase)}")
+        if target:
+            lines.append(f"target_file={target}")
+        if recent_files:
+            lines.append("recent_read_files=" + ", ".join(recent_files))
+        lines.append("do_not_reread_without_reason=true")
+        return "\n".join(lines)
+
+    async def check_and_summarize(self, ui=None, state=None):
         """Trigger summarization if limit reached."""
         tokens = self.count_tokens()
         if tokens <= self.max_tokens:
@@ -428,12 +477,32 @@ class HistoryManager:
             return
         now = time.time()
 
+        sm = getattr(state, "state_machine", None) if state is not None else None
+        if sm is not None and getattr(sm.phase, "value", sm.phase) == "OBSERVE":
+            defer_budget = max(0, int(getattr(sm.config, "SUMMARY_DEFER_OBSERVE_STEPS", 1)))
+            min_reads = max(1, int(getattr(sm.config, "SUMMARY_MIN_READS_BEFORE_DEFER", 2)))
+            if self._observe_summary_deferrals_remaining <= 0:
+                self._observe_summary_deferrals_remaining = defer_budget
+            if (
+                tokens < int(self.max_tokens * self.EMERGENCY_SUMMARY_RATIO)
+                and self._observe_summary_deferrals_remaining > 0
+                and self._recent_read_file_count() >= min_reads
+            ):
+                self._observe_summary_deferrals_remaining -= 1
+                if self.logger:
+                    self.logger.info(
+                        "Summary.defer reason=observe_recon tokens=%s remaining=%s",
+                        tokens,
+                        self._observe_summary_deferrals_remaining,
+                    )
+                return
+
         # Hard guard: if history is heavily overflown, summarize immediately.
         emergency_threshold = int(self.max_tokens * self.EMERGENCY_SUMMARY_RATIO)
         if tokens >= emergency_threshold and tokens >= self._next_emergency_summary_tokens:
             if ui:
                 await ui.print_system("History is critically over limit. Running emergency compact...")
-            await self.summarize(ui, window=True)
+            await self.summarize(ui, window=True, state=state)
             cooldown = max(self.EMERGENCY_SUMMARY_COOLDOWN_MIN, self.max_tokens // 8)
             self._next_emergency_summary_tokens = self.count_tokens() + cooldown
             return
@@ -471,9 +540,9 @@ class HistoryManager:
                 return
 
         # Default mode: keep control in AI loop (no modal confirmation).
-        await self.summarize(ui, window=True)
+        await self.summarize(ui, window=True, state=state)
 
-    async def summarize(self, ui=None, window=True):
+    async def summarize(self, ui=None, window=True, state=None):
         """Summarize old messages."""
         if window and len(self.messages) > self.window_size:
             to_summarize = self.messages[:-self.window_size]
@@ -522,7 +591,8 @@ class HistoryManager:
 
             target_tokens = max(256, int(self.max_tokens * self.SUMMARY_TARGET_RATIO))
             summary_out = self._truncate_text_to_tokens(summary_out, max(128, target_tokens // 2))
-            summary_msg = {"role": "system", "content": f"Previous conversation summary: {summary_out}"}
+            self._last_summary_execution_snapshot = execution_snapshot
+            summary_msg = {"role": "system", "content": f"Previous conversation summary: {summary_out}\n\n{execution_snapshot}"}
 
             kept = list(keep_messages)
             while kept and self.count_tokens([summary_msg] + kept) > target_tokens:

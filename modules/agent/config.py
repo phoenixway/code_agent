@@ -26,6 +26,19 @@ class AgentConfig:
         self.MULTI_FILE_READ_ONLY_GLOBAL_LIMIT = self._get_positive_int(
             "multi_file_read_only_global_limit", 10
         )
+        self.MAX_REPEAT_READ_SAME_FILE = self._get_positive_int("max_repeat_read_same_file", 1)
+        self.SUMMARY_DEFER_OBSERVE_STEPS = self._get_positive_int("summary_defer_observe_steps", 1)
+        self.SUMMARY_MIN_READS_BEFORE_DEFER = self._get_positive_int("summary_min_reads_before_defer", 2)
+        self.RECENT_SUMMARY_REREAD_WINDOW_SEC = self._get_positive_int("recent_summary_reread_window_sec", 90)
+        self.TASK_CONTRACT_FORCE_IMPLEMENT_FOR_HYBRID = bool(self.settings.get("task_contract_force_implement_for_hybrid", True))
+        self.TASK_CONTRACT_BLOCK_WRITES_FOR_INSPECTION = bool(self.settings.get("task_contract_block_writes_for_inspection", False))
+        self.OBSERVE_PHASE_BUDGET = self._get_positive_int("observe_phase_budget", 6)
+        self.MAX_ROOT_LISTINGS_PER_TURN = self._get_positive_int("max_root_listings_per_turn", 1)
+        self.MAX_DIRECTORY_DESCENT_CHAIN = self._get_positive_int("max_directory_descent_chain", 3)
+        self.MAX_BROAD_RECON_BATCHES = self._get_positive_int("max_broad_recon_batches", 2)
+        self.MAX_LIST_DIRECTORY_ACTIONS_PER_TURN = self._get_positive_int("max_list_directory_actions_per_turn", 4)
+        self.PROJECT_INSPECTION_FORCE_ENTRYPOINTS_FIRST = bool(self.settings.get("project_inspection_force_entrypoints_first", True))
+        self.PROJECT_INSPECTION_PREFER_SEARCH_OVER_LIST = bool(self.settings.get("project_inspection_prefer_search_over_list", True))
         
         # Операції, що змінюють стан (викликають зупинку циклу для підтвердження або роздумів)
         self.STATE_CHANGING_OPS = {

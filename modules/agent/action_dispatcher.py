@@ -39,6 +39,12 @@ class ActionDispatcher:
         action_ordinal = 0
         if batch_notes:
             system_results.extend(batch_notes)
+        sm = getattr(state, "state_machine", None)
+        if sm is not None and hasattr(sm, "note_planned_batch"):
+            try:
+                sm.note_planned_batch([action_commands[i] for i in execute_indices])
+            except Exception:
+                pass
         
         for segment in segments:
             if segment.type == 'thought':
@@ -140,24 +146,38 @@ class ActionDispatcher:
         return cmd_type in read_only_tools
 
     def _build_history_audit_line(self, command: dict) -> str:
-        def _esc(value: object) -> str:
-            return str(value).replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;").replace(">", "&gt;")
-
         cmd_type = command.get("type") or command.get("action", "unknown")
-        path = command.get("path")
-        attrs = [f'type="{_esc(cmd_type)}"']
-        if isinstance(path, str) and path:
-            attrs.append(f'path="{_esc(path)}"')
+        path = command.get("path") if isinstance(command.get("path"), str) and command.get("path") else None
+
+        payload = {"type": cmd_type}
+        if path:
+            payload["path"] = path
 
         if command.get("content_redacted") is True:
             size = command.get("content_size")
             blob = command.get("content_blob_hash")
             blob_short = (str(blob)[:12] + "...") if blob else "unknown"
-            attrs.append(f'content="{_esc(f"REDACTED(size={size}, blob={blob_short})")}"')
+            payload["content"] = f"REDACTED(size={size}, blob={blob_short})"
         else:
-            attrs.append('content="none"')
+            payload["content"] = "none"
 
-        return f"<previously_performed_action {' '.join(attrs)} />"
+        return "TOOL_HISTORY " + json.dumps(payload, ensure_ascii=False, sort_keys=True)
+
+    def _has_explicit_reread_reason(self, command: dict) -> bool:
+        reason_fields = (
+            command.get("reason"),
+            command.get("because"),
+            command.get("before_execution"),
+            command.get("note"),
+        )
+        blob = " ".join(str(x) for x in reason_fields if x).lower()
+        return any(token in blob for token in ("exact", "verify", "patch", "edit", "implementation", "точн", "перевір", "патч", "редаг"))
+
+    def _error_code_from_reason(self, reason: str | None, default: str = "STATE_MACHINE_POLICY_DENY") -> str:
+        if not isinstance(reason, str) or not reason.strip():
+            return default
+        code = re.sub(r"[^A-Z0-9]+", "_", reason.upper()).strip("_")
+        return code or default
 
     async def _execute_action(self, command, state):
         """Виконує одну дію, керує UI та повертає результат."""
@@ -183,6 +203,41 @@ class ActionDispatcher:
                         "Action.finish type=read_file should_stop=True reason=malformed_read_file_payload"
                     )
                 return self._sanitize_command_for_history(command), full_result_text, True
+            history = getattr(self.agent, "history", None)
+            path = command.get("path") if isinstance(command.get("path"), str) else None
+            if history is not None and path and getattr(history, "has_current_file_version", lambda _p: False)(path):
+                if not self._has_explicit_reread_reason(command):
+                    recently_summarized = bool(getattr(history, "was_recently_summarized", lambda _w=90: False)(getattr(self.config, "RECENT_SUMMARY_REREAD_WINDOW_SEC", 90)))
+                    reason = "reread_after_summary" if recently_summarized else "reread_already_in_history"
+                    output_text = (
+                        "SYSTEM: This file is already available in history at the current version. "
+                        "Re-reading it without a specific reason is blocked. Use existing context, "
+                        "narrow with search_content, or proceed to edit_file/write_file."
+                    )
+                    state.pending_loop_stop_info = {
+                        "reason": reason,
+                        "recoverable": True,
+                        "error_code": "FILE_ALREADY_AVAILABLE_USE_EXISTING_CONTEXT",
+                        "next_actions": ["search_content", "edit_file", "write_file"],
+                        "command": command.copy(),
+                    }
+                    full_result_text = f"SYSTEM RESULT for `{cmd_type}`: {output_text}"
+                    return self._sanitize_command_for_history(command), full_result_text, True
+
+        if cmd_type == "list_directory" and not command.get("path"):
+            output_text = (
+                "SYSTEM: Invalid list_directory payload: explicit `path` is required. "
+                "Do not omit path in read-only batches. Root listing without intent is blocked."
+            )
+            state.pending_loop_stop_info = {
+                "reason": "list_directory_missing_path",
+                "recoverable": True,
+                "error_code": "LIST_DIRECTORY_MISSING_PATH",
+                "next_actions": ["list_directory", "search_files", "search_content"],
+                "command": command.copy(),
+            }
+            full_result_text = f"SYSTEM RESULT for `{cmd_type}`: {output_text}"
+            return self._sanitize_command_for_history(command), full_result_text, True
 
         command_for_history = self._sanitize_command_for_history(command)
         sm = getattr(state, "state_machine", None)
@@ -194,7 +249,7 @@ class ActionDispatcher:
                 state.pending_loop_stop_info = {
                     "reason": pre_decision.stop_reason or "policy_denied",
                     "recoverable": True,
-                    "error_code": "STATE_MACHINE_POLICY_DENY",
+                    "error_code": self._error_code_from_reason(pre_decision.stop_reason),
                     "next_actions": pre_decision.required_next_action_types or [],
                     "command": command.copy(),
                 }

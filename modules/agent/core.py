@@ -54,6 +54,7 @@ class AngelicaAgent:
             max_tokens=self.config.max_history_tokens,
             autosummarize_requires_confirmation=self.config.autosummarize_requires_confirmation,
         )
+        self.state.state_machine.history = self.history
         
         self.session_manager = SessionManager(
             self.history,

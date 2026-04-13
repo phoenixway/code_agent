@@ -15,22 +15,75 @@ class Orchestrator:
         self.parser = agent.parser
         self.config = agent.config
 
-    def _build_action_format_recovery_prompt(self, header: str, *, forbid_audit_markers: bool = False) -> str:
+    def _build_action_format_recovery_prompt(self, header: str, *, forbid_audit_markers: bool = False, state_changing_only: bool = False) -> str:
         lines = [
             f"SYSTEM: {header}",
             "Return only valid <action> content for the next step.",
-            "For read-only investigation, multiple separate <action>...</action> blocks are allowed.",
-            "Compatible format: one <action>...</action> block may contain a JSON array of read-only action objects.",
-            "For any state-changing step, return only one valid <action>.",
-            "Do not use JSON arrays for state-changing actions.",
+        ]
+        if state_changing_only:
+            lines.extend([
+                "For this recovery step, return exactly one valid state-changing <action>.",
+                "Do not return read-only batching here.",
+            ])
+        else:
+            lines.extend([
+                "For read-only investigation, multiple separate <action>...</action> blocks are allowed.",
+                "Compatible format: one <action>...</action> block may contain a JSON array of read-only action objects.",
+                "For any state-changing step, return only one valid <action>.",
+                "Do not use JSON arrays for state-changing actions.",
+            ])
+        lines.extend([
             "No prose outside <action>.",
             "If unsure, prefer separate <action> blocks.",
-        ]
+        ])
         if forbid_audit_markers:
-            lines.append(
-                "Do not output audit markers like SYSTEM_TOOL_AUDIT or <previously_performed_action>."
-            )
+            lines.append("Do not output audit markers like SYSTEM_TOOL_AUDIT, TOOL_HISTORY, or <previously_performed_action>.")
         return "\n".join(lines)
+
+    def _typed_recovery_header(self, stop_info: dict | None) -> str:
+        stop_info = stop_info or {}
+        reason = str(stop_info.get("reason") or "").strip()
+        code = str(stop_info.get("error_code") or "").strip()
+        next_actions = stop_info.get("next_actions") or []
+        if not isinstance(next_actions, list):
+            next_actions = []
+        next_hint = f"\nAllowed next actions: {', '.join(next_actions)}." if next_actions else ""
+
+        headers = {
+            "reread_after_summary": "You just summarized context and then tried to re-read a file already in history without a specific reason. Use existing context instead.",
+            "reread_already_in_history": "You tried to re-read a file that is already available in history without a specific reason.",
+            "observe_budget_exhausted": "OBSERVE phase budget is exhausted. Transition to EDIT_PLAN now.",
+            "action_not_allowed_in_phase": "The requested action is not allowed in the current phase.",
+            "root_listing_budget_exhausted": "Root-level directory listing budget is exhausted for this turn.",
+            "list_directory_budget_exhausted": "list_directory budget is exhausted for this turn.",
+            "directory_descent_budget_exhausted": "Directory descent budget is exhausted. Stop walking folders one level at a time.",
+            "broad_recon_budget_exhausted": "Broad reconnaissance budget is exhausted. Narrow the search or move to editing.",
+            "cross_target_read_without_reason": "Target file is pinned. Reading another file now requires an explicit reason.",
+            "recover_repeated_fingerprint": "You repeated the same action fingerprint after recovery.",
+            "malformed_read_file_payload": "Your last read_file call used an invalid payload.",
+            "list_directory_missing_path": "Your last list_directory call omitted the required path.",
+            "repeating_no_progress": "You are repeating actions without measurable progress.",
+            "repeating_failure": "You are repeating failing actions without changing strategy.",
+        }
+        if reason in headers:
+            return headers[reason] + next_hint
+        if code == "FILE_ALREADY_AVAILABLE_USE_EXISTING_CONTEXT":
+            return "This file is already available in history at the current version. Re-reading it without a specific reason is blocked." + next_hint
+        if code == "LIST_DIRECTORY_MISSING_PATH":
+            return "list_directory requires an explicit path. Root fallback is blocked in recovery." + next_hint
+        if code == "MALFORMED_READ_FILE_PAYLOAD":
+            return "read_file requires a top-level path field in valid JSON." + next_hint
+        return "Previous action violated orchestration policy. Choose a different strategy and follow the required next actions." + next_hint
+
+    def _build_typed_stop_recovery_prompt(self, stop_info: dict | None) -> str:
+        stop_info = stop_info or {}
+        reason = str(stop_info.get("reason") or "").strip()
+        state_changing_only = reason in {"repeating_failure", "repeating_no_progress", "observe_budget_exhausted"}
+        return self._build_action_format_recovery_prompt(
+            self._typed_recovery_header(stop_info),
+            forbid_audit_markers=True,
+            state_changing_only=state_changing_only,
+        )
         
     async def process(self, user_input):
         """Головний цикл: Think -> Act -> Loop."""
@@ -47,6 +100,8 @@ class Orchestrator:
         sm = getattr(self.state, "state_machine", None)
         if sm is not None:
             sm.start_turn(user_input)
+            if self.agent.log:
+                self.agent.log.debug(f"Task contract: kind={getattr(sm, 'task_kind', None)} phase={getattr(sm, 'phase', None)}")
         
         active_loop = True
         consecutive_calls = 0
@@ -62,7 +117,7 @@ class Orchestrator:
             while active_loop:
                 try:
                     # Keep context under control before next model call.
-                    await self.history.check_and_summarize(self.ui)
+                    await self.history.check_and_summarize(self.ui, self.state)
                 except Exception as e:
                     if self.agent.log:
                         self.agent.log.warning(f"Pre-step summarization check failed: {e}")
@@ -170,6 +225,7 @@ class Orchestrator:
                 response_lower = response.lower()
                 contains_audit_marker = (
                     "system_tool_audit:" in response_lower
+                    or response_lower.strip().startswith("tool_history ")
                     or "<previously_performed_action" in response_lower
                 )
                 if contains_audit_marker and not has_action_segment:
@@ -316,6 +372,11 @@ class Orchestrator:
                             self.state.pending_loop_stop_info = None
                             continue
 
+                        if stop_info and stop_info.get("recoverable"):
+                            current_query = self._build_typed_stop_recovery_prompt(stop_info)
+                            should_stop = False
+                            self.state.pending_loop_stop_info = None
+                            continue
                         await self.ui.print_system(
                             "Execution stopped by control policy (for example, denied action)."
                         )
@@ -384,7 +445,7 @@ class Orchestrator:
             
             # 6. Summarization
             try:
-                await self.history.check_and_summarize(self.ui)
+                await self.history.check_and_summarize(self.ui, self.state)
             except Exception as e:
                 if self.agent.log: self.agent.log.warning(f"Summarization error: {e}")
         except asyncio.CancelledError:
