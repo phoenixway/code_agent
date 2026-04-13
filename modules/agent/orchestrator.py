@@ -14,6 +14,23 @@ class Orchestrator:
         self.dispatcher = agent.action_dispatcher
         self.parser = agent.parser
         self.config = agent.config
+
+    def _build_action_format_recovery_prompt(self, header: str, *, forbid_audit_markers: bool = False) -> str:
+        lines = [
+            f"SYSTEM: {header}",
+            "Return only valid <action> content for the next step.",
+            "For read-only investigation, multiple separate <action>...</action> blocks are allowed.",
+            "Compatible format: one <action>...</action> block may contain a JSON array of read-only action objects.",
+            "For any state-changing step, return only one valid <action>.",
+            "Do not use JSON arrays for state-changing actions.",
+            "No prose outside <action>.",
+            "If unsure, prefer separate <action> blocks.",
+        ]
+        if forbid_audit_markers:
+            lines.append(
+                "Do not output audit markers like SYSTEM_TOOL_AUDIT or <previously_performed_action>."
+            )
+        return "\n".join(lines)
         
     async def process(self, user_input):
         """Головний цикл: Think -> Act -> Loop."""
@@ -134,10 +151,10 @@ class Orchestrator:
                         )
                         break
                     current_query = (
-                        "SYSTEM: Your last response contained a malformed <action> block.\n"
-                        "Return EXACTLY ONE valid <action> JSON block for the next step.\n"
-                        "No prose outside <action>.\n"
-                        "If the edit payload is large, prefer write_file.\n"
+                        self._build_action_format_recovery_prompt(
+                            "Your last response contained malformed <action> content."
+                        )
+                        + "\nIf the edit payload is large, prefer write_file.\n"
                         "If using edit_file, keep search_text/replace_text short and exact."
                     )
                     self.state.set_malformed_grace(self.config.MALFORMED_ACTION_GRACE_STEPS)
@@ -166,10 +183,9 @@ class Orchestrator:
                             "Execution stopped: model repeatedly echoed audit trail without a valid action."
                         )
                         break
-                    current_query = (
-                        "SYSTEM: Your last response echoed an internal audit marker instead of a tool call.\n"
-                        "Return EXACTLY ONE valid <action> JSON block for the next step.\n"
-                        "Do not output audit markers like SYSTEM_TOOL_AUDIT or <previously_performed_action>."
+                    current_query = self._build_action_format_recovery_prompt(
+                        "Your last response echoed an internal audit marker instead of a tool call.",
+                        forbid_audit_markers=True,
                     )
                     continue
                 audit_marker_retries = 0

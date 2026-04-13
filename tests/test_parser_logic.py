@@ -36,6 +36,90 @@ class TestResponseParser(unittest.TestCase):
         self.assertEqual(segments[3].type, 'action')
         self.assertEqual(segments[3].content['type'], "cmd2")
 
+    def test_single_action_object(self):
+        text = '<action>{"type": "read_file", "path": "a.txt"}</action>'
+        segments = self.parser.parse(text)
+
+        self.assertEqual(len(segments), 1)
+        self.assertEqual(segments[0].type, "action")
+        self.assertEqual(segments[0].content["type"], "read_file")
+        self.assertEqual(segments[0].content["path"], "a.txt")
+
+    def test_multiple_separate_action_tags(self):
+        text = (
+            '<action>{"type": "list_directory", "path": "a"}</action>\n'
+            '<action>{"type": "list_directory", "path": "b"}</action>'
+        )
+        segments = self.parser.parse(text)
+
+        self.assertEqual(len(segments), 2)
+        self.assertTrue(all(segment.type == "action" for segment in segments))
+        self.assertEqual([segment.content["path"] for segment in segments], ["a", "b"])
+
+    def test_single_action_with_array_of_valid_objects(self):
+        text = """<action>
+[
+  {"type": "list_directory", "path": "a"},
+  {"type": "list_directory", "path": "b"}
+]
+</action>"""
+        segments = self.parser.parse(text)
+
+        self.assertEqual(len(segments), 2)
+        self.assertTrue(all(segment.type == "action" for segment in segments))
+        self.assertEqual([segment.content["path"] for segment in segments], ["a", "b"])
+
+    def test_single_action_with_array_where_some_objects_invalid(self):
+        text = """<action>
+[
+  {"type": "list_directory", "path": "a"},
+  {"path": "missing-type"},
+  42,
+  {"command": "list_directory", "path": "b"}
+]
+</action>"""
+        segments = self.parser.parse(text)
+
+        self.assertEqual(len(segments), 2)
+        self.assertTrue(all(segment.type == "action" for segment in segments))
+        self.assertEqual(segments[0].content["path"], "a")
+        self.assertEqual(segments[1].content["path"], "b")
+
+    def test_single_action_with_array_and_type_in_tag_attribute(self):
+        text = """<action type="list_directory">
+[
+  {"path": "a"},
+  {"path": "b"}
+]
+</action>"""
+        segments = self.parser.parse(text)
+
+        self.assertEqual(len(segments), 2)
+        self.assertTrue(all(segment.type == "action" for segment in segments))
+        self.assertEqual([segment.content["type"] for segment in segments], ["list_directory", "list_directory"])
+        self.assertEqual([segment.content["path"] for segment in segments], ["a", "b"])
+
+    def test_single_action_with_malformed_json_array(self):
+        text = """<action>
+[
+  {"type": "list_directory", "path": "a",
+  {"type": "list_directory", "path": "b"}
+]
+</action>"""
+        segments = self.parser.parse(text)
+
+        self.assertEqual(len(segments), 1)
+        self.assertEqual(segments[0].type, "text")
+        self.assertIn("<action>", segments[0].content)
+
+    def test_single_action_with_scalar_json_payload_is_text(self):
+        text = '<action>"read_file"</action>'
+        segments = self.parser.parse(text)
+
+        self.assertEqual(len(segments), 1)
+        self.assertEqual(segments[0].type, "text")
+        self.assertIn('<action>"read_file"</action>', segments[0].content)
+
     def test_json_inside_thought_ignored(self):
         text = '<think>I am thinking about <action>{"type": "bad"}</action></think> <action>{"type": "good"}</action>'
         segments = self.parser.parse(text)

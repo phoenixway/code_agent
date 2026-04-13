@@ -27,9 +27,13 @@ All actions must include:
     - Keep read-only batches compact (recommended: 2-4 actions).
     - If a batch action fails, immediately switch to recovery for that action instead of continuing the same batch plan.
     - For multi-file analysis tasks, prefer read-only batching by default: return 3-5 read-only actions in one response before any write step.
+    - Preferred format: return multiple separate `<action>...</action>` blocks, one read-only action per block.
+    - Compatible fallback: one `<action>...</action>` block may contain a JSON array of read-only action objects.
+    - If unsure, prefer separate `<action>` blocks.
     - Prefer one batch that reads several distinct files over many single-file read steps.
     - After 1-2 reconnaissance batches, stop broad reading and move to deterministic `edit_file` / `write_file` (or explicitly conclude no edits are needed).
 2.  **Smart Stop**: If a response includes a state-modifying action (one that alters files or system state), only that first action will be executed[cite: 83]. The agent will then immediately use the result of that action to determine the next step in its autonomous loop[cite: 84]. Do not batch state-modifying actions with other actions in the same response[cite: 85].
+    - Do not use JSON arrays for state-modifying actions.
     The following actions are state-modifying[cite: 86]:
     - `run_shell`
     - `create_file`

@@ -10,6 +10,8 @@ class Segment:
     content: Any
 
 class ResponseParser:
+    ACTION_KEYS = ("type", "command", "action")
+
     def __init__(self):
         self.log = logging.getLogger("debug")
 
@@ -95,25 +97,18 @@ class ResponseParser:
                 action_attrs_raw = action_match.group(1) or ""
                 json_content = action_match.group(2).strip()
                 action_attrs = self._parse_action_attributes(action_attrs_raw)
-                action_type = action_attrs.get("type")
-                
-                json_obj = self._extract_json(json_content)
-                
-                if json_obj and isinstance(json_obj, dict):
-                    # Merge attributes from <action ...> first (e.g., path="..."),
-                    # then let payload fields override if present.
-                    merged_obj = dict(action_attrs)
-                    merged_obj.update(json_obj)
-                    if action_type and "type" not in merged_obj:
-                        merged_obj["type"] = action_type.strip()
-                    
-                    # Now, check if the object is a valid action by looking for a 'type' or 'command' key.
-                    if any(k in merged_obj for k in ["type", "command", "action"]):
-                        segments.append(Segment('action', merged_obj))
+                json_payload = self._extract_json(json_content)
+
+                if json_payload is not None:
+                    normalized_actions = self._normalize_action_payload(action_attrs, json_payload)
+                    if normalized_actions:
+                        segments.extend(Segment('action', action_obj) for action_obj in normalized_actions)
                     else:
                         if self.log:
                             preview = part.strip().replace("\n", " ")[:240]
-                            self.log.warning(f"Parser warning: action block missing required keys. Preview: {preview}")
+                            self.log.warning(
+                                f"Parser warning: action block missing required keys. Preview: {preview}"
+                            )
                         segments.append(Segment('text', part)) # Not a valid command, treat as text
                 else:
                     if self.log:
@@ -161,6 +156,62 @@ class ResponseParser:
         if not data:
             return None
         return data
+
+    def _normalize_action_payload(self, action_attrs: dict, json_obj_or_list: Any) -> List[dict]:
+        """
+        Normalizes a parsed <action> payload into a list of valid action dicts.
+        A single object yields zero or one actions; an array may expand into many.
+        """
+        if isinstance(json_obj_or_list, dict):
+            normalized = self._merge_action_item(action_attrs, json_obj_or_list)
+            return [normalized] if normalized else []
+
+        if isinstance(json_obj_or_list, list):
+            if self.log:
+                self.log.debug("Parser debug: action array payload detected.")
+            normalized_actions = []
+            invalid_items = 0
+            for item in json_obj_or_list:
+                normalized = self._merge_action_item(action_attrs, item)
+                if normalized:
+                    normalized_actions.append(normalized)
+                else:
+                    invalid_items += 1
+
+            if normalized_actions:
+                if self.log:
+                    self.log.debug(
+                        "Parser debug: action array payload expanded into %s actions.",
+                        len(normalized_actions),
+                    )
+                    if invalid_items:
+                        self.log.warning(
+                            "Parser warning: action array payload ignored %s invalid item(s).",
+                            invalid_items,
+                        )
+                return normalized_actions
+
+            if self.log:
+                self.log.warning("Parser warning: action array payload rejected because no valid action items.")
+            return []
+
+        return []
+
+    def _merge_action_item(self, action_attrs: dict, payload: Any) -> Optional[dict]:
+        """Merges <action> attributes with one payload item and validates action shape."""
+        if not isinstance(payload, dict):
+            return None
+
+        merged_obj = dict(action_attrs)
+        merged_obj.update(payload)
+
+        action_type = action_attrs.get("type")
+        if action_type and "type" not in merged_obj:
+            merged_obj["type"] = action_type.strip()
+
+        if any(key in merged_obj for key in self.ACTION_KEYS):
+            return merged_obj
+        return None
 
     def reconstruct(self, segments: List[Segment]) -> str:
         """

@@ -145,7 +145,76 @@ class TestOrchestratorStateMachine(unittest.IsolatedAsyncioTestCase):
         queries = [call.args[0] for call in model_client.get_streaming_response.await_args_list]
         self.assertGreaterEqual(len(queries), 2)
         self.assertIn("Do not output audit markers", queries[1])
+        self.assertIn("multiple separate <action>...</action> blocks are allowed", queries[1])
+        self.assertIn("JSON array of read-only action objects", queries[1])
+        self.assertNotIn("Return EXACTLY ONE valid <action> JSON block", queries[1])
         ui.print_error.assert_not_awaited()
+
+    async def test_orchestrator_malformed_action_recovery_allows_read_only_batching(self):
+        ui = SimpleNamespace(
+            print_error=AsyncMock(),
+            print_system=AsyncMock(),
+            start_thinking=AsyncMock(),
+            stop_loading=AsyncMock(),
+            confirm_continue=AsyncMock(return_value=False),
+            confirm_loop_recovery=AsyncMock(return_value="stop"),
+        )
+        state = AgentState()
+        config = SimpleNamespace(
+            MAX_SESSION_SECONDS=120,
+            MAX_CONSECUTIVE_CALLS=12,
+            MAX_STEP_SECONDS=60,
+            LOOP_ERROR_REPEAT_THRESHOLD=2,
+            MALFORMED_ACTION_GRACE_STEPS=1,
+            RECOVERABLE_ERROR_RETRY_BUDGET=2,
+            CRITICAL_ERROR_RETRY_BUDGET=1,
+            STATE_CHANGING_OPS={"edit_file", "write_file", "run_shell"},
+        )
+        history = SimpleNamespace(
+            add_message=MagicMock(),
+            check_and_summarize=AsyncMock(),
+            current_token_count=0,
+            max_tokens=4096,
+        )
+        model_client = SimpleNamespace(
+            get_streaming_response=AsyncMock(
+                side_effect=[
+                    '<action>[{"path":"a.txt"}]</action>',
+                    '<action type="read_file">{"path":"a.txt"}</action>',
+                    "done",
+                ]
+            )
+        )
+        parser = ResponseParser()
+
+        async def dispatch_segments(segments, _st):
+            if any(seg.type == "action" for seg in segments):
+                return segments, ["SYSTEM RESULT for `read_file`: ok"], False
+            return segments, [], False
+
+        agent = SimpleNamespace(
+            ui=ui,
+            state=state,
+            history=history,
+            model_client=model_client,
+            action_dispatcher=SimpleNamespace(dispatch_segments=dispatch_segments),
+            parser=parser,
+            config=config,
+            tool_manager=SimpleNamespace(get_tools_prompt=MagicMock(return_value="")),
+            context_manager=SimpleNamespace(get_context_prompt=MagicMock(return_value="")),
+            log=None,
+        )
+
+        orchestrator = Orchestrator(agent)
+        await orchestrator.process("go on")
+
+        queries = [call.args[0] for call in model_client.get_streaming_response.await_args_list]
+        self.assertGreaterEqual(len(queries), 2)
+        self.assertIn("Return only valid <action> content for the next step.", queries[1])
+        self.assertIn("multiple separate <action>...</action> blocks are allowed", queries[1])
+        self.assertIn("JSON array of read-only action objects", queries[1])
+        self.assertIn("For any state-changing step, return only one valid <action>.", queries[1])
+        self.assertNotIn("Return EXACTLY ONE valid <action> JSON block", queries[1])
 
     async def test_orchestrator_stops_after_second_audit_marker_echo_without_action(self):
         ui = SimpleNamespace(
