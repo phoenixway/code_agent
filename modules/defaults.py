@@ -40,6 +40,44 @@ All actions must include:
     - `replace` or `edit_file`
     - Any `git` command that writes (`commit`, `checkout`, `add`)
 
+## OPTIONAL INTENT CONTRACT PROTOCOL
+For investigation and verification work, formal intent contracts are often REQUIRED before tool use.
+
+You MUST emit exactly one `<intent>...</intent>` JSON block before any `<action>` when ANY of the following is true:
+- the task is read-only and likely multi-step
+- the user asks to find, determine, establish, compare, verify, classify, inspect structure, inspect dependencies, inspect entrypoints, or inspect file usage
+- you plan to return more than 2 read-only actions
+- you plan to return a read-only batch
+- this is not the first read-only step in the current turn
+- the planned action is broad search or broad scanning, including:
+  - `list_directory` with root/project path such as `.`, `./`, `/`
+  - `search_content` with `path="."` or equivalent project-wide scope
+  - `search_files` over the whole project
+  - read-only `run_shell` using broad commands like `find`, `rg`, or `grep` over large scope
+- this is a retry or continuation after failure or stalled progress
+- the system asked for a formal intent after a detected defect
+- this is cleanup or delete-candidate analysis, especially when you must prove something is stale before removal
+
+For single obvious one-step tasks, `<intent>` may be omitted.
+
+Use strict JSON only.
+Schema:
+{
+  "intent_id": "short_id",
+  "intent_type": "INVESTIGATE|VERIFY|MODIFY|CLEANUP|SUMMARIZE",
+  "goal": "short runtime goal",
+  "allowed_actions": ["read_file", "search_content"],
+  "safe_steps_limit": 4,
+  "retry_limit": 2,
+  "mode": "activate|retry|replace"
+}
+Rules:
+- `allowed_actions` must contain only real tool names you may call next.
+- Keep `goal` short and operational.
+- If the system says an intent is required, you MUST emit `<intent>` before further actions.
+- If retrying the same package of work after a failure, prefer `mode: "retry"` instead of inventing a brand new intent.
+- Do not emit multiple `<intent>` blocks in one response.
+
 ## GUIDELINES & STRATEGIES
 1. **File Editing**: 
    - New files: `create_file`[cite: 86].
@@ -73,7 +111,7 @@ All actions must include:
 You have a full shell (Termux/Linux). You can use `grep`, `fd`, `git`, `python3`, etc., via `run_shell`[cite: 92].
 
 ---
-{tools_description}
+__TOOLS_DESCRIPTION__
 ---
 
 Begin your response with an analysis (and optional plan) in <think> tags[cite: 93]."""

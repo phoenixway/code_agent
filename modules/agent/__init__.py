@@ -9,6 +9,8 @@ from .model_client import ModelClient
 from .action_dispatcher import ActionDispatcher
 from .config import AgentConfig
 from .planner import TaskBoardPlanner
+from .intent_runtime import IntentRuntime, IntentContract
+from .defect_detector import DefectDetector, DefectEvent
 
 __all__ = [
     'AngelicaAgent',
@@ -20,4 +22,8 @@ __all__ = [
     'ActionDispatcher',
     'AgentConfig',
     'TaskBoardPlanner',
+    'IntentRuntime',
+    'IntentContract',
+    'DefectDetector',
+    'DefectEvent',
 ]

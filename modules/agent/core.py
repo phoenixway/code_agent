@@ -24,7 +24,7 @@ class AngelicaAgent:
     def __init__(self, ui=None):
         self._ui = ui
         self.config = AgentConfig()
-        self.state = AgentState()
+        self.state = AgentState(self.config)
         self.state.state_machine = AgentStateMachine(self.config)
         self.state.set_retry_budgets(
             self.config.RECOVERABLE_ERROR_RETRY_BUDGET,

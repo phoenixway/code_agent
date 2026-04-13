@@ -1,9 +1,154 @@
 """Оркестратор основного циклу."""
 
 import asyncio
+import json
+import re
 from modules.defaults import DEFAULT_SYSTEM_PROMPT
 
 class Orchestrator:
+
+    _READ_ONLY_TOOLS = {
+        "read_file", "read_file_skeleton", "search_content", "search_files",
+        "list_directory", "find_files", "git_diff", "run_shell"
+    }
+
+    def _build_system_message(self, tools_prompt: str, ctx_prompt: str) -> str:
+        prompt = DEFAULT_SYSTEM_PROMPT.replace("__TOOLS_DESCRIPTION__", tools_prompt)
+        return f"{prompt}\n\n{ctx_prompt}"
+
+    def _is_rootish_path(self, path: object) -> bool:
+        return isinstance(path, str) and path.strip() in {"", ".", "./", "/"}
+
+    def _is_read_only_shell(self, command: str) -> bool:
+        if not isinstance(command, str):
+            return False
+        lowered = command.strip().lower()
+        if not lowered:
+            return False
+        if any(tok in lowered for tok in (">", "| tee", ">>", "sed -i", "perl -i", "mkdir ", "rm ", "mv ", "cp ", "touch ")):
+            return False
+        bins = ("find ", "rg ", "grep ", "ls ", "cat ", "head ", "tail ", "wc ", "stat ", "file ")
+        return lowered.startswith(bins)
+
+    def _user_task_requires_intent(self, user_input: str) -> bool:
+        text = (user_input or "").lower()
+        keywords = (
+            "знайти", "з’ясувати", "з'ясувати", "встановити", "порівняти", "перевірити",
+            "класифікувати", "дослідити", "структур", "залежност", "точк", "entrypoint",
+            "використання файлів", "file usage", "dependencies", "structure", "verify",
+            "classify", "investigate", "find", "determine", "establish", "compare",
+        )
+        cleanup = ("cleanup", "stale", "obsolete", "delete", "remove", "застар", "видалити", "прибрати")
+        return any(k in text for k in keywords) or any(k in text for k in cleanup)
+
+    def _action_requires_intent(self, command: dict, state, *, batch_size: int, current_user_input: str) -> tuple[bool, str]:
+        cmd_type = command.get("type") or command.get("action") or "unknown"
+        path = command.get("path")
+        active_intent = getattr(state, "active_intent", None)
+
+        # Hard requirement set by defect detector still wins.
+        if getattr(state, "intent_required_until_activated", False):
+            return True, getattr(state, "intent_required_reason", "intent_required")
+
+        # If a formal intent is already active and this action is allowed by that intent,
+        # do NOT ask for another intent again. This is the core anti-loop fix.
+        if active_intent is not None:
+            allowed = set(getattr(active_intent, "allowed_actions", []) or [])
+            if cmd_type in allowed:
+                return False, ""
+
+        # No active intent yet: these are the situations where we require one.
+        if cmd_type in self._READ_ONLY_TOOLS and self._user_task_requires_intent(current_user_input):
+            return True, "investigation_task_requires_formal_intent"
+
+        if cmd_type in self._READ_ONLY_TOOLS:
+            if batch_size > 2:
+                return True, "read_only_multi_step_requires_intent"
+            if batch_size > 1:
+                return True, "read_only_batch_requires_intent"
+            if getattr(state, "readonly_steps_this_turn", 0) > 0:
+                return True, "not_first_read_only_step_requires_intent"
+
+        if cmd_type == "list_directory" and self._is_rootish_path(path):
+            return True, "broad_root_listing_requires_intent"
+        if cmd_type == "search_content" and self._is_rootish_path(path):
+            return True, "broad_search_content_requires_intent"
+        if cmd_type == "search_files" and self._is_rootish_path(path):
+            return True, "broad_search_files_requires_intent"
+        if cmd_type == "run_shell" and self._is_read_only_shell(command.get("command", "")):
+            cmd = str(command.get("command") or "").lower()
+            if any(tok in cmd for tok in ("find .", "rg ", "grep -r", "grep -rn", "grep -r ", "grep -R")):
+                return True, "broad_shell_search_requires_intent"
+
+        # Failure context does not require a brand new intent if the current one can continue.
+        if getattr(state, "has_retry_context", None) and state.has_retry_context():
+            if active_intent is None:
+                return True, "retry_or_continuation_after_failure"
+            if not getattr(state, "can_continue_current_intent_after_failure", lambda: False)():
+                return True, "retry_or_continuation_after_failure"
+
+        return False, ""
+
+    _INTENT_TAG_RE = re.compile(r"<intent>(.*?)</intent>", re.IGNORECASE | re.DOTALL)
+
+    def _extract_intent_update_and_strip(self, response_text: str) -> tuple[str, dict | None, str | None]:
+        if not isinstance(response_text, str) or not response_text:
+            return response_text, None, None
+        matches = list(self._INTENT_TAG_RE.finditer(response_text))
+        if not matches:
+            return response_text, None, None
+        last_block = matches[-1].group(1).strip()
+        clean_text = self._INTENT_TAG_RE.sub("", response_text).strip()
+        if not last_block:
+            return clean_text, None, "empty_intent_block"
+        try:
+            payload = json.loads(last_block)
+        except json.JSONDecodeError:
+            return clean_text, None, "invalid_intent_json"
+        return clean_text, payload, None
+
+    def _build_intent_required_prompt(self, reason: str, allowed_actions: list[str] | None = None) -> str:
+        next_hint = ""
+        if allowed_actions:
+            next_hint = f"\nAllowed actions for the next intent: {', '.join(allowed_actions)}."
+        return (
+            "SYSTEM: A formal intent contract is required before further tool use.\n"
+            f"Reason: {reason}.{next_hint}\n"
+            "Return EXACTLY ONE <intent> JSON block first.\n"
+            "Optional schema fields:\n"
+            "- intent_id\n"
+            "- intent_type\n"
+            "- goal\n"
+            "- allowed_actions\n"
+            "- safe_steps_limit\n"
+            "- retry_limit\n"
+            "- mode\n"
+            "If you also need an action now, place the <intent> block before the action."
+        )
+
+    async def _handle_defect_detector_stop(self, stop_info: dict | None) -> tuple[bool, str | None]:
+        stop_info = stop_info or {}
+        reason = str(stop_info.get("reason") or "")
+        reason_map = {
+            "defect_repeated_action_cycle": "Defect detector: модель повторює 3 кроки в циклі. Продовжити?",
+            "defect_same_action_repeat": "Defect detector: модель кілька разів повторює одну й ту саму дію. Продовжити?",
+            "intent_step_limit_exceeded": "Defect detector: агент перевищив safe_steps_limit поточного intent. Продовжити?",
+            "intent_retry_limit_exceeded": "Defect detector: агент перевищив retry_limit поточного intent. Продовжити?",
+            "intent_action_not_allowed": "Defect detector: модель намагається виконати дію поза allowed_actions поточного intent. Продовжити?",
+        }
+        message = reason_map.get(reason)
+        if not message:
+            return False, None
+        decision = await self.ui.confirm_continue(message)
+        if decision in (False, "stop", None):
+            await self.ui.print_system("Execution stopped by defect detector.")
+            return True, None
+        self.state.add_confirmation(1)
+        if bool(getattr(self.config, "INTENT_REQUIRE_ON_DEFECT", True)):
+            self.state.require_intent(reason)
+            return True, self._build_intent_required_prompt(reason, stop_info.get("next_actions") or [])
+        return True, self._build_typed_stop_recovery_prompt(stop_info)
+
     def __init__(self, agent):
         self.agent = agent
         # Скорочення для зручності
@@ -85,6 +230,52 @@ class Orchestrator:
             state_changing_only=state_changing_only,
         )
         
+
+    def _inspection_can_finish_with_text(self, sm, stop_info: dict | None) -> bool:
+        if sm is None:
+            return False
+        task_kind = getattr(sm, "task_kind", None)
+        task_kind_value = getattr(task_kind, "value", str(task_kind))
+        if task_kind_value != "INSPECTION":
+            return False
+        reason = str((stop_info or {}).get("reason") or "")
+        return reason in {
+            "broad_recon_budget_exhausted",
+            "observe_budget_exhausted",
+            "inspection_task_write_blocked",
+            "list_directory_budget_exhausted",
+            "directory_descent_budget_exhausted",
+            "root_listing_budget_exhausted",
+            "action_not_allowed_in_phase",
+        }
+
+    def _build_plain_text_completion_prompt(self, sm, stop_info: dict | None) -> str:
+        task_kind = getattr(sm, "task_kind", None)
+        kind = getattr(task_kind, "value", str(task_kind or "UNKNOWN"))
+        phase = getattr(sm, "phase", None)
+        phase_value = getattr(phase, "value", str(phase or "UNKNOWN"))
+        reason = str((stop_info or {}).get("reason") or "")
+        target = getattr(sm, "target_file", None) or "<unknown>"
+        route_hint = ""
+        if hasattr(sm, "_inspection_route_hint"):
+            try:
+                route_hint = sm._inspection_route_hint() or ""
+            except Exception:
+                route_hint = ""
+        parts = [
+            "SYSTEM: Stop tool use now.",
+            f"Task kind: {kind}. Current phase: {phase_value}.",
+            f"Recovery reason: {reason}.",
+            f"Current target: {target}.",
+            "Return a concise plain-text answer in the user's language using only the evidence already gathered.",
+            "Do not output any <action> block.",
+            "Do not ask to inspect more files.",
+            "Answer the user's question directly and, if relevant, give one concrete next step.",
+        ]
+        if route_hint:
+            parts.append(route_hint)
+        return "\n".join(parts)
+
     async def process(self, user_input):
         """Головний цикл: Think -> Act -> Loop."""
         if self.agent.log:
@@ -94,14 +285,19 @@ class Orchestrator:
         # 1. Підготовка контексту
         tools_prompt = self.agent.tool_manager.get_tools_prompt()
         ctx_prompt = self.agent.context_manager.get_context_prompt()
-        system_msg = f"{DEFAULT_SYSTEM_PROMPT.format(tools_description=tools_prompt)}\n\n{ctx_prompt}"
+        system_msg = self._build_system_message(tools_prompt, ctx_prompt)
 
         self.history.add_message("user", user_input)
         sm = getattr(self.state, "state_machine", None)
         if sm is not None:
             sm.start_turn(user_input)
+            sm.intent_runtime = getattr(self.state, "intent_runtime", None)
             if self.agent.log:
                 self.agent.log.debug(f"Task contract: kind={getattr(sm, 'task_kind', None)} phase={getattr(sm, 'phase', None)}")
+        if hasattr(self.state, 'clear_intent_requirement'):
+            self.state.clear_intent_requirement()
+        if hasattr(self.state, 'start_turn_runtime'):
+            self.state.start_turn_runtime()
         
         active_loop = True
         consecutive_calls = 0
@@ -176,6 +372,53 @@ class Orchestrator:
                     )
                     break
                 
+                response, intent_payload, intent_error = self._extract_intent_update_and_strip(response)
+                if intent_error and getattr(self.state, "intent_required_until_activated", False):
+                    current_query = self._build_intent_required_prompt(intent_error)
+                    continue
+                if intent_payload is not None:
+                    ok, intent_msg = self.state.apply_intent_contract(intent_payload, self.config)
+                    warning = ""
+                    if getattr(self.state, "intent_runtime", None) is not None:
+                        warning = getattr(self.state.intent_runtime, "last_apply_warning", "")
+                    if self.agent.log:
+                        self.agent.log.debug(
+                            f"Intent.apply ok={ok} msg={intent_msg} warning={warning} "
+                            f"summary={getattr(self.state, 'active_intent_summary', lambda: '')()}"
+                        )
+                    if not ok:
+                        stop_info = getattr(self.state, "last_defect_info", None) or {
+                            "reason": intent_msg,
+                            "recoverable": True,
+                            "next_actions": (getattr(getattr(self.state, 'active_intent', None), 'allowed_actions', None) or []),
+                        }
+                        handled, next_query = await self._handle_defect_detector_stop(stop_info)
+                        if handled:
+                            if next_query:
+                                current_query = next_query
+                                self.state.pending_loop_stop_info = None
+                                continue
+                            active_loop = False
+                            continue
+                        current_query = self._build_intent_required_prompt(intent_msg)
+                        continue
+
+                    if not response.strip():
+                        if hasattr(self.state, "note_intent_only_response"):
+                            self.state.note_intent_only_response()
+                        current_query = (
+                            "SYSTEM: Intent activated. Now return the next valid step. "
+                            "If tool use is needed, return the next <action>. "
+                            "Do not repeat the same intent unless you are explicitly retrying or replacing it."
+                        )
+                        continue
+
+                if getattr(self.state, "intent_required_until_activated", False) and "<action" in response.lower():
+                    current_query = self._build_intent_required_prompt(
+                        getattr(self.state, "intent_required_reason", "intent_required")
+                    )
+                    continue
+
                 if not response or response.startswith("Error:"):
                     if self.agent.log:
                         self.agent.log.warning(f"Model returned terminal response: {response[:200] if response else '<empty>'}")
@@ -190,6 +433,28 @@ class Orchestrator:
                 if self.agent.log:
                     self.agent.log.debug(f"Parsed segments count={len(segments)}")
                 parsed_action_count = sum(1 for seg in segments if seg.type == "action")
+
+                action_segments_only = [seg for seg in segments if seg.type == "action" and isinstance(seg.content, dict)]
+                if action_segments_only and intent_payload is None:
+                    intent_required = False
+                    intent_reason = ""
+                    for seg in action_segments_only:
+                        required, reason = self._action_requires_intent(
+                            seg.content,
+                            self.state,
+                            batch_size=len(action_segments_only),
+                            current_user_input=user_input,
+                        )
+                        if required:
+                            intent_required = True
+                            intent_reason = reason
+                            break
+                    if intent_required:
+                        current_query = self._build_intent_required_prompt(
+                            intent_reason,
+                            ["read_file", "read_file_skeleton", "search_content", "search_files", "list_directory", "find_files", "git_diff", "run_shell"],
+                        )
+                        continue
 
                 # Recovery: model returned an <action> tag but parser extracted no action.
                 has_action_tag = "<action" in response.lower()
@@ -247,6 +512,8 @@ class Orchestrator:
                 audit_marker_retries = 0
                 
                 # 4. Виконання дій (через Dispatcher)
+                if sm is not None:
+                    sm.intent_runtime = getattr(self.state, "intent_runtime", None)
                 self.state.current_task = asyncio.create_task(
                     self.dispatcher.dispatch_segments(segments, self.state)
                 )
@@ -290,6 +557,15 @@ class Orchestrator:
                     
                     if should_stop:
                         stop_info = getattr(self.state, "pending_loop_stop_info", None)
+                        handled_defect, next_query = await self._handle_defect_detector_stop(stop_info)
+                        if handled_defect:
+                            if next_query:
+                                current_query = next_query
+                                should_stop = False
+                                self.state.pending_loop_stop_info = None
+                                continue
+                            active_loop = False
+                            continue
                         if stop_info and stop_info.get("reason") in {"repeating_failure", "repeating_no_progress"}:
                             decision = await self.ui.confirm_loop_recovery(
                                 "Detected repeated no-progress failures. Choose next step."
@@ -368,6 +644,12 @@ class Orchestrator:
                                 f"{required_hint}"
                                 "Choose a different strategy and return EXACTLY ONE valid <action>."
                             )
+                            should_stop = False
+                            self.state.pending_loop_stop_info = None
+                            continue
+
+                        if stop_info and self._inspection_can_finish_with_text(sm, stop_info):
+                            current_query = self._build_plain_text_completion_prompt(sm, stop_info)
                             should_stop = False
                             self.state.pending_loop_stop_info = None
                             continue

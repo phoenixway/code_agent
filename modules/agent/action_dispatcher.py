@@ -109,24 +109,27 @@ class ActionDispatcher:
             idx for idx, cmd in enumerate(action_commands)
             if self._is_read_only_action(cmd)
         ]
-        if len(readonly_indices) != len(action_commands):
-            first_state_changing = next(
-                idx for idx, cmd in enumerate(action_commands)
-                if not self._is_read_only_action(cmd)
-            )
-            notes.append(
-                "SYSTEM RESULT for `batch_policy`: Mixed batch detected; executing only the first state-changing action."
-            )
-            return [first_state_changing], notes
 
-        max_batch = max(1, int(getattr(self.config, "MAX_READONLY_BATCH_ACTIONS", 6)))
-        if len(action_commands) > max_batch:
-            notes.append(
-                f"SYSTEM RESULT for `batch_policy`: Read-only batch limited to {max_batch} actions."
-            )
-            return list(range(max_batch)), notes
+        # If every action in the batch is read-only, keep the whole batch,
+        # including read-only run_shell calls.
+        if len(readonly_indices) == len(action_commands):
+            max_batch = max(1, int(getattr(self.config, "MAX_READONLY_BATCH_ACTIONS", 6)))
+            if len(action_commands) > max_batch:
+                notes.append(
+                    f"SYSTEM RESULT for `batch_policy`: Read-only batch limited to {max_batch} actions."
+                )
+                return list(range(max_batch)), notes
+            return list(range(len(action_commands))), notes
 
-        return list(range(len(action_commands))), notes
+        # Mixed batch: execute only the first truly state-changing action.
+        first_state_changing = next(
+            idx for idx, cmd in enumerate(action_commands)
+            if not self._is_read_only_action(cmd)
+        )
+        notes.append(
+            "SYSTEM RESULT for `batch_policy`: Mixed batch detected; executing only the first state-changing action."
+        )
+        return [first_state_changing], notes
 
     def _is_read_only_action(self, command: dict) -> bool:
         if not isinstance(command, dict):
@@ -242,6 +245,22 @@ class ActionDispatcher:
         command_for_history = self._sanitize_command_for_history(command)
         sm = getattr(state, "state_machine", None)
 
+        intent_precheck = getattr(state, "check_intent_pre_action", None)
+        if callable(intent_precheck):
+            intent_stop = intent_precheck(command)
+            if intent_stop:
+                output_text = (
+                    "SYSTEM: Current intent contract does not allow this action. "
+                    "Choose one of the allowed actions or emit a retry/replace intent first."
+                )
+                state.pending_loop_stop_info = intent_stop
+                full_result_text = f"SYSTEM RESULT for `{cmd_type}`: {output_text}"
+                if self.agent.log:
+                    self.agent.log.debug(
+                        f"Action.finish type={cmd_type} should_stop=True reason={intent_stop.get('reason')}"
+                    )
+                return command_for_history, full_result_text, True
+
         if sm is not None:
             pre_decision = sm.pre_action_policy(command)
             if not pre_decision.allow:
@@ -297,7 +316,7 @@ class ActionDispatcher:
                 f"Action.result type={cmd_type} status={status} "
                 f"error_code={error_code} recoverable={recoverable}"
             )
-        state_metrics = state.record_action_result(command, result)
+        state_metrics = state.record_action_result(command, result, self.config)
         if sm is not None:
             sm.note_action(command, result, self.config.STATE_CHANGING_OPS)
 
@@ -464,6 +483,15 @@ class ActionDispatcher:
             state.reset_retry_budgets(
                 self.config.RECOVERABLE_ERROR_RETRY_BUDGET,
                 self.config.CRITICAL_ERROR_RETRY_BUDGET,
+            )
+
+        defect_info = state_metrics.get("defect_info")
+        if defect_info and not should_stop:
+            should_stop = True
+            state.pending_loop_stop_info = defect_info
+            output_text += (
+                "\n[SYSTEM: Defect detector flagged repeated intent execution or action-cycle behavior. "
+                "Pause and choose whether to continue, require a new intent, or stop.]"
             )
 
         full_result_text = f"SYSTEM RESULT for `{cmd_type}`: {output_text}"
