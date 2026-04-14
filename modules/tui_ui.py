@@ -48,9 +48,9 @@ class TuiUI:
         "initial":   {"prefix": "", "style": "center", "classes": "chat-message initial-history-message"},
         "error":     {"prefix": "✘ Error: ", "prefix_style": "bold red", "classes": "chat-message error-message"},
         "thought":   {"prefix": "", "style": "italic grey37", "classes": "chat-message thought-message"},
-        "plan":      {"prefix": "🤖 Plan: ", "prefix_style": "bold cyan", "classes": "chat-message plan-message"},
-        "confirmation": {"prefix": "✅ ", "prefix_style": "bold green", "classes": "chat-message confirmation-message"},
-        "user":      {"prefix": "> ", "style": "", "classes": "chat-message user-message"},
+        "plan":      {"prefix": "• Plan: ", "prefix_style": "bold cyan", "classes": "chat-message plan-message"},
+        "confirmation": {"prefix": "✔ ", "prefix_style": "bold green", "classes": "chat-message confirmation-message"},
+        "user":      {"prefix": "", "style": "", "classes": "chat-message user-message"},
     }
     CHAT_OUTPUT_PREVIEW_MAX_CHARS = 4000
     TOOL_ARG_PREVIEW_MAX_CHARS = 1200
@@ -415,7 +415,7 @@ class TuiUI:
 
         md_parts = []
         if status == 'success' and after_execution:
-            md_parts.append(f"✅ {after_execution.strip()}")
+            md_parts.append(f"✔ {after_execution.strip()}")
 
         icon_char = '✔' if status == 'success' else '✘'
         result_box = f"```sh\n{icon_char} run_shell: {shell_command}\n---\n{escape(output_preview.strip())}\n```"
@@ -468,7 +468,7 @@ class TuiUI:
             truncated = True
 
         subtitle = " (truncated)" if truncated else ""
-        md_lines = [f"**✅ Result**{subtitle}"]
+        md_lines = [f"**✔ Result**{subtitle}"]
         
         content = content_preview.strip() if content_preview and content_preview.strip() else "(empty)"
         md_lines.append(f"```\n{escape(content)}\n```")

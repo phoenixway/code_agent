@@ -28,6 +28,7 @@ READ_ONLY_ACTIONS = {
     "list_directory",
     "find_files",
     "git_diff",
+    "run_shell",
 }
 
 
@@ -100,6 +101,23 @@ class AgentStateMachine:
             AgentPhase.VERIFY: {"read_file", "search_content", "git_diff", "run_shell"},
             AgentPhase.RECOVER: {"read_file", "search_content", "search_files", "list_directory", "edit_file", "write_file", "run_shell"},
         }
+
+    def _is_read_only_action(self, command: dict) -> bool:
+        if not isinstance(command, dict):
+            return False
+        cmd_type = command.get("type") or command.get("action") or "unknown"
+        if cmd_type != "run_shell":
+            return cmd_type in READ_ONLY_ACTIONS
+        raw = command.get("command")
+        if not isinstance(raw, str):
+            return False
+        lowered = raw.strip().lower()
+        if not lowered:
+            return False
+        if any(tok in lowered for tok in (">", "| tee", ">>", "sed -i", "perl -i", "mkdir ", "rm ", "mv ", "cp ", "touch ")):
+            return False
+        bins = ("find ", "rg ", "grep ", "ls ", "cat ", "head ", "tail ", "wc ", "stat ", "file ", "pwd", "pwd ", "awk ", "sed -n")
+        return lowered.startswith(bins)
 
     def _classify_task_kind(self, user_input: str) -> TaskKind:
         text = (user_input or "").lower()
@@ -177,7 +195,7 @@ class AgentStateMachine:
         return cmd_type in self._allowed_actions_for_phase()
 
     def note_planned_batch(self, action_commands: list[dict]):
-        readonly = all((cmd.get("type") or cmd.get("action") or "unknown") in READ_ONLY_ACTIONS for cmd in action_commands if isinstance(cmd, dict))
+        readonly = all(self._is_read_only_action(cmd) for cmd in action_commands if isinstance(cmd, dict))
         if readonly and len(action_commands) >= 2:
             self.broad_recon_batches_used += 1
 
@@ -218,21 +236,23 @@ class AgentStateMachine:
         cmd_type = command.get("type") or command.get("action") or "unknown"
         status = result.get("status")
         path = command.get("path") if isinstance(command.get("path"), str) else None
+        is_read_only = self._is_read_only_action(command)
+        is_state_changing = (cmd_type in state_changing_ops) and not is_read_only
 
         if status in {"error", "failed", "denied"}:
             self.phase = AgentPhase.RECOVER
             self.stagnation_count += 1
             return
 
-        if cmd_type in state_changing_ops and status == "success":
+        if is_state_changing and status == "success":
             self.phase = AgentPhase.VERIFY
             self.stagnation_count = 0
             self.observe_actions_used = 0
             return
 
-        if cmd_type in READ_ONLY_ACTIONS and status == "success":
+        if is_read_only and status == "success":
             self.observe_actions_used += 1
-            self.phase = AgentPhase.OBSERVE if self.phase != AgentPhase.VERIFY else self.phase
+            self.phase = AgentPhase.OBSERVE
             if self.mode == WorkMode.IMPLEMENT and self.target_file is None and cmd_type == "read_file" and path:
                 self.target_file = path
             self.last_progress_score = 1
@@ -257,7 +277,7 @@ class AgentStateMachine:
                 diagnostic_attempts=self.diagnostic_attempts,
                 max_diagnostics=int(getattr(self.config, "STAGNATION_MAX_DIAGNOSTICS", 1)),
                 diagnostic_prompt=self.build_diagnostic_prompt(),
-                required_next_action_types=["search_content", "edit_file", "write_file"],
+                required_next_action_types=["search_content", "search_files", "read_file", "edit_file", "write_file"],
                 task_kind=self.task_kind.value,
                 phase=self.phase.value,
                 observe_budget_exhausted=self.observe_actions_used >= self._observe_budget(),

@@ -94,6 +94,28 @@ class ActionDispatcher:
                         system_results.append(
                             f"SYSTEM RESULT for `{cmd_type}`: Batch aborted after action {batch_pos}/{total_exec} due to stop condition."
                         )
+                        # If a pure read-only search batch was cut after the first action,
+                        # do not let the model resend the same batch again.
+                        all_exec_cmds = [action_commands[i] for i in execute_indices]
+                        only_search_batch = all(
+                            isinstance(cmd, dict) and (cmd.get("type") or cmd.get("action")) == "search_content"
+                            for cmd in all_exec_cmds
+                        )
+                        if only_search_batch and cmd_type == "search_content":
+                            existing = getattr(state, "pending_loop_stop_info", None) or {}
+                            state.pending_loop_stop_info = {
+                                "reason": "search_batch_aborted_after_first_action",
+                                "recoverable": True,
+                                "error_code": "SEARCH_BATCH_ABORTED_AFTER_FIRST_ACTION",
+                                "next_actions": ["search_content"],
+                                "message": (
+                                    "Your read-only search batch was aborted after the first action. "
+                                    "Return exactly one narrower search_content action next. "
+                                    "Do not send another broad batch."
+                                ),
+                                "previous_reason": existing.get("reason"),
+                                "command": cmd_copy.copy(),                            
+                                }
                     break
         
         return processed_segments, system_results, should_stop
@@ -121,15 +143,16 @@ class ActionDispatcher:
                 return list(range(max_batch)), notes
             return list(range(len(action_commands))), notes
 
-        # Mixed batch: execute only the first truly state-changing action.
+        # Mixed batch: keep leading read-only prefix + first state-changing action.
         first_state_changing = next(
             idx for idx, cmd in enumerate(action_commands)
             if not self._is_read_only_action(cmd)
         )
+        execute = list(range(first_state_changing + 1))
         notes.append(
-            "SYSTEM RESULT for `batch_policy`: Mixed batch detected; executing only the first state-changing action."
+            "SYSTEM RESULT for `batch_policy`: Mixed batch detected; executing leading read-only prefix plus the first state-changing action."
         )
-        return [first_state_changing], notes
+        return execute, notes
 
     def _is_read_only_action(self, command: dict) -> bool:
         if not isinstance(command, dict):
@@ -197,13 +220,37 @@ class ActionDispatcher:
                     "reason": "malformed_read_file_payload",
                     "recoverable": True,
                     "error_code": "MALFORMED_READ_FILE_PAYLOAD",
-                    "next_actions": ["read_file", "search_content", "list_directory"],
+                    "next_actions": ["read_file"],
+                    "message": "read_file requires a top-level `path` field. Return exactly one read_file action with only the corrected payload.",
                     "command": command.copy(),
                 }
                 full_result_text = f"SYSTEM RESULT for `{cmd_type}`: {output_text}"
                 if self.agent.log:
                     self.agent.log.debug(
                         "Action.finish type=read_file should_stop=True reason=malformed_read_file_payload"
+                    )
+                return self._sanitize_command_for_history(command), full_result_text, True
+
+        if cmd_type == "read_file_skeleton":
+            command = self._normalize_read_file_skeleton_command(command)
+            if not command.get("path"):
+                output_text = (
+                    "SYSTEM: Invalid read_file_skeleton payload. Provide `path` as a top-level field.\n"
+                    "Example:\n"
+                    '<action type="read_file_skeleton">{"path":"relative/or/absolute/path"}</action>'
+                )
+                state.pending_loop_stop_info = {
+                    "reason": "malformed_read_file_skeleton_payload",
+                    "recoverable": True,
+                    "error_code": "MALFORMED_READ_FILE_SKELETON_PAYLOAD",
+                    "next_actions": ["read_file_skeleton"],
+                    "message": "read_file_skeleton requires a top-level `path` field. Return exactly one read_file_skeleton action with only the corrected payload.",
+                    "command": command.copy(),
+                }
+                full_result_text = f"SYSTEM RESULT for `{cmd_type}`: {output_text}"
+                if self.agent.log:
+                    self.agent.log.debug(
+                        "Action.finish type=read_file_skeleton should_stop=True reason=malformed_read_file_skeleton_payload"
                     )
                 return self._sanitize_command_for_history(command), full_result_text, True
             history = getattr(self.agent, "history", None)
@@ -251,7 +298,8 @@ class ActionDispatcher:
             if intent_stop:
                 output_text = (
                     "SYSTEM: Current intent contract does not allow this action. "
-                    "Choose one of the allowed actions or emit a retry/replace intent first."
+                    "Reuse the current intent and choose one of its allowed actions now. "
+                    "Do not send a new equivalent intent unless you are explicitly retrying or replacing with a materially different goal."
                 )
                 state.pending_loop_stop_info = intent_stop
                 full_result_text = f"SYSTEM RESULT for `{cmd_type}`: {output_text}"
@@ -270,6 +318,7 @@ class ActionDispatcher:
                     "recoverable": True,
                     "error_code": self._error_code_from_reason(pre_decision.stop_reason),
                     "next_actions": pre_decision.required_next_action_types or [],
+                    "message": output_text,
                     "command": command.copy(),
                 }
                 full_result_text = f"SYSTEM RESULT for `{cmd_type}`: {output_text}"
@@ -489,10 +538,20 @@ class ActionDispatcher:
         if defect_info and not should_stop:
             should_stop = True
             state.pending_loop_stop_info = defect_info
-            output_text += (
-                "\n[SYSTEM: Defect detector flagged repeated intent execution or action-cycle behavior. "
-                "Pause and choose whether to continue, require a new intent, or stop.]"
-            )
+            if defect_info.get("reason") in {
+                "too_broad_search",
+                "low_value_broad_search_repeat",
+                "history_self_reference_hit",
+            }:
+                output_text += (
+                    "\n[SYSTEM: Search strategy issue detected. "
+                    "Do not send another broad search batch. Return one narrower search_content action next.]"
+                )
+            else:
+                output_text += (
+                    "\n[SYSTEM: Defect detector flagged repeated intent execution or action-cycle behavior. "
+                    "Pause and choose whether to continue, require a new intent, or stop.]"
+                )
 
         full_result_text = f"SYSTEM RESULT for `{cmd_type}`: {output_text}"
 
@@ -539,6 +598,36 @@ class ActionDispatcher:
         """Recover malformed read_file payloads where JSON is nested under `command`."""
         if not isinstance(command, dict):
             return {"type": "read_file"}
+        if command.get("path"):
+            return command
+
+        raw = command.get("command")
+        if not isinstance(raw, str):
+            return command
+        text = raw.strip()
+        if not text.startswith("{"):
+            return command
+        try:
+            nested = json.loads(text)
+        except Exception:
+            return command
+        if not isinstance(nested, dict):
+            return command
+
+        merged = command.copy()
+        for key in ("path", "before_execution", "during_execution", "after_execution"):
+            if merged.get(key) in (None, "") and nested.get(key):
+                merged[key] = nested.get(key)
+        if not merged.get("path"):
+            inferred = self._infer_read_file_path(merged)
+            if inferred:
+                merged["path"] = inferred
+        return merged
+
+    def _normalize_read_file_skeleton_command(self, command: dict) -> dict:
+        """Recover malformed read_file_skeleton payloads where JSON is nested under `command`."""
+        if not isinstance(command, dict):
+            return {"type": "read_file_skeleton"}
         if command.get("path"):
             return command
 

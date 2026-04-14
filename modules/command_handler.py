@@ -97,7 +97,7 @@ class CommandHandler:
                 for path in selected_paths:
                     count = self.agent.context_manager.add_path(path)
                     total_added += count
-                await self.ui.print_system(f"✅ Added {total_added} file(s) from fzf to context.")
+                await self.ui.print_system(f"Added {total_added} file(s) from fzf to context.")
             else:
                 await self.ui.print_system("No files selected from fzf.")
 
@@ -156,11 +156,11 @@ class CommandHandler:
 
         if file_cleared:
             await self.ui.print_system(
-                "✅ Saved session removed and runtime context reset."
+                "Saved session removed and runtime context reset."
             )
         else:
             await self.ui.print_system(
-                "✅ Runtime context reset. No saved session file was found."
+                "Runtime context reset. No saved session file was found."
             )
 
     async def _handle_add(self, user_input):
@@ -182,7 +182,7 @@ class CommandHandler:
                     await self.ui.print_error(f"Error adding path {path_str}: {e}")
             
             if total_added > 0:
-                await self.ui.print_system(f"✅ Added {total_added} file(s) to context.")
+                await self.ui.print_system(f"Added {total_added} file(s) to context.")
         except Exception as e:
             await self.ui.print_error(f"Error adding paths: {e}")
 
@@ -239,7 +239,7 @@ class CommandHandler:
                     content = msg.get("content", "")
                     f.write(f"## Role: {role}\n{content}\n\n")
             
-            await self.ui.print_system(f"✅ Chat history exported to [bold cyan]{filename}[/]")
+            await self.ui.print_system(f"Chat history exported to [bold cyan]{filename}[/]")
         except Exception as e:
             await self.ui.print_error(f"Error exporting history: {e}")
 
@@ -434,7 +434,7 @@ class CommandHandler:
                     out.write(f"Included log files: {included_files}\n")
 
             self._rotate_dump_files(dump_dir)
-            await self.ui.print_system(f"✅ Log dump saved to [bold cyan]{dump_path}[/]")
+            await self.ui.print_system(f"Log dump saved to [bold cyan]{dump_path}[/]")
         except Exception as e:
             await self.ui.print_error(f"Error saving dump: {e}")
 
@@ -477,7 +477,7 @@ class CommandHandler:
                          await self.ui.print_command_result(text.replace("SYSTEM RESULT:", "").strip())
                 count += 1
             
-            await self.ui.print_system(f"✅ Imported {count} messages from [bold cyan]{filename}[/]")
+            await self.ui.print_system(f"Imported {count} messages from [bold cyan]{filename}[/]")
 
         except Exception as e:
             await self.ui.print_error(f"Error importing history: {e}")

@@ -38,7 +38,7 @@ Screen {
     color: $text;
     border-left: wide $primary;
     margin-right: 2;
-    padding: 1 2;
+    padding: 0 2;
 }
 
 /* --- ASSISTANT MESSAGE --- */
@@ -95,7 +95,7 @@ Screen {
     color: $text-muted;
     opacity: 70%;
     text-style: italic;
-    padding: 0 1;
+    padding: 0 2;
 }
 
 /* --- SYSTEM / LOG (Prefix-based) --- */

@@ -56,5 +56,7 @@ class ToolManager:
                 "status": "error",
                 "error_code": "INTERNAL",
                 "recoverable": True,
-                "output": f"Tool execution failed: {str(e)}",
+                "tool_failure": True,
+                "tool_name": name,
+                "output": f"Tool `{name}` execution failed: {str(e)}",
             }

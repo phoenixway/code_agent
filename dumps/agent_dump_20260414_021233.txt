@@ -1,0 +1,63 @@
+Angelica dump generated: 2026-04-14T02:12:33.012632
+CWD: /home/romankozak/studio/public/it/angelica-ai
+Dump mode: session-only
+Session started at: 2026-04-14T02:12:03.290404
+Log files found: 2
+
+================================================================================
+RUNTIME DIAGNOSTICS
+================================================================================
+last_error_code: None
+last_error_recoverable: False
+consecutive_same_error_count: 0
+
+LAST FAILED ACTION COMMAND: unavailable
+
+LAST FAILED ACTION RESULT: unavailable
+
+
+================================================================================
+FILE: communication.log
+================================================================================
+2026-04-14 02:12:06,185 - --- OUTGOING ---
+який метод відповідає за відображення в історії чату викликів тулів? скоріш за все це тут modules/tui_ui.py або в css файлі
+2026-04-14 02:12:16,166 - --- INCOMING ---
+<think>
+Користувач повторює той самий запит. Я вже дав відповідь у попередньому повідомленні, але можливо він хоче більш детальної інформації або перевірки інших методів.
+
+Можливо, користувач хоче знати не лише про `print_tool_call`, але й про інші методи, які відображають виклики тулів у історії чату. Наприклад, можуть бути методи для відображення початку виклику, результату тощо.
+
+Перевірю, чи є інші методи, пов'язані з відображенням тулів у `modules/tui_ui.py`. Також можу перевірити `modules/agent/action_dispatcher.py`, де відбувається виклик цих методів.
+
+План:
+1. Використати search_content для пошуку "tool_call" у `modules/tui_ui.py`.
+2. Перевірити `modules/agent/action_dispatcher.py` на наявність викликів UI методів.
+3. Можливо, переглянути `modules/history.py` для методів обробки історії.
+
+Виконаю search_content для "tool_call" у модулях.
+</think>
+TOOL_HISTORY {"content": "none", "path": "modules", "type": "search_content"}
+
+================================================================================
+FILE: debug.log
+================================================================================
+2026-04-14 02:12:06,179 - debug - INFO - DEBUG: on_history_aware_text_area_submitted called with: 'який метод відповідає за відображення в історії чату викликів тулів? скоріш за все це тут modules/tui_ui.py або в css файлі'
+2026-04-14 02:12:06,180 - debug - INFO - DEBUG: Processing regular prompt: 'який метод відповідає за відображення в історії чату викликів тулів? скоріш за все це тут modules/tui_ui.py або в css файлі'
+2026-04-14 02:12:06,181 - debug - INFO - DEBUG: Message printed to UI, starting agent worker
+2026-04-14 02:12:06,181 - debug - INFO - Orchestrator.start
+2026-04-14 02:12:06,181 - debug - DEBUG - User input: який метод відповідає за відображення в історії чату викликів тулів? скоріш за все це тут modules/tui_ui.py або в css файлі
+2026-04-14 02:12:06,184 - debug - DEBUG - History+ (user): який метод відповідає за відображення в історії чату викликі...
+2026-04-14 02:12:06,184 - debug - DEBUG - Task contract: kind=TaskKind.MODIFICATION phase=AgentPhase.OBSERVE
+2026-04-14 02:12:06,184 - debug - DEBUG - Loop iteration=1 history_tokens=8723/16384
+2026-04-14 02:12:06,234 - debug - INFO - DEBUG: Agent worker scheduled
+2026-04-14 02:12:16,166 - debug - INFO - Provider has no get_tokenizer(); using character-based token estimation.
+2026-04-14 02:12:16,167 - debug - DEBUG - Parsed segments count=2
+2026-04-14 02:12:16,170 - debug - DEBUG - History+ (assistant): <think> Користувач повторює той самий запит. Я вже дав відпо...
+2026-04-14 02:12:16,171 - debug - INFO - Health.iteration step=1 elapsed_sec=9.99 history_tokens=8959/16384 actions_in_step=0 batch_actions_executed=0/0 same_action_streak=0 confirmations=0 session_tokens=266
+2026-04-14 02:12:16,171 - debug - INFO - Health.summary elapsed_sec=9.99 history_tokens=8959/16384 confirmations=0 session_tokens=266
+2026-04-14 02:12:16,171 - debug - INFO - Orchestrator.finish
+2026-04-14 02:12:33,011 - debug - INFO - DEBUG: on_history_aware_text_area_submitted called with: '/dump'
+2026-04-14 02:12:33,011 - debug - INFO - DEBUG: detected command '/dump', spawning worker
+2026-04-14 02:12:33,011 - debug - INFO - Command triggered: /dump
+
+Included log files: 2

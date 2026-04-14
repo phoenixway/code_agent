@@ -17,6 +17,7 @@ import re
 from pathlib import Path
 from modules.code_parser import CodeParser
 
+
 class HistoryManager:
     def __init__(
         self,
@@ -32,32 +33,35 @@ class HistoryManager:
         self.max_tokens = max_tokens
         self.window_size = window_size
         self.autosummarize_requires_confirmation = autosummarize_requires_confirmation
-        
+
         # --- STORAGE SETUP ---
         self.storage_root = Path(storage_dir)
         self.blobs_dir = self.storage_root / "blobs"
         self.blobs_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # --- STATE ---
         self.messages = []         # Linear chat log
         self.files = {}            # {filename: [{version, blob_hash, timestamp}, ...]}
         self.active_files = set()  # Files explicitly edited/read recently
-        
+
         # --- TOOLS ---
         self.code_parser = CodeParser()
-        
+
         # --- CONSTANTS ---
         self.SKELETON_THRESHOLD = 2000  # Bytes. Larger files get skeletonized unless active.
         self.MAX_ACTIVE_FILES = 5       # Keep top N files in "Full Content" mode in system prompt.
         self.MAX_RECENT_TRANSIENT_SKELETON_CONTEXT = 6
-        self.SUMMARY_PROMPT_RATIO = 1.15
+
+        # Summarization now starts BEFORE overflow.
+        self.SUMMARY_PROMPT_RATIO = 0.82
         self.SUMMARY_PROMPT_COOLDOWN_MIN = 200
-        self.EMERGENCY_SUMMARY_RATIO = 1.5
+        self.EMERGENCY_SUMMARY_RATIO = 0.95
         self.EMERGENCY_SUMMARY_COOLDOWN_MIN = 500
         self.SUMMARY_TARGET_RATIO = 0.5
         self.SUMMARY_MIN_INTERVAL_SEC = 45
         self.SUMMARY_MIN_TOKEN_GROWTH = max(256, self.max_tokens // 16)
         self.disable_summary_prompts = False
+
         self._next_summary_prompt_tokens = int(self.max_tokens * self.SUMMARY_PROMPT_RATIO)
         self._next_emergency_summary_tokens = int(self.max_tokens * self.EMERGENCY_SUMMARY_RATIO)
         self._last_summary_at = 0.0
@@ -65,14 +69,22 @@ class HistoryManager:
         self._observe_summary_deferrals_remaining = 0
         self._last_summary_execution_snapshot = ""
 
+        # History compaction guards
+        self.MAX_STRUCTURED_TEXT_CHARS = 2500
+        self.MAX_STRUCTURED_STDOUT_CHARS = 1200
+        self.MAX_STRUCTURED_STDERR_CHARS = 800
+        self.MAX_STRUCTURED_OUTPUT_LINES = 40
+        self.LARGE_RESULT_COUNT_HINT = 80
+
     # =========================================================================
     # 1. BLOB STORAGE (Content-Addressable Storage)
     # =========================================================================
 
     def _save_blob(self, content: str) -> str:
         """Saves content to disk using SHA256 hash as filename."""
-        if not content: return None
-        
+        if not content:
+            return None
+
         content_bytes = content.encode('utf-8')
         blob_hash = hashlib.sha256(content_bytes).hexdigest()
         blob_path = self.blobs_dir / blob_hash
@@ -84,7 +96,7 @@ class HistoryManager:
         except Exception as e:
             if self.logger:
                 self.logger.error(f"Blob dir ensure error {self.blobs_dir}: {e}")
-        
+
         if not blob_path.exists():
             with open(blob_path, "wb") as f:
                 f.write(content_bytes)
@@ -92,14 +104,16 @@ class HistoryManager:
 
     def _load_blob(self, blob_hash: str) -> str:
         """Retrieves content from disk by hash."""
-        if not blob_hash: return ""
+        if not blob_hash:
+            return ""
         blob_path = self.blobs_dir / blob_hash
         if blob_path.exists():
             try:
                 with open(blob_path, "rb") as f:
                     return f.read().decode('utf-8')
             except Exception as e:
-                if self.logger: self.logger.error(f"Blob load error {blob_hash}: {e}")
+                if self.logger:
+                    self.logger.error(f"Blob load error {blob_hash}: {e}")
         return ""
 
     # =========================================================================
@@ -120,13 +134,17 @@ class HistoryManager:
         if role == "assistant" and isinstance(content, str):
             final_content = self._compress_assistant_tool_call(content)
             final_content = self._sanitize_action_blocks_for_history(final_content)
-        
+
+        # COMPRESSION: Structured tool/system payloads can silently flood history.
+        if isinstance(final_content, (dict, list)):
+            final_content = self._compact_structured_message_content(final_content)
+
         message = {"role": role, "content": final_content}
         if msg_type:
             message["type"] = msg_type
 
         self.messages.append(message)
-        
+
         if self.logger:
             preview = str(final_content)[:60].replace('\n', ' ')
             self.logger.debug(f"History+ ({role}): {preview}...")
@@ -134,11 +152,10 @@ class HistoryManager:
     def _compress_assistant_tool_call(self, content: str) -> str:
         """Parses assistant JSON. If create/edit_file, offloads content to Blob."""
         try:
-            # Check if it looks like JSON tool call
             if content.strip().startswith('{') and '"content"' in content:
                 data = json.loads(content)
                 action = data.get("type") or data.get("action")
-                
+
                 if action in ["create_file", "write_file", "edit_file", "replace"] and "content" in data:
                     body = data["content"]
                     if isinstance(body, str) and len(body) > 200:
@@ -177,6 +194,82 @@ class HistoryManager:
 
         pattern = re.compile(r'<action(?:\s+type="([^"]+)")?>(.*?)</action>', re.DOTALL | re.IGNORECASE)
         return re.sub(pattern, _replace, content)
+
+    def _truncate_multiline_text(self, text: str, *, max_chars: int, max_lines: int) -> str:
+        if not isinstance(text, str):
+            text = str(text)
+        if not text:
+            return text
+        lines = text.splitlines()
+        truncated_lines = lines[:max_lines]
+        out = "\n".join(truncated_lines)
+        if len(out) > max_chars:
+            out = out[:max_chars].rstrip() + "\n...[truncated]"
+        elif len(lines) > max_lines:
+            out += "\n...[truncated]"
+        return out
+
+    def _compact_structured_message_content(self, content):
+        """
+        Prevent giant tool results from silently inflating history.
+        Especially important for search tool outputs that may already be previewed in `output`
+        but still carry huge `stdout`.
+        """
+        try:
+            if isinstance(content, list):
+                return [self._compact_structured_message_content(item) for item in content]
+
+            if not isinstance(content, dict):
+                return content
+
+            compact = dict(content)
+
+            # If the producer already marked this as compact/truncated, trust that and keep history tiny.
+            history_compact = bool(compact.get("history_compact", False))
+            truncated = bool(compact.get("truncated", False))
+            result_count = int(compact.get("result_count", 0) or 0)
+
+            if isinstance(compact.get("output"), str):
+                compact["output"] = self._truncate_multiline_text(
+                    compact["output"],
+                    max_chars=self.MAX_STRUCTURED_TEXT_CHARS,
+                    max_lines=self.MAX_STRUCTURED_OUTPUT_LINES,
+                )
+
+            if isinstance(compact.get("stdout"), str):
+                if history_compact or truncated or result_count >= self.LARGE_RESULT_COUNT_HINT:
+                    compact["stdout"] = self._truncate_multiline_text(
+                        compact["stdout"],
+                        max_chars=self.MAX_STRUCTURED_STDOUT_CHARS,
+                        max_lines=20,
+                    )
+                else:
+                    compact["stdout"] = self._truncate_multiline_text(
+                        compact["stdout"],
+                        max_chars=self.MAX_STRUCTURED_TEXT_CHARS,
+                        max_lines=self.MAX_STRUCTURED_OUTPUT_LINES,
+                    )
+
+            if isinstance(compact.get("stderr"), str):
+                compact["stderr"] = self._truncate_multiline_text(
+                    compact["stderr"],
+                    max_chars=self.MAX_STRUCTURED_STDERR_CHARS,
+                    max_lines=12,
+                )
+
+            # Legacy or ad-hoc giant text fields
+            for key in list(compact.keys()):
+                value = compact.get(key)
+                if isinstance(value, str) and key not in {"output", "stdout", "stderr", "content"} and len(value) > self.MAX_STRUCTURED_TEXT_CHARS:
+                    compact[key] = self._truncate_multiline_text(
+                        value,
+                        max_chars=self.MAX_STRUCTURED_TEXT_CHARS,
+                        max_lines=self.MAX_STRUCTURED_OUTPUT_LINES,
+                    )
+
+            return compact
+        except Exception:
+            return content
 
     def add_transient_file_content(self, filename, version, content):
         """Adds a temporary message (read_file result) that isn't saved permanently."""
@@ -221,7 +314,6 @@ class HistoryManager:
         blob_hash = self._save_blob(content)
         version_list = self.files.setdefault(filename, [])
 
-        # Deduplicate identical content: do not create extra versions for the same blob.
         if version_list and version_list[-1].get("blob_hash") == blob_hash:
             current_version = version_list[-1]["version"]
             version_list[-1]["timestamp"] = time.time()
@@ -237,11 +329,9 @@ class HistoryManager:
             "timestamp": time.time(),
             "size": len(content)
         })
-        
-        # Mark as active (LRU logic)
+
         self.active_files.add(filename)
         if len(self.active_files) > self.MAX_ACTIVE_FILES:
-            # Deterministic eviction: drop the oldest active file except current.
             oldest = self._pick_oldest_active_file(exclude=filename)
             if oldest:
                 self.active_files.discard(oldest)
@@ -264,36 +354,28 @@ class HistoryManager:
     def get_history_for_api(self):
         """
         Dynamically constructs the context window.
-        Logic:
-        1. Parse linear history.
-        2. Identify file references.
-        3. Build 'System Workspace' (Full content vs Skeletons).
-        4. Append Chat Log (skipping redundant transient files).
-        5. Ensure the LAST read_file result is always visible.
         """
         api_history = []
         included_in_system_prompt = set()
         over_limit_pressure = self.current_token_count > self.max_tokens
         active_limit = self._effective_active_file_limit(over_limit_pressure)
         active_set = self._select_recent_active_files(active_limit)
-        
-        # --- A. BUILD SYSTEM WORKSPACE (Current Project State) ---
+
         workspace_parts = []
         file_render_mode = {}
-        
+
         for filename, versions in self.files.items():
-            if not versions: continue
-            
+            if not versions:
+                continue
+
             latest = versions[-1]
             version = latest["version"]
             content = self._load_blob(latest["blob_hash"])
-            
-            # Logic: Full Content OR Skeleton?
-            # Full if: Active OR Small size
+
             is_active = filename in active_set
             small_threshold = self.SKELETON_THRESHOLD if not over_limit_pressure else min(self.SKELETON_THRESHOLD, 400)
             is_small = len(content) < small_threshold
-            
+
             if is_active or is_small:
                 workspace_parts.append(
                     f"<file_content path='{filename}' version='{version}'>\n{content}\n</file_content>"
@@ -306,23 +388,19 @@ class HistoryManager:
                     f""
                 )
                 file_render_mode[filename] = "skeleton"
-            
+
             included_in_system_prompt.add(f"{filename}:{version}")
 
         if workspace_parts:
             sys_msg = "## CURRENT FILE STATE\n" + "\n".join(workspace_parts)
             api_history.append({"role": "system", "content": sys_msg})
 
-        # --- B. PROCESS CHAT LOG ---
-        
         last_msg_idx = len(self.messages) - 1
         recent_transient_indices = self._recent_transient_indices()
-        
+
         for idx, msg in enumerate(self.messages):
             msg_type = msg.get("type")
-            
-            # Skip transient files (read_file results) IF they are already covered in System Workspace
-            # UNLESS it's the very last message (Agent just read it, needs to see it now)
+
             if msg_type == "transient_file_content":
                 t_data = msg["content"]
                 f_name, f_ver, f_content = t_data["filename"], t_data["version"], t_data["content"]
@@ -332,7 +410,6 @@ class HistoryManager:
                     and file_render_mode.get(f_name) == "skeleton"
                 )
                 if show_for_immediate_feedback or show_for_recent_skeleton_context:
-                    # Even for immediate/recent feedback, check size
                     if len(f_content) > self.SKELETON_THRESHOLD * 2:
                         skel = self.code_parser.get_skeleton(f_name, f_content)
                         content_str = (
@@ -346,18 +423,16 @@ class HistoryManager:
                             f"<file_content path='{f_name}' version='{f_ver}'>\n{f_content}\n</file_content>"
                         )
                     api_history.append({"role": "system", "content": content_str})
-                
-                continue # Skip transient messages that are not the last one
+
+                continue
 
             elif msg_type == "file_context":
-                # Legacy support: skip, as we built System Workspace
                 continue
-            
-            # Add normal messages
+
             content = msg.get('content', '')
             if not isinstance(content, str):
                 content = json.dumps(content, ensure_ascii=False)
-            
+
             api_history.append({"role": msg["role"], "content": content})
 
         return api_history
@@ -414,7 +489,10 @@ class HistoryManager:
         total = 0
         for m in msgs:
             c = m.get("content", "")
-            total += len(str(c))
+            if isinstance(c, str):
+                total += len(c)
+            else:
+                total += len(json.dumps(c, ensure_ascii=False))
         return total // 4
 
     @property
@@ -435,6 +513,18 @@ class HistoryManager:
         for msg in self.messages[-max(1, int(window)):]:
             if msg.get("type") == "transient_file_content":
                 count += 1
+        return count
+
+    def _recent_large_tool_result_count(self, window: int = 8) -> int:
+        count = 0
+        for msg in self.messages[-max(1, int(window)):]:
+            content = msg.get("content")
+            if isinstance(content, dict):
+                if content.get("history_compact") or content.get("truncated"):
+                    count += 1
+                    continue
+                if int(content.get("result_count", 0) or 0) >= self.LARGE_RESULT_COUNT_HINT:
+                    count += 1
         return count
 
     def _build_execution_snapshot(self, state=None) -> str:
@@ -469,22 +559,31 @@ class HistoryManager:
         return "\n".join(lines)
 
     async def check_and_summarize(self, ui=None, state=None):
-        """Trigger summarization if limit reached."""
+        """Trigger summarization before hard overflow when possible."""
         tokens = self.count_tokens()
-        if tokens <= self.max_tokens:
-            self._next_summary_prompt_tokens = int(self.max_tokens * self.SUMMARY_PROMPT_RATIO)
-            self._next_emergency_summary_tokens = int(self.max_tokens * self.EMERGENCY_SUMMARY_RATIO)
-            return
         now = time.time()
 
+        prompt_threshold = int(self.max_tokens * self.SUMMARY_PROMPT_RATIO)
+        emergency_threshold = int(self.max_tokens * self.EMERGENCY_SUMMARY_RATIO)
+
+        if tokens < prompt_threshold:
+            self._next_summary_prompt_tokens = prompt_threshold
+            self._next_emergency_summary_tokens = emergency_threshold
+            return
+
         sm = getattr(state, "state_machine", None) if state is not None else None
-        if sm is not None and getattr(sm.phase, "value", sm.phase) == "OBSERVE":
+        in_observe = sm is not None and getattr(sm.phase, "value", sm.phase) == "OBSERVE"
+
+        if in_observe:
             defer_budget = max(0, int(getattr(sm.config, "SUMMARY_DEFER_OBSERVE_STEPS", 1)))
             min_reads = max(1, int(getattr(sm.config, "SUMMARY_MIN_READS_BEFORE_DEFER", 2)))
             if self._observe_summary_deferrals_remaining <= 0:
                 self._observe_summary_deferrals_remaining = defer_budget
+
+            has_large_recent_tool_result = self._recent_large_tool_result_count() > 0
             if (
-                tokens < int(self.max_tokens * self.EMERGENCY_SUMMARY_RATIO)
+                not has_large_recent_tool_result
+                and tokens < emergency_threshold
                 and self._observe_summary_deferrals_remaining > 0
                 and self._recent_read_file_count() >= min_reads
             ):
@@ -497,11 +596,9 @@ class HistoryManager:
                     )
                 return
 
-        # Hard guard: if history is heavily overflown, summarize immediately.
-        emergency_threshold = int(self.max_tokens * self.EMERGENCY_SUMMARY_RATIO)
         if tokens >= emergency_threshold and tokens >= self._next_emergency_summary_tokens:
             if ui:
-                await ui.print_system("History is critically over limit. Running emergency compact...")
+                await ui.print_system("History is near critical size. Running emergency compact...")
             await self.summarize(ui, window=True, state=state)
             cooldown = max(self.EMERGENCY_SUMMARY_COOLDOWN_MIN, self.max_tokens // 8)
             self._next_emergency_summary_tokens = self.count_tokens() + cooldown
@@ -512,10 +609,6 @@ class HistoryManager:
             and now - self._last_summary_at < self.SUMMARY_MIN_INTERVAL_SEC
             and tokens - self._last_summary_tokens < self.SUMMARY_MIN_TOKEN_GROWTH
         ):
-            return
-
-        # Avoid prompting too early right after crossing the hard limit.
-        if tokens < int(self.max_tokens * self.SUMMARY_PROMPT_RATIO):
             return
 
         if tokens < self._next_summary_prompt_tokens:
@@ -539,7 +632,6 @@ class HistoryManager:
                 self._next_summary_prompt_tokens = tokens + cooldown
                 return
 
-        # Default mode: keep control in AI loop (no modal confirmation).
         await self.summarize(ui, window=True, state=state)
 
     async def summarize(self, ui=None, window=True, state=None):
@@ -551,15 +643,35 @@ class HistoryManager:
             to_summarize = self.messages
             keep_messages = []
 
-        if not to_summarize: return
+        if not to_summarize:
+            return
 
-        # Compress text for prompt
         history_text = "\n".join(f"{m['role']}: {str(m['content'])[:200]}..." for m in to_summarize)
 
         prompt = (
-            "Summarize conversation history JSON. Keep tasks/decisions.\n"
+            "Summarize conversation history JSON for a coding agent. "
+            "Be aggressively compact. Preserve only high-value state.\n"
+            "Keep:\n"
+            "- user's actual goal and constraints\n"
+            "- established facts and conclusions\n"
+            "- files read/edited that still matter\n"
+            "- active intent / current target / pending next step\n"
+            "- important errors, defect detections, and recovery decisions\n"
+            "\n"
+            "Compress heavily:\n"
+            "- repetitive search attempts\n"
+            "- repeated tool calls with similar arguments\n"
+            "- broad/noisy search results\n"
+            "- long file listings\n"
+            "- verbose tool stdout/stderr\n"
+            "- repeated policy/recovery messages\n"
+            "\n"
+            "When many similar tool attempts happened, collapse them into one line such as:\n"
+            "- 'Repeated search_content on concat_into in project root; too broad/noisy; later narrowed to modules with no matches.'\n"
+            "\n"
+            "Do NOT preserve raw long outputs. Do NOT preserve full code unless essential.\n"
+            "Return strict JSON: {\"summary\": \"...\", \"pending\": [...], \"established_facts\": [...], \"open_questions\": [...]}\n"
             f"{history_text}\n"
-            "Format: {\"summary\": \"...\", \"pending\": [...]}"
         )
 
         summary_count = len(to_summarize)
@@ -591,6 +703,7 @@ class HistoryManager:
 
             target_tokens = max(256, int(self.max_tokens * self.SUMMARY_TARGET_RATIO))
             summary_out = self._truncate_text_to_tokens(summary_out, max(128, target_tokens // 2))
+            execution_snapshot = self._build_execution_snapshot(state)
             self._last_summary_execution_snapshot = execution_snapshot
             summary_msg = {"role": "system", "content": f"Previous conversation summary: {summary_out}\n\n{execution_snapshot}"}
 
@@ -605,6 +718,7 @@ class HistoryManager:
             self._next_emergency_summary_tokens = int(self.max_tokens * self.EMERGENCY_SUMMARY_RATIO)
             self._last_summary_at = time.time()
             self._last_summary_tokens = self.count_tokens()
+            self._observe_summary_deferrals_remaining = 0
 
             tokens_after = self._last_summary_tokens
             duration_ms = int((time.time() - started_at) * 1000)
@@ -619,7 +733,7 @@ class HistoryManager:
                     f"tokens_after={tokens_after} "
                     f"reduction_pct={reduction_pct:.1f}"
                 )
-            
+
             if ui:
                 update_progress = getattr(ui, "update_system_progress", None)
                 done_text = f"{progress_text} Done."
@@ -627,9 +741,12 @@ class HistoryManager:
                     await update_progress(progress_widget, done_text)
                 else:
                     await ui.print_system(done_text)
-            
+
         except Exception as e:
-            if ui: await ui.print_error(f"Summarization error: {e}")
+            if ui:
+                await ui.print_error(f"Summarization error: {e}")
+            if self.logger:
+                self.logger.exception("Summarization error")
 
     def _truncate_text_to_tokens(self, text: str, max_tokens: int) -> str:
         if not isinstance(text, str) or max_tokens <= 0:
@@ -650,8 +767,9 @@ class HistoryManager:
         """Clear RAM history only."""
         self.messages = []
         self.active_files = set()
-        self.files = {} 
-        if self.logger: self.logger.info("History cleared.")
+        self.files = {}
+        if self.logger:
+            self.logger.info("History cleared.")
 
     def remove_file_state(self, path_prefix: str) -> int:
         """Remove tracked file-state entries matching an exact path or prefix."""

@@ -55,10 +55,16 @@ class AgentConfig:
         self.INTENT_DEFAULT_RETRY_LIMIT = self._get_positive_int("intent_default_retry_limit", 2)
         self.INTENT_MAX_SAFE_STEPS = self._get_positive_int("intent_max_safe_steps", 8)
         self.INTENT_MAX_RETRY_LIMIT = self._get_positive_int("intent_max_retry_limit", 4)
+        self.INTENT_COMPLETION_ALLOWANCE = self._get_positive_int("intent_completion_allowance", 1)
+        self.INTENT_USER_EXTENSION_STEPS = self._get_positive_int("intent_user_extension_steps", 4)
+        self.INTENT_USER_ONE_SHOT_STEPS = self._get_positive_int("intent_user_one_shot_steps", 2)
+        self.INTENT_ALLOW_UNLIMITED_OVERRIDE = bool(self.settings.get("intent_allow_unlimited_override", True))
         self.DEFECT_SAME_ACTION_REPEAT_THRESHOLD = self._get_positive_int("defect_same_action_repeat_threshold", 3)
         self.DEFECT_ACTION_CYCLE_WINDOW = self._get_positive_int("defect_action_cycle_window", 3)
         self.DEFECT_ACTION_HISTORY_WINDOW = self._get_positive_int("defect_action_history_window", 12)
         self.DEFECT_LOW_VALUE_BROAD_SEARCH_REPEAT_THRESHOLD = self._get_positive_int("defect_low_value_broad_search_repeat_threshold", 2)
+        self.DEFECT_TOO_BROAD_SEARCH_THRESHOLD = self._get_positive_int("defect_too_broad_search_threshold", 1)
+        self.DEFECT_STRATEGY_EXHAUSTED_THRESHOLD = self._get_positive_int("defect_strategy_exhausted_threshold", 3)
 
         # Existing phase/budget controls
         self.OBSERVE_PHASE_BUDGET = self._get_positive_int("observe_phase_budget", 8)

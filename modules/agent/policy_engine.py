@@ -76,6 +76,12 @@ class PolicyEngine:
         )
 
     def evaluate_pre_action(self, ctx: PreActionPolicyInput) -> EnginePreActionDecision:
+        # Highest-priority escape hatch:
+        # if a formal INVESTIGATE intent is active and still within its own safe_steps_limit,
+        # do not let old phase gating or broad-read budgets kill the investigation early.
+        if self._active_investigation_can_continue(ctx):
+            return EnginePreActionDecision(allow=True)
+
         if not ctx.phase_allows_action:
             return EnginePreActionDecision(
                 allow=False,
@@ -137,11 +143,6 @@ class PolicyEngine:
                 required_next_action_types=["search_content", "edit_file", "write_file"],
             )
 
-        # If a formal INVESTIGATE intent is active and still within its own safe_steps_limit,
-        # do not let the old OBSERVE/broad-recon budgets kill it early.
-        if self._active_investigation_can_continue(ctx):
-            return EnginePreActionDecision(allow=True)
-
         if ctx.task_kind == "INSPECTION" and ctx.observe_budget_exhausted and ctx.broad_recon_budget_exhausted:
             return EnginePreActionDecision(
                 allow=False,
@@ -153,16 +154,8 @@ class PolicyEngine:
                 required_next_action_types=["search_content", "read_file"],
             )
 
-        if ctx.observe_budget_exhausted and ctx.task_kind in {"MODIFICATION", "HYBRID"} and ctx.cmd_type in {
-            "read_file", "read_file_skeleton", "search_content", "search_files", "list_directory", "find_files", "git_diff", "run_shell"
-        }:
-            return EnginePreActionDecision(
-                allow=False,
-                stop_reason="observe_budget_exhausted",
-                recovery_prompt="SYSTEM: OBSERVE phase budget is exhausted. Move to edit planning or activate a new intent.",
-                required_next_action_types=["search_content", "edit_file", "write_file"],
-            )
-
+        # Observe budget is no longer a hard stop for HYBRID/MODIFICATION work.
+        # Intent limits + defect detector handle broad/no-progress exploration better.
         return EnginePreActionDecision(allow=True)
 
     def evaluate_loop(self, ctx: LoopPolicyInput) -> EngineLoopDecision:

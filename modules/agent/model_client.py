@@ -150,6 +150,6 @@ class ModelClient:
             self.chat = new_provider
             if ui:
                 await ui.update_header(f"{self.chat.model_name}")
-                await ui.print_system(f"✅ Модель змінено на {model_name}")
+                await ui.print_system(f"Модель змінено на {model_name}")
             return True
         return False

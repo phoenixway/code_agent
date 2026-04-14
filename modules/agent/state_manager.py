@@ -59,16 +59,40 @@ class AgentState:
         self.readonly_steps_this_turn = 0
         self.last_turn_had_failure = False
         self.intent_only_response_count = 0
+        self.recent_problem_actions = []
+        self.pending_suspect_intent_payload = None
+        self.allow_suspect_intent_once = False
 
     def start_turn_runtime(self):
         self.readonly_steps_this_turn = 0
         self.last_turn_had_failure = False
         self.intent_only_response_count = 0
+        self.pending_suspect_intent_payload = None
+        self.allow_suspect_intent_once = False
         if self.defect_detector:
             self.defect_detector.reset()
 
     def note_intent_only_response(self):
         self.intent_only_response_count += 1
+
+    def _trim_recent_problem_actions(self):
+        window = int(getattr(self._config, "INTENT_RELABEL_PROBLEM_WINDOW", 5) if self._config is not None else 5)
+        if window < 1:
+            window = 5
+        if len(self.recent_problem_actions) > window:
+            self.recent_problem_actions = self.recent_problem_actions[-window:]
+
+    def note_problem_action(self, command: dict, result: dict, *, reason: str = ""):
+        entry = {
+            "fingerprint": self.get_action_fingerprint(command),
+            "command": command.copy(),
+            "reason": str(reason or "").strip(),
+            "status": str((result or {}).get("status") or ""),
+            "error_code": str((result or {}).get("error_code") or ""),
+            "output_preview": str((result or {}).get("output") or "")[:280],
+        }
+        self.recent_problem_actions.append(entry)
+        self._trim_recent_problem_actions()
 
     def attach_config(self, config):
         self._config = config
@@ -114,9 +138,67 @@ class AgentState:
             return bool(checker())
         return False
 
-    def apply_intent_contract(self, payload: dict, config) -> tuple[bool, str]:
+    def apply_intent_contract(self, payload: dict, config, *, bypass_suspicion: bool = False) -> tuple[bool, str]:
         self.attach_config(config)
-        return self.intent_runtime.apply_payload(payload)
+        if not self.intent_runtime:
+            return False, "intent_runtime_unavailable"
+
+        contract, transition_info, error = self.intent_runtime.inspect_transition(payload)
+        if error:
+            return False, error
+
+        suspicious = False
+        if (
+            not bypass_suspicion
+            and bool(getattr(config, "INTENT_RELABEL_SUSPICION_ENABLED", True))
+            and contract is not None
+            and transition_info is not None
+            and transition_info.get("same_lineage")
+            and transition_info.get("old_goal")
+            and contract.mode in {"activate", "replace"}
+            and self.recent_problem_actions
+        ):
+            recent = self.recent_problem_actions[-1]
+            same_allowed = transition_info.get("actions_overlap", 0.0) >= float(getattr(config, "INTENT_RELABEL_ACTION_OVERLAP_THRESHOLD", 0.6))
+            suspicious = same_allowed
+            if suspicious:
+                self.pending_suspect_intent_payload = payload
+                self.last_defect_info = {
+                    "reason": "suspect_intent_relabel_repeat",
+                    "recoverable": True,
+                    "error_code": "SUSPECT_INTENT_RELABEL_REPEAT",
+                    "next_actions": list(contract.allowed_actions),
+                    "command": recent.get("command", {}).copy() if isinstance(recent.get("command"), dict) else {},
+                    "message": "Є підозра на useless intent relabel.",
+                    "suspicion": {
+                        "old_intent_id": transition_info.get("old_intent_id", ""),
+                        "old_goal": transition_info.get("old_goal", ""),
+                        "old_allowed_actions": transition_info.get("old_allowed_actions", []),
+                        "new_intent_id": transition_info.get("new_intent_id", ""),
+                        "new_goal": transition_info.get("new_goal", ""),
+                        "new_allowed_actions": transition_info.get("new_allowed_actions", []),
+                        "goal_similarity": transition_info.get("goal_similarity", 0.0),
+                        "actions_overlap": transition_info.get("actions_overlap", 0.0),
+                        "recent_problem_reason": recent.get("reason", ""),
+                        "recent_problem_action": recent.get("fingerprint", ""),
+                        "recent_problem_output": recent.get("output_preview", ""),
+                    },
+                }
+                return False, "suspect_intent_relabel_repeat"
+
+        ok, msg = self.intent_runtime.apply_payload(payload)
+        if ok:
+            self.pending_suspect_intent_payload = None
+        return ok, msg
+
+    def allow_pending_suspect_intent_once(self, config) -> tuple[bool, str]:
+        if not self.pending_suspect_intent_payload:
+            return False, "no_pending_suspect_intent"
+        payload = self.pending_suspect_intent_payload
+        self.allow_suspect_intent_once = True
+        ok, msg = self.apply_intent_contract(payload, config, bypass_suspicion=True)
+        self.allow_suspect_intent_once = False
+        return ok, msg
 
     def active_intent_summary(self) -> str:
         return self.intent_runtime.summary() if self.intent_runtime else ""
@@ -244,6 +326,11 @@ class AgentState:
                     "command": command.copy(),
                     "message": evt.message,
                 }
+
+        if status in {"failed", "error"}:
+            self.note_problem_action(command, result, reason=error_code or status)
+        elif defect_info is not None:
+            self.note_problem_action(command, result, reason=str(defect_info.get("reason") or "defect"))
 
         self.last_defect_info = defect_info
 
