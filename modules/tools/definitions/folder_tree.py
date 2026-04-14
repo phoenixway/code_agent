@@ -6,11 +6,9 @@ class FolderTreeTool(BaseTool):
     name = "folder_tree"
     description = (
         "Shows a directory as a tree. "
-        "Useful for quickly understanding project structure. "
-        "Parameters: "
-        "path (str, optional) - root directory (default: current directory); "
-        "max_depth (int, optional) - maximum tree depth (default: 3); "
-        "include_files (bool, optional) - include files in output (default: true); "
+        "Useful for quickly understanding project structure before targeted search or reads. "
+        "Parameters: path (str, optional) - root directory (default: current directory); "
+        "max_depth (int, optional) - maximum tree depth (default: 3); include_files (bool, optional) - include files in output (default: true); "
         "show_hidden (bool, optional) - include hidden files and folders (default: false)."
     )
 

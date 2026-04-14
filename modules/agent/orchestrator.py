@@ -5,10 +5,11 @@ import json
 import re
 from modules.defaults import DEFAULT_SYSTEM_PROMPT
 
+
 class Orchestrator:
 
     _READ_ONLY_TOOLS = {
-        "read_file", "read_file_skeleton", "search_content", "search_files",
+        "read_file", "read_chunk", "read_file_skeleton", "search_content", "search_files",
         "list_directory", "find_files", "git_diff", "run_shell"
     }
 
@@ -46,18 +47,14 @@ class Orchestrator:
         path = command.get("path")
         active_intent = getattr(state, "active_intent", None)
 
-        # Hard requirement set by defect detector still wins.
         if getattr(state, "intent_required_until_activated", False):
             return True, getattr(state, "intent_required_reason", "intent_required")
 
-        # If a formal intent is already active and this action is allowed by that intent,
-        # do NOT ask for another intent again. This is the core anti-loop fix.
         if active_intent is not None:
             allowed = set(getattr(active_intent, "allowed_actions", []) or [])
             if cmd_type in allowed:
                 return False, ""
 
-        # No active intent yet: these are the situations where we require one.
         if cmd_type in self._READ_ONLY_TOOLS and self._user_task_requires_intent(current_user_input):
             return True, "investigation_task_requires_formal_intent"
 
@@ -80,7 +77,6 @@ class Orchestrator:
             if any(tok in cmd for tok in ("find .", "rg ", "grep -r", "grep -rn", "grep -r ", "grep -R")):
                 return True, "broad_shell_search_requires_intent"
 
-        # Failure context does not require a brand new intent if the current one can continue.
         if getattr(state, "has_retry_context", None) and state.has_retry_context():
             if active_intent is None:
                 return True, "retry_or_continuation_after_failure"
@@ -125,16 +121,29 @@ class Orchestrator:
             "- mode\n"
             "If you also need an action now, place the <intent> block before the action."
         )
-    
-    def _build_reuse_current_intent_prompt(self, reason: str, allowed_actions: list[str] | None = None) -> str:
+
+    def _build_reuse_current_intent_prompt(
+        self,
+        reason: str,
+        allowed_actions: list[str] | None = None,
+        *,
+        goal: str | None = None,
+    ) -> str:
         next_hint = ""
         if allowed_actions:
             next_hint = f"\nAllowed actions under the CURRENT intent: {', '.join(allowed_actions)}."
+        goal_hint = ""
+        if isinstance(goal, str) and goal.strip():
+            goal_hint = f"\nCurrent intent goal remains the same: {goal.strip()}."
         return (
             "SYSTEM: Do NOT send another <intent> block now.\n"
-            f"Reason: {reason}.{next_hint}\n"
-            "Reuse the current active intent lineage.\n"
-            "Return EXACTLY ONE valid <action> now, or provide a final plain-text answer if no tool is needed.\n"
+            f"Reason: {reason}.{next_hint}{goal_hint}\n"
+            "Reuse the current intent.\n"
+            "Its goal remains the same.\n"
+            "Continue toward that goal using the updated allowed tools and constraints.\n"
+            "Do not repeat the action pattern that was just blocked or low-value.\n"
+            "Choose the next action that most increases progress toward the goal.\n"
+            "Return EXACTLY ONE materially different next <action>, or provide a plain-text answer if the goal can already be answered.\n"
             "Do not repeat the same <intent> again in this reply."
         )
 
@@ -168,18 +177,24 @@ class Orchestrator:
         stop_info = stop_info or {}
         reason = str(stop_info.get("reason") or "")
 
-        # If the current intent still makes sense, do not force new-intent bureaucracy.
         if reason in {"intent_action_not_allowed", "intent_step_limit_soft_exceeded"}:
             active_intent = getattr(self.state, "active_intent", None)
             allowed = stop_info.get("next_actions") or getattr(active_intent, "allowed_actions", None) or []
             if reason == "intent_step_limit_soft_exceeded":
                 return True, (
-                    self._build_reuse_current_intent_prompt(reason, allowed)
+                    self._build_reuse_current_intent_prompt(
+                        reason,
+                        allowed,
+                        goal=getattr(active_intent, "goal", ""),
+                    )
                     + "\nPrefer exactly one final allowed <action>, or return a final plain-text answer if the evidence is already enough."
                 )
-            return True, self._build_reuse_current_intent_prompt(reason, allowed)
+            return True, self._build_reuse_current_intent_prompt(
+                reason,
+                allowed,
+                goal=getattr(active_intent, "goal", ""),
+            )
 
-        # First hard limit keeps the existing strict recovery. Repeated hard limit for the same lineage escalates to the user.
         if reason == "intent_step_limit_exceeded":
             active_intent = getattr(self.state, "active_intent", None)
             allowed = stop_info.get("next_actions") or getattr(active_intent, "allowed_actions", None) or []
@@ -203,32 +218,38 @@ class Orchestrator:
                 return True, None
 
             if decision == "allow_2_steps":
-                if runtime is not None:
+                if runtime is not None and hasattr(runtime, "grant_two_more_steps"):
                     runtime.grant_two_more_steps()
                 self.state.add_confirmation(1)
                 return True, (
                     self._build_reuse_current_intent_prompt(
                         "user_granted_two_more_steps_after_repeated_hard_limit",
                         allowed,
+                        goal=getattr(active_intent, "goal", ""),
                     )
                     + "\nUser granted 2 more steps for the current intent lineage. Return EXACTLY ONE valid <action> now."
                 )
 
             if decision == "extend_limit":
                 extra = int(getattr(self.config, "INTENT_USER_EXTENSION_STEPS", 4))
-                if runtime is not None:
+                if runtime is not None and hasattr(runtime, "extend_current_intent_limit"):
                     runtime.extend_current_intent_limit(extra)
                 self.state.add_confirmation(1)
                 return True, (
                     self._build_reuse_current_intent_prompt(
                         "user_extended_limit_for_current_intent",
                         allowed,
+                        goal=getattr(active_intent, "goal", ""),
                     )
                     + f"\nUser extended the nominal step budget for this investigation by {extra} steps. Return EXACTLY ONE valid <action> now."
                 )
 
             if decision == "unlimited_for_intent":
-                enabled = bool(runtime is not None and runtime.enable_unlimited_for_current_intent())
+                enabled = bool(
+                    runtime is not None
+                    and hasattr(runtime, "enable_unlimited_for_current_intent")
+                    and runtime.enable_unlimited_for_current_intent()
+                )
                 self.state.add_confirmation(1)
                 note = (
                     "User explicitly granted unlimited continuation for this intent. Avoid loops and overclaim."
@@ -238,10 +259,11 @@ class Orchestrator:
                 return True, self._build_reuse_current_intent_prompt(
                     "user_enabled_unlimited_for_current_intent",
                     allowed,
+                    goal=getattr(active_intent, "goal", ""),
                 ) + f"\n{note}"
 
             if decision == "force_completion_answer":
-                if runtime is not None:
+                if runtime is not None and hasattr(runtime, "force_current_intent_completion"):
                     runtime.force_current_intent_completion()
                 return True, self._build_plain_text_completion_prompt(getattr(self.state, "state_machine", None), stop_info)
 
@@ -267,7 +289,6 @@ class Orchestrator:
 
     def __init__(self, agent):
         self.agent = agent
-        # Скорочення для зручності
         self.ui = agent.ui
         self.state = agent.state
         self.history = agent.history
@@ -345,7 +366,6 @@ class Orchestrator:
             "Do not output <think> without an action or final answer."
         )
 
-
     def _is_intent_only_response(self, response: str, segments) -> bool:
         if not isinstance(response, str):
             return False
@@ -364,7 +384,6 @@ class Orchestrator:
             "Do not repeat the same <intent> again unless you are explicitly retrying or replacing it.\n"
             "Do not output TOOL_HISTORY, SYSTEM_TOOL_AUDIT, or <previously_performed_action>."
         )
-
 
     def _typed_recovery_header(self, stop_info: dict | None) -> str:
         stop_info = stop_info or {}
@@ -388,6 +407,7 @@ class Orchestrator:
             "recover_repeated_fingerprint": "You repeated the same action fingerprint after recovery.",
             "malformed_read_file_payload": "Your last read_file call used an invalid payload.",
             "malformed_read_file_skeleton_payload": "Your last read_file_skeleton call used an invalid payload.",
+            "malformed_read_chunk_payload": "Your last read_chunk call used an invalid payload.",
             "list_directory_missing_path": "Your last list_directory call omitted the required path.",
             "repeating_no_progress": "You are repeating actions without measurable progress.",
             "repeating_failure": "You are repeating failing actions without changing strategy.",
@@ -397,6 +417,10 @@ class Orchestrator:
             "history_self_reference_hit": "Your search matched only self-referential artifact/history content, which is not real usage evidence.",
             "search_batch_aborted_after_first_action": "Your read-only search batch was aborted after the first action. Do not send another broad search batch.",
             "intent_force_plaintext_completion": "User requested final answer from already gathered evidence. Stop tool use now.",
+            "full_read_confirmation_required": "Full read of a very large file requires explicit confirmation. Prefer skeleton or chunked read first.",
+            "turn_working_material_too_large": "Current turn working material is too large to preserve safely. Switch to chunked, skeleton, or narrower outputs.",
+            "planned_turn_working_material_too_large": "The planned read/search output for this turn is too large. Use a materially smaller step under the current intent.",
+            "planned_full_read_too_large": "The planned full read_file action is too large. Full read is blocked for this path under the current intent.",
         }
         if reason in headers:
             return headers[reason] + next_hint
@@ -408,6 +432,8 @@ class Orchestrator:
             return "read_file requires a top-level path field in valid JSON." + next_hint
         if code == "MALFORMED_READ_FILE_SKELETON_PAYLOAD":
             return "read_file_skeleton requires a top-level path field in valid JSON." + next_hint
+        if code == "MALFORMED_READ_CHUNK_PAYLOAD":
+            return "read_chunk requires top-level path, start_byte, and end_byte fields in valid JSON." + next_hint
         if code == "INTENT_STEP_LIMIT_SOFT_EXCEEDED":
             return (
                 "The current intent reached its nominal step limit. "
@@ -444,6 +470,28 @@ class Orchestrator:
                 "User requested final answer from already gathered evidence. "
                 "Do not use more tools under this intent now. Return plain text only."
             ) + next_hint
+        if code == "FULL_READ_CONFIRMATION_REQUIRED":
+            return (
+                "Full read of a very large file requires explicit confirmation. "
+                "Prefer read_file_skeleton first, or use read_chunk / read_file with start_byte/end_byte. "
+                "If full content is truly required, repeat read_file with confirm_large_read=true."
+            ) + next_hint
+        if code == "TURN_WORKING_MATERIAL_TOO_LARGE":
+            return (
+                "Current turn working material is too large to preserve safely in context. "
+                "Switch to chunked reading, read_file_skeleton, narrower search, or smaller shell output."
+            ) + next_hint
+        if code == "PLANNED_TURN_WORKING_MATERIAL_TOO_LARGE":
+            return (
+                "The planned read/search output for this turn is too large. "
+                "Do not resend the same heavy batch. Use a materially smaller step: one strongest candidate file, read_chunk, read_file_skeleton, narrower search, or rg/fd."
+            ) + next_hint
+        if code == "PLANNED_FULL_READ_TOO_LARGE":
+            return (
+                "The planned full read_file action is too large for this path. "
+                "Do NOT repeat the same full read_file action. "
+                "Next step must be one of: read_chunk, read_file_skeleton, search_content, search_files, or run_shell with rg/fd."
+            ) + next_hint
         return "Previous action violated orchestration policy. Choose a different strategy and follow the required next actions." + next_hint
 
     def _build_typed_stop_recovery_prompt(self, stop_info: dict | None) -> str:
@@ -455,6 +503,8 @@ class Orchestrator:
             "low_value_broad_search_repeat",
             "history_self_reference_hit",
             "search_batch_aborted_after_first_action",
+            "planned_turn_working_material_too_large",
+            "planned_full_read_too_large",
         }
         prompt = self._build_action_format_recovery_prompt(
             self._typed_recovery_header(stop_info),
@@ -462,13 +512,23 @@ class Orchestrator:
             state_changing_only=state_changing_only,
             single_readonly_action_only=single_readonly_action_only,
         )
+        if reason in {"planned_turn_working_material_too_large", "planned_full_read_too_large"}:
+            active_intent = getattr(self.state, "active_intent", None)
+            active_goal = getattr(active_intent, "goal", "") if active_intent is not None else ""
+            prompt += (
+                "\nDo NOT send another <intent> block now."
+                f"\nCurrent intent goal remains the same: {active_goal}."
+                "\nReuse the current intent."
+                "\nContinue toward the same goal using the updated allowed tools and constraints."
+                "\nDo not repeat the blocked or low-value action pattern."
+                "\nReturn EXACTLY ONE materially different read-only action."
+            )
         if single_readonly_action_only:
             prompt += (
                 "\nFor search_content, prefer explicit import patterns, narrower directories, "
                 "or stronger exclude_dirs. Avoid repeating the same broad batch."
             )
         return prompt
-        
 
     def _inspection_can_finish_with_text(self, sm, stop_info: dict | None) -> bool:
         if sm is None:
@@ -488,6 +548,7 @@ class Orchestrator:
             "action_not_allowed_in_phase",
             "intent_step_limit_soft_exceeded",
             "intent_step_limit_exceeded",
+            "intent_step_limit_exceeded_repeated",
         }
 
     def _build_plain_text_completion_prompt(self, sm, stop_info: dict | None) -> str:
@@ -517,13 +578,40 @@ class Orchestrator:
             parts.append(route_hint)
         return "\n".join(parts)
 
+    def _build_orchestrated_recovery_prompt(self, stop_info: dict | None) -> str:
+        stop_info = stop_info or {}
+        reason = str(stop_info.get("reason") or "")
+        if reason in {
+            "cross_target_read_without_reason",
+            "recover_repeated_fingerprint",
+            "policy_denied",
+            "malformed_read_file_payload",
+            "malformed_read_file_skeleton_payload",
+            "malformed_read_chunk_payload",
+            "too_broad_search",
+            "low_value_broad_search_repeat",
+            "history_self_reference_hit",
+            "search_batch_aborted_after_first_action",
+            "planned_turn_working_material_too_large",
+            "planned_full_read_too_large",
+            "turn_working_material_too_large",
+        }:
+            return self._build_typed_stop_recovery_prompt(stop_info)
+
+        required = stop_info.get("next_actions") or []
+        required_hint = f"Required next actions: {', '.join(required)}.\n" if required else ""
+        return (
+            "SYSTEM: Previous action violated orchestration policy.\n"
+            f"{required_hint}"
+            "Choose a different strategy and return EXACTLY ONE valid <action>."
+        )
+
     async def process(self, user_input):
         """Головний цикл: Think -> Act -> Loop."""
         if self.agent.log:
             self.agent.log.info("Orchestrator.start")
             self.agent.log.debug(f"User input: {user_input[:300]}")
-        
-        # 1. Підготовка контексту
+
         tools_prompt = self.agent.tool_manager.get_tools_prompt()
         ctx_prompt = self.agent.context_manager.get_context_prompt()
         system_msg = self._build_system_message(tools_prompt, ctx_prompt)
@@ -535,27 +623,28 @@ class Orchestrator:
             sm.intent_runtime = getattr(self.state, "intent_runtime", None)
             if self.agent.log:
                 self.agent.log.debug(f"Task contract: kind={getattr(sm, 'task_kind', None)} phase={getattr(sm, 'phase', None)}")
-        if hasattr(self.state, 'clear_intent_requirement'):
+        if hasattr(self.state, "clear_intent_requirement"):
             self.state.clear_intent_requirement()
-        if hasattr(self.state, 'start_turn_runtime'):
+        if hasattr(self.state, "start_turn_runtime"):
             self.state.start_turn_runtime()
-        
+        if hasattr(self.history, "start_turn"):
+            try:
+                self.history.start_turn(getattr(self.state, "current_turn_id", 0))
+            except Exception as e:
+                if self.agent.log:
+                    self.agent.log.warning(f"History turn rollover failed: {e}")
+
         active_loop = True
         consecutive_calls = 0
         malformed_action_retries = 0
         audit_marker_retries = 0
-        intent_only_deadend_retries = 0
-        missing_action_or_answer_retries = 0
-        malformed_read_file_retries = 0
         current_query = user_input
-        consecutive_single_readonly_steps = 0
         loop = asyncio.get_running_loop()
         session_started_at = loop.time()
-        
+
         try:
             while active_loop:
                 try:
-                    # Keep context under control before next model call.
                     await self.history.check_and_summarize(self.ui, self.state)
                 except Exception as e:
                     if self.agent.log:
@@ -590,10 +679,9 @@ class Orchestrator:
                             break
                         if decision == "continue_silent":
                             self.state.suppress_step_limit_warning = True
-                
+
                 await self.ui.start_thinking()
-                
-                # 2. Запит до AI
+
                 self.state.current_task = asyncio.create_task(
                     self.model.get_streaming_response(
                         current_query,
@@ -614,12 +702,23 @@ class Orchestrator:
                         f"Step timed out after {self.config.MAX_STEP_SECONDS}s."
                     )
                     break
-                
+
                 response, intent_payload, intent_error = self._extract_intent_update_and_strip(response)
                 if intent_error and getattr(self.state, "intent_required_until_activated", False):
                     current_query = self._build_intent_required_prompt(intent_error)
                     continue
+
                 if intent_payload is not None:
+                    active_intent = getattr(self.state, "active_intent", None)
+                    constraints = getattr(active_intent, "action_constraints", {}) if active_intent is not None else {}
+                    if constraints.get("forbid_new_intent"):
+                        current_query = self._build_reuse_current_intent_prompt(
+                            "current_intent_constraints_forbid_new_intent",
+                            getattr(active_intent, "allowed_actions", None) or [],
+                            goal=getattr(active_intent, "goal", ""),
+                        )
+                        continue
+
                     ok, intent_msg = self.state.apply_intent_contract(intent_payload, self.config)
                     warning = ""
                     if getattr(self.state, "intent_runtime", None) is not None:
@@ -633,7 +732,7 @@ class Orchestrator:
                         stop_info = getattr(self.state, "last_defect_info", None) or {
                             "reason": intent_msg,
                             "recoverable": True,
-                            "next_actions": (getattr(getattr(self.state, 'active_intent', None), 'allowed_actions', None) or []),
+                            "next_actions": (getattr(getattr(self.state, "active_intent", None), "allowed_actions", None) or []),
                         }
                         handled, next_query = await self._handle_defect_detector_stop(stop_info)
                         if handled:
@@ -665,16 +764,6 @@ class Orchestrator:
                     )
                     continue
 
-                if not response or response.startswith("Error:"):
-                    if self.agent.log:
-                        self.agent.log.warning(f"Model returned terminal response: {response[:200] if response else '<empty>'}")
-                    if response and response.startswith("Error:"):
-                        await self.ui.print_error(f"Execution stopped due to model error: {response}")
-                    else:
-                        await self.ui.print_system("Execution finished: model returned no further response.")
-                    break
-                    
-                # 3. Парсинг
                 segments = self.parser.parse(response)
                 if self.agent.log:
                     self.agent.log.debug(f"Parsed segments count={len(segments)}")
@@ -698,11 +787,10 @@ class Orchestrator:
                     if intent_required:
                         current_query = self._build_intent_required_prompt(
                             intent_reason,
-                            ["read_file", "read_file_skeleton", "search_content", "search_files", "list_directory", "find_files", "git_diff", "run_shell"],
+                            ["read_file", "read_chunk", "read_file_skeleton", "search_content", "search_files", "list_directory", "find_files", "git_diff", "run_shell"],
                         )
                         continue
 
-                # Recovery: model returned an <action> tag but parser extracted no action.
                 has_action_tag = "<action" in response.lower()
                 has_action_segment = any(seg.type == "action" for seg in segments)
                 if has_action_tag and not has_action_segment:
@@ -724,7 +812,6 @@ class Orchestrator:
                         "If using edit_file, keep search_text/replace_text short and exact."
                     )
                     self.state.set_malformed_grace(self.config.MALFORMED_ACTION_GRACE_STEPS)
-                    # Prevent immediate repetition of the previous action after malformed retry.
                     self.state.forbid_next_action_fingerprint(
                         getattr(self.state, "last_completed_fingerprint", None)
                     )
@@ -732,7 +819,6 @@ class Orchestrator:
                 else:
                     malformed_action_retries = 0
 
-                # Recovery: model echoed audit trail marker but produced no tool call.
                 response_lower = response.lower()
                 contains_audit_marker = (
                     "system_tool_audit:" in response_lower
@@ -756,8 +842,15 @@ class Orchestrator:
                     )
                     continue
                 audit_marker_retries = 0
-                
-                # 4. Виконання дій (через Dispatcher)
+
+                if self._needs_action_or_answer_recovery(response, segments):
+                    current_query = self._build_missing_action_or_answer_prompt()
+                    continue
+
+                if self._is_intent_only_response(response, segments):
+                    current_query = self._build_intent_only_deadend_prompt()
+                    continue
+
                 if sm is not None:
                     sm.intent_runtime = getattr(self.state, "intent_runtime", None)
                 self.state.current_task = asyncio.create_task(
@@ -765,42 +858,17 @@ class Orchestrator:
                 )
                 processed_segs, sys_results, should_stop = await self.state.current_task
                 action_count = parsed_action_count
-                action_commands = [seg.content for seg in segments if seg.type == "action" and isinstance(seg.content, dict)]
-                is_read_only_action = getattr(self.dispatcher, "_is_read_only_action", None)
-                if not callable(is_read_only_action):
-                    def is_read_only_action(cmd):
-                        cmd_type = cmd.get("type") or cmd.get("action") or "unknown"
-                        return cmd_type in {
-                            "read_file",
-                            "read_file_skeleton",
-                            "search_content",
-                            "search_files",
-                            "list_directory",
-                            "find_files",
-                            "git_diff",
-                        }
-                single_readonly_step = (
-                    len(action_commands) == 1
-                    and is_read_only_action(action_commands[0])
-                )
-                if single_readonly_step:
-                    consecutive_single_readonly_steps += 1
-                else:
-                    consecutive_single_readonly_steps = 0
-                
-                # 5. Оновлення історії
-                # Асистент "пам'ятає" свої дії (але create_file може бути стиснутий)
+
                 recon_msg = self.parser.reconstruct(processed_segs)
                 if recon_msg:
                     self.history.add_message("assistant", recon_msg)
-                
-                # Результати системи
+
                 if sys_results:
                     if self.agent.log:
                         self.agent.log.debug(f"System results count={len(sys_results)} should_stop={should_stop}")
                     for res in sys_results:
                         self.history.add_message("system", res)
-                    
+
                     if should_stop:
                         stop_info = getattr(self.state, "pending_loop_stop_info", None)
                         handled_defect, next_query = await self._handle_defect_detector_stop(stop_info)
@@ -812,12 +880,13 @@ class Orchestrator:
                                 continue
                             active_loop = False
                             continue
+
                         if stop_info and stop_info.get("reason") in {"repeating_failure", "repeating_no_progress"}:
                             decision = await self.ui.confirm_loop_recovery(
                                 "Detected repeated no-progress failures. Choose next step."
                             )
                             if decision == "retry_recovery":
-                                if sm is not None:
+                                if sm is not None and hasattr(sm, "on_user_recovery_choice"):
                                     sm.on_user_recovery_choice(decision)
                                 self.state.set_retry_budgets(
                                     self.config.RECOVERABLE_ERROR_RETRY_BUDGET,
@@ -838,7 +907,7 @@ class Orchestrator:
                                     )
                                 continue
                             if decision == "open_search":
-                                if sm is not None:
+                                if sm is not None and hasattr(sm, "on_user_recovery_choice"):
                                     sm.on_user_recovery_choice(decision)
                                 self.state.set_retry_budgets(
                                     self.config.RECOVERABLE_ERROR_RETRY_BUDGET,
@@ -856,21 +925,9 @@ class Orchestrator:
                                     f"Last error: {error_details}"
                                 )
                                 continue
-                        if stop_info and stop_info.get("reason") in {
-                            "cross_target_read_without_reason",
-                            "recover_repeated_fingerprint",
-                            "policy_denied",
-                            "malformed_read_file_payload",
-                            "malformed_read_file_skeleton_payload",
-                        }:
+
+                        if stop_info:
                             if stop_info.get("reason") == "malformed_read_file_payload":
-                                malformed_read_file_retries += 1
-                                if malformed_read_file_retries > 1:
-                                    await self.ui.print_error(
-                                        "Execution stopped: malformed read_file payload repeated."
-                                    )
-                                    active_loop = False
-                                    continue
                                 current_query = (
                                     "SYSTEM: Your last read_file call used invalid payload.\n"
                                     "Return EXACTLY ONE valid read_file action now.\n"
@@ -885,13 +942,6 @@ class Orchestrator:
                                 continue
 
                             if stop_info.get("reason") == "malformed_read_file_skeleton_payload":
-                                malformed_read_file_retries += 1
-                                if malformed_read_file_retries > 1:
-                                    await self.ui.print_error(
-                                        "Execution stopped: malformed read_file_skeleton payload repeated."
-                                    )
-                                    active_loop = False
-                                    continue
                                 current_query = (
                                     "SYSTEM: Your last read_file_skeleton call used invalid payload.\n"
                                     "Return EXACTLY ONE valid read_file_skeleton action now.\n"
@@ -905,50 +955,32 @@ class Orchestrator:
                                 self.state.pending_loop_stop_info = None
                                 continue
 
-                            required = stop_info.get("next_actions") or []
-                            required_hint = (
-                                f"Required next actions: {', '.join(required)}.\n" if required else ""
-                            )
-                            active_intent = getattr(self.state, "active_intent", None)
-                            if stop_info.get("reason") == "intent_action_not_allowed" and active_intent is not None:
-                                current_query = self._build_reuse_current_intent_prompt(
-                                    "intent_action_not_allowed",
-                                    required or (getattr(active_intent, "allowed_actions", None) or []),
-                                )
-                            elif stop_info.get("reason") in {
-                                "too_broad_search",
-                                "low_value_broad_search_repeat",
-                                "history_self_reference_hit",
-                                "search_batch_aborted_after_first_action",
-                            }:
-                                current_query = self._build_typed_stop_recovery_prompt(stop_info)
-                            else:
+                            if stop_info.get("reason") == "malformed_read_chunk_payload":
                                 current_query = (
-                                    "SYSTEM: Previous action violated orchestration policy.\n"
-                                    f"{required_hint}"
-                                    "Choose a different strategy and return EXACTLY ONE valid <action>."
+                                    "SYSTEM: Your last read_chunk call used invalid payload.\n"
+                                    "Return EXACTLY ONE valid read_chunk action now.\n"
+                                    "Required format:\n"
+                                    '<action type="read_chunk">{"path":"relative/or/absolute/path","start_byte":0,"end_byte":4096}</action>\n'
+                                    "Include top-level `path`, `start_byte`, and `end_byte` fields.\n"
+                                    "Do not nest JSON under `command`.\n"
+                                    "Do not add any other action in this reply."
                                 )
-                            should_stop = False
-                            self.state.pending_loop_stop_info = None
-                            continue
+                                should_stop = False
+                                self.state.pending_loop_stop_info = None
+                                continue
 
-                        if stop_info and stop_info.get("reason") == "intent_force_plaintext_completion":
-                            current_query = self._build_plain_text_completion_prompt(sm, stop_info)
-                            should_stop = False
-                            self.state.pending_loop_stop_info = None
-                            continue
+                            if self._inspection_can_finish_with_text(sm, stop_info):
+                                current_query = self._build_plain_text_completion_prompt(sm, stop_info)
+                                should_stop = False
+                                self.state.pending_loop_stop_info = None
+                                continue
 
-                        if stop_info and self._inspection_can_finish_with_text(sm, stop_info):
-                            current_query = self._build_plain_text_completion_prompt(sm, stop_info)
-                            should_stop = False
-                            self.state.pending_loop_stop_info = None
-                            continue
+                            if stop_info.get("recoverable"):
+                                current_query = self._build_orchestrated_recovery_prompt(stop_info)
+                                should_stop = False
+                                self.state.pending_loop_stop_info = None
+                                continue
 
-                        if stop_info and stop_info.get("recoverable"):
-                            current_query = self._build_typed_stop_recovery_prompt(stop_info)
-                            should_stop = False
-                            self.state.pending_loop_stop_info = None
-                            continue
                         await self.ui.print_system(
                             "Execution stopped by control policy (for example, denied action)."
                         )
@@ -963,42 +995,33 @@ class Orchestrator:
                                 decision = await self.ui.confirm_loop_recovery(
                                     "Detected repeated read-only stagnation. Choose next step."
                                 )
-                                if decision == "retry_recovery":
-                                    sm.on_user_recovery_choice(decision)
-                                    current_query = sm.build_diagnostic_prompt()
-                                    continue
-                                if decision == "continue_diagnosis":
-                                    sm.on_user_recovery_choice(decision)
+                                if decision in {"retry_recovery", "continue_diagnosis"}:
+                                    if hasattr(sm, "on_user_recovery_choice"):
+                                        sm.on_user_recovery_choice(decision)
                                     current_query = sm.build_diagnostic_prompt()
                                     continue
                                 if decision == "open_search":
-                                    sm.on_user_recovery_choice(decision)
+                                    if hasattr(sm, "on_user_recovery_choice"):
+                                        sm.on_user_recovery_choice(decision)
                                     current_query = (
                                         "SYSTEM: Switch strategy.\n"
                                         "Do not call read_file with the same path/arguments.\n"
-                                        "Use search_content or edit_file with exact targeted arguments."
+                                        "Use search_content, read_chunk, read_file_skeleton, or edit_file with exact targeted arguments."
                                     )
                                     continue
                                 if decision == "pin_target_edit":
-                                    sm.on_user_recovery_choice(decision)
-                                    current_query = sm.build_pin_target_prompt()
-                                    continue
+                                    if hasattr(sm, "on_user_recovery_choice"):
+                                        sm.on_user_recovery_choice(decision)
+                                    if hasattr(sm, "build_pin_target_prompt"):
+                                        current_query = sm.build_pin_target_prompt()
+                                        continue
                                 await self.ui.print_system("Execution stopped by user after stagnation warning.")
                                 active_loop = False
                                 continue
-                        # Продовжуємо цикл з результатами
-                        if consecutive_single_readonly_steps >= 3:
-                            current_query = (
-                                "SYSTEM: You are executing single read-only actions repeatedly.\n"
-                                "For this multi-file investigation, return a compact batch of 3-5 read-only <action> blocks now.\n"
-                                "Prioritize distinct files/targets; avoid repeating the same file in this batch.\n"
-                                "After batching, move to a deterministic edit/write step."
-                            )
-                        else:
-                            current_query = "\n---\n".join(sys_results)
+                        current_query = "\n---\n".join(sys_results)
                 else:
                     await self.ui.print_system("Execution finished: no further actions returned by the model.")
-                    active_loop = False # Немає дій = кінець розмови
+                    active_loop = False
 
                 if self.agent.log:
                     elapsed = loop.time() - session_started_at
@@ -1014,16 +1037,15 @@ class Orchestrator:
                         f"confirmations={self.state.confirmation_count} "
                         f"session_tokens={self.state.session_tokens}"
                     )
-            
-            # 6. Summarization
+
             try:
                 await self.history.check_and_summarize(self.ui, self.state)
             except Exception as e:
-                if self.agent.log: self.agent.log.warning(f"Summarization error: {e}")
+                if self.agent.log:
+                    self.agent.log.warning(f"Summarization error: {e}")
         except asyncio.CancelledError:
             if self.agent.log:
                 self.agent.log.info("Orchestrator interrupted by user.")
-                
         finally:
             if self.agent.log:
                 total_elapsed = loop.time() - session_started_at

@@ -1,7 +1,4 @@
-"""Диспетчер виконання дій з оптимізацією контексту."""
-
 import ast
-import asyncio
 import hashlib
 import json
 import re
@@ -9,53 +6,75 @@ import shlex
 from pathlib import Path
 from types import SimpleNamespace
 
+
 class ActionDispatcher:
     def __init__(self, agent):
         self.agent = agent
         self.ui = agent.ui
         self.processor = agent.processor
         self.config = agent.config
-        
+
         # Мапінг команд до методів відображення/обробки
         self._handlers = {
-            'run_shell': self._handle_shell,
-            'read_file': self._handle_read_file,
-            'edit_file': self._handle_edit_file,
-            'create_file': self._handle_create_file,
+            "run_shell": self._handle_shell,
+            "read_file": self._handle_read_file,
+            "read_chunk": self._handle_read_chunk,
+            "edit_file": self._handle_edit_file,
+            "create_file": self._handle_create_file,
         }
+
+        # Евристики для preflight-оцінки working material
+        self._SEARCH_RESULT_LINE_ESTIMATE = 140
+        self._SEARCH_RESULT_HEADER_ESTIMATE = 400
+        self._SKELETON_FRACTION = 0.18
+        self._SKELETON_MIN_CHARS = 1200
+        self._SKELETON_MAX_CHARS = 16000
+        self._RUN_SHELL_DEFAULT_ESTIMATE = 12000
+        self._RUN_SHELL_RG_FD_ESTIMATE = 8000
+        self._READ_BATCH_SOFT_MIN_ACTIONS = 2
 
     async def dispatch_segments(self, segments, state):
         """Обробляє список сегментів, виконує дії та повертає результати."""
         processed_segments = []
         system_results = []
         should_stop = False
+
         action_segments = [seg for seg in segments if seg.type == "action"]
         action_commands = [seg.content for seg in action_segments]
+
         execute_indices, batch_notes = self._plan_action_batch(action_commands)
         execute_set = set(execute_indices)
         total_exec = len(execute_indices)
+
         state.last_batch_actions_executed = 0
         state.last_batch_actions_total = len(action_segments)
         action_ordinal = 0
+
         if batch_notes:
             system_results.extend(batch_notes)
+
         sm = getattr(state, "state_machine", None)
         if sm is not None and hasattr(sm, "note_planned_batch"):
             try:
                 sm.note_planned_batch([action_commands[i] for i in execute_indices])
             except Exception:
                 pass
-        
+
+        preflight_stop = self._preflight_turn_working_material_budget(
+            action_commands, execute_indices, state
+        )
+        preflight_triggered = False
+
         for segment in segments:
-            if segment.type == 'thought':
+            if segment.type == "thought":
                 await self.ui.print_thought(segment.content)
                 processed_segments.append(segment)
-                
-            elif segment.type == 'text':
+
+            elif segment.type == "text":
                 await self.ui.print_message(segment.content, role="assistant")
                 processed_segments.append(segment)
-                
-            elif segment.type == 'action':
+
+            elif segment.type == "action":
                 current_idx = action_ordinal
                 action_ordinal += 1
                 cmd_type = (
@@ -65,40 +84,60 @@ class ActionDispatcher:
                     if isinstance(segment.content, dict)
                     else "unknown"
                 )
+
+                if preflight_stop and not preflight_triggered and current_idx in execute_set:
+                    preflight_triggered = True
+                    should_stop = True
+                    state.pending_loop_stop_info = preflight_stop
+
+                    result_text = (
+                        f"SYSTEM RESULT for `{cmd_type}`: {preflight_stop['message']}"
+                    )
+                    system_results.append(result_text)
+
+                    if self.agent.log:
+                        self.agent.log.debug(
+                            "Action.finish type=%s should_stop=True reason=%s",
+                            cmd_type,
+                            preflight_stop.get("reason"),
+                        )
+                    break
+
                 if current_idx not in execute_set:
                     system_results.append(
                         f"SYSTEM RESULT for `{cmd_type}`: Skipped by batch policy."
                     )
                     continue
 
-                # Виконання дії
-                cmd_copy, result_text, stop_flag = await self._execute_action(segment.content, state)
+                cmd_copy, result_text, stop_flag = await self._execute_action(
+                    segment.content, state
+                )
                 state.last_batch_actions_executed += 1
+
                 if total_exec > 1:
                     batch_pos = execute_indices.index(current_idx) + 1
                     result_text = f"[BATCH {batch_pos}/{total_exec}] {result_text}"
-                
-                # Do not persist raw tool JSON into model history.
-                # Keep only a compact audit line so the model cannot reuse
-                # internal metadata fields as tool-call arguments.
+
                 processed_segments.append(
-                    SimpleNamespace(type="text", content=self._build_history_audit_line(cmd_copy))
+                    SimpleNamespace(
+                        type="text",
+                        content=self._build_history_audit_line(cmd_copy),
+                    )
                 )
-                
+
                 system_results.append(result_text)
-                
-                # Якщо хоч одна дія вимагає зупинки (наприклад, denied), ми зупиняємось
+
                 if stop_flag:
                     should_stop = True
                     if total_exec > 1 and batch_pos < total_exec:
                         system_results.append(
                             f"SYSTEM RESULT for `{cmd_type}`: Batch aborted after action {batch_pos}/{total_exec} due to stop condition."
                         )
-                        # If a pure read-only search batch was cut after the first action,
-                        # do not let the model resend the same batch again.
+
                         all_exec_cmds = [action_commands[i] for i in execute_indices]
                         only_search_batch = all(
-                            isinstance(cmd, dict) and (cmd.get("type") or cmd.get("action")) == "search_content"
+                            isinstance(cmd, dict)
+                            and (cmd.get("type") or cmd.get("action")) == "search_content"
                             for cmd in all_exec_cmds
                         )
                         if only_search_batch and cmd_type == "search_content":
@@ -114,10 +153,10 @@ class ActionDispatcher:
                                     "Do not send another broad batch."
                                 ),
                                 "previous_reason": existing.get("reason"),
-                                "command": cmd_copy.copy(),                            
-                                }
+                                "command": cmd_copy.copy(),
+                            }
                     break
-        
+
         return processed_segments, system_results, should_stop
 
     def _plan_action_batch(self, action_commands: list[dict]) -> tuple[list[int], list[str]]:
@@ -132,10 +171,10 @@ class ActionDispatcher:
             if self._is_read_only_action(cmd)
         ]
 
-        # If every action in the batch is read-only, keep the whole batch,
-        # including read-only run_shell calls.
         if len(readonly_indices) == len(action_commands):
-            max_batch = max(1, int(getattr(self.config, "MAX_READONLY_BATCH_ACTIONS", 6)))
+            max_batch = max(
+                1, int(getattr(self.config, "MAX_READONLY_BATCH_ACTIONS", 6))
+            )
             if len(action_commands) > max_batch:
                 notes.append(
                     f"SYSTEM RESULT for `batch_policy`: Read-only batch limited to {max_batch} actions."
@@ -143,7 +182,6 @@ class ActionDispatcher:
                 return list(range(max_batch)), notes
             return list(range(len(action_commands))), notes
 
-        # Mixed batch: keep leading read-only prefix + first state-changing action.
         first_state_changing = next(
             idx for idx, cmd in enumerate(action_commands)
             if not self._is_read_only_action(cmd)
@@ -160,6 +198,7 @@ class ActionDispatcher:
         cmd_type = command.get("type") or command.get("action") or "unknown"
         read_only_tools = {
             "read_file",
+            "read_chunk",
             "read_file_skeleton",
             "search_content",
             "search_files",
@@ -173,11 +212,21 @@ class ActionDispatcher:
 
     def _build_history_audit_line(self, command: dict) -> str:
         cmd_type = command.get("type") or command.get("action", "unknown")
-        path = command.get("path") if isinstance(command.get("path"), str) and command.get("path") else None
+        path = (
+            command.get("path")
+            if isinstance(command.get("path"), str) and command.get("path")
+            else None
+        )
 
         payload = {"type": cmd_type}
         if path:
             payload["path"] = path
+
+        if cmd_type == "read_chunk":
+            if "start_byte" in command:
+                payload["start_byte"] = command.get("start_byte")
+            if "end_byte" in command:
+                payload["end_byte"] = command.get("end_byte")
 
         if command.get("content_redacted") is True:
             size = command.get("content_size")
@@ -197,17 +246,230 @@ class ActionDispatcher:
             command.get("note"),
         )
         blob = " ".join(str(x) for x in reason_fields if x).lower()
-        return any(token in blob for token in ("exact", "verify", "patch", "edit", "implementation", "точн", "перевір", "патч", "редаг"))
+        return any(
+            token in blob
+            for token in (
+                "exact",
+                "verify",
+                "patch",
+                "edit",
+                "implementation",
+                "точн",
+                "перевір",
+                "патч",
+                "редаг",
+            )
+        )
 
-    def _error_code_from_reason(self, reason: str | None, default: str = "STATE_MACHINE_POLICY_DENY") -> str:
+    def _error_code_from_reason(
+        self, reason: str | None, default: str = "STATE_MACHINE_POLICY_DENY"
+    ) -> str:
         if not isinstance(reason, str) or not reason.strip():
             return default
         code = re.sub(r"[^A-Z0-9]+", "_", reason.upper()).strip("_")
         return code or default
 
+    def _safe_turn_working_material_char_budget(self) -> int:
+        history = getattr(self.agent, "history", None)
+        max_tokens = int(getattr(history, "max_tokens", 4000) if history else 4000)
+        ratio = float(
+            getattr(history, "TURN_WORKING_MATERIAL_SAFE_RATIO", 0.72) if history else 0.72
+        )
+        return max(1024, int(max_tokens * ratio * 4))
+
+    def _current_turn_working_material_chars(self, state) -> int:
+        history = getattr(self.agent, "history", None)
+        if history is None:
+            return 0
+        counter = getattr(history, "current_turn_working_material_token_count", None)
+        turn_id = getattr(state, "current_turn_id", 0)
+        if callable(counter):
+            try:
+                return int(counter(turn_id) * 4)
+            except Exception:
+                return 0
+        return 0
+
+    def _estimate_file_chars(self, path: str) -> int | None:
+        try:
+            p = Path(path)
+            if not p.exists() or not p.is_file():
+                return None
+            return int(p.stat().st_size)
+        except Exception:
+            return None
+
+    def _estimate_action_working_material_chars(self, command: dict) -> int:
+        if not isinstance(command, dict):
+            return 0
+
+        cmd_type = command.get("type") or command.get("action") or "unknown"
+
+        if cmd_type == "read_file":
+            path = command.get("path") if isinstance(command.get("path"), str) else ""
+            size = self._estimate_file_chars(path)
+            if size is None:
+                return 12000
+            return size
+
+        if cmd_type == "read_chunk":
+            path = command.get("path") if isinstance(command.get("path"), str) else ""
+            size = self._estimate_file_chars(path)
+            if size is None:
+                return 4000
+            try:
+                sb = max(0, int(command.get("start_byte", 0)))
+                eb = int(command.get("end_byte", sb))
+                eb = max(sb, min(eb, size))
+                return max(0, eb - sb)
+            except Exception:
+                return 4000
+
+        if cmd_type == "read_file_skeleton":
+            path = command.get("path") if isinstance(command.get("path"), str) else ""
+            size = self._estimate_file_chars(path)
+            if size is None:
+                return 4000
+            estimate = int(size * self._SKELETON_FRACTION)
+            return max(self._SKELETON_MIN_CHARS, min(estimate, self._SKELETON_MAX_CHARS))
+
+        if cmd_type in {"search_content", "search_files"}:
+            limit = command.get("limit", 50)
+            try:
+                limit = max(1, min(int(limit), 200))
+            except Exception:
+                limit = 50
+            return self._SEARCH_RESULT_HEADER_ESTIMATE + (
+                limit * self._SEARCH_RESULT_LINE_ESTIMATE
+            )
+
+        if cmd_type == "run_shell":
+            raw = command.get("command")
+            if not isinstance(raw, str):
+                return self._RUN_SHELL_DEFAULT_ESTIMATE
+            lowered = raw.lower()
+            if " rg " in f" {lowered} " or lowered.startswith("rg "):
+                return self._RUN_SHELL_RG_FD_ESTIMATE
+            if " fd " in f" {lowered} " or lowered.startswith("fd "):
+                return self._RUN_SHELL_RG_FD_ESTIMATE
+            return self._RUN_SHELL_DEFAULT_ESTIMATE
+
+        if cmd_type in {"list_directory", "find_files", "git_diff"}:
+            return 6000
+
+        return 4000
+
+    def _preflight_turn_working_material_budget(
+        self, action_commands: list[dict], execute_indices: list[int], state
+    ) -> dict | None:
+        if not execute_indices:
+            return None
+
+        planned = []
+        for idx in execute_indices:
+            if idx < 0 or idx >= len(action_commands):
+                continue
+            cmd = action_commands[idx]
+            if not isinstance(cmd, dict):
+                continue
+            if not self._is_read_only_action(cmd):
+                continue
+            planned.append(cmd)
+
+        if not planned:
+            return None
+
+        current_chars = self._current_turn_working_material_chars(state)
+        estimated_by_action = [
+            self._estimate_action_working_material_chars(cmd) for cmd in planned
+        ]
+        estimated_new_chars = sum(estimated_by_action)
+        safe_budget_chars = self._safe_turn_working_material_char_budget()
+
+        if current_chars + estimated_new_chars <= safe_budget_chars:
+            return None
+
+        full_reads = [
+            cmd for cmd in planned
+            if isinstance(cmd, dict)
+            and (cmd.get("type") or cmd.get("action")) == "read_file"
+            and cmd.get("start_byte") is None
+            and cmd.get("end_byte") is None
+        ]
+
+        # Case 1: single oversized full read. This must become a stricter recovery
+        # class than generic batch overflow, otherwise the model loops on the same read_file.
+        if len(planned) == 1 and len(full_reads) == 1:
+            cmd = full_reads[0]
+            path = cmd.get("path") if isinstance(cmd.get("path"), str) else ""
+            if path:
+                return {
+                    "reason": "planned_full_read_too_large",
+                    "recoverable": True,
+                    "error_code": "PLANNED_FULL_READ_TOO_LARGE",
+                    "next_actions": [
+                        "read_chunk",
+                        "read_file_skeleton",
+                        "search_content",
+                        "search_files",
+                        "run_shell",
+                    ],
+                    "message": (
+                        "The planned full read_file action is too large for this path. "
+                        "Do NOT repeat the same full read_file action. "
+                        "Next step must be one of: read_chunk, read_file_skeleton, "
+                        "search_content, search_files, or run_shell with rg/fd. "
+                        "Return EXACTLY ONE materially different read-only action."
+                    ),
+                    "command": cmd.copy(),
+                    "estimated_new_chars": estimated_new_chars,
+                    "current_turn_chars": current_chars,
+                    "safe_budget_chars": safe_budget_chars,
+                    "intent_constraint_updates": {
+                        "max_full_reads_per_step": 0,
+                        "require_chunk_for_paths": [path],
+                        "forbid_same_full_read_path": path,
+                        "forbid_new_intent": True,
+                        "reuse_current_intent": True,
+                    },
+                }
+
+        # Case 2: generic batch / multi-output overflow. Allow smaller continuation.
+        first_command = planned[0] if planned else {}
+        return {
+            "reason": "planned_turn_working_material_too_large",
+            "recoverable": True,
+            "error_code": "PLANNED_TURN_WORKING_MATERIAL_TOO_LARGE",
+            "next_actions": [
+                "read_file",
+                "read_chunk",
+                "read_file_skeleton",
+                "search_content",
+                "search_files",
+                "run_shell",
+            ],
+            "message": (
+                "The planned read/search output for this turn is too large to preserve safely in context. "
+                "Use a materially smaller step under the current intent: read fewer files at once, "
+                "read exactly one strongest candidate file, use read_chunk, use read_file_skeleton, "
+                "or narrow the investigation through search first (search_content, search_files, rg, fd). "
+                "Return EXACTLY ONE revised action or a smaller read-only batch."
+            ),
+            "command": first_command.copy() if isinstance(first_command, dict) else {},
+            "estimated_new_chars": estimated_new_chars,
+            "current_turn_chars": current_chars,
+            "safe_budget_chars": safe_budget_chars,
+            "intent_constraint_updates": {
+                "max_full_reads_per_step": 1,
+                "forbid_new_intent": True,
+                "reuse_current_intent": True,
+            },
+        }
+
     async def _execute_action(self, command, state):
         """Виконує одну дію, керує UI та повертає результат."""
         cmd_type = command.get("type") or command.get("action", "unknown")
+
         if cmd_type == "read_file":
             command = self._normalize_read_file_command(command)
             if not command.get("path"):
@@ -221,13 +483,42 @@ class ActionDispatcher:
                     "recoverable": True,
                     "error_code": "MALFORMED_READ_FILE_PAYLOAD",
                     "next_actions": ["read_file"],
-                    "message": "read_file requires a top-level `path` field. Return exactly one read_file action with only the corrected payload.",
+                    "message": (
+                        "read_file requires a top-level `path` field. "
+                        "Return exactly one read_file action with only the corrected payload."
+                    ),
                     "command": command.copy(),
                 }
                 full_result_text = f"SYSTEM RESULT for `{cmd_type}`: {output_text}"
                 if self.agent.log:
                     self.agent.log.debug(
                         "Action.finish type=read_file should_stop=True reason=malformed_read_file_payload"
+                    )
+                return self._sanitize_command_for_history(command), full_result_text, True
+
+        if cmd_type == "read_chunk":
+            command = self._normalize_read_chunk_command(command)
+            if not command.get("path") or command.get("start_byte") is None or command.get("end_byte") is None:
+                output_text = (
+                    "SYSTEM: Invalid read_chunk payload. Provide top-level `path`, `start_byte`, and `end_byte` fields.\n"
+                    "Example:\n"
+                    '<action type="read_chunk">{"path":"relative/or/absolute/path","start_byte":0,"end_byte":4096}</action>'
+                )
+                state.pending_loop_stop_info = {
+                    "reason": "malformed_read_chunk_payload",
+                    "recoverable": True,
+                    "error_code": "MALFORMED_READ_CHUNK_PAYLOAD",
+                    "next_actions": ["read_chunk"],
+                    "message": (
+                        "read_chunk requires top-level `path`, `start_byte`, and `end_byte` fields. "
+                        "Return exactly one read_chunk action with only the corrected payload."
+                    ),
+                    "command": command.copy(),
+                }
+                full_result_text = f"SYSTEM RESULT for `{cmd_type}`: {output_text}"
+                if self.agent.log:
+                    self.agent.log.debug(
+                        "Action.finish type=read_chunk should_stop=True reason=malformed_read_chunk_payload"
                     )
                 return self._sanitize_command_for_history(command), full_result_text, True
 
@@ -244,7 +535,10 @@ class ActionDispatcher:
                     "recoverable": True,
                     "error_code": "MALFORMED_READ_FILE_SKELETON_PAYLOAD",
                     "next_actions": ["read_file_skeleton"],
-                    "message": "read_file_skeleton requires a top-level `path` field. Return exactly one read_file_skeleton action with only the corrected payload.",
+                    "message": (
+                        "read_file_skeleton requires a top-level `path` field. "
+                        "Return exactly one read_file_skeleton action with only the corrected payload."
+                    ),
                     "command": command.copy(),
                 }
                 full_result_text = f"SYSTEM RESULT for `{cmd_type}`: {output_text}"
@@ -253,12 +547,23 @@ class ActionDispatcher:
                         "Action.finish type=read_file_skeleton should_stop=True reason=malformed_read_file_skeleton_payload"
                     )
                 return self._sanitize_command_for_history(command), full_result_text, True
+
             history = getattr(self.agent, "history", None)
             path = command.get("path") if isinstance(command.get("path"), str) else None
-            if history is not None and path and getattr(history, "has_current_file_version", lambda _p: False)(path):
+            if history is not None and path and getattr(
+                history, "has_current_file_version", lambda _p: False
+            )(path):
                 if not self._has_explicit_reread_reason(command):
-                    recently_summarized = bool(getattr(history, "was_recently_summarized", lambda _w=90: False)(getattr(self.config, "RECENT_SUMMARY_REREAD_WINDOW_SEC", 90)))
-                    reason = "reread_after_summary" if recently_summarized else "reread_already_in_history"
+                    recently_summarized = bool(
+                        getattr(history, "was_recently_summarized", lambda _w=90: False)(
+                            getattr(self.config, "RECENT_SUMMARY_REREAD_WINDOW_SEC", 90)
+                        )
+                    )
+                    reason = (
+                        "reread_after_summary"
+                        if recently_summarized
+                        else "reread_already_in_history"
+                    )
                     output_text = (
                         "SYSTEM: This file is already available in history at the current version. "
                         "Re-reading it without a specific reason is blocked. Use existing context, "
@@ -305,18 +610,24 @@ class ActionDispatcher:
                 full_result_text = f"SYSTEM RESULT for `{cmd_type}`: {output_text}"
                 if self.agent.log:
                     self.agent.log.debug(
-                        f"Action.finish type={cmd_type} should_stop=True reason={intent_stop.get('reason')}"
+                        "Action.finish type=%s should_stop=True reason=%s",
+                        cmd_type,
+                        intent_stop.get("reason"),
                     )
                 return command_for_history, full_result_text, True
 
         if sm is not None:
             pre_decision = sm.pre_action_policy(command)
             if not pre_decision.allow:
-                output_text = pre_decision.recovery_prompt or "Action blocked by state machine policy."
+                output_text = (
+                    pre_decision.recovery_prompt or "Action blocked by state machine policy."
+                )
                 state.pending_loop_stop_info = {
                     "reason": pre_decision.stop_reason or "policy_denied",
                     "recoverable": True,
-                    "error_code": self._error_code_from_reason(pre_decision.stop_reason),
+                    "error_code": self._error_code_from_reason(
+                        pre_decision.stop_reason
+                    ),
                     "next_actions": pre_decision.required_next_action_types or [],
                     "message": output_text,
                     "command": command.copy(),
@@ -324,7 +635,9 @@ class ActionDispatcher:
                 full_result_text = f"SYSTEM RESULT for `{cmd_type}`: {output_text}"
                 if self.agent.log:
                     self.agent.log.debug(
-                        f"Action.finish type={cmd_type} should_stop=True reason={pre_decision.stop_reason}"
+                        "Action.finish type=%s should_stop=True reason=%s",
+                        cmd_type,
+                        pre_decision.stop_reason,
                     )
                 return command_for_history, full_result_text, True
 
@@ -342,51 +655,61 @@ class ActionDispatcher:
             }
             full_result_text = f"SYSTEM RESULT for `{cmd_type}`: {output_text}"
             if self.agent.log:
-                self.agent.log.debug(f"Action.finish type={cmd_type} should_stop=True")
+                self.agent.log.debug(
+                    "Action.finish type=%s should_stop=True", cmd_type
+                )
             return command_for_history, full_result_text, True
 
         if self.agent.log:
-            self.agent.log.debug(f"Action.start type={cmd_type} command={command}")
+            self.agent.log.debug("Action.start type=%s command=%s", cmd_type, command)
 
-        # 1. UI Execution Wrapper
         handler = self._handlers.get(cmd_type, self._handle_default)
         result = await handler(command)
 
-        # 2. Post-Processing
-        output_text = result.get('output', '')
-        status = result.get('status')
+        self._capture_turn_working_material(command, result, state)
+
+        output_text = result.get("output", "")
+        status = result.get("status")
         error_code = result.get("error_code")
         recoverable = bool(result.get("recoverable", False))
         next_actions = result.get("next_actions") or []
         if not isinstance(next_actions, list):
             next_actions = []
+
         if self.agent.log:
             self.agent.log.debug(
-                f"Action.result type={cmd_type} status={status} "
-                f"error_code={error_code} recoverable={recoverable}"
+                "Action.result type=%s status=%s error_code=%s recoverable=%s",
+                cmd_type,
+                status,
+                error_code,
+                recoverable,
             )
+
         state_metrics = state.record_action_result(command, result, self.config)
         if sm is not None:
             sm.note_action(command, result, self.config.STATE_CHANGING_OPS)
 
-        # 3. Syntax Check (Linting)
-        if cmd_type in ['create_file', 'edit_file'] and status == 'success':
-            path = command.get('path', '')
-            if path.endswith('.py'):
+        if cmd_type in ["create_file", "edit_file"] and status == "success":
+            path = command.get("path", "")
+            if path.endswith(".py"):
                 lint_error = self._check_python_syntax(path)
                 if lint_error:
-                    output_text += f"\n\n⚠️ SYSTEM WARNING: Syntax check failed for {path}:\n{lint_error}\nPlease fix this immediately."
+                    output_text += (
+                        f"\n\n⚠️ SYSTEM WARNING: Syntax check failed for {path}:\n{lint_error}\n"
+                        "Please fix this immediately."
+                    )
 
-        # 4. Smart Stop Logic
         is_state_changing = cmd_type in self.config.STATE_CHANGING_OPS
         execution_failed = status in ["failed", "error"]
         action_denied = status == "denied"
         same_action_repeats = state_metrics.get("same_action_repeats", 0)
+
         read_only_repeat_threshold = max(
             2, int(getattr(self.config, "READ_ONLY_REPEAT_THRESHOLD", 3))
         )
+
         repeated_read_file_no_progress = (
-            cmd_type == "read_file"
+            cmd_type in {"read_file", "read_chunk"}
             and status == "success"
             and same_action_repeats >= read_only_repeat_threshold
         )
@@ -410,16 +733,17 @@ class ActionDispatcher:
         if repeated_read_file_no_progress:
             should_stop = True
             output_text += (
-                "\n[SYSTEM: Repeated read_file calls detected with no progress. "
+                "\n[SYSTEM: Repeated read-file calls detected with no progress. "
                 "Stop and switch to a different strategy.]"
             )
             state.pending_loop_stop_info = {
                 "reason": "repeating_no_progress",
                 "recoverable": True,
                 "error_code": "READ_ONLY_LOOP",
-                "next_actions": ["search_content", "edit_file", "write_file"],
+                "next_actions": ["search_content", "read_file_skeleton", "read_chunk", "edit_file", "write_file"],
                 "command": command.copy(),
             }
+
         elif repeated_search_no_match_no_progress:
             should_stop = True
             output_text += (
@@ -430,9 +754,10 @@ class ActionDispatcher:
                 "reason": "repeating_no_progress",
                 "recoverable": True,
                 "error_code": "SEARCH_NO_MATCH_LOOP",
-                "next_actions": ["search_files", "read_file", "edit_file", "write_file"],
+                "next_actions": ["search_files", "read_chunk", "read_file_skeleton", "edit_file", "write_file"],
                 "command": command.copy(),
             }
+
         elif repeated_readonly_shell_no_progress:
             should_stop = True
             output_text += (
@@ -443,17 +768,22 @@ class ActionDispatcher:
                 "reason": "repeating_no_progress",
                 "recoverable": True,
                 "error_code": "READONLY_SHELL_LOOP",
-                "next_actions": ["read_file", "edit_file", "write_file"],
+                "next_actions": ["read_chunk", "read_file_skeleton", "edit_file", "write_file"],
                 "command": command.copy(),
             }
+
         elif action_denied:
             output_text += "\n[SYSTEM: Action denied by user.]"
             should_stop = True
 
         elif execution_failed:
-            output_text += "\n[SYSTEM: Action failed. Analyze the error in <think> and retry.]"
+            output_text += (
+                "\n[SYSTEM: Action failed. Analyze the error in <think> and retry.]"
+            )
             same_error_repeats = state_metrics.get("same_error_repeats", 0)
-            loop_threshold = max(2, int(getattr(self.config, "LOOP_ERROR_REPEAT_THRESHOLD", 2)))
+            loop_threshold = max(
+                2, int(getattr(self.config, "LOOP_ERROR_REPEAT_THRESHOLD", 2))
+            )
             threshold_reached = same_error_repeats >= loop_threshold
             is_repeated_edit_search_mismatch = (
                 cmd_type == "edit_file"
@@ -475,7 +805,6 @@ class ActionDispatcher:
                         "next_actions": next_actions,
                         "command": command.copy(),
                     }
-                # Do not hard-stop immediately after malformed-action recovery.
                 elif state.consume_malformed_grace():
                     output_text += (
                         "\n[SYSTEM: Grace retry granted after malformed action recovery. "
@@ -556,7 +885,9 @@ class ActionDispatcher:
         full_result_text = f"SYSTEM RESULT for `{cmd_type}`: {output_text}"
 
         if self.agent.log:
-            self.agent.log.debug(f"Action.finish type={cmd_type} should_stop={should_stop}")
+            self.agent.log.debug(
+                "Action.finish type=%s should_stop=%s", cmd_type, should_stop
+            )
         return command_for_history, full_result_text, should_stop
 
     def _is_read_only_shell_command(self, raw_command: object) -> bool:
@@ -565,14 +896,46 @@ class ActionDispatcher:
         cmd = raw_command.strip()
         if not cmd:
             return False
+
         lowered = cmd.lower()
-        if any(tok in lowered for tok in (">", "| tee", ">>", "sed -i", "perl -i", "mkdir ", "rm ", "mv ", "cp ", "touch ")):
+        if any(
+            tok in lowered
+            for tok in (
+                ">",
+                "| tee",
+                ">>",
+                "sed -i",
+                "perl -i",
+                "mkdir ",
+                "rm ",
+                "mv ",
+                "cp ",
+                "touch ",
+            )
+        ):
             return False
 
         segments = re.split(r"\s*(?:&&|\|\||;|\n)\s*", lowered)
         if not segments:
             return False
-        allowed_bins = {"cd", "cat", "head", "tail", "grep", "rg", "wc", "find", "stat", "file", "pwd", "ls", "sed", "awk"}
+
+        allowed_bins = {
+            "cd",
+            "cat",
+            "head",
+            "tail",
+            "grep",
+            "rg",
+            "fd",
+            "wc",
+            "find",
+            "stat",
+            "file",
+            "pwd",
+            "ls",
+            "sed",
+            "awk",
+        }
         saw_reader = False
 
         for segment in segments:
@@ -595,7 +958,6 @@ class ActionDispatcher:
         return saw_reader
 
     def _normalize_read_file_command(self, command: dict) -> dict:
-        """Recover malformed read_file payloads where JSON is nested under `command`."""
         if not isinstance(command, dict):
             return {"type": "read_file"}
         if command.get("path"):
@@ -624,8 +986,32 @@ class ActionDispatcher:
                 merged["path"] = inferred
         return merged
 
+    def _normalize_read_chunk_command(self, command: dict) -> dict:
+        if not isinstance(command, dict):
+            return {"type": "read_chunk"}
+        if command.get("path") and command.get("start_byte") is not None and command.get("end_byte") is not None:
+            return command
+
+        raw = command.get("command")
+        if not isinstance(raw, str):
+            return command
+        text = raw.strip()
+        if not text.startswith("{"):
+            return command
+        try:
+            nested = json.loads(text)
+        except Exception:
+            return command
+        if not isinstance(nested, dict):
+            return command
+
+        merged = command.copy()
+        for key in ("path", "start_byte", "end_byte", "before_execution", "during_execution", "after_execution"):
+            if merged.get(key) in (None, "") and nested.get(key) is not None:
+                merged[key] = nested.get(key)
+        return merged
+
     def _normalize_read_file_skeleton_command(self, command: dict) -> dict:
-        """Recover malformed read_file_skeleton payloads where JSON is nested under `command`."""
         if not isinstance(command, dict):
             return {"type": "read_file_skeleton"}
         if command.get("path"):
@@ -655,7 +1041,6 @@ class ActionDispatcher:
         return merged
 
     def _infer_read_file_path(self, command: dict) -> str | None:
-        """Best-effort path inference for malformed read_file payloads."""
         if not isinstance(command, dict):
             return None
 
@@ -666,7 +1051,14 @@ class ActionDispatcher:
                 return value.strip()
 
         text_parts = []
-        for key in ("before_execution", "during_execution", "after_execution", "reason", "note", "command"):
+        for key in (
+            "before_execution",
+            "during_execution",
+            "after_execution",
+            "reason",
+            "note",
+            "command",
+        ):
             value = command.get(key)
             if isinstance(value, str) and value.strip():
                 text_parts.append(value.strip())
@@ -674,22 +1066,22 @@ class ActionDispatcher:
         if not blob:
             return None
 
-        path_match = re.search(r'([A-Za-z0-9._/\-]+/[A-Za-z0-9._/\-]+\.[A-Za-z0-9]+)', blob)
+        path_match = re.search(
+            r"([A-Za-z0-9._/\-]+/[A-Za-z0-9._/\-]+\.[A-Za-z0-9]+)", blob
+        )
         if path_match:
             return path_match.group(1)
 
-        filename_matches = re.findall(r'\b([A-Za-z0-9._-]+\.[A-Za-z0-9]+)\b', blob)
+        filename_matches = re.findall(r"\b([A-Za-z0-9._-]+\.[A-Za-z0-9]+)\b", blob)
         unique_filenames = sorted(set(filename_matches))
         if len(unique_filenames) != 1:
             return None
         filename = unique_filenames[0]
-        if re.match(r'^\d{2}_[A-Za-z0-9_-]+\.go$', filename):
+        if re.match(r"^\d{2}_[A-Za-z0-9_-]+\.go$", filename):
             return f"go_examples/{filename}"
         if Path(filename).exists():
             return filename
         return None
-
-    # --- Specific Handlers ---
 
     async def _handle_shell(self, command):
         widget = await self.ui.print_shell_start(command)
@@ -705,26 +1097,36 @@ class ActionDispatcher:
         await self.ui.update_read_file_result(widget, result)
         return result
 
+    async def _handle_read_chunk(self, command):
+        widget = await self.ui.print_read_file_start(command)
+        start_byte = command.get("start_byte")
+        end_byte = command.get("end_byte")
+        await self.ui.start_action(
+            f"Reading chunk {start_byte}:{end_byte} from {command.get('path', 'file')}..."
+        )
+        result = await self.processor.process_single_action(command)
+        await self.ui.update_read_file_result(widget, result)
+        return result
+
     async def _handle_edit_file(self, command):
         widget = await self.ui.print_edit_file_start(command)
         await self.ui.start_action(f"Editing {command.get('path', 'file')}...")
         result = await self.processor.process_single_action(command)
         await self.ui.update_edit_file_result(widget, result)
         return result
-    
+
     async def _handle_create_file(self, command):
         await self.ui.print_tool_call(self._sanitize_create_file_payload(command))
         await self.ui.start_action(f"Creating {command.get('path')}...")
         result = await self.processor.process_single_action(command)
-        
+
         if result.get("status") == "success":
-             await self.ui.print_confirmation(f"File {command.get('path')} created.")
+            await self.ui.print_confirmation(f"File {command.get('path')} created.")
         else:
-             await self.ui.print_command_result(result.get('output'))
+            await self.ui.print_command_result(result.get("output"))
         return result
 
     def _sanitize_create_file_payload(self, command: dict) -> dict:
-        """Replace large file-content payload with compact metadata for chat/history."""
         safe = command.copy()
         content = safe.get("content")
         if not isinstance(content, str):
@@ -758,21 +1160,119 @@ class ActionDispatcher:
     async def _handle_default(self, command):
         await self.ui.print_tool_call(command)
         if command.get("before_execution"):
-            await self.ui.print_plan(command['before_execution'])
-        
+            await self.ui.print_plan(command["before_execution"])
+
         await self.ui.start_action(command.get("during_execution", "Working..."))
         result = await self.processor.process_single_action(command)
-        
+
         if result.get("status") == "success" and command.get("after_execution"):
-            await self.ui.print_confirmation(command['after_execution'])
-        
-        await self.ui.print_command_result(result.get('output', ''))
+            await self.ui.print_confirmation(command["after_execution"])
+
+        await self.ui.print_command_result(result.get("output", ""))
         return result
 
+    def _capture_turn_working_material(self, command: dict, result: dict, state) -> None:
+        history = getattr(self.agent, "history", None)
+        if history is None:
+            return
+
+        add_material = getattr(history, "add_turn_working_material", None)
+        if not callable(add_material):
+            return
+
+        turn_id = getattr(state, "current_turn_id", 0)
+        cmd_type = command.get("type") or command.get("action") or "unknown"
+        path = command.get("path") if isinstance(command.get("path"), str) else ""
+        status = str(result.get("status") or "")
+        if status not in {"success", "failed", "error"}:
+            return
+
+        if cmd_type in {"read_file", "read_chunk"}:
+            content = (
+                result.get("file_content")
+                or result.get("raw_output")
+                or result.get("output")
+            )
+            if isinstance(content, str) and content:
+                version = None
+                add_file_version = getattr(history, "add_file_version", None)
+                if callable(add_file_version) and path:
+                    try:
+                        meta = add_file_version(path, content, return_metadata=True)
+                        version = meta.get("version") if isinstance(meta, dict) else None
+                    except Exception:
+                        version = None
+
+                payload = {
+                    "tool": cmd_type,
+                    "path": path,
+                    "filename": path,
+                    "version": version,
+                    "file_version": version,
+                    "file_content": content,
+                    "output": content,
+                    "status": status,
+                }
+
+                start_byte = result.get("start_byte", command.get("start_byte"))
+                end_byte = result.get("end_byte", command.get("end_byte"))
+                if start_byte is not None:
+                    payload["start_byte"] = start_byte
+                if end_byte is not None:
+                    payload["end_byte"] = end_byte
+
+                add_material(
+                    payload,
+                    msg_type="turn_working_material",
+                    turn_id=turn_id,
+                )
+                return
+
+        if cmd_type == "read_file_skeleton":
+            skeleton = result.get("skeleton_content") or result.get("output")
+            if isinstance(skeleton, str) and skeleton:
+                payload = {
+                    "tool": "read_file_skeleton",
+                    "path": path,
+                    "output": skeleton,
+                    "status": status,
+                }
+                add_material(
+                    payload,
+                    msg_type="turn_working_material",
+                    turn_id=turn_id,
+                )
+                return
+
+        payload = {
+            "tool": cmd_type,
+            "path": path,
+            "status": status,
+            "output": result.get("output"),
+        }
+        for key in (
+            "stdout",
+            "stderr",
+            "result_count",
+            "exit_code",
+            "view",
+            "history_self_reference_only",
+            "real_usage_evidence",
+            "truncated",
+            "history_compact",
+        ):
+            if key in result:
+                payload[key] = result.get(key)
+
+        add_material(
+            payload,
+            msg_type="turn_working_material",
+            turn_id=turn_id,
+        )
+
     def _check_python_syntax(self, path):
-        """Перевіряє синтаксис Python файлу без його виконання."""
         try:
-            with open(path, 'r', encoding='utf-8') as f:
+            with open(path, "r", encoding="utf-8") as f:
                 source = f.read()
             ast.parse(source)
             return None

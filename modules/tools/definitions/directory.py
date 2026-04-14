@@ -8,8 +8,8 @@ class ListDirectoryTool(BaseTool):
     name = "list_directory"
     description = (
         "Lists files and directories in a path. "
-        "Parameters: "
-        "path (str, optional) - directory path (default: current directory); "
+        "Useful for quick scoped inspection before broader search or file reads. "
+        "Parameters: path (str, optional) - directory path (default: current directory); "
         "recursive (bool, optional) - include nested files/directories (default: false)."
     )
 

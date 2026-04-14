@@ -22,6 +22,7 @@ from .policy_engine import (
 
 READ_ONLY_ACTIONS = {
     "read_file",
+    "read_chunk",
     "read_file_skeleton",
     "search_content",
     "search_files",
@@ -93,13 +94,13 @@ class AgentStateMachine:
 
         self._phase_allowed_actions = {
             AgentPhase.OBSERVE: {
-                "read_file", "read_file_skeleton", "search_content", "search_files",
+                "read_file", "read_chunk", "read_file_skeleton", "search_content", "search_files",
                 "list_directory", "find_files", "git_diff", "run_shell",
             },
-            AgentPhase.EDIT_PLAN: {"search_content", "search_files", "read_file", "edit_file", "write_file", "run_shell"},
+            AgentPhase.EDIT_PLAN: {"search_content", "search_files", "read_file", "read_chunk", "edit_file", "write_file", "run_shell"},
             AgentPhase.APPLY: {"edit_file", "write_file", "run_shell"},
-            AgentPhase.VERIFY: {"read_file", "search_content", "git_diff", "run_shell"},
-            AgentPhase.RECOVER: {"read_file", "search_content", "search_files", "list_directory", "edit_file", "write_file", "run_shell"},
+            AgentPhase.VERIFY: {"read_file", "read_chunk", "search_content", "git_diff", "run_shell"},
+            AgentPhase.RECOVER: {"read_file", "read_chunk", "search_content", "search_files", "list_directory", "edit_file", "write_file", "run_shell"},
         }
 
     def _is_read_only_action(self, command: dict) -> bool:
@@ -277,7 +278,7 @@ class AgentStateMachine:
                 diagnostic_attempts=self.diagnostic_attempts,
                 max_diagnostics=int(getattr(self.config, "STAGNATION_MAX_DIAGNOSTICS", 1)),
                 diagnostic_prompt=self.build_diagnostic_prompt(),
-                required_next_action_types=["search_content", "search_files", "read_file", "edit_file", "write_file"],
+                required_next_action_types=["search_content", "search_files", "read_file", "read_chunk", "edit_file", "write_file"],
                 task_kind=self.task_kind.value,
                 phase=self.phase.value,
                 observe_budget_exhausted=self.observe_actions_used >= self._observe_budget(),

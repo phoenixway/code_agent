@@ -1,6 +1,7 @@
 # modules/processor.py
 import json
 
+
 class ResponseProcessor:
     def __init__(self, ui, tool_manager, chat, policy, history=None):
         self.ui = ui
@@ -28,17 +29,13 @@ class ResponseProcessor:
         return text
 
     async def process_single_action(self, command_dict: dict) -> dict:
-        # 1. Спроба знайти назву інструмента
         action_type = command_dict.get("action") or command_dict.get("type")
-        
-        # 2. ФОЛБЕК-ЛОГІКА: Якщо назви немає, але є ключ 'command'
+
         if not action_type and "command" in command_dict:
             cmd_text = command_dict["command"]
-            # Якщо там довгий рядок або є спецсимволи (&&, |, >) - це 100% run_shell
             if isinstance(cmd_text, str) and (" " in cmd_text or "|" in cmd_text or "&&" in cmd_text):
                 action_type = "run_shell"
             else:
-                # Якщо коротке слово (наприклад, "ls") - теж вважаємо це назвою інструмента
                 action_type = cmd_text
 
         if not action_type:
@@ -49,33 +46,31 @@ class ResponseProcessor:
                 "output": "Error: Could not identify tool name.",
             }
 
-        # 3. Збираємо аргументи
         args = {}
-        # Розгортаємо вкладені параметри
         for nested in ["params", "arguments", "parameters"]:
             if isinstance(command_dict.get(nested), dict):
                 args.update(command_dict[nested])
-        
-        # Всі інші ключі (крім службових)
-        service_fields = {"action", "type", "command", "params", "arguments", "parameters", 
-                         "before_execution", "during_execution", "after_execution", "return_control"}
-        
+
+        service_fields = {
+            "action", "type", "command", "params", "arguments", "parameters",
+            "before_execution", "during_execution", "after_execution", "return_control"
+        }
+
         for k, v in command_dict.items():
             if k not in service_fields:
                 args[k] = v
 
-        # 4. Спеціальна обробка для run_shell: 
-        # переконуємося, що текст команди потрапив у args['command']
         if action_type == "run_shell" and "command" in command_dict:
             args["command"] = command_dict["command"]
 
-        # 4.1. Recovery for malformed file-tool payloads:
-        # models sometimes put proper file args inside `command` as JSON string/object.
         normalize_error = self._normalize_file_tool_args_from_command(action_type, command_dict, args)
         if normalize_error:
             return normalize_error
 
-        # 5. Перевірка політики (MiniPicker)
+        read_payload_error = self._validate_read_tool_payload(action_type, args)
+        if read_payload_error:
+            return read_payload_error
+
         file_payload_error = self._validate_file_tool_payload(action_type, command_dict, args)
         if file_payload_error:
             return file_payload_error
@@ -84,7 +79,6 @@ class ResponseProcessor:
         if payload_error:
             return payload_error
 
-        # Internal marker used only for validation/recovery logic.
         args.pop("_normalized_from_command", None)
 
         normalized_cmd = {"type": action_type, **args}
@@ -94,17 +88,14 @@ class ResponseProcessor:
         force_truncate = isinstance(policy_decision, str) and policy_decision in {"allow_truncated", "truncated"}
         force_full_output = isinstance(policy_decision, str) and policy_decision in {"allow_full", "full"}
 
-        # 6. Виклик через ToolManager
         result = await self.tools.call(action_type, ui=self.ui, **args)
-        
-        # 7. Post-processing for specific tools (e.g., read_file)
-        if action_type == 'read_file' and result.get('status') == 'success':
-            file_path = result.get('file_path') or args.get('path')
-            content = result.get('output')
+
+        if action_type in {"read_file", "read_chunk"} and result.get("status") == "success":
+            file_path = result.get("file_path") or args.get("path")
+            content = result.get("file_content") or result.get("output")
             has_history_api = (
                 self.history is not None
                 and hasattr(self.history, "add_file_version")
-                and hasattr(self.history, "add_transient_file_content")
             )
             if file_path and content and has_history_api:
                 meta = self.history.add_file_version(file_path, content, return_metadata=True)
@@ -115,27 +106,28 @@ class ResponseProcessor:
                     version = meta
                     is_new_version = bool(version)
                 if version:
-                    if is_new_version:
-                        self.history.add_transient_file_content(file_path, version, content)
-                        result['output'] = f"Read file '{file_path}' and added to history as v{version}."
-                    else:
-                        ensure_transient = getattr(self.history, "ensure_transient_file_content", None)
-                        if callable(ensure_transient):
-                            ensure_transient(file_path, version, content)
-                        else:
-                            # Fallback for tests/mocks: refresh transient to keep context visible.
-                            self.history.add_transient_file_content(file_path, version, content)
-                        result['output'] = (
-                            f"Read file '{file_path}' (unchanged, already in history as v{version})."
+                    if action_type == "read_chunk":
+                        start_byte = result.get("start_byte", args.get("start_byte"))
+                        end_byte = result.get("end_byte", args.get("end_byte"))
+                        result["output"] = (
+                            f"Read chunk of '{file_path}'"
+                            f" [{start_byte}, {end_byte})"
+                            f"{' and added to history as ' if is_new_version else ' (already in history as '}v{version}"
+                            f"{'' if is_new_version else ')'}."
                         )
+                    else:
+                        if is_new_version:
+                            result["output"] = f"Read file '{file_path}' and added to history as v{version}."
+                        else:
+                            result["output"] = (
+                                f"Read file '{file_path}' (unchanged, already in history as v{version})."
+                            )
 
-        # 8. Check for ChangeProposal (Diff Preview)
         from modules.types import ChangeProposal
-        
+
         if isinstance(result, ChangeProposal):
-            # Show diff UI
             approved = await self.ui.show_diff_preview(result)
-            
+
             if approved:
                 try:
                     result.apply()
@@ -159,15 +151,13 @@ class ResponseProcessor:
             result = {"status": "error", "error_code": "INTERNAL", "recoverable": False, "output": str(result)}
         self._normalize_error_payload(result)
 
-        # 9. Output Truncation
         if not result.get("skip_truncation"):
             if isinstance(result, dict) and "output" in result and isinstance(result["output"], str):
-                # Визначаємо поріг на основі типу дії
-                if action_type in ["read_file", "run_shell"]:
-                    threshold = self.LARGE_FILE_THRESHOLD  # ~2 MB
+                if action_type in ["read_file", "read_chunk", "run_shell"]:
+                    threshold = self.LARGE_FILE_THRESHOLD
                 else:
-                    threshold = self.MAX_OUTPUT_LENGTH  # 3000 символів
-                
+                    threshold = self.MAX_OUTPUT_LENGTH
+
                 if len(result["output"]) > threshold:
                     if force_full_output:
                         pass
@@ -175,11 +165,41 @@ class ResponseProcessor:
                         result["output"] = self._truncate_output(result["output"], threshold)
                     elif await self.ui.confirm_truncation(action_type, len(result["output"])):
                         result["output"] = self._truncate_output(result["output"], threshold)
-                
+
         return result
 
+    def _validate_read_tool_payload(self, action_type: str, args: dict) -> dict | None:
+        if action_type not in {"read_file", "read_file_skeleton", "read_chunk"}:
+            return None
+
+        if not isinstance(args.get("path"), str) or not args.get("path"):
+            code = {
+                "read_file": "MALFORMED_READ_FILE_PAYLOAD",
+                "read_file_skeleton": "MALFORMED_READ_FILE_SKELETON_PAYLOAD",
+                "read_chunk": "MALFORMED_READ_CHUNK_PAYLOAD",
+            }[action_type]
+            return {
+                "status": "failed",
+                "error_code": code,
+                "recoverable": True,
+                "output": f"{action_type} requires top-level 'path' (string).",
+                "next_actions": [action_type],
+            }
+
+        if action_type == "read_chunk":
+            sb = args.get("start_byte")
+            eb = args.get("end_byte")
+            if not isinstance(sb, int) or not isinstance(eb, int) or eb <= sb or sb < 0:
+                return {
+                    "status": "failed",
+                    "error_code": "MALFORMED_READ_CHUNK_PAYLOAD",
+                    "recoverable": True,
+                    "output": "read_chunk requires top-level 'start_byte' and 'end_byte' integers with 0 <= start_byte < end_byte.",
+                    "next_actions": ["read_chunk"],
+                }
+        return None
+
     def _reject_sanitized_payload(self, action_type: str, args: dict) -> dict | None:
-        """Block destructive actions if model tries to write sanitized history/UI placeholders."""
         if action_type not in {"create_file", "write_file", "edit_file", "replace"}:
             return None
 
@@ -209,7 +229,6 @@ class ResponseProcessor:
         return None
 
     def _validate_file_tool_payload(self, action_type: str, command_dict: dict, args: dict) -> dict | None:
-        """Reject malformed file-tool payloads early with explicit guidance."""
         if action_type not in self.FILE_TOOLS:
             return None
 
@@ -244,7 +263,6 @@ class ResponseProcessor:
                 }
             return None
 
-        # edit_file / replace
         if not isinstance(args.get("path"), str) or not args.get("path"):
             return {
                 "status": "failed",
@@ -266,7 +284,6 @@ class ResponseProcessor:
     def _normalize_file_tool_args_from_command(
         self, action_type: str, command_dict: dict, args: dict
     ) -> dict | None:
-        """Try to recover file-tool arguments from nested `command` JSON payload."""
         if action_type not in self.FILE_TOOLS:
             return None
         if "command" not in command_dict:
@@ -305,7 +322,6 @@ class ResponseProcessor:
                 "next_actions": ["read_file", "create_file", "write_file", "edit_file"],
             }
 
-        # Merge recovered keys only when direct args are missing.
         for key in ("path", "content", "search_text", "replace_text"):
             if key not in args and key in payload:
                 args[key] = payload[key]
@@ -314,7 +330,6 @@ class ResponseProcessor:
         return None
 
     def _normalize_error_payload(self, result: dict) -> None:
-        """Ensure action result has consistent error metadata for loop recovery logic."""
         status = result.get("status")
         if status not in {"failed", "error", "denied"}:
             return

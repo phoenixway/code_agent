@@ -34,38 +34,31 @@ def _line_col_from_index(text: str, index: int) -> tuple[int, int]:
 def _classify_search_mismatch(content: str, search_text: str) -> tuple[str, dict]:
     if not search_text:
         return "empty_search_text", {"first_diff": None}
-
     details: dict = {}
     normalized_content = _normalize_line_endings(content)
     normalized_search = _normalize_line_endings(search_text)
-
     if normalized_search in normalized_content and search_text not in content:
         details["line_endings_in_file"] = _detect_line_endings(content)
         return "line_ending_mismatch", details
-
     stripped = search_text.strip()
     if stripped and stripped in content:
         return "whitespace_mismatch", details
-
     first_search_line = search_text.splitlines()[0] if search_text.splitlines() else ""
     if first_search_line:
         if content.count(first_search_line) > 1:
             return "multiple_similar_blocks", details
         if first_search_line in content:
             return "indentation_or_partial_block_mismatch", details
-
     matcher = difflib.SequenceMatcher(None, search_text, content)
     best = matcher.find_longest_match(0, len(search_text), 0, len(content))
     similarity = matcher.ratio()
     details["similarity"] = round(float(similarity), 4)
-
     if best.size > 0:
         start = max(0, best.b - 120)
         end = min(len(content), best.b + best.size + 120)
         preview = content[start:end]
         details["best_match_preview"] = preview
         details["best_match_span"] = [best.b, best.b + best.size]
-
     if similarity >= 0.55:
         return "search_text_stale_or_block_modified", details
     return "no_similar_block_found", details
@@ -82,7 +75,6 @@ def _build_first_diff(search_text: str, content: str) -> dict | None:
         if len(search_text) == len(content):
             return None
         diff_idx = limit
-
     line, col = _line_col_from_index(search_text, diff_idx)
     return {
         "index": diff_idx,
@@ -106,29 +98,18 @@ def _compact_omitted_marker_count(text: str) -> int:
 
 
 def _validate_no_compact_markers(path: str, new_content: str, previous_content: str | None = None) -> dict | None:
-    """
-    Prevent accidental writes of compact placeholders like:
-    [content omitted: N chars, sha256:...]
-    """
     new_count = _compact_omitted_marker_count(new_content)
     if new_count == 0:
         return None
-
     prev_count = _compact_omitted_marker_count(previous_content or "")
-    # Allow remediation edits that reduce already-corrupted markers.
     if previous_content is not None and new_count < prev_count:
         return None
-
     return {
         "status": "error",
         "error_code": "VALIDATION_ERROR",
         "recoverable": True,
         "next_actions": ["read_file", "write_file", "edit_file"],
-        "output": (
-            "Refusing to write compact placeholder markers "
-            "('[content omitted: ... sha256: ...]') into workspace files. "
-            "Use full file content instead."
-        ),
+        "output": "Refusing to write compact placeholder markers ('[content omitted: ... sha256: ...]') into workspace files. Use full file content instead.",
         "error_details": {
             "path": path,
             "detected_marker": "content_omitted_placeholder",
@@ -138,16 +119,112 @@ def _validate_no_compact_markers(path: str, new_content: str, previous_content: 
     }
 
 
+def _safe_int(value, default=None):
+    try:
+        return int(value)
+    except Exception:
+        return default
+
+
+
+class ReadChunkTool(BaseTool):
+    name = "read_chunk"
+    description = (
+        "Reads only a byte range from a file. Use this instead of full read_file when a file is too large "
+        "or when you only need a specific region around a known symbol or line range. "
+        "Params: 'path' (str), 'start_byte' (int), optional 'end_byte' (int)."
+    )
+
+    async def execute(
+        self,
+        path: str,
+        start_byte: int,
+        end_byte: int | None = None,
+        **kwargs,
+    ):
+        try:
+            p = Path(path)
+            if not p.exists():
+                parent = str(p.parent) if str(p.parent) else "."
+                return {
+                    "status": "error",
+                    "error_code": "NOT_FOUND",
+                    "recoverable": True,
+                    "next_actions": ["list_directory", "search_files", "read_file_skeleton"],
+                    "output": f"File not found: {path}",
+                    "error_details": {"path": path, "suggested_path": parent},
+                }
+            if not p.is_file():
+                return {
+                    "status": "error",
+                    "error_code": "VALIDATION_ERROR",
+                    "recoverable": True,
+                    "next_actions": ["list_directory", "read_file_skeleton"],
+                    "output": f"Not a file: {path}",
+                }
+
+            sb = _safe_int(start_byte)
+            eb = _safe_int(end_byte)
+            if sb is None:
+                return {
+                    "status": "error",
+                    "error_code": "VALIDATION_ERROR",
+                    "recoverable": True,
+                    "next_actions": ["read_chunk"],
+                    "output": "read_chunk requires 'start_byte' (int).",
+                }
+
+            file_size = p.stat().st_size
+            sb = max(0, min(sb, file_size))
+            if eb is None:
+                eb = file_size
+            eb = max(sb, min(eb, file_size))
+
+            with open(p, "rb") as f:
+                f.seek(sb)
+                raw = f.read(max(0, eb - sb))
+            content = raw.decode("utf-8", errors="replace")
+            return {
+                "status": "success",
+                "output": content,
+                "file_content": content,
+                "file_path": str(p),
+                "chunked": True,
+                "start_byte": sb,
+                "end_byte": eb,
+                "file_size": file_size,
+                "tool_variant": "read_chunk",
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "error_code": "INTERNAL",
+                "recoverable": False,
+                "output": str(e),
+            }
+
+
 class ReadFileTool(BaseTool):
     name = "read_file"
     description = (
-        "Reads the full content of a file. "
-        "Use only when full source is strictly required for exact edits. "
-        "Prefer `read_file_skeleton` first for supported languages. "
-        "Params: 'path' (str)"
+        "Reads a whole file. Use this only when you truly need full implementation context. "
+        "Prefer read_file_skeleton first for structure, and prefer read_chunk when you only need a region of a large file. "
+        "Very large full reads require explicit confirm_large_read=true after the warning. "
+        "Params: 'path' (str), optional 'confirm_large_read' (bool), optional 'start_byte' (int), optional 'end_byte' (int)."
     )
 
-    async def execute(self, path: str, ui=None):
+    LARGE_FILE_WARNING_BYTES = 256 * 1024
+    HARD_LARGE_FILE_BYTES = 1024 * 1024
+
+    async def execute(
+        self,
+        path: str,
+        ui=None,
+        confirm_large_read: bool = False,
+        start_byte: int | None = None,
+        end_byte: int | None = None,
+        **kwargs,
+    ):
         try:
             p = Path(path)
             if not p.exists():
@@ -160,39 +237,76 @@ class ReadFileTool(BaseTool):
                     "output": f"File not found: {path}",
                     "error_details": {"path": path, "suggested_path": parent},
                 }
+            if not p.is_file():
+                return {
+                    "status": "error",
+                    "error_code": "VALIDATION_ERROR",
+                    "recoverable": True,
+                    "next_actions": ["list_directory", "read_file_skeleton"],
+                    "output": f"Not a file: {path}",
+                }
 
-            # Check file size
             file_size = p.stat().st_size
-            if file_size > 1024 * 1024:  # 1MB
-                if ui:
-                    if not await ui.confirm_action({
-                        "type": "read_large_file",
-                        "path": path,
-                        "size": f"{file_size / (1024 * 1024):.2f} MB"
-                    }):
-                        return {
-                            "status": "error",
-                            "error_code": "PERMISSION_DENIED",
-                            "recoverable": False,
-                            "output": "User denied reading large file.",
-                        }
-                    else:
-                        # User confirmed reading the large file, so we should not truncate it.
-                        content = p.read_text(encoding='utf-8')
-                        return {
-                            "status": "success",
-                            "output": content,
-                            "skip_truncation": True,
-                            "file_path": str(p),
-                        }
-                else:
-                    # No UI, so we can't ask for confirmation.
-                    # For now, we will proceed with reading the file.
-                    # In the future, we might want to have a different behavior here.
-                    pass
+            sb = _safe_int(start_byte)
+            eb = _safe_int(end_byte)
+            chunk_requested = sb is not None or eb is not None
+            if sb is None:
+                sb = 0
+            if eb is None:
+                eb = file_size
+            sb = max(0, min(sb, file_size))
+            eb = max(sb, min(eb, file_size))
 
-            content = p.read_text(encoding='utf-8')
-            return {"status": "success", "output": content, "file_path": str(p)}
+            if chunk_requested:
+                with open(p, "rb") as f:
+                    f.seek(sb)
+                    raw = f.read(max(0, eb - sb))
+                content = raw.decode("utf-8", errors="replace")
+                return {
+                    "status": "success",
+                    "output": content,
+                    "file_content": content,
+                    "file_path": str(p),
+                    "chunked": True,
+                    "start_byte": sb,
+                    "end_byte": eb,
+                    "file_size": file_size,
+                }
+
+            if file_size >= self.HARD_LARGE_FILE_BYTES and not confirm_large_read:
+                warning = (
+                    f"File {path} is very large ({file_size} bytes). Full read will likely bloat context and may trigger summarization. "
+                    "Prefer read_file_skeleton first, or use read_chunk / chunked read_file with start_byte/end_byte. "
+                    "If full content is truly required, repeat read_file with confirm_large_read=true."
+                )
+                if ui and hasattr(ui, "print_system"):
+                    try:
+                        await ui.print_system(warning)
+                    except Exception:
+                        pass
+                return {
+                    "status": "error",
+                    "error_code": "FULL_READ_CONFIRMATION_REQUIRED",
+                    "recoverable": True,
+                    "next_actions": ["read_file_skeleton", "read_file", "search_content"],
+                    "output": warning,
+                    "file_path": str(p),
+                    "file_size": file_size,
+                    "requires_confirm_large_read": True,
+                }
+
+            content = p.read_text(encoding="utf-8", errors="replace")
+            payload = {
+                "status": "success",
+                "output": content,
+                "file_content": content,
+                "file_path": str(p),
+                "file_size": file_size,
+            }
+            if file_size >= self.LARGE_FILE_WARNING_BYTES:
+                payload["large_file_read"] = True
+                payload["skip_truncation"] = True
+            return payload
         except Exception as e:
             return {
                 "status": "error",
@@ -206,8 +320,7 @@ class ReadFileSkeletonTool(BaseTool):
     name = "read_file_skeleton"
     description = (
         "Extracts a structural skeleton (classes/functions/signatures) from a source file "
-        "using tree-sitter for supported languages. "
-        "Preferred first step before full `read_file` to save context tokens. "
+        "using tree-sitter for supported languages. Preferred first step before full read_file. "
         "Params: 'path' (str)"
     )
 
@@ -235,7 +348,6 @@ class ReadFileSkeletonTool(BaseTool):
                     "next_actions": ["list_directory", "read_file"],
                     "output": f"Not a file: {path}",
                 }
-
             ext = p.suffix.lower()
             if ext not in self.code_parser.configs:
                 supported = ", ".join(sorted(self.code_parser.configs.keys()))
@@ -244,23 +356,16 @@ class ReadFileSkeletonTool(BaseTool):
                     "error_code": "VALIDATION_ERROR",
                     "recoverable": True,
                     "next_actions": ["read_file"],
-                    "output": (
-                        f"Skeleton extraction is not supported for '{ext or '(no extension)'}'. "
-                        f"Supported: {supported}."
-                    ),
+                    "output": f"Skeleton extraction is not supported for '{ext or '(no extension)'}'. Supported: {supported}.",
                 }
-
-            content = p.read_text(encoding="utf-8")
+            content = p.read_text(encoding="utf-8", errors="replace")
             skeleton = self.code_parser.get_skeleton(str(p), content)
             return {
                 "status": "success",
-                "output": (
-                    f"Skeleton for {p}:\n"
-                    f"{skeleton}\n\n"
-                    "Note: this is a structural view. Use read_file for exact implementation details."
-                ),
+                "output": f"Skeleton for {p}:\n{skeleton}\n\nNote: this is a structural view. Use read_file for exact implementation details.",
                 "file_path": str(p),
                 "view": "skeleton",
+                "skeleton_content": skeleton,
             }
         except Exception as e:
             return {
@@ -270,6 +375,7 @@ class ReadFileSkeletonTool(BaseTool):
                 "next_actions": ["read_file"],
                 "output": f"Failed to extract skeleton: {e}",
             }
+
 
 class CreateFileTool(BaseTool):
     name = "create_file"
@@ -285,18 +391,11 @@ class CreateFileTool(BaseTool):
                 "next_actions": ["read_file", "edit_file", "write_file"],
                 "output": f"File {path} already exists. Use 'edit_file' or 'run_shell' to modify.",
             }
-
         marker_error = _validate_no_compact_markers(path, content)
         if marker_error:
             return marker_error
-        
-        # Return proposal instead of writing directly
-        proposal = ChangeProposal(
-            file_path=path,
-            original_content="",
-            new_content=content
-        )
-        return proposal
+        return ChangeProposal(file_path=path, original_content="", new_content=content)
+
 
 class WriteFileTool(BaseTool):
     name = "write_file"
@@ -304,21 +403,12 @@ class WriteFileTool(BaseTool):
 
     async def execute(self, path: str, content: str):
         p = Path(path)
-        original = ""
-        if p.exists():
-            original = p.read_text(encoding='utf-8')
-
+        original = p.read_text(encoding="utf-8") if p.exists() else ""
         marker_error = _validate_no_compact_markers(path, content, previous_content=original)
         if marker_error:
             return marker_error
-        
-        # Return proposal
-        proposal = ChangeProposal(
-            file_path=path,
-            original_content=original,
-            new_content=content
-        )
-        return proposal
+        return ChangeProposal(file_path=path, original_content=original, new_content=content)
+
 
 class EditFileTool(BaseTool):
     name = "edit_file"
@@ -340,16 +430,12 @@ class EditFileTool(BaseTool):
                 "output": f"File not found: {path}",
                 "error_details": {"path": path, "suggested_path": parent},
             }
-        
         try:
-            content = p.read_text(encoding='utf-8')
-            
-            # Verify search text exists
+            content = p.read_text(encoding="utf-8")
             if search_text not in content:
                 mismatch_type, mismatch_details = _classify_search_mismatch(content, search_text)
                 first_diff = _build_first_diff(search_text, content)
                 mismatch_details["first_diff"] = first_diff
-
                 output_lines = [
                     "Search block not found. Ensure whitespace and indentation match exactly.",
                     f"Mismatch type: {mismatch_type}.",
@@ -358,21 +444,12 @@ class EditFileTool(BaseTool):
                 if isinstance(similarity, (float, int)):
                     output_lines.append(f"Similarity hint: {similarity:.2f}.")
                 if first_diff:
-                    output_lines.append(
-                        "First diff at search_text "
-                        f"line {first_diff['line']}, col {first_diff['col']}."
-                    )
-
+                    output_lines.append(f"First diff at search_text line {first_diff['line']}, col {first_diff['col']}.")
                 return {
                     "status": "error",
                     "error_code": "VALIDATION_ERROR",
                     "recoverable": True,
-                    "next_actions": [
-                        "read_file",
-                        "search_content",
-                        "edit_file",
-                        "write_file",
-                    ],
+                    "next_actions": ["read_file", "search_content", "edit_file", "write_file"],
                     "output": "\n".join(output_lines),
                     "error_details": {
                         "path": path,
@@ -383,22 +460,11 @@ class EditFileTool(BaseTool):
                         **mismatch_details,
                     },
                 }
-            
-            # Perform replacement
             new_content = content.replace(search_text, replace_text, 1)
-
             marker_error = _validate_no_compact_markers(path, new_content, previous_content=content)
             if marker_error:
                 return marker_error
-            
-            # Return proposal
-            proposal = ChangeProposal(
-                file_path=path,
-                original_content=content,
-                new_content=new_content
-            )
-            return proposal
-            
+            return ChangeProposal(file_path=path, original_content=content, new_content=new_content)
         except Exception as e:
             return {
                 "status": "error",

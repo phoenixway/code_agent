@@ -9,6 +9,8 @@ class ShellTool(BaseTool):
     name = "run_shell"
     description = (
         "Executes a shell command in the current environment. "
+        "Use mainly for shell-native inspection or git/build tasks, not as the first choice for reading large files. "
+        "Long stdout may be expensive for context; prefer read_file, read_file_skeleton, search_content, or search_files when applicable. "
         "Params: 'command' (str), 'timeout' (int, optional, seconds)"
     )
 

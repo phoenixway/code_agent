@@ -9,6 +9,7 @@ from .intent_runtime import IntentRuntime
 
 READ_ONLY_RECOVERY_ACTIONS = {
     "read_file",
+    "read_chunk",
     "read_file_skeleton",
     "search_content",
     "search_files",
@@ -28,7 +29,7 @@ class AgentState:
         self.suppress_step_limit_warning = False
         self.consecutive_same_action_count = 0
         self.last_completed_fingerprint = None
-        self.pending_loop_stop_info = None
+        self._pending_loop_stop_info = None
 
         self.last_action_fingerprint = None
         self.last_action_status = None
@@ -56,6 +57,7 @@ class AgentState:
         self.intent_runtime = IntentRuntime(config) if config is not None else None
         self.defect_detector = DefectDetector(config) if config is not None else None
         self.last_defect_info = None
+        self._pending_loop_stop_info = None
         self.readonly_steps_this_turn = 0
         self.last_turn_had_failure = False
         self.intent_only_response_count = 0
@@ -63,12 +65,49 @@ class AgentState:
         self.pending_suspect_intent_payload = None
         self.allow_suspect_intent_once = False
 
+        # Critical: this must advance across real user turns.
+        # Working-material protection/degradation depends on it.
+        self.current_turn_id = 0
+
+    @property
+    def pending_loop_stop_info(self):
+        return self._pending_loop_stop_info
+
+    @pending_loop_stop_info.setter
+    def pending_loop_stop_info(self, value):
+        self._pending_loop_stop_info = value
+        if not isinstance(value, dict):
+            return
+        updates = value.get("intent_constraint_updates")
+        if isinstance(updates, dict):
+            self.apply_intent_constraint_updates(updates)
+
+    def apply_intent_constraint_updates(self, updates: dict) -> bool:
+        if not isinstance(updates, dict):
+            return False
+        self.attach_config(self._config)
+        if not self.intent_runtime:
+            return False
+        applier = getattr(self.intent_runtime, "apply_constraint_updates", None)
+        if not callable(applier):
+            return False
+        try:
+            return bool(applier(updates))
+        except Exception:
+            return False
+
     def start_turn_runtime(self):
         self.readonly_steps_this_turn = 0
         self.last_turn_had_failure = False
         self.intent_only_response_count = 0
         self.pending_suspect_intent_payload = None
         self.allow_suspect_intent_once = False
+
+        # FIX:
+        # Do not reset to 0. Each new user turn must get a new turn id so that
+        # previous turn_working_material can degrade normally.
+        self.current_turn_id = int(self.current_turn_id or 0) + 1
+
         if self.defect_detector:
             self.defect_detector.reset()
 

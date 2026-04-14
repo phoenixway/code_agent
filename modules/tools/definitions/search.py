@@ -118,9 +118,9 @@ class FileSearchTool(BaseTool):
     name = "search_files"
     description = (
         "Finds files matching a pattern using 'fd'. "
-        "Parameters: pattern (str), path (str='.'), recursive (bool=True), "
-        "code_only (bool=False), include_extensions (list[str], optional), "
-        "exclude_dirs (list[str], optional), limit (int, optional)."
+        "Use this before full file reads when you first need to locate likely files. "
+        "Parameters: pattern (str), path (str='.'), recursive (bool=True), code_only (bool=False), "
+        "include_extensions (list[str], optional), exclude_dirs (list[str], optional), limit (int, optional)."
     )
 
     async def execute(
@@ -226,9 +226,9 @@ class ContentSearchTool(BaseTool):
     name = "search_content"
     description = (
         "Searches for text patterns inside files using 'ripgrep' (rg). "
-        "Parameters: pattern (str), path (str='.'), recursive (bool=True), "
-        "code_only (bool=False), include_extensions (list[str], optional), "
-        "exclude_dirs (list[str], optional), limit (int, optional), ignore_case (bool=False)."
+        "Prefer this before full read_file when you need to locate exact symbols, imports, handlers, or dialog usage. "
+        "Parameters: pattern (str), path (str='.'), recursive (bool=True), code_only (bool=False), "
+        "include_extensions (list[str], optional), exclude_dirs (list[str], optional), limit (int, optional), ignore_case (bool=False)."
     )
 
     async def execute(

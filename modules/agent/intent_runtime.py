@@ -4,16 +4,17 @@ This module intentionally stays simple:
 - model may declare a formal intent contract
 - runtime validates allowed_actions and numeric limits
 - runtime tracks steps/retries and exposes light pre/post checks
+- current intent may receive runtime constraint updates after recovery events
 """
 
 from __future__ import annotations
 
 import re
-
 from dataclasses import dataclass, field
 
 KNOWN_TOOL_ACTIONS = {
     "read_file",
+    "read_chunk",
     "read_file_skeleton",
     "search_content",
     "search_files",
@@ -50,6 +51,8 @@ class IntentContract:
     user_one_shot_steps_remaining: int = 0
     user_unlimited_override: bool = False
     force_plaintext_completion: bool = False
+    action_constraints: dict = field(default_factory=dict)
+    original_allowed_actions: list[str] = field(default_factory=list)
 
 
 class IntentRuntime:
@@ -63,7 +66,6 @@ class IntentRuntime:
         self.intent_required_reason = ""
         self.last_transition_info = {}
         self.last_apply_warning = ""
-        self.last_transition_info: dict = {}
 
     def reset(self):
         self.active_intent = None
@@ -99,10 +101,6 @@ class IntentRuntime:
         threshold = float(getattr(self.config, "INTENT_RETRY_GOAL_SIMILARITY_THRESHOLD", 0.45))
         return sim >= threshold
 
-    def _normalized_goal_tokens(self, goal: str) -> set[str]:
-        stop = {"the", "a", "an", "to", "and", "or", "of", "in", "on", "for", "is", "are", "be", "this", "that", "find", "check", "investigate", "verify", "search", "look", "знайти", "перевірити", "дослідити", "для", "та", "і", "це", "що", "як", "у", "в", "на"}
-        return {t for t in self._normalize_goal(goal).split() if t and t not in stop}
-
     def _allowed_actions_overlap(self, a: list[str], b: list[str]) -> float:
         sa = set(a or [])
         sb = set(b or [])
@@ -123,6 +121,84 @@ class IntentRuntime:
             goal_sim >= float(getattr(self.config, "INTENT_RELABEL_GOAL_SIMILARITY_THRESHOLD", 0.6))
             and actions_overlap >= float(getattr(self.config, "INTENT_RELABEL_ACTION_OVERLAP_THRESHOLD", 0.6))
         )
+
+    def _normalize_constraints(self, raw: dict | None) -> dict:
+        if not isinstance(raw, dict):
+            return {}
+        out: dict = {}
+
+        if "max_full_reads_per_step" in raw:
+            try:
+                out["max_full_reads_per_step"] = max(0, int(raw.get("max_full_reads_per_step")))
+            except Exception:
+                pass
+
+        same_path = raw.get("forbid_same_full_read_path")
+        if isinstance(same_path, str) and same_path.strip():
+            out["forbid_same_full_read_path"] = same_path.strip()
+
+        require_chunk = raw.get("require_chunk_for_paths")
+        if isinstance(require_chunk, list):
+            cleaned = [str(p).strip() for p in require_chunk if str(p).strip()]
+            if cleaned:
+                out["require_chunk_for_paths"] = cleaned
+
+        if "forbid_new_intent" in raw:
+            out["forbid_new_intent"] = bool(raw.get("forbid_new_intent"))
+        if "reuse_current_intent" in raw:
+            out["reuse_current_intent"] = bool(raw.get("reuse_current_intent"))
+
+        if "replace_allowed_actions" in raw and isinstance(raw.get("replace_allowed_actions"), list):
+            allowed = []
+            for item in raw.get("replace_allowed_actions", []):
+                action = str(item or "").strip()
+                if action in KNOWN_TOOL_ACTIONS and action not in allowed:
+                    allowed.append(action)
+            if allowed:
+                out["replace_allowed_actions"] = allowed
+
+        if "add_allowed_actions" in raw and isinstance(raw.get("add_allowed_actions"), list):
+            allowed = []
+            for item in raw.get("add_allowed_actions", []):
+                action = str(item or "").strip()
+                if action in KNOWN_TOOL_ACTIONS and action not in allowed:
+                    allowed.append(action)
+            if allowed:
+                out["add_allowed_actions"] = allowed
+
+        if "remove_allowed_actions" in raw and isinstance(raw.get("remove_allowed_actions"), list):
+            allowed = []
+            for item in raw.get("remove_allowed_actions", []):
+                action = str(item or "").strip()
+                if action in KNOWN_TOOL_ACTIONS and action not in allowed:
+                    allowed.append(action)
+            if allowed:
+                out["remove_allowed_actions"] = allowed
+
+        return out
+
+    def _merge_constraints(self, base: dict | None, updates: dict | None) -> dict:
+        merged = dict(base or {})
+        normalized = self._normalize_constraints(updates)
+        for key, value in normalized.items():
+            if key == "require_chunk_for_paths":
+                existing = [str(p).strip() for p in merged.get(key, []) if str(p).strip()]
+                for path in value:
+                    if path not in existing:
+                        existing.append(path)
+                merged[key] = existing
+            elif key == "max_full_reads_per_step":
+                old = merged.get(key)
+                if old is None:
+                    merged[key] = value
+                else:
+                    try:
+                        merged[key] = min(int(old), int(value))
+                    except Exception:
+                        merged[key] = value
+            else:
+                merged[key] = value
+        return merged
 
     def inspect_transition(self, payload: dict) -> tuple[IntentContract | None, dict | None, str | None]:
         contract, error = self.validate_payload(payload)
@@ -183,17 +259,20 @@ class IntentRuntime:
 
         safe_steps_limit = max(1, min(safe_steps_limit, int(getattr(self.config, "INTENT_MAX_SAFE_STEPS", 8))))
         retry_limit = max(1, min(retry_limit, int(getattr(self.config, "INTENT_MAX_RETRY_LIMIT", 4))))
+        action_constraints = self._normalize_constraints(payload.get("action_constraints"))
 
         return IntentContract(
             intent_id=intent_id,
             intent_type=intent_type,
             goal=goal[:240],
-            allowed_actions=allowed_actions,
+            allowed_actions=allowed_actions[:],
+            original_allowed_actions=allowed_actions[:],
             safe_steps_limit=safe_steps_limit,
             retry_limit=retry_limit,
             mode=mode,
             lineage_id=intent_id,
             user_visible_note=user_visible_note[:240],
+            action_constraints=action_constraints,
         ), None
 
     def apply_payload(self, payload: dict) -> tuple[bool, str]:
@@ -206,6 +285,10 @@ class IntentRuntime:
         active = self.active_intent
         same_lineage = self._same_lineage(contract)
 
+        if active is not None and active.action_constraints.get("forbid_new_intent") and same_lineage:
+            if contract.mode in {"activate", "replace"} and contract.intent_id != active.intent_id:
+                return False, "intent_new_block_forbidden_for_current_lineage"
+
         if contract.mode == "retry":
             if active is None:
                 return False, "intent_retry_without_active_intent"
@@ -217,13 +300,15 @@ class IntentRuntime:
                 active.retry_count += 1
                 active.intent_type = contract.intent_type
                 active.goal = contract.goal
-                active.allowed_actions = contract.allowed_actions
+                active.allowed_actions = contract.allowed_actions[:]
+                active.original_allowed_actions = contract.original_allowed_actions[:]
                 active.safe_steps_limit = contract.safe_steps_limit
                 active.retry_limit = contract.retry_limit
                 active.user_visible_note = contract.user_visible_note
                 active.lineage_id = active.lineage_id or active.intent_id
                 active.step_count = 0
                 active.force_plaintext_completion = False
+                active.action_constraints = self._merge_constraints(active.action_constraints, contract.action_constraints)
                 self.clear_requirement()
                 self.last_transition_info = {"transition": "intent_retried", "same_lineage": True}
                 if active.retry_count > active.retry_limit:
@@ -239,6 +324,7 @@ class IntentRuntime:
                 contract.user_one_shot_steps_remaining = active.user_one_shot_steps_remaining
                 contract.user_unlimited_override = active.user_unlimited_override
                 contract.force_plaintext_completion = active.force_plaintext_completion
+                contract.action_constraints = self._merge_constraints(active.action_constraints, contract.action_constraints)
                 if bool(getattr(self.config, "INTENT_RELABEL_PRESERVE_STEPS_ON_REFRESH", True)):
                     contract.step_count = min(active.step_count, contract.safe_steps_limit + max(0, contract.user_step_extension))
                 self.last_transition_info = {"transition": "intent_replaced", "same_lineage": True}
@@ -258,12 +344,67 @@ class IntentRuntime:
             contract.user_one_shot_steps_remaining = active.user_one_shot_steps_remaining
             contract.user_unlimited_override = active.user_unlimited_override
             contract.force_plaintext_completion = active.force_plaintext_completion
+            contract.action_constraints = self._merge_constraints(active.action_constraints, contract.action_constraints)
+            contract.original_allowed_actions = active.original_allowed_actions[:] if active.original_allowed_actions else contract.original_allowed_actions[:]
         if bool(getattr(self.config, "INTENT_RELABEL_PRESERVE_STEPS_ON_REFRESH", True)) and same_lineage:
             contract.step_count = min(active.step_count, contract.safe_steps_limit + max(0, contract.user_step_extension))
         self.active_intent = contract
         self.clear_requirement()
         self.last_transition_info = {"transition": "intent_refreshed", "same_lineage": same_lineage}
         return True, "intent_refreshed"
+
+    def _apply_allowed_action_updates(self, normalized: dict) -> None:
+        if self.active_intent is None:
+            return
+
+        current = list(self.active_intent.allowed_actions or [])
+        if not current:
+            current = list(self.active_intent.original_allowed_actions or [])
+
+        replacement = normalized.get("replace_allowed_actions")
+        if replacement:
+            current = list(replacement)
+
+        remove = set(normalized.get("remove_allowed_actions") or [])
+        if remove:
+            current = [a for a in current if a not in remove]
+
+        add = normalized.get("add_allowed_actions") or []
+        for action in add:
+            if action not in current:
+                current.append(action)
+
+        # Keep ordering stable and valid.
+        cleaned = []
+        for action in current:
+            if action in KNOWN_TOOL_ACTIONS and action not in cleaned:
+                cleaned.append(action)
+
+        if cleaned:
+            self.active_intent.allowed_actions = cleaned
+
+    def apply_constraint_updates(self, updates: dict | None) -> bool:
+        if self.active_intent is None or not isinstance(updates, dict):
+            return False
+        normalized = self._normalize_constraints(updates)
+        self.active_intent.action_constraints = self._merge_constraints(
+            self.active_intent.action_constraints,
+            normalized,
+        )
+        self._apply_allowed_action_updates(normalized)
+
+        # Sensible default: if a path now requires chunking, full read_file should disappear
+        # from effective allowed actions unless caller explicitly kept it via replace/add rules.
+        require_chunk_paths = self.active_intent.action_constraints.get("require_chunk_for_paths") or []
+        if require_chunk_paths and "replace_allowed_actions" not in normalized:
+            if "read_file" in self.active_intent.allowed_actions:
+                self.active_intent.allowed_actions = [
+                    a for a in self.active_intent.allowed_actions if a != "read_file"
+                ]
+            for safe_action in ("read_chunk", "read_file_skeleton", "search_content", "search_files", "run_shell"):
+                if safe_action in KNOWN_TOOL_ACTIONS and safe_action not in self.active_intent.allowed_actions:
+                    self.active_intent.allowed_actions.append(safe_action)
+        return True
 
     def _effective_nominal_limit(self) -> int:
         if self.active_intent is None:
@@ -282,11 +423,6 @@ class IntentRuntime:
         return self.active_intent.step_count < self._effective_nominal_limit()
 
     def can_soft_continue_after_step_limit(self) -> bool:
-        """Allow a small completion window past the nominal step limit.
-
-        This avoids forcing refresh/relabel loops near the end of a coherent
-        investigation when the current intent and strategy are still valid.
-        """
         if self.active_intent is None:
             return False
         if self.active_intent.user_unlimited_override:
@@ -339,6 +475,7 @@ class IntentRuntime:
                     "Do not use more tools under this intent now."
                 ),
             }
+
         cmd_type = command.get("type") or command.get("action") or "unknown"
         if cmd_type not in self.active_intent.allowed_actions:
             return {
@@ -348,6 +485,47 @@ class IntentRuntime:
                 "next_actions": self.active_intent.allowed_actions[:],
                 "command": command.copy(),
             }
+
+        constraints = self.active_intent.action_constraints or {}
+        path = str(command.get("path") or "").strip()
+        if cmd_type == "read_file":
+            require_chunk_for_paths = {
+                str(p).strip() for p in constraints.get("require_chunk_for_paths", []) if str(p).strip()
+            }
+            forbid_same_full_read_path = str(constraints.get("forbid_same_full_read_path") or "").strip()
+            is_chunked = command.get("start_byte") is not None or command.get("end_byte") is not None
+
+            if path and path in require_chunk_for_paths and not is_chunked:
+                next_actions = [a for a in self.active_intent.allowed_actions if a != "read_file"]
+                if "read_chunk" not in next_actions:
+                    next_actions.insert(0, "read_chunk")
+                return {
+                    "reason": "intent_requires_chunk_for_path",
+                    "recoverable": True,
+                    "error_code": "INTENT_REQUIRES_CHUNK_FOR_PATH",
+                    "next_actions": next_actions,
+                    "command": command.copy(),
+                    "message": (
+                        "This file may not be read with full read_file under the current intent. "
+                        "Use read_chunk, read_file_skeleton, search_content/search_files, or run_shell with rg/fd."
+                    ),
+                }
+
+            if path and forbid_same_full_read_path and path == forbid_same_full_read_path and not is_chunked:
+                next_actions = [a for a in self.active_intent.allowed_actions if a != "read_file"]
+                if "read_chunk" not in next_actions:
+                    next_actions.insert(0, "read_chunk")
+                return {
+                    "reason": "intent_forbid_same_full_read_path",
+                    "recoverable": True,
+                    "error_code": "INTENT_FORBID_SAME_FULL_READ_PATH",
+                    "next_actions": next_actions,
+                    "command": command.copy(),
+                    "message": (
+                        "Do not repeat the same full read_file action for this path. "
+                        "Use read_chunk, read_file_skeleton, search_content/search_files, or run_shell with rg/fd."
+                    ),
+                }
         return None
 
     def note_action(self, command: dict) -> dict | None:
@@ -404,8 +582,21 @@ class IntentRuntime:
         if self.active_intent is None:
             return ""
         i = self.active_intent
+        constraints = i.action_constraints or {}
+        constraint_bits = []
+        if constraints.get("max_full_reads_per_step") is not None:
+            constraint_bits.append(f"max_full_reads={constraints.get('max_full_reads_per_step')}")
+        if constraints.get("forbid_same_full_read_path"):
+            constraint_bits.append("forbid_same_full_read_path=set")
+        if constraints.get("require_chunk_for_paths"):
+            constraint_bits.append(f"require_chunk_paths={len(constraints.get('require_chunk_for_paths') or [])}")
+        if constraints.get("forbid_new_intent"):
+            constraint_bits.append("forbid_new_intent=true")
+        if constraints.get("reuse_current_intent"):
+            constraint_bits.append("reuse_current_intent=true")
+        constraints_summary = (", constraints=" + ";".join(constraint_bits)) if constraint_bits else ""
         return (
             f"intent_id={i.intent_id}, type={i.intent_type}, "
             f"steps={i.step_count}/{i.safe_steps_limit}, retries={i.retry_count}/{i.retry_limit}, "
-            f"allowed={','.join(i.allowed_actions)}"
+            f"allowed={','.join(i.allowed_actions)}{constraints_summary}"
         )
