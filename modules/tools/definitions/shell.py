@@ -5,14 +5,18 @@ import signal
 from modules.tools.base import BaseTool
 from modules.config_loader import load_settings
 
+
 class ShellTool(BaseTool):
     name = "run_shell"
     description = (
         "Executes a shell command in the current environment. "
         "Use mainly for shell-native inspection or git/build tasks, not as the first choice for reading large files. "
-        "Long stdout may be expensive for context; prefer read_file, read_file_skeleton, search_content, or search_files when applicable. "
+        "Long stdout may be expensive for context; prefer search_content, search_files, read_file_skeleton, read_chunk, or read_file when applicable. "
         "Params: 'command' (str), 'timeout' (int, optional, seconds)"
     )
+
+    MAX_PREVIEW_CHARS = 4000
+    MAX_PREVIEW_LINES = 40
 
     async def _terminate_process(self, process) -> None:
         """Stops shell process and, where possible, its whole process group."""
@@ -33,6 +37,22 @@ class ShellTool(BaseTool):
             process.kill()
 
         await process.communicate()
+
+    def _truncate_preview(self, text: str) -> tuple[str, bool]:
+        if not isinstance(text, str):
+            text = str(text)
+        if not text:
+            return "", False
+
+        lines = text.splitlines()
+        preview = "\n".join(lines[: self.MAX_PREVIEW_LINES])
+        truncated = len(lines) > self.MAX_PREVIEW_LINES
+        if len(preview) > self.MAX_PREVIEW_CHARS:
+            preview = preview[: self.MAX_PREVIEW_CHARS].rstrip()
+            truncated = True
+        if truncated:
+            preview += "\n...[truncated]"
+        return preview, truncated
 
     async def execute(self, command: str, timeout: int = 30):
         if not command:
@@ -78,10 +98,9 @@ class ShellTool(BaseTool):
                     "recoverable": False,
                     "output": "Command blocked: not allowed by shell allowlist prefixes.",
                 }
-            
+
         process = None
         try:
-            # Виконуємо команду в підпроцесі
             preexec_fn = os.setsid if hasattr(os, "setsid") else None
             process = await asyncio.create_subprocess_shell(
                 command,
@@ -89,18 +108,42 @@ class ShellTool(BaseTool):
                 stderr=asyncio.subprocess.PIPE,
                 preexec_fn=preexec_fn,
             )
-            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
-            
-            output = stdout.decode().strip() or stderr.decode().strip()
-            if not output and process.returncode == 0:
-                output = "Command executed successfully (no output)."
-                
-            return {
-                "status": "success" if process.returncode == 0 else "error",
-                "error_code": None if process.returncode == 0 else "INTERNAL",
-                "recoverable": bool(process.returncode != 0),
+            stdout_bytes, stderr_bytes = await asyncio.wait_for(process.communicate(), timeout=timeout)
+
+            stdout = stdout_bytes.decode(errors="replace")
+            stderr = stderr_bytes.decode(errors="replace")
+            exit_code = int(process.returncode or 0)
+
+            stdout_preview, stdout_truncated = self._truncate_preview(stdout)
+            stderr_preview, stderr_truncated = self._truncate_preview(stderr)
+
+            if exit_code == 0:
+                if stdout.strip():
+                    output = stdout_preview
+                elif stderr.strip():
+                    output = stderr_preview
+                else:
+                    output = "Command executed successfully (no output)."
+            else:
+                output = (stderr_preview or stdout_preview or f"Command exited with code {exit_code}.").strip()
+
+            result = {
+                "status": "success" if exit_code == 0 else "error",
+                "error_code": None if exit_code == 0 else "INTERNAL",
+                "recoverable": bool(exit_code != 0),
                 "output": output,
+                "stdout": stdout_preview,
+                "stderr": stderr_preview,
+                "exit_code": exit_code,
             }
+
+            if stdout_truncated or stderr_truncated:
+                result["truncated"] = True
+                result["history_compact"] = True
+                result["result_count"] = max(len(stdout.splitlines()), len(stderr.splitlines()))
+
+            return result
+
         except asyncio.TimeoutError:
             await self._terminate_process(process)
             return {

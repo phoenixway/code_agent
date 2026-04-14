@@ -126,7 +126,6 @@ def _safe_int(value, default=None):
         return default
 
 
-
 class ReadChunkTool(BaseTool):
     name = "read_chunk"
     description = (
@@ -134,6 +133,8 @@ class ReadChunkTool(BaseTool):
         "or when you only need a specific region around a known symbol or line range. "
         "Params: 'path' (str), 'start_byte' (int), optional 'end_byte' (int)."
     )
+
+    MIN_NONEMPTY_CHARS = 1
 
     async def execute(
         self,
@@ -175,15 +176,58 @@ class ReadChunkTool(BaseTool):
                 }
 
             file_size = p.stat().st_size
-            sb = max(0, min(sb, file_size))
+            if sb < 0:
+                return {
+                    "status": "error",
+                    "error_code": "VALIDATION_ERROR",
+                    "recoverable": True,
+                    "next_actions": ["read_chunk"],
+                    "output": "read_chunk requires start_byte >= 0.",
+                }
+            if sb >= file_size:
+                return {
+                    "status": "error",
+                    "error_code": "EMPTY_CHUNK_RESULT",
+                    "recoverable": True,
+                    "next_actions": ["search_content", "read_file_skeleton", "read_chunk"],
+                    "output": (
+                        f"Requested chunk starts beyond or at EOF: start_byte={sb}, file_size={file_size}. "
+                        "Choose a smaller range or locate the symbol first with search_content."
+                    ),
+                    "error_details": {"path": path, "start_byte": sb, "file_size": file_size},
+                }
+
             if eb is None:
-                eb = file_size
-            eb = max(sb, min(eb, file_size))
+                eb = min(file_size, sb + 8192)
+            if eb <= sb:
+                return {
+                    "status": "error",
+                    "error_code": "VALIDATION_ERROR",
+                    "recoverable": True,
+                    "next_actions": ["read_chunk"],
+                    "output": "read_chunk requires end_byte > start_byte.",
+                }
+
+            eb = min(eb, file_size)
 
             with open(p, "rb") as f:
                 f.seek(sb)
-                raw = f.read(max(0, eb - sb))
+                raw = f.read(eb - sb)
             content = raw.decode("utf-8", errors="replace")
+
+            if len(content.strip()) < self.MIN_NONEMPTY_CHARS:
+                return {
+                    "status": "error",
+                    "error_code": "EMPTY_CHUNK_RESULT",
+                    "recoverable": True,
+                    "next_actions": ["search_content", "read_file_skeleton", "read_chunk"],
+                    "output": (
+                        f"Chunk [{sb}, {eb}) produced no useful text. "
+                        "Choose a different range, or use search_content / read_file_skeleton first."
+                    ),
+                    "error_details": {"path": path, "start_byte": sb, "end_byte": eb, "file_size": file_size},
+                }
+
             return {
                 "status": "success",
                 "output": content,
@@ -210,7 +254,8 @@ class ReadFileTool(BaseTool):
         "Reads a whole file. Use this only when you truly need full implementation context. "
         "Prefer read_file_skeleton first for structure, and prefer read_chunk when you only need a region of a large file. "
         "Very large full reads require explicit confirm_large_read=true after the warning. "
-        "Params: 'path' (str), optional 'confirm_large_read' (bool), optional 'start_byte' (int), optional 'end_byte' (int)."
+        "Params: 'path' (str), optional 'confirm_large_read' (bool). "
+        "Chunked byte-range reading is handled by the separate read_chunk tool."
     )
 
     LARGE_FILE_WARNING_BYTES = 256 * 1024
@@ -246,37 +291,21 @@ class ReadFileTool(BaseTool):
                     "output": f"Not a file: {path}",
                 }
 
-            file_size = p.stat().st_size
-            sb = _safe_int(start_byte)
-            eb = _safe_int(end_byte)
-            chunk_requested = sb is not None or eb is not None
-            if sb is None:
-                sb = 0
-            if eb is None:
-                eb = file_size
-            sb = max(0, min(sb, file_size))
-            eb = max(sb, min(eb, file_size))
-
-            if chunk_requested:
-                with open(p, "rb") as f:
-                    f.seek(sb)
-                    raw = f.read(max(0, eb - sb))
-                content = raw.decode("utf-8", errors="replace")
+            if start_byte is not None or end_byte is not None:
                 return {
-                    "status": "success",
-                    "output": content,
-                    "file_content": content,
-                    "file_path": str(p),
-                    "chunked": True,
-                    "start_byte": sb,
-                    "end_byte": eb,
-                    "file_size": file_size,
+                    "status": "error",
+                    "error_code": "VALIDATION_ERROR",
+                    "recoverable": True,
+                    "next_actions": ["read_chunk"],
+                    "output": "Byte-range reads are not supported by read_file. Use read_chunk instead.",
                 }
+
+            file_size = p.stat().st_size
 
             if file_size >= self.HARD_LARGE_FILE_BYTES and not confirm_large_read:
                 warning = (
                     f"File {path} is very large ({file_size} bytes). Full read will likely bloat context and may trigger summarization. "
-                    "Prefer read_file_skeleton first, or use read_chunk / chunked read_file with start_byte/end_byte. "
+                    "Prefer read_file_skeleton first, or use read_chunk. "
                     "If full content is truly required, repeat read_file with confirm_large_read=true."
                 )
                 if ui and hasattr(ui, "print_system"):
@@ -288,7 +317,7 @@ class ReadFileTool(BaseTool):
                     "status": "error",
                     "error_code": "FULL_READ_CONFIRMATION_REQUIRED",
                     "recoverable": True,
-                    "next_actions": ["read_file_skeleton", "read_file", "search_content"],
+                    "next_actions": ["read_file_skeleton", "read_chunk", "search_content", "read_file"],
                     "output": warning,
                     "file_path": str(p),
                     "file_size": file_size,

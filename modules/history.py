@@ -73,7 +73,7 @@ class HistoryManager:
         self.current_turn_id = 0
         self.TURN_WORKING_MATERIAL_SAFE_RATIO = 0.72
 
-        # New short-lived working material policy.
+        # Short-lived working material policy.
         self.WM_DEFAULT_HOPS = 1
         self.WM_MAX_PROTECTED_ITEMS = 2
         self.WM_MAX_FULL_FILE_ITEMS = 1
@@ -262,9 +262,11 @@ class HistoryManager:
                 version = str(content.get("version") or content.get("file_version") or "")
                 start = str(content.get("start_byte") or "")
                 end = str(content.get("end_byte") or "")
+                chunk_id = str(content.get("chunk_id") or "")
+                status = str(content.get("status") or "")
                 core = content.get("file_content") or content.get("content") or content.get("output") or ""
                 blob = hashlib.sha256(str(core).encode("utf-8")).hexdigest()[:16] if core else ""
-                return f"{tool}|{path}|{version}|{start}|{end}|{blob}"
+                return f"{tool}|{path}|{version}|{start}|{end}|{chunk_id}|{status}|{blob}"
             raw = str(content)
             return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:24]
         except Exception:
@@ -287,6 +289,15 @@ class HistoryManager:
         if kind in {"full_file", "chunk", "skeleton"}:
             return self.WM_DEFAULT_HOPS
         return 0
+
+    def _is_effectively_empty_material(self, content) -> bool:
+        if not isinstance(content, dict):
+            return False
+        tool = str(content.get("tool") or "")
+        if tool not in {"read_file", "read_chunk"}:
+            return False
+        data = content.get("file_content") or content.get("content") or content.get("output") or ""
+        return not data or not str(data).strip()
 
     def _enforce_working_material_caps(self):
         protected_indices = []
@@ -316,19 +327,28 @@ class HistoryManager:
     def add_turn_working_material(self, content, *, msg_type="turn_working_material", turn_id=None, role="system"):
         tid = self.current_turn_id if turn_id is None else max(0, int(turn_id or 0))
         identity = self._working_material_identity(content)
-        if identity:
+        is_empty = self._is_effectively_empty_material(content)
+
+        if identity and not is_empty:
             for msg in reversed(self.messages[-20:]):
                 if not msg.get("turn_working_material"):
                     continue
-                if msg.get("working_material_id") == identity:
-                    if self.logger:
-                        self.logger.info(
-                            "WorkingMaterial.skip_duplicate turn=%s type=%s id=%s",
-                            tid,
-                            msg_type,
-                            identity,
-                        )
-                    return False
+                if msg.get("working_material_id") != identity:
+                    continue
+
+                prev_payload = msg.get("content")
+                prev_empty = self._is_effectively_empty_material(prev_payload)
+                if prev_empty:
+                    continue
+
+                if self.logger:
+                    self.logger.info(
+                        "WorkingMaterial.skip_duplicate turn=%s type=%s id=%s",
+                        tid,
+                        msg_type,
+                        identity,
+                    )
+                return False
 
         material_kind = self._material_kind(content)
         protection_hops = self._default_hops_for_content(content)
@@ -366,6 +386,7 @@ class HistoryManager:
                 "file_version": version,
                 "file_content": content,
                 "output": content,
+                "status": "success",
             },
             msg_type="turn_working_material",
             turn_id=turn_id,
