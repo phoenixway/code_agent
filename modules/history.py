@@ -264,9 +264,10 @@ class HistoryManager:
                 end = str(content.get("end_byte") or "")
                 chunk_id = str(content.get("chunk_id") or "")
                 status = str(content.get("status") or "")
+                command = str(content.get("command") or "") if tool == "run_shell" else ""
                 core = content.get("file_content") or content.get("content") or content.get("output") or ""
                 blob = hashlib.sha256(str(core).encode("utf-8")).hexdigest()[:16] if core else ""
-                return f"{tool}|{path}|{version}|{start}|{end}|{chunk_id}|{status}|{blob}"
+                return f"{tool}|{path}|{version}|{start}|{end}|{chunk_id}|{status}|{command}|{blob}"
             raw = str(content)
             return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:24]
         except Exception:
