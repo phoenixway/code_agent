@@ -103,6 +103,11 @@ class TuiUI:
         widget.can_focus = False
         return widget
 
+
+    def _make_role_label(self, label: str) -> Static:
+        widget = Static(Text(label, style="dim bold"), classes="role-label", expand=False)
+        widget.can_focus = False
+        return widget
     def _truncate_chat_output(self, text: str, limit: int | None = None) -> tuple[str, int]:
         """Returns output preview and number of hidden characters."""
         if not isinstance(text, str):
@@ -364,27 +369,28 @@ class TuiUI:
         if not text or not text.strip():
             return
 
+        if self.history.children:
+            self.history.mount(MessageSeparator())
+
+        label_text = "angelica" if role == "assistant" else "you"
+        self.history.mount(self._make_role_label(label_text))
+
         if role == "assistant":
-            label = Text()
-            label.append("angelica", style="bold")
-
-            content = RichMarkdown(text.strip())
-            group = Group(label, content)
-
-            widget = Static(group, classes="chat-message assistant-message", expand=False)
-            widget.can_focus = False
-            self._mount_widget(widget)
+            widget = Static(
+                RichMarkdown(text.strip()),
+                classes="chat-message assistant-message",
+                expand=False,
+            )
         else:
-            label = Text()
-            label.append("you", style="bold")
+            widget = Static(
+                Text(text.strip()),
+                classes="chat-message user-message",
+                expand=False,
+            )
 
-            body = Text()
-            body.append(text.strip())
-
-            group = Group(label, body)
-            widget = Static(group, classes="chat-message user-message", expand=False)
-            widget.can_focus = False
-            self._mount_widget(widget)
+        widget.can_focus = False
+        self.history.mount(widget)
+        self.history.scroll_end(animate=False)
 
     # ---------------------------------------------------------------------
     # Tool call rendering (Must be Async for ActionDispatcher)

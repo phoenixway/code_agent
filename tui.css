@@ -27,18 +27,18 @@ Screen {
 
 /* The physical spacer widget inserted between messages */
 .message-separator {
-    height: 2;
+    height: 1;
     background: $background;
 }
 
 /* --- USER MESSAGE --- */
 
 .user-message {
-    background: $surface;
+    background: $surface-lighten-1;
     color: $text;
     border-left: wide $primary;
     margin-right: 2;
-    padding: 0 2;
+    padding: 1 2;
 }
 
 /* --- ASSISTANT MESSAGE --- */
@@ -83,9 +83,9 @@ Screen {
 
 .tool-call-message {
     background: $background;
-    border-left: solid $surface;
+    border-left: wide $surface;
     color: $text-muted;
-    padding: 0 2;
+    padding: 1 2;
 }
 
 /* --- TOOL RESULT MESSAGE --- */
@@ -93,16 +93,16 @@ Screen {
 .tool-result-message {
     background: $surface;
     border-left: wide $success;
-    padding: 0 2;
+    padding: 1 2;
 }
 
 /* --- THOUGHT / REASONING --- */
 
 .thought-message {
     background: transparent;
-    border-left: dashed $surface;
+    border-left: none;
     color: $text-muted;
-    opacity: 60%;
+    opacity: 45%;
     text-style: italic;
     padding: 0 3;
 }
@@ -150,17 +150,17 @@ Screen {
 
 /* --- STATUS BAR --- */
 
-#loading-container {
+.loading-spinner-container {
     background: $background;
     color: $primary;
     height: 1;
-    margin-top: 1;
+    margin: 0;
     padding: 0 1;
-    display: none;
     layout: horizontal;
+    width: 100%;
 }
 
-LoadingIndicator {
+.loading-spinner-container LoadingIndicator {
     color: $primary;
     width: 4;
     height: 1;
@@ -269,4 +269,15 @@ ConfirmationScreen {
     background: $surface;
     border: double $error;
     padding: 1 2;
+}
+
+/* --- ROLE LABELS --- */
+
+.role-label {
+    color: $text-muted;
+    text-style: bold;
+    opacity: 70%;
+    margin: 0;
+    padding: 0 0 0 1;
+    height: 1;
 }

@@ -19,6 +19,15 @@ class StatusBar(Container):
         self._step_started_at = None
         self._elapsed_timer = None
 
+    def on_mount(self):
+        # Keep the whole status bar as a single-line footer-like strip.
+        self.styles.height = 1
+        self.styles.min_height = 1
+        self.styles.max_height = 1
+        self.styles.margin = (0, 0, 0, 0)
+        self.styles.padding = (0, 0, 0, 0)
+        self.display = False
+
     def _ensure_timer(self):
         if self._elapsed_timer is None:
             self._elapsed_timer = self.set_interval(0.2, self._update_elapsed, pause=True)
@@ -45,6 +54,7 @@ class StatusBar(Container):
         self.query_one("#loading-label", Static).update(label)
         self._start_step_timer()
         self.display = True
+        self.refresh(layout=True)
 
     def start_action(self, text: str):
         """Вмикає режим відображення конкретної дії."""
@@ -63,6 +73,7 @@ class StatusBar(Container):
         self.query_one("#loading-label", Static).update(label)
         self._start_step_timer()
         self.display = True
+        self.refresh(layout=True)
 
     def stop(self):
         """Приховує статус бар."""
