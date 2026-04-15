@@ -12,6 +12,17 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+try:
+    from modules.agent.intent_policy_engine import IntentPolicyEngine
+    from modules.agent.intent_policy_models import IntentPolicyContext, BlockedActionPolicyContext
+except ImportError:
+    try:
+        from .intent_policy_engine import IntentPolicyEngine
+        from .intent_policy_models import IntentPolicyContext, BlockedActionPolicyContext
+    except ImportError:
+        from intent_policy_engine import IntentPolicyEngine
+        from intent_policy_models import IntentPolicyContext, BlockedActionPolicyContext
+
 KNOWN_TOOL_ACTIONS = {
     "read_file",
     "read_chunk",
@@ -69,6 +80,7 @@ class IntentRuntime:
 
     def __init__(self, config):
         self.config = config
+        self.policy_engine = IntentPolicyEngine(config)
         self.active_intent: IntentContract | None = None
         self.intent_required_until_activated = False
         self.intent_required_reason = ""
@@ -385,6 +397,19 @@ class IntentRuntime:
             info["same_lineage"] = self._same_lineage(contract)
         return contract, info, None
 
+    def _build_policy_context(self, proposed_intent: IntentContract | None, transition_info: dict | None = None) -> IntentPolicyContext:
+        active = self.active_intent
+        return IntentPolicyContext(
+            active_intent=active,
+            proposed_intent=proposed_intent,
+            transition_info=dict(transition_info or {}),
+            recent_problem_actions=[],
+            blocked_action_signatures=set(active.blocked_action_signatures or set()) if active is not None else set(),
+            blocked_action_reasons=dict(active.blocked_action_reasons or {}) if active is not None else {},
+            pending_loop_stop_info=None,
+            current_user_input="",
+        )
+
     def validate_payload(self, payload: dict) -> tuple[IntentContract | None, str | None]:
         if not isinstance(payload, dict):
             return None, "intent_payload_must_be_object"
@@ -494,14 +519,28 @@ class IntentRuntime:
         ), None
 
     def apply_payload(self, payload: dict) -> tuple[bool, str]:
-        contract, error = self.validate_payload(payload)
+        contract, info, error = self.inspect_transition(payload)
         if error:
             return False, error
 
         self.last_apply_warning = ""
         self.last_transition_info = {}
+
+        policy_ctx = self._build_policy_context(contract, info)
+        decision = self.policy_engine.evaluate_transition(policy_ctx)
+        if not decision.allowed:
+            self.last_transition_info = {
+                "transition": "policy_rejected",
+                "reason": decision.reason,
+                "error_code": decision.error_code,
+                "message_key": decision.message_key,
+                "metadata": dict(decision.metadata or {}),
+                "same_lineage": bool((info or {}).get("same_lineage")),
+            }
+            return False, decision.reason
+
         active = self.active_intent
-        same_lineage = self._same_lineage(contract)
+        same_lineage = bool((info or {}).get("same_lineage"))
 
         if contract.mode == "complete":
             if active is None:
@@ -515,6 +554,7 @@ class IntentRuntime:
                 "completion_explanation": contract.completion_explanation,
                 "completed_intent_id": active.intent_id,
                 "completed_goal": active.goal,
+                "policy_message_key": decision.message_key,
             }
             self.active_intent = None
             self.clear_requirement()
@@ -525,26 +565,15 @@ class IntentRuntime:
                 if not self._is_legitimate_switch_reason(contract.switch_reason):
                     return False, "intent_new_block_forbidden_for_current_lineage"
 
-        if active is not None and same_lineage and contract.mode in {"activate", "replace"}:
-            canonical_goal = active.canonical_goal or active.goal
-            if self._normalize_goal(contract.goal) != self._normalize_goal(canonical_goal):
-                if not self._is_legitimate_switch_reason(contract.switch_reason):
-                    return False, "suspect_intent_relabel_repeat"
-                if self._goal_core_loss(canonical_goal, contract.goal):
-                    return False, "suspect_intent_relabel_repeat"
-
         if contract.mode == "retry":
             if active is None:
                 return False, "intent_retry_without_active_intent"
-
-            canonical_goal = active.canonical_goal or active.goal
-            if self._normalize_goal(contract.goal) != self._normalize_goal(canonical_goal):
-                return False, "retry_goal_change_forbidden"
 
             if not self._reuse_retry_on_same_subtask(contract):
                 self.last_apply_warning = "intent_retry_degraded_to_replace"
                 contract.mode = "replace"
             else:
+                canonical_goal = active.canonical_goal or active.goal
                 active.retry_count += 1
                 active.intent_type = contract.intent_type
                 active.goal = canonical_goal
@@ -564,7 +593,12 @@ class IntentRuntime:
                 active.canonical_goal = active.canonical_goal or canonical_goal
                 active.goal_frozen = True
                 self.clear_requirement()
-                self.last_transition_info = {"transition": "intent_retried", "same_lineage": True, "switch_reason": contract.switch_reason}
+                self.last_transition_info = {
+                    "transition": "intent_retried",
+                    "same_lineage": True,
+                    "switch_reason": contract.switch_reason,
+                    "policy_message_key": decision.message_key,
+                }
                 if active.retry_count > active.retry_limit:
                     return False, "intent_retry_limit_exceeded"
                 return True, "intent_retried"
@@ -572,7 +606,7 @@ class IntentRuntime:
         if active is not None and not self._reason_allows_transition(contract, active, same_lineage):
             return False, "intent_transition_trigger_required"
 
-        if contract.mode == "replace" or active is None or contract.intent_id != active.intent_id:
+        if contract.mode == "replace" or active is None or contract.intent_id != getattr(active, "intent_id", ""):
             if active is not None and same_lineage:
                 contract.lineage_id = active.lineage_id or active.intent_id
                 contract.retry_count = min(active.retry_count, contract.retry_limit)
@@ -589,10 +623,20 @@ class IntentRuntime:
                 contract.blocked_action_reasons = dict(active.blocked_action_reasons or {})
                 if bool(getattr(self.config, "INTENT_RELABEL_PRESERVE_STEPS_ON_REFRESH", True)):
                     contract.step_count = min(active.step_count, contract.safe_steps_limit + max(0, contract.user_step_extension))
-                self.last_transition_info = {"transition": "intent_replaced", "same_lineage": True, "switch_reason": contract.switch_reason}
+                self.last_transition_info = {
+                    "transition": "intent_replaced",
+                    "same_lineage": True,
+                    "switch_reason": contract.switch_reason,
+                    "policy_message_key": decision.message_key,
+                }
             else:
                 contract.lineage_id = contract.intent_id
-                self.last_transition_info = {"transition": "intent_activated", "same_lineage": False, "switch_reason": contract.switch_reason}
+                self.last_transition_info = {
+                    "transition": "intent_activated",
+                    "same_lineage": False,
+                    "switch_reason": contract.switch_reason,
+                    "policy_message_key": decision.message_key,
+                }
             self.active_intent = contract
             self.clear_requirement()
             return True, self.last_transition_info["transition"]
@@ -617,7 +661,12 @@ class IntentRuntime:
             contract.step_count = min(active.step_count, contract.safe_steps_limit + max(0, contract.user_step_extension))
         self.active_intent = contract
         self.clear_requirement()
-        self.last_transition_info = {"transition": "intent_refreshed", "same_lineage": same_lineage, "switch_reason": contract.switch_reason}
+        self.last_transition_info = {
+            "transition": "intent_refreshed",
+            "same_lineage": same_lineage,
+            "switch_reason": contract.switch_reason,
+            "policy_message_key": decision.message_key,
+        }
         return True, "intent_refreshed"
 
     def _apply_allowed_action_updates(self, normalized: dict) -> None:
@@ -757,16 +806,27 @@ class IntentRuntime:
 
         if self.is_action_blocked_for_current_intent(command):
             blocked_reason = self.get_blocked_action_reason(command) or "blocked_for_current_intent"
+            decision = self.policy_engine.evaluate_blocked_action(
+                BlockedActionPolicyContext(
+                    active_intent=self.active_intent,
+                    command=command.copy(),
+                    blocked_reason=blocked_reason,
+                )
+            )
             return {
-                "reason": "intent_blocked_action_signature",
-                "recoverable": True,
-                "error_code": "INTENT_BLOCKED_ACTION_SIGNATURE",
-                "next_actions": self.active_intent.allowed_actions[:],
+                "reason": decision.reason,
+                "recoverable": decision.recoverable,
+                "error_code": decision.error_code,
+                "next_actions": list(decision.next_actions or []),
                 "command": command.copy(),
                 "message": (
-                    "This exact action shape is blocked for the current intent because it previously caused an unacceptable result "
-                    f"({blocked_reason}). Choose a materially different action."
+                    "This exact action shape is blocked for the current intent. "
+                    "The current intent is still valid. "
+                    "Do not retry the same action with cosmetic changes. "
+                    "Choose a materially different allowed action."
                 ),
+                "message_key": decision.message_key,
+                "policy_metadata": dict(decision.metadata or {}),
             }
 
         cmd_type = command.get("type") or command.get("action") or "unknown"

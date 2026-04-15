@@ -5,6 +5,17 @@ import json
 import re
 from modules.defaults import DEFAULT_SYSTEM_PROMPT
 
+try:
+    from modules.agent.intent_messages import render_intent_message
+    from modules.agent.intent_message_resolver import resolve_intent_message_key
+except ImportError:
+    try:
+        from .intent_messages import render_intent_message
+        from .intent_message_resolver import resolve_intent_message_key
+    except ImportError:
+        from intent_messages import render_intent_message
+        from intent_message_resolver import resolve_intent_message_key
+
 
 class Orchestrator:
 
@@ -136,15 +147,14 @@ class Orchestrator:
         if isinstance(goal, str) and goal.strip():
             goal_hint = f"\nCurrent intent goal remains the same: {goal.strip()}."
         return (
-            "SYSTEM: Do NOT send another <intent> block now.\n"
+            "SYSTEM: Reuse the current intent for the next step.\n"
             f"Reason: {reason}.{next_hint}{goal_hint}\n"
-            "Reuse the current intent.\n"
-            "Its goal remains the same.\n"
+            "The current intent remains valid and its goal remains the same.\n"
             "Continue toward that goal using the updated allowed tools and constraints.\n"
             "Do not repeat the action pattern that was just blocked or low-value.\n"
             "Choose the next action that most increases progress toward the goal.\n"
             "Return EXACTLY ONE materially different next <action>, or provide a plain-text answer if the goal can already be answered.\n"
-            "Do not repeat the same <intent> again in this reply."
+            "Do not emit another cosmetic same-lineage <intent> relabel in this reply."
         )
 
 
@@ -249,19 +259,23 @@ class Orchestrator:
                     except Exception:
                         blocked_reason = ""
                 note = (
-                    "This exact action shape is unavailable for the rest of the current intent."
+                    "This exact action shape is blocked for the current intent."
                     if not blocked_reason else
-                    f"This exact action shape is unavailable for the rest of the current intent because of: {blocked_reason}."
+                    f"This exact action shape is blocked for the current intent because of: {blocked_reason}."
+                )
+                base = render_intent_message(
+                    stop_info.get("message_key") or "blocked_action_keep_current_intent",
+                    default="A specific action is blocked, but the current intent is still valid.",
                 )
                 return True, (
-                    self._build_reuse_current_intent_prompt(
-                        reason,
-                        allowed,
-                        goal=getattr(active_intent, "goal", ""),
-                    )
-                    + f"\n{note}"
-                    + "\nDo NOT retry it with trivial changes like different commentary, whitespace, or a slightly different limit."
-                    + "\nReturn EXACTLY ONE materially different next <action>, or answer from current evidence if enough is already known."
+                    f"SYSTEM: {base}\n"
+                    f"Reason: {reason}.\n"
+                    f"Allowed actions under the CURRENT intent: {', '.join(allowed) if allowed else 'none'}.\n"
+                    f"Current intent goal remains the same: {getattr(active_intent, 'goal', '')}.\n"
+                    f"{note}\n"
+                    "Do NOT retry the same action with cosmetic changes.\n"
+                    "Choose EXACTLY ONE materially different next <action>, or answer from current evidence if enough is already known.\n"
+                    "A legitimate intent transition is not globally forbidden, but do not propose one unless the work truly changed."
                 )
             if reason in {"suspect_intent_relabel_repeat", "suspect_intent_goal_drift"}:
                 decision = await self._choose_suspect_intent_change_action(stop_info)
@@ -473,10 +487,15 @@ class Orchestrator:
         stop_info = stop_info or {}
         reason = str(stop_info.get("reason") or "").strip()
         code = str(stop_info.get("error_code") or "").strip()
+        message_key = resolve_intent_message_key(stop_info)
         next_actions = stop_info.get("next_actions") or []
         if not isinstance(next_actions, list):
             next_actions = []
         next_hint = f"\nAllowed next actions: {', '.join(next_actions)}." if next_actions else ""
+
+        registry_rendered = render_intent_message(message_key, next_hint=next_hint, default="")
+        if registry_rendered:
+            return registry_rendered
 
         headers = {
             "reread_after_summary": "You just summarized context and then tried to re-read a file already in history without a specific reason. Use existing context instead.",
@@ -489,25 +508,14 @@ class Orchestrator:
             "broad_recon_budget_exhausted": "Broad reconnaissance budget is exhausted. Narrow the search or move to editing.",
             "cross_target_read_without_reason": "Target file is pinned. Reading another file now requires an explicit reason.",
             "recover_repeated_fingerprint": "You repeated the same action fingerprint after recovery.",
-            "malformed_read_file_payload": "Your last read_file call used an invalid payload.",
-            "malformed_read_file_skeleton_payload": "Your last read_file_skeleton call used an invalid payload.",
-            "malformed_read_chunk_payload": "Your last read_chunk call used an invalid payload.",
-            "list_directory_missing_path": "Your last list_directory call omitted the required path.",
             "repeating_no_progress": "You are repeating actions without measurable progress.",
             "repeating_failure": "You are repeating failing actions without changing strategy.",
-            "intent_step_limit_soft_exceeded": "The current intent reached its nominal step limit. Prefer one final allowed action or conclude with current evidence.",
             "too_broad_search": "Your last search was too broad or too noisy.",
             "low_value_broad_search_repeat": "You are repeating broad low-value searches.",
             "history_self_reference_hit": "Your search matched only self-referential artifact/history content, which is not real usage evidence.",
             "search_batch_aborted_after_first_action": "Your read-only search batch was aborted after the first action. Do not send another broad search batch.",
             "intent_force_plaintext_completion": "User requested final answer from already gathered evidence. Stop tool use now.",
-            "intent_blocked_action_signature": "This exact action shape is blocked for the current intent because it already produced an unacceptable or too-expensive result.",
-            "suspect_intent_relabel_repeat": "You tried to cosmetically relabel the same intent without a legitimate transition trigger.",
-            "suspect_intent_goal_drift": "You changed the current intent goal in a suspicious way and may have lost critical context from the user's actual question.",
             "full_read_confirmation_required": "Full read of a very large file requires explicit confirmation. Prefer skeleton or chunked read first.",
-            "turn_working_material_too_large": "Current turn working material is too large to preserve safely. Switch to chunked, skeleton, or narrower outputs.",
-            "planned_turn_working_material_too_large": "The planned read/search output for this turn is too large. Use a materially smaller step under the current intent.",
-            "planned_full_read_too_large": "The planned full read_file action is too large. Full read is blocked for this path under the current intent.",
         }
         if reason in headers:
             return headers[reason] + next_hint
@@ -515,23 +523,6 @@ class Orchestrator:
             return "This file is already available in history at the current version. Re-reading it without a specific reason is blocked." + next_hint
         if code == "LIST_DIRECTORY_MISSING_PATH":
             return "list_directory requires an explicit path. Root fallback is blocked in recovery." + next_hint
-        if code == "MALFORMED_READ_FILE_PAYLOAD":
-            return "read_file requires a top-level path field in valid JSON." + next_hint
-        if code == "MALFORMED_READ_FILE_SKELETON_PAYLOAD":
-            return "read_file_skeleton requires a top-level path field in valid JSON." + next_hint
-        if code == "MALFORMED_READ_CHUNK_PAYLOAD":
-            return "read_chunk requires top-level path, start_byte, and end_byte fields in valid JSON." + next_hint
-        if code == "INTENT_STEP_LIMIT_SOFT_EXCEEDED":
-            return (
-                "The current intent reached its nominal step limit. "
-                "Reuse the current intent lineage. Prefer one final allowed action or conclude with current evidence. "
-                "Do not refresh/relabel the same intent unless strategy materially changes."
-            ) + next_hint
-        if code == "INTENT_STEP_LIMIT_EXCEEDED":
-            return (
-                "The current intent exceeded its hard step limit. "
-                "Do not cosmetically relabel the same intent again. Either conclude now, formally complete the current intent, or start a materially different retry/replace intent with a legitimate trigger."
-            ) + next_hint
         if code == "TOO_BROAD_SEARCH":
             return (
                 "Your search was too broad or too noisy. "
@@ -557,45 +548,11 @@ class Orchestrator:
                 "User requested final answer from already gathered evidence. "
                 "Do not use more tools under this intent now. Return plain text only."
             ) + next_hint
-        if code == "INTENT_BLOCKED_ACTION_SIGNATURE":
-            return (
-                "This exact action shape is blocked for the current intent because it previously caused an unacceptable result. "
-                "Do NOT repeat it with cosmetic changes. "
-                "Return exactly one materially different action, or answer from current evidence if enough is already known."
-            ) + next_hint
-        if code == "SUSPECT_INTENT_RELABEL_REPEAT":
-            return (
-                "You attempted a suspicious same-lineage relabel of the current intent. "
-                "Do not rewrite the goal or relabel the same work cosmetically. "
-                "Keep the current intent and return one next action that directly serves the existing goal."
-            ) + next_hint
-        if code == "SUSPECT_INTENT_GOAL_DRIFT":
-            return (
-                "You changed the current intent goal in a suspicious way and may have lost part of the user's real question. "
-                "Keep the original goal unless the user explicitly approves the changed goal. "
-                "Return one next action that serves the existing goal."
-            ) + next_hint
         if code == "FULL_READ_CONFIRMATION_REQUIRED":
             return (
                 "Full read of a very large file requires explicit confirmation. "
-                "Prefer read_file_skeleton first, or use read_chunk / read_file with start_byte/end_byte. "
+                "Prefer read_file_skeleton first, or use read_chunk with line ranges. "
                 "If full content is truly required, repeat read_file with confirm_large_read=true."
-            ) + next_hint
-        if code == "TURN_WORKING_MATERIAL_TOO_LARGE":
-            return (
-                "Current turn working material is too large to preserve safely in context. "
-                "Switch to chunked reading, read_file_skeleton, narrower search, or smaller shell output."
-            ) + next_hint
-        if code == "PLANNED_TURN_WORKING_MATERIAL_TOO_LARGE":
-            return (
-                "The planned read/search output for this turn is too large. "
-                "Do not resend the same heavy batch. Use a materially smaller step: one strongest candidate file, read_chunk, read_file_skeleton, narrower search, or rg/fd."
-            ) + next_hint
-        if code == "PLANNED_FULL_READ_TOO_LARGE":
-            return (
-                "The planned full read_file action is too large for this path. "
-                "Do NOT repeat the same full read_file action. "
-                "Next step must be one of: read_chunk, read_file_skeleton, search_content, search_files, or run_shell with rg/fd."
             ) + next_hint
         return "Previous action violated orchestration policy. Choose a different strategy and follow the required next actions." + next_hint
 
@@ -618,7 +575,7 @@ class Orchestrator:
             state_changing_only=state_changing_only,
             single_readonly_action_only=single_readonly_action_only,
         )
-        if reason in {"planned_turn_working_material_too_large", "planned_full_read_too_large"}:
+        if reason in {"planned_turn_working_material_too_large", "planned_full_read_too_large", "intent_blocked_action_signature"}:
             active_intent = getattr(self.state, "active_intent", None)
             active_goal = getattr(active_intent, "goal", "") if active_intent is not None else ""
             prompt += (
@@ -828,11 +785,22 @@ class Orchestrator:
                             f"summary={getattr(self.state, 'active_intent_summary', lambda: '')()}"
                         )
                     if not ok:
+                        runtime = getattr(self.state, "intent_runtime", None)
+                        runtime_info = getattr(runtime, "last_transition_info", {}) if runtime is not None else {}
                         stop_info = getattr(self.state, "last_defect_info", None) or {
                             "reason": intent_msg,
                             "recoverable": True,
                             "next_actions": (getattr(getattr(self.state, "active_intent", None), "allowed_actions", None) or []),
                         }
+                        if isinstance(runtime_info, dict) and runtime_info.get("transition") == "policy_rejected":
+                            stop_info = {
+                                **stop_info,
+                                "reason": runtime_info.get("reason", intent_msg),
+                                "recoverable": True,
+                                "error_code": runtime_info.get("error_code", ""),
+                                "message_key": runtime_info.get("message_key", ""),
+                                "policy_metadata": runtime_info.get("metadata", {}) or {},
+                            }
                         handled, next_query = await self._handle_defect_detector_stop(stop_info)
                         if handled:
                             if next_query:
@@ -1065,11 +1033,12 @@ class Orchestrator:
                                 current_query = (
                                     "SYSTEM: Your last read_chunk call used invalid payload.\n"
                                     "Return EXACTLY ONE valid read_chunk action now.\n"
-                                    "Required format:\n"
-                                    '<action type="read_chunk">{"path":"relative/or/absolute/path","start_byte":0,"end_byte":4096}</action>\n'
-                                    "Include top-level `path`, `start_byte`, and `end_byte` fields.\n"
+                                    "Preferred format:\n"
+                                    '<action type="read_chunk">{"path":"relative/or/absolute/path","start_line":1304,"end_line":1500}</action>\n'
+                                    "Use top-level `path`, `start_line`, and `end_line` fields.\n"
                                     "Do not nest JSON under `command`.\n"
-                                    "Do not add any other action in this reply."
+                                    "Do not add any other action in this reply.\n"
+                                    "Do not switch back to guessed byte offsets unless they are explicitly required."
                                 )
                                 should_stop = False
                                 self.state.pending_loop_stop_info = None
@@ -1165,3 +1134,13 @@ class Orchestrator:
                 self.agent.log.info("Orchestrator.finish")
             self.state.current_task = None
             await self.ui.stop_loading()
+
+    def _build_intent_transition_rejected_prompt(self, reason, allowed_actions=None, goal=""):
+        stop_info = {
+            "reason": reason,
+            "recoverable": True,
+            "next_actions": allowed_actions or [],
+        }
+        if goal:
+            stop_info["goal"] = goal
+        return self._build_orchestrated_recovery_prompt(stop_info)

@@ -238,6 +238,10 @@ class ActionDispatcher:
                 payload["start_byte"] = command.get("start_byte")
             if "end_byte" in command:
                 payload["end_byte"] = command.get("end_byte")
+            if "start_line" in command:
+                payload["start_line"] = command.get("start_line")
+            if "end_line" in command:
+                payload["end_line"] = command.get("end_line")
 
         if command.get("content_redacted") is True:
             size = command.get("content_size")
@@ -522,23 +526,48 @@ class ActionDispatcher:
                 return self._sanitize_command_for_history(command), full_result_text, True
 
         if cmd_type == "read_chunk":
-            command = self._normalize_read_chunk_command(command)
-            if not command.get("path") or command.get("start_byte") is None or command.get("end_byte") is None:
+            normalized_command = self._normalize_read_chunk_command(command)
+            line_mode = (
+                bool(normalized_command.get("path"))
+                and normalized_command.get("start_line") is not None
+                and normalized_command.get("end_line") is not None
+            )
+            byte_mode = (
+                bool(normalized_command.get("path"))
+                and normalized_command.get("start_byte") is not None
+                and normalized_command.get("end_byte") is not None
+            )
+            mixed_mode = (
+                normalized_command.get("start_line") is not None
+                and normalized_command.get("start_byte") is not None
+            )
+            command = normalized_command
+
+            if mixed_mode:
+                snapshot = self._read_chunk_validation_snapshot(
+                    command,
+                    normalized_command,
+                    reason="read_chunk_mixed_line_and_byte_mode",
+                    accepted=False,
+                )
+                self._log_read_chunk_validation(snapshot)
                 output_text = (
-                    "SYSTEM: Invalid read_chunk payload. Provide top-level `path`, `start_byte`, and `end_byte` fields.\n"
-                    "Example:\n"
-                    '<action type="read_chunk">{"path":"relative/or/absolute/path","start_byte":0,"end_byte":4096}</action>'
+                    "SYSTEM: Invalid read_chunk payload. Use either line ranges or byte ranges, not both.\n"
+                    "Preferred format:\n"
+                    '<action type="read_chunk">{"path":"relative/or/absolute/path","start_line":1304,"end_line":1500}</action>'
                 )
                 state.pending_loop_stop_info = {
                     "reason": "malformed_read_chunk_payload",
                     "recoverable": True,
                     "error_code": "MALFORMED_READ_CHUNK_PAYLOAD",
                     "next_actions": ["read_chunk"],
+                    "message_key": "malformed_read_chunk_payload",
                     "message": (
-                        "read_chunk requires top-level `path`, `start_byte`, and `end_byte` fields. "
-                        "Return exactly one read_chunk action with only the corrected payload."
+                        "read_chunk accepts either line ranges or byte ranges, not both at once. "
+                        "Preferred format uses top-level `path`, `start_line`, and `end_line`."
                     ),
                     "command": command.copy(),
+                    "validation_snapshot": snapshot,
                 }
                 full_result_text = f"SYSTEM RESULT for `{cmd_type}`: {output_text}"
                 if self.agent.log:
@@ -546,6 +575,50 @@ class ActionDispatcher:
                         "Action.finish type=read_chunk should_stop=True reason=malformed_read_chunk_payload"
                     )
                 return self._sanitize_command_for_history(command), full_result_text, True
+
+            if not line_mode and not byte_mode:
+                snapshot = self._read_chunk_validation_snapshot(
+                    command,
+                    normalized_command,
+                    reason="read_chunk_missing_required_range",
+                    accepted=False,
+                )
+                self._log_read_chunk_validation(snapshot)
+                output_text = (
+                    "SYSTEM: Invalid read_chunk payload.\n"
+                    "Preferred format:\n"
+                    '<action type="read_chunk">{"path":"relative/or/absolute/path","start_line":1304,"end_line":1500}</action>\n'
+                    "Use top-level `path`, `start_line`, and `end_line` fields.\n"
+                    "Byte offsets are optional only when explicitly needed."
+                )
+                state.pending_loop_stop_info = {
+                    "reason": "malformed_read_chunk_payload",
+                    "recoverable": True,
+                    "error_code": "MALFORMED_READ_CHUNK_PAYLOAD",
+                    "next_actions": ["read_chunk"],
+                    "message_key": "malformed_read_chunk_payload",
+                    "message": (
+                        "read_chunk requires a valid top-level payload. "
+                        "Preferred format uses line ranges: `path`, `start_line`, `end_line`. "
+                        "Return exactly one corrected read_chunk action."
+                    ),
+                    "command": command.copy(),
+                    "validation_snapshot": snapshot,
+                }
+                full_result_text = f"SYSTEM RESULT for `{cmd_type}`: {output_text}"
+                if self.agent.log:
+                    self.agent.log.debug(
+                        "Action.finish type=read_chunk should_stop=True reason=malformed_read_chunk_payload"
+                    )
+                return self._sanitize_command_for_history(command), full_result_text, True
+
+            snapshot = self._read_chunk_validation_snapshot(
+                command,
+                normalized_command,
+                reason="accepted_line_mode" if line_mode else "accepted_byte_mode",
+                accepted=True,
+            )
+            self._log_read_chunk_validation(snapshot)
 
         if cmd_type == "read_file_skeleton":
             command = self._normalize_read_file_skeleton_command(command)
@@ -1015,10 +1088,58 @@ class ActionDispatcher:
                 merged["path"] = inferred
         return merged
 
+
+    def _read_chunk_validation_snapshot(self, command: dict, normalized: dict | None = None, *, reason: str = "", accepted: bool = False) -> dict:
+        raw = command if isinstance(command, dict) else {}
+        merged = normalized if isinstance(normalized, dict) else raw
+
+        payload = {
+            "stage": "read_chunk_validate",
+            "accepted": bool(accepted),
+            "reason": str(reason or ""),
+            "raw_payload_type": type(command).__name__,
+            "normalized_payload_type": type(merged).__name__,
+            "raw_keys": sorted(list(raw.keys())) if isinstance(raw, dict) else [],
+            "normalized_keys": sorted(list(merged.keys())) if isinstance(merged, dict) else [],
+            "path": str(merged.get("path") or ""),
+            "has_path": bool(merged.get("path")),
+            "has_start_line": merged.get("start_line") is not None,
+            "has_end_line": merged.get("end_line") is not None,
+            "has_start_byte": merged.get("start_byte") is not None,
+            "has_end_byte": merged.get("end_byte") is not None,
+            "command_field_type": type(raw.get("command")).__name__ if isinstance(raw, dict) and "command" in raw else "",
+        }
+
+        using_lines = payload["has_start_line"]
+        using_bytes = payload["has_start_byte"]
+        payload["expects_line_mode"] = bool(using_lines and not using_bytes)
+        payload["expects_byte_mode"] = bool(using_bytes and not using_lines)
+        payload["mixed_modes"] = bool(using_lines and using_bytes)
+        return payload
+
+    def _log_read_chunk_validation(self, payload: dict) -> None:
+        if not self.agent.log:
+            return
+        level_method = self.agent.log.debug if payload.get("accepted") else self.agent.log.warning
+        level_method(
+            "ReadChunk.validate accepted=%s reason=%s path=%s line_mode=%s byte_mode=%s mixed_modes=%s normalized_keys=%s",
+            payload.get("accepted"),
+            payload.get("reason"),
+            payload.get("path"),
+            payload.get("expects_line_mode"),
+            payload.get("expects_byte_mode"),
+            payload.get("mixed_modes"),
+            ",".join(payload.get("normalized_keys") or []),
+        )
+
     def _normalize_read_chunk_command(self, command: dict) -> dict:
         if not isinstance(command, dict):
             return {"type": "read_chunk"}
-        if command.get("path") and command.get("start_byte") is not None and command.get("end_byte") is not None:
+
+        has_path = bool(command.get("path"))
+        has_line_mode = command.get("start_line") is not None
+        has_byte_mode = command.get("start_byte") is not None
+        if has_path and ((has_line_mode and command.get("end_line") is not None) or (has_byte_mode and command.get("end_byte") is not None)):
             return command
 
         raw = command.get("command")
@@ -1035,7 +1156,16 @@ class ActionDispatcher:
             return command
 
         merged = command.copy()
-        for key in ("path", "start_byte", "end_byte", "before_execution", "during_execution", "after_execution"):
+        for key in (
+            "path",
+            "start_byte",
+            "end_byte",
+            "start_line",
+            "end_line",
+            "before_execution",
+            "during_execution",
+            "after_execution",
+        ):
             if merged.get(key) in (None, "") and nested.get(key) is not None:
                 merged[key] = nested.get(key)
         return merged
@@ -1128,11 +1258,16 @@ class ActionDispatcher:
 
     async def _handle_read_chunk(self, command):
         widget = await self.ui.print_read_file_start(command)
-        start_byte = command.get("start_byte")
-        end_byte = command.get("end_byte")
-        await self.ui.start_action(
-            f"Reading chunk {start_byte}:{end_byte} from {command.get('path', 'file')}..."
-        )
+        if command.get("start_line") is not None and command.get("end_line") is not None:
+            await self.ui.start_action(
+                f"Reading lines {command.get('start_line')}:{command.get('end_line')} from {command.get('path', 'file')}..."
+            )
+        else:
+            start_byte = command.get("start_byte")
+            end_byte = command.get("end_byte")
+            await self.ui.start_action(
+                f"Reading chunk {start_byte}:{end_byte} from {command.get('path', 'file')}..."
+            )
         result = await self.processor.process_single_action(command)
         await self.ui.update_read_file_result(widget, result)
         return result

@@ -107,11 +107,19 @@ class ResponseProcessor:
                     is_new_version = bool(version)
                 if version:
                     if action_type == "read_chunk":
+                        start_line = result.get("start_line", args.get("start_line"))
+                        end_line = result.get("end_line", args.get("end_line"))
                         start_byte = result.get("start_byte", args.get("start_byte"))
                         end_byte = result.get("end_byte", args.get("end_byte"))
+
+                        if start_line is not None and end_line is not None:
+                            range_label = f" lines [{start_line}, {end_line}]"
+                        else:
+                            range_label = f" [{start_byte}, {end_byte})"
+
                         result["output"] = (
                             f"Read chunk of '{file_path}'"
-                            f" [{start_byte}, {end_byte})"
+                            f"{range_label}"
                             f"{' and added to history as ' if is_new_version else ' (already in history as '}v{version}"
                             f"{'' if is_new_version else ')'}."
                         )
@@ -187,16 +195,66 @@ class ResponseProcessor:
             }
 
         if action_type == "read_chunk":
+            sl = args.get("start_line")
+            el = args.get("end_line")
             sb = args.get("start_byte")
             eb = args.get("end_byte")
-            if not isinstance(sb, int) or not isinstance(eb, int) or eb <= sb or sb < 0:
+
+            has_line_mode = sl is not None or el is not None
+            has_byte_mode = sb is not None or eb is not None
+
+            if has_line_mode and has_byte_mode:
                 return {
                     "status": "failed",
                     "error_code": "MALFORMED_READ_CHUNK_PAYLOAD",
                     "recoverable": True,
-                    "output": "read_chunk requires top-level 'start_byte' and 'end_byte' integers with 0 <= start_byte < end_byte.",
+                    "output": (
+                        "read_chunk accepts either a line range "
+                        "('start_line'/'end_line') or a byte range "
+                        "('start_byte'/'end_byte'), but not both at once."
+                    ),
                     "next_actions": ["read_chunk"],
                 }
+
+            if has_line_mode:
+                if not isinstance(sl, int) or not isinstance(el, int) or sl < 1 or el < sl:
+                    return {
+                        "status": "failed",
+                        "error_code": "MALFORMED_READ_CHUNK_PAYLOAD",
+                        "recoverable": True,
+                        "output": (
+                            "read_chunk requires top-level 'start_line' and 'end_line' "
+                            "integers with 1 <= start_line <= end_line."
+                        ),
+                        "next_actions": ["read_chunk"],
+                    }
+                return None
+
+            if has_byte_mode:
+                if not isinstance(sb, int) or not isinstance(eb, int) or eb <= sb or sb < 0:
+                    return {
+                        "status": "failed",
+                        "error_code": "MALFORMED_READ_CHUNK_PAYLOAD",
+                        "recoverable": True,
+                        "output": (
+                            "read_chunk requires top-level 'start_byte' and 'end_byte' "
+                            "integers with 0 <= start_byte < end_byte."
+                        ),
+                        "next_actions": ["read_chunk"],
+                    }
+                return None
+
+            return {
+                "status": "failed",
+                "error_code": "MALFORMED_READ_CHUNK_PAYLOAD",
+                "recoverable": True,
+                "output": (
+                    "read_chunk requires either top-level line range fields "
+                    "('start_line'/'end_line') or byte range fields "
+                    "('start_byte'/'end_byte')."
+                ),
+                "next_actions": ["read_chunk"],
+            }
         return None
 
     def _reject_sanitized_payload(self, action_type: str, args: dict) -> dict | None:
