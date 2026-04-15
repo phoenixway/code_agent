@@ -68,6 +68,10 @@ class PolicyEngine:
         "list_directory", "find_files", "git_diff", "run_shell",
     }
 
+    STATE_CHANGING_ACTIONS = {
+        "create_file", "write_file", "edit_file", "replace", "delete_file",
+    }
+
     def _active_investigation_can_continue(self, ctx: PreActionPolicyInput) -> bool:
         return (
             ctx.active_intent_type == "INVESTIGATE"
@@ -75,11 +79,26 @@ class PolicyEngine:
             and ctx.active_intent_step_count < max(0, ctx.active_intent_safe_steps_limit)
         )
 
+    def _active_modify_can_override_stale_observe(self, ctx: PreActionPolicyInput) -> bool:
+        return (
+            ctx.active_intent_type == "MODIFY"
+            and ctx.task_kind == "MODIFICATION"
+            and ctx.phase == "OBSERVE"
+            and not ctx.phase_allows_action
+            and ctx.cmd_type in self.STATE_CHANGING_ACTIONS
+        )
+
     def evaluate_pre_action(self, ctx: PreActionPolicyInput) -> EnginePreActionDecision:
         # Highest-priority escape hatch:
         # if a formal INVESTIGATE intent is active and still within its own safe_steps_limit,
         # do not let old phase gating or broad-read budgets kill the investigation early.
         if self._active_investigation_can_continue(ctx):
+            return EnginePreActionDecision(allow=True)
+
+        # Important modify escape hatch:
+        # if runtime already switched to a formal MODIFY intent, stale OBSERVE phase gating
+        # from the previous investigation must not block state-changing work like write_file.
+        if self._active_modify_can_override_stale_observe(ctx):
             return EnginePreActionDecision(allow=True)
 
         if not ctx.phase_allows_action:

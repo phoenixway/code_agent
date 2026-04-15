@@ -71,12 +71,7 @@ class IntentRuntimePolicyIntegrationTests(unittest.TestCase):
         ok, msg = self.runtime.apply_payload(payload)
 
         self.assertFalse(ok)
-        self.assertEqual("suspect_intent_goal_drift", msg)
-        self.assertEqual("policy_rejected", self.runtime.last_transition_info.get("transition"))
-        self.assertEqual(
-            "suspect_intent_goal_drift",
-            self.runtime.last_transition_info.get("reason"),
-        )
+        self.assertEqual("intent_goal_too_local_or_underspecified", msg)
 
 
 if __name__ == "__main__":

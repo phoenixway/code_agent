@@ -52,6 +52,31 @@ INTENT_MESSAGES: dict[str, dict] = {
         "template": "Intent completion is allowed.",
     },
 
+    # Current-intent recovery registry entries
+    "keep_current_intent_soft_limit": {
+        "type": "current_intent_recovery",
+        "template": (
+            "Reuse the current intent for the next step. "
+            "The current intent reached its nominal step limit, but it still remains valid. "
+            "Prefer one final allowed action or conclude with current evidence."
+        ),
+    },
+    "keep_current_intent_after_user_more_steps": {
+        "type": "current_intent_recovery",
+        "template": (
+            "Reuse the current intent for the next step. "
+            "The user explicitly approved a small additional step budget for this same intent."
+        ),
+    },
+    "keep_current_intent_conflicting_phase_actions": {
+        "type": "current_intent_recovery",
+        "template": (
+            "Reuse the current intent for the next step. "
+            "The current intent remains valid, but a phase-specific recovery tried to push a conflicting action family. "
+            "Keep the current intent action family instead."
+        ),
+    },
+
     # Recovery / orchestration registry entries
     "malformed_read_file_payload": {
         "type": "malformed_action",

@@ -158,6 +158,126 @@ class Orchestrator:
         )
 
 
+    def _current_active_intent(self):
+        return getattr(self.state, "active_intent", None)
+
+    def _current_intent_allowed_actions(self) -> list[str]:
+        active_intent = self._current_active_intent()
+        return list(getattr(active_intent, "allowed_actions", []) or []) if active_intent is not None else []
+
+    def _current_intent_goal(self) -> str:
+        active_intent = self._current_active_intent()
+        return str(getattr(active_intent, "goal", "") or "") if active_intent is not None else ""
+
+    def _current_intent_type(self) -> str:
+        active_intent = self._current_active_intent()
+        return str(getattr(active_intent, "intent_type", "") or "") if active_intent is not None else ""
+
+    def _render_recovery_message(self, message_key: str, default: str, *, next_hint: str = "") -> str:
+        rendered = render_intent_message(message_key, next_hint=next_hint, default="")
+        return rendered or default
+
+    def _build_keep_current_intent_recovery_prompt(self, stop_info: dict | None) -> str:
+        stop_info = stop_info or {}
+        reason = str(stop_info.get("reason") or "").strip()
+        allowed_actions = self._current_intent_allowed_actions()
+        goal = self._current_intent_goal()
+        next_hint = f"\nAllowed actions under the CURRENT intent: {', '.join(allowed_actions)}." if allowed_actions else ""
+
+        message_defaults = {
+            "intent_step_limit_soft_exceeded": "Reuse the current intent for the next step.",
+            "user_approved_more_steps_after_hard_limit": "Reuse the current intent for the next step.",
+            "intent_blocked_action_signature": "A specific action is blocked, but the current intent is still valid.",
+            "action_not_allowed_in_phase": "The current intent remains valid, but the previous phase-specific recovery conflicted with it.",
+        }
+        message_keys = {
+            "intent_step_limit_soft_exceeded": "keep_current_intent_soft_limit",
+            "user_approved_more_steps_after_hard_limit": "keep_current_intent_after_user_more_steps",
+            "intent_blocked_action_signature": stop_info.get("message_key") or "blocked_action_keep_current_intent",
+            "action_not_allowed_in_phase": "keep_current_intent_conflicting_phase_actions",
+        }
+        header = self._render_recovery_message(
+            message_keys.get(reason, "blocked_action_keep_current_intent"),
+            message_defaults.get(reason, "Reuse the current intent for the next step."),
+            next_hint=next_hint,
+        )
+
+        base_lines = [
+            f"SYSTEM: {header}" if not header.startswith("SYSTEM:") else header,
+            f"Reason: {reason}.",
+        ]
+        if allowed_actions:
+            base_lines.append(f"Allowed actions under the CURRENT intent: {', '.join(allowed_actions)}.")
+        if goal:
+            base_lines.append(f"Current intent goal remains the same: {goal}.")
+        base_lines.extend([
+            "The current intent remains valid and its goal remains the same.",
+            "Continue toward that goal using the updated allowed tools and constraints.",
+            "Do not repeat the action pattern that was just blocked or low-value.",
+            "Do not emit another cosmetic same-lineage <intent> relabel in this reply.",
+        ])
+
+        if reason == "user_approved_more_steps_after_hard_limit":
+            base_lines.extend([
+                "User approved a small additional step budget for the CURRENT intent.",
+                "Return EXACTLY ONE valid next <action> now.",
+            ])
+        elif reason == "intent_step_limit_soft_exceeded":
+            base_lines.extend([
+                "Choose the next action that most increases progress toward the goal.",
+                "Prefer exactly one final allowed <action>, or return a final plain-text answer if the evidence is already enough.",
+            ])
+        elif reason == "intent_blocked_action_signature":
+            blocked_reason = str((stop_info.get("policy_metadata") or {}).get("blocked_reason") or "")
+            if blocked_reason:
+                base_lines.append(f"The blocked action pattern failed because of: {blocked_reason}.")
+            base_lines.extend([
+                "Do NOT retry the same action with cosmetic changes.",
+                "Choose the next action that most increases progress toward the goal.",
+                "Return EXACTLY ONE materially different next <action>, or provide a plain-text answer if the goal can already be answered.",
+            ])
+        elif reason == "action_not_allowed_in_phase":
+            base_lines.extend([
+                "Use the CURRENT intent action family instead of switching to a conflicting phase-specific action set.",
+                "Return EXACTLY ONE valid next <action> that directly serves the current goal.",
+            ])
+        else:
+            base_lines.extend([
+                "Choose the next action that most increases progress toward the goal.",
+                "Return EXACTLY ONE materially different next <action>, or provide a plain-text answer if the goal can already be answered.",
+            ])
+
+        return "\n".join(base_lines)
+
+    def _should_prefer_current_intent_recovery(self, stop_info: dict | None) -> bool:
+        stop_info = stop_info or {}
+        reason = str(stop_info.get("reason") or "").strip()
+        active_intent = self._current_active_intent()
+        if active_intent is None:
+            return False
+
+        if reason in {
+            "intent_step_limit_soft_exceeded",
+            "user_approved_more_steps_after_hard_limit",
+            "intent_blocked_action_signature",
+        }:
+            return True
+
+        if reason == "action_not_allowed_in_phase":
+            active_allowed = set(self._current_intent_allowed_actions())
+            next_actions = stop_info.get("next_actions") or []
+            next_set = set(next_actions if isinstance(next_actions, list) else [])
+            active_type = self._current_intent_type()
+            if not active_allowed:
+                return False
+            if active_type == "MODIFY":
+                return False
+            if next_set and not next_set.issubset(active_allowed):
+                return True
+
+        return False
+
+
     def _build_suspect_intent_change_message(self, stop_info: dict | None) -> str:
         stop_info = stop_info or {}
         suspicion = stop_info.get("suspicion") or {}
@@ -644,6 +764,12 @@ class Orchestrator:
     def _build_orchestrated_recovery_prompt(self, stop_info: dict | None) -> str:
         stop_info = stop_info or {}
         reason = str(stop_info.get("reason") or "")
+
+        # 🔥 ВАЖЛИВО: current-intent recovery має пріоритет
+        if self._should_prefer_current_intent_recovery(stop_info):
+            return self._build_keep_current_intent_recovery_prompt(stop_info)
+
+        # Потім typed-stop
         if reason in {
             "cross_target_read_without_reason",
             "recover_repeated_fingerprint",
@@ -663,8 +789,10 @@ class Orchestrator:
         }:
             return self._build_typed_stop_recovery_prompt(stop_info)
 
+        # fallback
         required = stop_info.get("next_actions") or []
         required_hint = f"Required next actions: {', '.join(required)}.\n" if required else ""
+
         return (
             "SYSTEM: Previous action violated orchestration policy.\n"
             f"{required_hint}"
