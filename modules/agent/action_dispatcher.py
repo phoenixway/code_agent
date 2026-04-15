@@ -90,9 +90,20 @@ class ActionDispatcher:
                     should_stop = True
                     state.pending_loop_stop_info = preflight_stop
 
+                    stop_reason = str(preflight_stop.get("reason") or "").strip()
+                    blocked = False
+                    if stop_reason in {"planned_turn_working_material_too_large", "planned_full_read_too_large"}:
+                        blocked = self._block_current_intent_action_if_supported(
+                            state,
+                            segment.content if isinstance(segment.content, dict) else {},
+                            stop_reason,
+                        )
+
                     result_text = (
                         f"SYSTEM RESULT for `{cmd_type}`: {preflight_stop['message']}"
                     )
+                    if blocked:
+                        result_text += "\n[SYSTEM: This exact action shape is now blocked for the current intent. Choose a materially different action.]"
                     system_results.append(result_text)
 
                     if self.agent.log:
@@ -268,6 +279,21 @@ class ActionDispatcher:
             return default
         code = re.sub(r"[^A-Z0-9]+", "_", reason.upper()).strip("_")
         return code or default
+
+    def _intent_runtime(self, state):
+        return getattr(state, "intent_runtime", None)
+
+    def _block_current_intent_action_if_supported(self, state, command: dict, reason: str) -> bool:
+        runtime = self._intent_runtime(state)
+        if runtime is None or not isinstance(command, dict):
+            return False
+        blocker = getattr(runtime, "block_action_for_current_intent", None)
+        if not callable(blocker):
+            return False
+        try:
+            return bool(blocker(command, reason))
+        except Exception:
+            return False
 
     def _safe_turn_working_material_char_budget(self) -> int:
         history = getattr(self.agent, "history", None)
@@ -732,6 +758,7 @@ class ActionDispatcher:
 
         if repeated_read_file_no_progress:
             should_stop = True
+            self._block_current_intent_action_if_supported(state, command, "repeating_no_progress")
             output_text += (
                 "\n[SYSTEM: Repeated read-file calls detected with no progress. "
                 "Stop and switch to a different strategy.]"
@@ -746,6 +773,7 @@ class ActionDispatcher:
 
         elif repeated_search_no_match_no_progress:
             should_stop = True
+            self._block_current_intent_action_if_supported(state, command, "repeating_no_progress")
             output_text += (
                 "\n[SYSTEM: Repeated search_content calls returned no matches. "
                 "Stop and switch to deterministic recovery.]"
@@ -760,6 +788,7 @@ class ActionDispatcher:
 
         elif repeated_readonly_shell_no_progress:
             should_stop = True
+            self._block_current_intent_action_if_supported(state, command, "repeating_no_progress")
             output_text += (
                 "\n[SYSTEM: Repeated read-only run_shell commands detected with no progress. "
                 "Stop and switch to deterministic edit/write step.]"
@@ -1248,11 +1277,19 @@ class ActionDispatcher:
             "tool": cmd_type,
             "path": path,
             "status": status,
+            # Preview fields kept for UI / compact history paths
             "output": result.get("output"),
         }
         for key in (
             "stdout",
             "stderr",
+            # Full raw fields for short-lived working material / exact reasoning
+            "raw_output",
+            "stdout_full",
+            "stderr_full",
+            "raw_output_truncated",
+            "raw_output_chars",
+            "raw_output_total_chars",
             "result_count",
             "exit_code",
             "view",

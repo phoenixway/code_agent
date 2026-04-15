@@ -57,6 +57,10 @@ class IntentContract:
     force_plaintext_completion: bool = False
     action_constraints: dict = field(default_factory=dict)
     original_allowed_actions: list[str] = field(default_factory=list)
+    blocked_action_signatures: set[str] = field(default_factory=set)
+    blocked_action_reasons: dict[str, str] = field(default_factory=dict)
+    canonical_goal: str = ""
+    goal_frozen: bool = True
 
 
 class IntentRuntime:
@@ -105,6 +109,47 @@ class IntentRuntime:
         threshold = float(getattr(self.config, "INTENT_RETRY_GOAL_SIMILARITY_THRESHOLD", 0.45))
         return sim >= threshold
 
+
+    def _goal_tokens(self, goal: str) -> list[str]:
+        return [t for t in self._normalize_goal(goal).split() if t]
+
+    def _looks_like_local_step_goal(self, goal: str) -> bool:
+        normalized = self._normalize_goal(goal)
+        if not normalized:
+            return True
+        local_markers = {
+            "inspect", "read", "find", "locate", "analyze", "examine", "search",
+            "прочитати", "читати", "знайти", "пошук", "проаналізувати", "дослідити",
+            "переглянути", "локалізувати", "оглянути",
+        }
+        tokens = set(normalized.split())
+        has_local_marker = bool(tokens & local_markers)
+        if len(tokens) <= 5 and has_local_marker:
+            return True
+        bad_prefixes = (
+            "inspect ", "read ", "find ", "locate ", "analyze ", "examine ", "search ",
+            "прочитати ", "знайти ", "проаналізувати ", "дослідити ", "переглянути ",
+        )
+        return normalized.startswith(bad_prefixes)
+
+    def _goal_has_meaningful_shape(self, goal: str) -> bool:
+        normalized = self._normalize_goal(goal)
+        if not normalized:
+            return False
+        if len(normalized) < 24:
+            return False
+        if self._looks_like_local_step_goal(goal):
+            return False
+        return len(normalized.split()) >= 5
+
+    def _goal_core_loss(self, old_goal: str, new_goal: str) -> bool:
+        old_tokens = set(self._goal_tokens(old_goal))
+        new_tokens = set(self._goal_tokens(new_goal))
+        if not old_tokens or not new_tokens:
+            return False
+        overlap = len(old_tokens & new_tokens) / max(1, len(old_tokens))
+        return overlap < 0.45 or self._looks_like_local_step_goal(new_goal)
+
     def _allowed_actions_overlap(self, a: list[str], b: list[str]) -> float:
         sa = set(a or [])
         sb = set(b or [])
@@ -119,7 +164,9 @@ class IntentRuntime:
             return True
         if contract.intent_type != self.active_intent.intent_type:
             return False
-        goal_sim = self._goal_similarity(contract.goal, self.active_intent.goal)
+        baseline_goal = self.active_intent.canonical_goal or self.active_intent.goal
+        candidate_goal = contract.canonical_goal or contract.goal
+        goal_sim = self._goal_similarity(candidate_goal, baseline_goal)
         actions_overlap = self._allowed_actions_overlap(contract.allowed_actions, self.active_intent.allowed_actions)
         return (
             goal_sim >= float(getattr(self.config, "INTENT_RELABEL_GOAL_SIMILARITY_THRESHOLD", 0.6))
@@ -178,6 +225,62 @@ class IntentRuntime:
         if contract.intent_type != active.intent_type:
             return True
         return self._is_legitimate_switch_reason(contract.switch_reason) or not same_lineage
+
+
+    def _normalize_shell_command_for_signature(self, command: object) -> str:
+        raw = str(command or "").strip()
+        raw = re.sub(r"\s+", " ", raw)
+        return raw[:400]
+
+    def make_action_signature(self, command: dict) -> str:
+        if not isinstance(command, dict):
+            return "unknown"
+        cmd_type = str(command.get("type") or command.get("action") or "unknown").strip()
+        path = str(command.get("path") or "").strip()
+
+        if cmd_type == "read_file":
+            return f"read_file|{path}"
+
+        if cmd_type == "read_chunk":
+            start_line = command.get("start_line")
+            end_line = command.get("end_line")
+            if start_line is not None or end_line is not None:
+                return f"read_chunk|{path}|lines:{start_line}:{end_line}"
+            start_byte = command.get("start_byte")
+            end_byte = command.get("end_byte")
+            return f"read_chunk|{path}|bytes:{start_byte}:{end_byte}"
+
+        if cmd_type in {"search_content", "search_files"}:
+            pattern = str(command.get("pattern") or "").strip()
+            return f"{cmd_type}|{path}|{pattern}"
+
+        if cmd_type == "run_shell":
+            normalized = self._normalize_shell_command_for_signature(command.get("command"))
+            return f"run_shell|{normalized}"
+
+        return f"{cmd_type}|{path}"
+
+    def block_action_for_current_intent(self, command: dict, reason: str) -> bool:
+        if self.active_intent is None or not isinstance(command, dict):
+            return False
+        signature = self.make_action_signature(command)
+        if not signature:
+            return False
+        self.active_intent.blocked_action_signatures.add(signature)
+        self.active_intent.blocked_action_reasons[signature] = str(reason or "").strip()
+        return True
+
+    def get_blocked_action_reason(self, command: dict) -> str:
+        if self.active_intent is None or not isinstance(command, dict):
+            return ""
+        signature = self.make_action_signature(command)
+        return str(self.active_intent.blocked_action_reasons.get(signature) or "")
+
+    def is_action_blocked_for_current_intent(self, command: dict) -> bool:
+        if self.active_intent is None or not isinstance(command, dict):
+            return False
+        signature = self.make_action_signature(command)
+        return signature in self.active_intent.blocked_action_signatures
 
     def _normalize_constraints(self, raw: dict | None) -> dict:
         if not isinstance(raw, dict):
@@ -326,6 +429,10 @@ class IntentRuntime:
                 user_unlimited_override=active.user_unlimited_override,
                 force_plaintext_completion=active.force_plaintext_completion,
                 action_constraints=dict(active.action_constraints or {}),
+                blocked_action_signatures=set(active.blocked_action_signatures or set()),
+                blocked_action_reasons=dict(active.blocked_action_reasons or {}),
+                canonical_goal=active.canonical_goal or active.goal,
+                goal_frozen=active.goal_frozen,
             ), None
 
         intent_type = str(payload.get("intent_type") or "").strip().upper()
@@ -340,6 +447,8 @@ class IntentRuntime:
             return None, "unsupported_intent_type"
         if not goal:
             return None, "intent_goal_required"
+        if not self._goal_has_meaningful_shape(goal):
+            return None, "intent_goal_too_local_or_underspecified"
 
         raw_allowed = payload.get("allowed_actions")
         if not isinstance(raw_allowed, list) or not raw_allowed:
@@ -370,6 +479,8 @@ class IntentRuntime:
             intent_id=intent_id,
             intent_type=intent_type,
             goal=goal[:240],
+            canonical_goal=goal[:240],
+            goal_frozen=True,
             allowed_actions=allowed_actions[:],
             original_allowed_actions=allowed_actions[:],
             safe_steps_limit=safe_steps_limit,
@@ -414,9 +525,21 @@ class IntentRuntime:
                 if not self._is_legitimate_switch_reason(contract.switch_reason):
                     return False, "intent_new_block_forbidden_for_current_lineage"
 
+        if active is not None and same_lineage and contract.mode in {"activate", "replace"}:
+            canonical_goal = active.canonical_goal or active.goal
+            if self._normalize_goal(contract.goal) != self._normalize_goal(canonical_goal):
+                if not self._is_legitimate_switch_reason(contract.switch_reason):
+                    return False, "suspect_intent_relabel_repeat"
+                if self._goal_core_loss(canonical_goal, contract.goal):
+                    return False, "suspect_intent_relabel_repeat"
+
         if contract.mode == "retry":
             if active is None:
                 return False, "intent_retry_without_active_intent"
+
+            canonical_goal = active.canonical_goal or active.goal
+            if self._normalize_goal(contract.goal) != self._normalize_goal(canonical_goal):
+                return False, "retry_goal_change_forbidden"
 
             if not self._reuse_retry_on_same_subtask(contract):
                 self.last_apply_warning = "intent_retry_degraded_to_replace"
@@ -424,7 +547,7 @@ class IntentRuntime:
             else:
                 active.retry_count += 1
                 active.intent_type = contract.intent_type
-                active.goal = contract.goal
+                active.goal = canonical_goal
                 active.allowed_actions = contract.allowed_actions[:]
                 active.original_allowed_actions = contract.original_allowed_actions[:]
                 active.safe_steps_limit = contract.safe_steps_limit
@@ -436,6 +559,10 @@ class IntentRuntime:
                 active.switch_reason = contract.switch_reason
                 active.switch_explanation = contract.switch_explanation
                 active.action_constraints = self._merge_constraints(active.action_constraints, contract.action_constraints)
+                active.blocked_action_signatures = set(active.blocked_action_signatures or set())
+                active.blocked_action_reasons = dict(active.blocked_action_reasons or {})
+                active.canonical_goal = active.canonical_goal or canonical_goal
+                active.goal_frozen = True
                 self.clear_requirement()
                 self.last_transition_info = {"transition": "intent_retried", "same_lineage": True, "switch_reason": contract.switch_reason}
                 if active.retry_count > active.retry_limit:
@@ -450,11 +577,16 @@ class IntentRuntime:
                 contract.lineage_id = active.lineage_id or active.intent_id
                 contract.retry_count = min(active.retry_count, contract.retry_limit)
                 contract.hard_limit_hit_count = active.hard_limit_hit_count
+                contract.canonical_goal = active.canonical_goal or active.goal
+                contract.goal_frozen = True
+                contract.goal = active.goal
                 contract.user_step_extension = active.user_step_extension
                 contract.user_one_shot_steps_remaining = active.user_one_shot_steps_remaining
                 contract.user_unlimited_override = active.user_unlimited_override
                 contract.force_plaintext_completion = active.force_plaintext_completion
                 contract.action_constraints = self._merge_constraints(active.action_constraints, contract.action_constraints)
+                contract.blocked_action_signatures = set(active.blocked_action_signatures or set())
+                contract.blocked_action_reasons = dict(active.blocked_action_reasons or {})
                 if bool(getattr(self.config, "INTENT_RELABEL_PRESERVE_STEPS_ON_REFRESH", True)):
                     contract.step_count = min(active.step_count, contract.safe_steps_limit + max(0, contract.user_step_extension))
                 self.last_transition_info = {"transition": "intent_replaced", "same_lineage": True, "switch_reason": contract.switch_reason}
@@ -469,6 +601,9 @@ class IntentRuntime:
         contract.lineage_id = active.lineage_id or active.intent_id
         contract.user_visible_note = contract.user_visible_note or active.user_visible_note
         if same_lineage:
+            contract.canonical_goal = active.canonical_goal or active.goal
+            contract.goal_frozen = True
+            contract.goal = active.goal
             contract.hard_limit_hit_count = active.hard_limit_hit_count
             contract.user_step_extension = active.user_step_extension
             contract.user_one_shot_steps_remaining = active.user_one_shot_steps_remaining
@@ -476,6 +611,8 @@ class IntentRuntime:
             contract.force_plaintext_completion = active.force_plaintext_completion
             contract.action_constraints = self._merge_constraints(active.action_constraints, contract.action_constraints)
             contract.original_allowed_actions = active.original_allowed_actions[:] if active.original_allowed_actions else contract.original_allowed_actions[:]
+            contract.blocked_action_signatures = set(active.blocked_action_signatures or set())
+            contract.blocked_action_reasons = dict(active.blocked_action_reasons or {})
         if bool(getattr(self.config, "INTENT_RELABEL_PRESERVE_STEPS_ON_REFRESH", True)) and same_lineage:
             contract.step_count = min(active.step_count, contract.safe_steps_limit + max(0, contract.user_step_extension))
         self.active_intent = contract
@@ -615,6 +752,20 @@ class IntentRuntime:
                 "message": (
                     "User requested final answer from already gathered evidence. "
                     "Do not use more tools under this intent now."
+                ),
+            }
+
+        if self.is_action_blocked_for_current_intent(command):
+            blocked_reason = self.get_blocked_action_reason(command) or "blocked_for_current_intent"
+            return {
+                "reason": "intent_blocked_action_signature",
+                "recoverable": True,
+                "error_code": "INTENT_BLOCKED_ACTION_SIGNATURE",
+                "next_actions": self.active_intent.allowed_actions[:],
+                "command": command.copy(),
+                "message": (
+                    "This exact action shape is blocked for the current intent because it previously caused an unacceptable result "
+                    f"({blocked_reason}). Choose a materially different action."
                 ),
             }
 

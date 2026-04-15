@@ -131,9 +131,14 @@ class ShellTool(BaseTool):
                 "status": "success" if exit_code == 0 else "error",
                 "error_code": None if exit_code == 0 else "INTERNAL",
                 "recoverable": bool(exit_code != 0),
+                # Preview fields for UI / compact history
                 "output": output,
                 "stdout": stdout_preview,
                 "stderr": stderr_preview,
+                # Full raw fields for short-lived working material / exact reasoning
+                "raw_output": stdout if stdout.strip() else (stderr if stderr.strip() else ""),
+                "stdout_full": stdout,
+                "stderr_full": stderr,
                 "exit_code": exit_code,
             }
 

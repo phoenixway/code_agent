@@ -3,6 +3,7 @@ from textual.widgets import LoadingIndicator, Static
 from rich.text import Text
 import time
 
+
 class StatusBar(Container):
     """
     Компонент, що відображає статус роботи агента (спіннер + текст).
@@ -11,7 +12,7 @@ class StatusBar(Container):
     def compose(self):
         yield Horizontal(
             LoadingIndicator(),
-            Static("Thinking...", id="loading-label"),
+            Static("", id="loading-label"),
             Static("", id="loading-elapsed"),
             classes="loading-spinner-container"
         )
@@ -35,18 +36,31 @@ class StatusBar(Container):
             elapsed_widget.update("")
             return
         elapsed = time.monotonic() - self._step_started_at
-        elapsed_widget.update(Text(f"{elapsed:0.1f}s", style="dim"))
+        elapsed_widget.update(Text(f"{elapsed:.1f}s", style="dim"))
 
     def start_thinking(self):
         """Вмикає режим 'Thinking...'"""
-        self.query_one("#loading-label", Static).update("Thinking...")
+        label = Text()
+        label.append("thinking", style="bold")
+        self.query_one("#loading-label", Static).update(label)
         self._start_step_timer()
         self.display = True
 
     def start_action(self, text: str):
         """Вмикає режим відображення конкретної дії."""
-        label_text = text if text else "Processing..."
-        self.query_one("#loading-label", Static).update(label_text)
+        label_text = text.strip() if text else "processing"
+
+        # Split "verb path" so path is dim
+        parts = label_text.split(" ", 1)
+        label = Text()
+        if len(parts) == 2:
+            label.append(parts[0], style="bold")
+            label.append("  ", style="")
+            label.append(parts[1], style="dim")
+        else:
+            label.append(label_text, style="bold")
+
+        self.query_one("#loading-label", Static).update(label)
         self._start_step_timer()
         self.display = True
 

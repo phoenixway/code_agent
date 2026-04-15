@@ -46,9 +46,9 @@ class TuiUI:
     STYLES = {
         "system":    {"prefix": "• ", "style": "", "classes": "chat-message system-message"},
         "initial":   {"prefix": "", "style": "center", "classes": "chat-message initial-history-message"},
-        "error":     {"prefix": "✘ Error: ", "prefix_style": "bold red", "classes": "chat-message error-message"},
-        "thought":   {"prefix": "", "style": "italic grey37", "classes": "chat-message thought-message"},
-        "plan":      {"prefix": "• Plan: ", "prefix_style": "bold cyan", "classes": "chat-message plan-message"},
+        "error":     {"prefix": "✘ ", "prefix_style": "bold red", "classes": "chat-message error-message"},
+        "thought":   {"prefix": "  ", "style": "italic grey37", "classes": "chat-message thought-message"},
+        "plan":      {"prefix": "• ", "prefix_style": "bold cyan", "classes": "chat-message plan-message"},
         "confirmation": {"prefix": "✔ ", "prefix_style": "bold green", "classes": "chat-message confirmation-message"},
         "user":      {"prefix": "", "style": "", "classes": "chat-message user-message"},
     }
@@ -278,6 +278,23 @@ class TuiUI:
             return "approve_more_steps"
         return "stop_and_answer"
 
+
+    async def choose_suspect_intent_change_action(self, prompt: str) -> str:
+        """User handoff for suspicious same-lineage relabel / goal drift."""
+        self._count_confirmation()
+        options = [
+            "Keep original goal",
+            "Allow changed goal",
+            "Stop and answer from current evidence",
+        ]
+        screen = SelectionScreen(prompt, options)
+        result = await self._push_screen_wait(screen)
+        if result == options[0]:
+            return "keep_original_goal"
+        if result == options[1]:
+            return "allow_changed_goal"
+        return "stop_and_answer"
+
     async def confirm_truncation(self, action_type: str, output_length: int) -> bool:
         self._count_confirmation()
         prompt = (
@@ -344,22 +361,29 @@ class TuiUI:
     @ui_task
     async def print_message(self, text: str, role: str = "assistant"):
         """Handles chat messages which might require Markdown rendering."""
-        # 1. Захист від пустих повідомлень
         if not text or not text.strip():
             return
 
         if role == "assistant":
-            widget = Static(
-                RichMarkdown(text.strip()), 
-                classes="chat-message assistant-message", 
-                expand=False
-            )
+            label = Text()
+            label.append("angelica", style="bold")
+
+            content = RichMarkdown(text.strip())
+            group = Group(label, content)
+
+            widget = Static(group, classes="chat-message assistant-message", expand=False)
             widget.can_focus = False
             self._mount_widget(widget)
         else:
-            # User messages use the standard styled text
-            # Create widget directly to avoid async recursion loops
-            widget = self._create_styled_widget(text, "user")
+            label = Text()
+            label.append("you", style="bold")
+
+            body = Text()
+            body.append(text.strip())
+
+            group = Group(label, body)
+            widget = Static(group, classes="chat-message user-message", expand=False)
+            widget.can_focus = False
             self._mount_widget(widget)
 
     # ---------------------------------------------------------------------
@@ -443,7 +467,10 @@ class TuiUI:
     @ui_task
     async def print_read_file_start(self, command: dict) -> Static:
         file_path = command.get('path', '...')
-        renderable = Text.from_markup(f"🐾 Reading file [dim]{escape(file_path)}[/dim]")
+        renderable = Text()
+        renderable.append("↓ ", style="dim")
+        renderable.append("read ", style="dim")
+        renderable.append(escape(file_path), style="dim italic")
         widget = Static(renderable, classes="read-file-message", expand=False)
         widget.file_path = file_path
         widget.can_focus = False
@@ -453,14 +480,31 @@ class TuiUI:
     async def update_read_file_result(self, widget: Static, result: dict):
         file_path = getattr(widget, 'file_path', '...')
         status = result.get('status')
-        icon = '[green]✓[/green]' if status == 'success' else '[red]✗[/red]'
-        new_renderable = Text.from_markup(f"{icon} Reading file [dim]{escape(file_path)}[/dim]")
+        content = result.get('content', '')
+        line_count = len(content.splitlines()) if isinstance(content, str) and content else None
+
+        if status == 'success':
+            icon = '✓'
+            icon_style = 'green'
+        else:
+            icon = '✗'
+            icon_style = 'red'
+
+        new_renderable = Text()
+        new_renderable.append(f"{icon} ", style=icon_style)
+        new_renderable.append("read ", style="dim")
+        new_renderable.append(escape(file_path), style="dim italic")
+        if line_count is not None and status == 'success':
+            new_renderable.append(f"  {line_count} lines", style="dim")
         widget.update(new_renderable)
 
     @ui_task
     async def print_edit_file_start(self, command: dict) -> Static:
         file_path = command.get('path', '...')
-        renderable = Text.from_markup(f"✏️ Editing file [dim]{escape(file_path)}[/dim]")
+        renderable = Text()
+        renderable.append("✎ ", style="dim")
+        renderable.append("edit ", style="dim")
+        renderable.append(escape(file_path), style="dim italic")
         widget = Static(renderable, classes="edit-file-message", expand=False)
         widget.file_path = file_path
         widget.can_focus = False
@@ -470,8 +514,13 @@ class TuiUI:
     async def update_edit_file_result(self, widget: Static, result: dict):
         file_path = getattr(widget, 'file_path', '...')
         status = result.get('status')
-        icon = '[green]✓[/green]' if status == 'success' else '[red]✗[/red]'
-        new_renderable = Text.from_markup(f"{icon} Editing file [dim]{escape(file_path)}[/dim]")
+        icon = '✓' if status == 'success' else '✗'
+        icon_style = 'green' if status == 'success' else 'red'
+
+        new_renderable = Text()
+        new_renderable.append(f"{icon} ", style=icon_style)
+        new_renderable.append("edit ", style="dim")
+        new_renderable.append(escape(file_path), style="dim italic")
         widget.update(new_renderable)
 
     @ui_task

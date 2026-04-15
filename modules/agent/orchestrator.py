@@ -147,6 +147,50 @@ class Orchestrator:
             "Do not repeat the same <intent> again in this reply."
         )
 
+
+    def _build_suspect_intent_change_message(self, stop_info: dict | None) -> str:
+        stop_info = stop_info or {}
+        suspicion = stop_info.get("suspicion") or {}
+        old_goal = str(suspicion.get("old_goal") or "")
+        new_goal = str(suspicion.get("new_goal") or "")
+        reason = str(stop_info.get("reason") or "suspect_intent_relabel_repeat")
+        parts = [
+            "Модель підозріло змінила поточну ціль у межах тієї самої лінії роботи.",
+            f"Причина: {reason}.",
+        ]
+        if old_goal:
+            parts.append(f"Стара ціль: {old_goal}")
+        if new_goal:
+            parts.append(f"Нова ціль: {new_goal}")
+        parts.extend([
+            "Обери один із варіантів:",
+            "- Keep original goal: змусити модель триматися попередньої цілі.",
+            "- Allow changed goal: дозволити нову ціль один раз.",
+            "- Stop and answer from current evidence: зупинити tool use і відповісти з уже зібраного.",
+        ])
+        return "\n".join(parts)
+
+    async def _choose_suspect_intent_change_action(self, stop_info: dict | None) -> str:
+        chooser = getattr(self.ui, "choose_suspect_intent_change_action", None)
+        if callable(chooser):
+            decision = await chooser(self._build_suspect_intent_change_message(stop_info))
+            if isinstance(decision, str) and decision:
+                return decision
+
+        fallback = getattr(self.ui, "confirm_continue", None)
+        if callable(fallback):
+            decision = await fallback(
+                self._build_suspect_intent_change_message(stop_info)
+                + "\nТак = Allow changed goal. Ні = Keep original goal."
+            )
+            if decision in (True, "allow_changed_goal", "allow_once"):
+                return "allow_changed_goal"
+            if decision in (False, "keep_original_goal", None):
+                return "keep_original_goal"
+            if decision in ("stop", "stop_and_answer", "force_completion_answer"):
+                return "stop_and_answer"
+        return "keep_original_goal"
+
     def _build_intent_overrun_message(self, stop_info: dict | None) -> str:
         stop_info = stop_info or {}
         reason = str(stop_info.get("reason") or "intent_step_limit_exceeded")
@@ -179,7 +223,13 @@ class Orchestrator:
         stop_info = stop_info or {}
         reason = str(stop_info.get("reason") or "")
 
-        if reason in {"intent_action_not_allowed", "intent_step_limit_soft_exceeded"}:
+        if reason in {
+            "intent_action_not_allowed",
+            "intent_step_limit_soft_exceeded",
+            "intent_blocked_action_signature",
+            "suspect_intent_relabel_repeat",
+            "suspect_intent_goal_drift",
+        }:
             active_intent = getattr(self.state, "active_intent", None)
             allowed = stop_info.get("next_actions") or getattr(active_intent, "allowed_actions", None) or []
             if reason == "intent_step_limit_soft_exceeded":
@@ -190,6 +240,72 @@ class Orchestrator:
                         goal=getattr(active_intent, "goal", ""),
                     )
                     + "\nPrefer exactly one final allowed <action>, or return a final plain-text answer if the evidence is already enough."
+                )
+            if reason == "intent_blocked_action_signature":
+                blocked_reason = ""
+                if hasattr(self.state, "get_blocked_action_reason"):
+                    try:
+                        blocked_reason = self.state.get_blocked_action_reason(stop_info.get("command") or {}) or ""
+                    except Exception:
+                        blocked_reason = ""
+                note = (
+                    "This exact action shape is unavailable for the rest of the current intent."
+                    if not blocked_reason else
+                    f"This exact action shape is unavailable for the rest of the current intent because of: {blocked_reason}."
+                )
+                return True, (
+                    self._build_reuse_current_intent_prompt(
+                        reason,
+                        allowed,
+                        goal=getattr(active_intent, "goal", ""),
+                    )
+                    + f"\n{note}"
+                    + "\nDo NOT retry it with trivial changes like different commentary, whitespace, or a slightly different limit."
+                    + "\nReturn EXACTLY ONE materially different next <action>, or answer from current evidence if enough is already known."
+                )
+            if reason in {"suspect_intent_relabel_repeat", "suspect_intent_goal_drift"}:
+                decision = await self._choose_suspect_intent_change_action(stop_info)
+                if decision == "allow_changed_goal":
+                    allow_method = (
+                        getattr(self.state, "allow_pending_goal_drift_once", None)
+                        if reason == "suspect_intent_goal_drift"
+                        else getattr(self.state, "allow_pending_suspect_intent_once", None)
+                    )
+                    if callable(allow_method):
+                        ok, msg = allow_method(self.config)
+                        if ok:
+                            self.state.add_confirmation(1)
+                            return True, (
+                                "SYSTEM: User explicitly approved the changed intent goal for this one transition.\n"
+                                "The new intent is now active.\n"
+                                "Return EXACTLY ONE valid next <action> or a final plain-text answer if no tool is needed.\n"
+                                "Do not emit another cosmetic relabel."
+                            )
+                    return True, self._build_intent_transition_rejected_prompt(
+                        "suspect_intent_relabel_repeat",
+                        allowed,
+                        goal=getattr(active_intent, "goal", ""),
+                    )
+                if decision == "stop_and_answer":
+                    runtime = getattr(self.state, "intent_runtime", None)
+                    if runtime is not None and hasattr(runtime, "force_current_intent_completion"):
+                        runtime.force_current_intent_completion()
+                    return True, self._build_plain_text_completion_prompt(
+                        getattr(self.state, "state_machine", None),
+                        {
+                            **(stop_info or {}),
+                            "reason": "user_stopped_after_suspect_goal_change",
+                        },
+                    )
+                # keep original goal
+                return True, (
+                    self._build_reuse_current_intent_prompt(
+                        reason,
+                        allowed,
+                        goal=getattr(active_intent, "goal", ""),
+                    )
+                    + "\nKeep the original goal. Do NOT rewrite or narrow the current intent goal."
+                    + "\nReturn EXACTLY ONE valid next <action> that directly serves the current goal."
                 )
             return True, self._build_reuse_current_intent_prompt(
                 reason,
@@ -385,6 +501,9 @@ class Orchestrator:
             "history_self_reference_hit": "Your search matched only self-referential artifact/history content, which is not real usage evidence.",
             "search_batch_aborted_after_first_action": "Your read-only search batch was aborted after the first action. Do not send another broad search batch.",
             "intent_force_plaintext_completion": "User requested final answer from already gathered evidence. Stop tool use now.",
+            "intent_blocked_action_signature": "This exact action shape is blocked for the current intent because it already produced an unacceptable or too-expensive result.",
+            "suspect_intent_relabel_repeat": "You tried to cosmetically relabel the same intent without a legitimate transition trigger.",
+            "suspect_intent_goal_drift": "You changed the current intent goal in a suspicious way and may have lost critical context from the user's actual question.",
             "full_read_confirmation_required": "Full read of a very large file requires explicit confirmation. Prefer skeleton or chunked read first.",
             "turn_working_material_too_large": "Current turn working material is too large to preserve safely. Switch to chunked, skeleton, or narrower outputs.",
             "planned_turn_working_material_too_large": "The planned read/search output for this turn is too large. Use a materially smaller step under the current intent.",
@@ -438,6 +557,24 @@ class Orchestrator:
                 "User requested final answer from already gathered evidence. "
                 "Do not use more tools under this intent now. Return plain text only."
             ) + next_hint
+        if code == "INTENT_BLOCKED_ACTION_SIGNATURE":
+            return (
+                "This exact action shape is blocked for the current intent because it previously caused an unacceptable result. "
+                "Do NOT repeat it with cosmetic changes. "
+                "Return exactly one materially different action, or answer from current evidence if enough is already known."
+            ) + next_hint
+        if code == "SUSPECT_INTENT_RELABEL_REPEAT":
+            return (
+                "You attempted a suspicious same-lineage relabel of the current intent. "
+                "Do not rewrite the goal or relabel the same work cosmetically. "
+                "Keep the current intent and return one next action that directly serves the existing goal."
+            ) + next_hint
+        if code == "SUSPECT_INTENT_GOAL_DRIFT":
+            return (
+                "You changed the current intent goal in a suspicious way and may have lost part of the user's real question. "
+                "Keep the original goal unless the user explicitly approves the changed goal. "
+                "Return one next action that serves the existing goal."
+            ) + next_hint
         if code == "FULL_READ_CONFIRMATION_REQUIRED":
             return (
                 "Full read of a very large file requires explicit confirmation. "
@@ -473,6 +610,7 @@ class Orchestrator:
             "search_batch_aborted_after_first_action",
             "planned_turn_working_material_too_large",
             "planned_full_read_too_large",
+            "intent_blocked_action_signature",
         }
         prompt = self._build_action_format_recovery_prompt(
             self._typed_recovery_header(stop_info),
@@ -563,6 +701,8 @@ class Orchestrator:
             "planned_turn_working_material_too_large",
             "planned_full_read_too_large",
             "turn_working_material_too_large",
+            "suspect_intent_relabel_repeat",
+            "suspect_intent_goal_drift",
         }:
             return self._build_typed_stop_recovery_prompt(stop_info)
 

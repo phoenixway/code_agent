@@ -265,7 +265,7 @@ class HistoryManager:
                 chunk_id = str(content.get("chunk_id") or "")
                 status = str(content.get("status") or "")
                 command = str(content.get("command") or "") if tool == "run_shell" else ""
-                core = content.get("file_content") or content.get("content") or content.get("output") or ""
+                core = self._preferred_working_material_text(content)
                 blob = hashlib.sha256(str(core).encode("utf-8")).hexdigest()[:16] if core else ""
                 return f"{tool}|{path}|{version}|{start}|{end}|{chunk_id}|{status}|{command}|{blob}"
             raw = str(content)
@@ -297,7 +297,7 @@ class HistoryManager:
         tool = str(content.get("tool") or "")
         if tool not in {"read_file", "read_chunk"}:
             return False
-        data = content.get("file_content") or content.get("content") or content.get("output") or ""
+        data = self._preferred_working_material_text(content)
         return not data or not str(data).strip()
 
     def _enforce_working_material_caps(self):
@@ -493,7 +493,7 @@ class HistoryManager:
                 out["type"] = "working_material_marker"
                 return out
 
-            preview = content.get("output") or content.get("stdout") or content.get("stderr") or ""
+            preview = self._preferred_working_material_text(content)
             if isinstance(preview, str):
                 preview = self._truncate_multiline_text(preview, max_chars=800, max_lines=20)
             if next_stage <= 1:
@@ -517,6 +517,24 @@ class HistoryManager:
         out["content"] = "Working material degraded. Rerun the tool if exact content is needed."
         out["type"] = "working_material_marker"
         return out
+
+    def _preferred_working_material_text(self, payload: dict) -> str:
+        if not isinstance(payload, dict):
+            return str(payload or "")
+        for key in (
+            "raw_output",
+            "stdout_full",
+            "stderr_full",
+            "file_content",
+            "content",
+            "output",
+            "stdout",
+            "stderr",
+        ):
+            value = payload.get(key)
+            if isinstance(value, str) and value:
+                return value
+        return ""
 
     def add_file_version(self, filename, content, return_metadata=False):
         if content is None:
@@ -645,10 +663,21 @@ class HistoryManager:
                         lines = [f"SYSTEM RESULT ({tool}):"]
                         if path:
                             lines.append(f"path={path}")
-                        for key in ("output", "stdout", "stderr"):
-                            value = payload.get(key)
-                            if isinstance(value, str) and value:
-                                lines.append(value)
+
+                        preferred = self._preferred_working_material_text(payload)
+                        if preferred:
+                            lines.append(preferred)
+                        else:
+                            for key in ("output", "stdout", "stderr"):
+                                value = payload.get(key)
+                                if isinstance(value, str) and value:
+                                    lines.append(value)
+
+                        if payload.get("raw_output_truncated"):
+                            lines.append(
+                                f"[raw working material truncated at source: {payload.get('raw_output_chars')} / {payload.get('raw_output_total_chars')} chars]"
+                            )
+
                         api_history.append({"role": "system", "content": "\n".join(lines)})
                 else:
                     api_history.append({"role": "system", "content": str(payload)})
@@ -743,7 +772,8 @@ class HistoryManager:
                 if int(content.get("result_count", 0) or 0) >= self.LARGE_RESULT_COUNT_HINT:
                     count += 1
                     continue
-                if isinstance(content.get("output"), str) and len(content.get("output")) > self.MAX_STRUCTURED_TEXT_CHARS:
+                preferred = self._preferred_working_material_text(content)
+                if isinstance(preferred, str) and len(preferred) > self.MAX_STRUCTURED_TEXT_CHARS:
                     count += 1
         return count
 

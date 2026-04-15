@@ -22,12 +22,12 @@ Screen {
     background: $background;
     border: none;
     padding: 0;
-    margin: 0; /* Remove all margins, spacing is handled by the separator widget */
+    margin: 0;
 }
 
 /* The physical spacer widget inserted between messages */
 .message-separator {
-    height: 1;
+    height: 2;
     background: $background;
 }
 
@@ -57,8 +57,8 @@ Screen {
     text-style: bold;
     border-top: wide $warning;
     border-bottom: wide $warning;
-    padding: 1 0; /* Vertical padding to give borders space */
-    margin: 0; /* Ensure no external spacing */
+    padding: 1 0;
+    margin: 0;
 }
 
 /* --- READ FILE MESSAGE --- */
@@ -66,7 +66,16 @@ Screen {
 .read-file-message {
     background: transparent;
     color: $primary;
-    padding: 0 1;
+    padding: 0 2;
+    margin: 0;
+}
+
+/* --- EDIT FILE MESSAGE --- */
+
+.edit-file-message {
+    background: transparent;
+    color: $secondary;
+    padding: 0 2;
     margin: 0;
 }
 
@@ -74,8 +83,8 @@ Screen {
 
 .tool-call-message {
     background: $background;
-    border-left: solid #858585;
-    color: $text;
+    border-left: solid $surface;
+    color: $text-muted;
     padding: 0 2;
 }
 
@@ -91,11 +100,11 @@ Screen {
 
 .thought-message {
     background: transparent;
-    border-left: dashed $secondary;
+    border-left: dashed $surface;
     color: $text-muted;
-    opacity: 70%;
+    opacity: 60%;
     text-style: italic;
-    padding: 0 2;
+    padding: 0 3;
 }
 
 /* --- SYSTEM / LOG (Prefix-based) --- */
@@ -120,6 +129,23 @@ Screen {
     background: $background;
     border-left: wide $primary;
     color: $text;
+}
+
+/* --- ERROR MESSAGE --- */
+
+.error-message {
+    background: $surface;
+    border-left: wide $error;
+    color: $error;
+    padding: 0 2;
+}
+
+/* --- CONFIRMATION MESSAGE --- */
+
+.confirmation-message {
+    background: transparent;
+    color: $success;
+    padding: 0 1;
 }
 
 /* --- STATUS BAR --- */

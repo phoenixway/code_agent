@@ -53,6 +53,8 @@ class ListDirectoryTool(BaseTool):
             if not rows:
                 return {"status": "success", "output": f"Directory is empty: {target}"}
 
+            full_output = f"Directory listing for {target}:\n" + "\n".join(rows)
+
             if len(rows) > 200:
                 preview = "\n".join(rows[:200])
                 hidden = len(rows) - 200
@@ -62,9 +64,20 @@ class ListDirectoryTool(BaseTool):
                         f"Directory listing for {target} (showing first 200 entries):\n"
                         f"{preview}\n\n...and {hidden} more."
                     ),
+                    "raw_output": full_output[:200000],
+                    "stdout_full": full_output[:200000],
+                    "truncated": True,
+                    "history_compact": True,
+                    "result_count": len(rows),
                 }
 
-            return {"status": "success", "output": f"Directory listing for {target}:\n" + "\n".join(rows)}
+            return {
+                "status": "success",
+                "output": full_output,
+                "raw_output": full_output,
+                "stdout_full": full_output,
+                "result_count": len(rows),
+            }
         except Exception as e:
             return {
                 "status": "error",

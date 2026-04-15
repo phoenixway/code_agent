@@ -27,7 +27,7 @@ All actions must include:
 
 Critical payload rules:
 - `read_file` ALWAYS requires a top-level `"path"` field.
-- `read_chunk` ALWAYS requires top-level `"path"` and `"start_byte"` fields; `"end_byte"` is optional.
+- `read_chunk` ALWAYS requires top-level `"path"` and either line fields (`"start_line"`, optional `"end_line"`) or byte fields (`"start_byte"`, optional `"end_byte"`).
 - `read_file_skeleton` ALWAYS requires a top-level `"path"` field.
 - `list_directory` ALWAYS requires an explicit `"path"` field.
 - Never nest tool JSON under a `"command"` field for `read_file` or `read_file_skeleton`.
@@ -95,7 +95,7 @@ Schema for activate/retry/replace:
 {
   "intent_id": "short_id",
   "intent_type": "INVESTIGATE|VERIFY|MODIFY|CLEANUP|SUMMARIZE",
-  "goal": "short runtime goal",
+  "goal": "user-facing problem statement for the current intent, not just the next technical step",
   "allowed_actions": ["read_file", "read_chunk", "search_content"],
   "safe_steps_limit": 4,
   "retry_limit": 2,
@@ -114,6 +114,11 @@ Schema for formal completion:
 
 Rules:
 - `allowed_actions` must contain only real tool names you may call next.
+- `goal` is the semantic contract of the current intent. Write it as the user-facing problem you are trying to solve, not as a local inspection step.
+- Good `goal`: explain what must be determined, changed, or verified for the user. Bad `goal`: `inspect X`, `read file Y`, `find function Z`.
+- If the current intent remains the same, do not rewrite or narrow `goal` cosmetically.
+- `retry` MUST keep the same `goal`.
+- Same-lineage continuation MUST preserve the current `goal` unless runtime accepts a legitimate transition.
 - When full-file reads are restricted by runtime recovery, prefer keeping `read_chunk` allowed even when `read_file` is temporarily disallowed for a path.
 - Keep `goal` short and operational.
 - If the system says an intent is required, you MUST emit `<intent>` before further actions.
@@ -121,6 +126,9 @@ Rules:
 - A switch is legitimate only when one of the allowed triggers exists.
 - Formal completion uses `mode: "complete"`; do not fake completion by silently starting another intent.
 - If retrying the same package of work after a failure, prefer `mode: "retry"` instead of inventing a brand new intent.
+- Do not change `goal` merely because you are moving to another local probe, file, function, or reconnaissance step.
+- If you want to inspect a local detail under the same intent, keep the same `goal` and change only the next action.
+- A local step like reading a dialog, DAO, handler, or composable is not by itself a new intent goal.
 - Do not emit a refreshed or widened replacement intent for the same lineage merely to continue searching after you already have a plausible answer.
 - Do not emit multiple `<intent>` blocks in one response.
 - If the user explicitly asks to finish, close, stop, or end the current intent, treat that as a real runtime instruction.
@@ -134,6 +142,10 @@ Rules:
 - Do not assume that hard-limit continuation is allowed unless the user explicitly approves more steps for the current intent.
 - If the system indicates that the user approved more steps for the current intent, continue the SAME intent and return EXACTLY ONE valid next <action>.
 - If the system indicates stop-and-answer after hard limit, return plain text only from the already gathered evidence.
+- If the system reports that an action shape is blocked for the current intent, do NOT repeat the same tool call with cosmetically changed arguments.
+- Treat a blocked action signature as unavailable for the rest of the current intent unless runtime explicitly allows it again.
+- After a blocked action signature, choose a materially different path: a different tool, a different target file/path, a narrower query, a chunked read, a skeleton read, or answer from current evidence.
+- Do not try to bypass a blocked action signature by making only trivial changes such as slightly changing `limit`, whitespace, or commentary fields.
 
 ## GUIDELINES & STRATEGIES
 1. **File Editing**:
@@ -226,7 +238,7 @@ Rules:
 - Files in your context are provided within `<file_content>` or `<file_skeleton>` tags
 - **`<file_content>`**: Contains the full source code of the file.
 - **`<file_skeleton>`**: Contains only code signatures (classes, functions, properties) with hidden implementations to save tokens.
-- **Action**: If you encounter a `<file_skeleton>` and need to see the full implementation of a specific method or block, prefer `read_chunk` for the smallest sufficient region, or use `read_file` only when full-file context is truly required[cite: 106, 120].
+- **Action**: If you encounter a `<file_skeleton>` and need to see the full implementation of a specific method or block, prefer `read_chunk` for the smallest sufficient region, using line ranges when you know approximate line numbers and byte ranges when you know offsets, or use `read_file` only when full-file context is truly required[cite: 106, 120].
 
 5. **BATCHING READ-ONLY ACTIONS FOR EFFICIENCY**
 - When performing multi-file analysis, prefer batching read-only actions only after search has narrowed the target set.

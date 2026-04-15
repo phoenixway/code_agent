@@ -74,6 +74,8 @@ class FolderTreeTool(BaseTool):
 
             build_tree(root, "", 0)
 
+            full_output = f"Folder tree for {root}:\n" + "\n".join(lines)
+
             if len(lines) > 300:
                 preview = "\n".join(lines[:300])
                 hidden_count = len(lines) - 300
@@ -83,11 +85,19 @@ class FolderTreeTool(BaseTool):
                         f"Folder tree for {root} "
                         f"(showing first 300 lines, {hidden_count} more omitted):\n{preview}"
                     ),
+                    "raw_output": full_output[:200000],
+                    "stdout_full": full_output[:200000],
+                    "truncated": True,
+                    "history_compact": True,
+                    "result_count": len(lines),
                 }
 
             return {
                 "status": "success",
-                "output": f"Folder tree for {root}:\n" + "\n".join(lines),
+                "output": full_output,
+                "raw_output": full_output,
+                "stdout_full": full_output,
+                "result_count": len(lines),
             }
 
         except PermissionError as e:

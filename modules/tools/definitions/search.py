@@ -17,6 +17,7 @@ CODE_EXTENSIONS = [
 
 MAX_HISTORY_PREVIEW_LINES = 20
 MAX_HISTORY_PREVIEW_CHARS = 4000
+MAX_FULL_RESULT_CHARS = 200000
 
 
 def _normalize_bool(value, default=False):
@@ -73,17 +74,26 @@ def _compact_large_result(kind: str, text: str, *, limit: int, exit_code: int, s
     preview, total = _build_preview(text, limit_lines=min(limit, MAX_HISTORY_PREVIEW_LINES))
     label = "files" if kind == "files" else "matches"
     output = f"Found {total} {label}. Showing first {min(limit, MAX_HISTORY_PREVIEW_LINES)}:\n{preview}\n\n...and {max(total - min(limit, MAX_HISTORY_PREVIEW_LINES), 0)} more."
-    return {
+    full_text = text if len(text) <= MAX_FULL_RESULT_CHARS else text[:MAX_FULL_RESULT_CHARS]
+    result = {
         "status": "success",
         "output": output,
         "exit_code": exit_code,
-        # CRITICAL: do not store full stdout for giant search results, or history gets flooded.
+        # Preview fields for UI / compact history.
         "stdout": preview,
         "stderr": (stderr or "")[:1000],
         "truncated": True,
         "result_count": total,
         "history_compact": True,
+        # Full raw fields for short-lived working material / exact reasoning.
+        "raw_output": full_text,
+        "stdout_full": full_text,
     }
+    if len(text) > MAX_FULL_RESULT_CHARS:
+        result["raw_output_truncated"] = True
+        result["raw_output_chars"] = len(full_text)
+        result["raw_output_total_chars"] = len(text)
+    return result
 
 
 _HISTORY_SELF_REF_RE = re.compile(r"(^|/)(modules/)?history(?:_[a-z0-9_]+)?\.py$", re.IGNORECASE)
@@ -207,6 +217,8 @@ class FileSearchTool(BaseTool):
                 "exit_code": 0,
                 "stdout": output,
                 "stderr": (result.stderr or "")[:1000],
+                "raw_output": output,
+                "stdout_full": output,
                 "result_count": count,
             }
 
@@ -319,6 +331,8 @@ class ContentSearchTool(BaseTool):
                     "exit_code": 0,
                     "stdout": preview,
                     "stderr": (result.stderr or "")[:1000],
+                    "raw_output": "\n".join(history_lines)[:MAX_FULL_RESULT_CHARS],
+                    "stdout_full": "\n".join(history_lines)[:MAX_FULL_RESULT_CHARS],
                     "result_count": total,
                     "history_compact": True,
                     "history_self_reference_only": True,
@@ -344,6 +358,8 @@ class ContentSearchTool(BaseTool):
                 "exit_code": 0,
                 "stdout": filtered_output,
                 "stderr": (result.stderr or "")[:1000],
+                "raw_output": filtered_output,
+                "stdout_full": filtered_output,
                 "result_count": count,
             }
             if history_lines:

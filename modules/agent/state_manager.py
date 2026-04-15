@@ -63,6 +63,7 @@ class AgentState:
         self.intent_only_response_count = 0
         self.recent_problem_actions = []
         self.pending_suspect_intent_payload = None
+        self.pending_goal_drift_payload = None
         self.allow_suspect_intent_once = False
 
         # Critical: this must advance across real user turns.
@@ -101,6 +102,7 @@ class AgentState:
         self.last_turn_had_failure = False
         self.intent_only_response_count = 0
         self.pending_suspect_intent_payload = None
+        self.pending_goal_drift_payload = None
         self.allow_suspect_intent_once = False
 
         # FIX:
@@ -121,6 +123,28 @@ class AgentState:
         if len(self.recent_problem_actions) > window:
             self.recent_problem_actions = self.recent_problem_actions[-window:]
 
+
+    def _normalize_goal_text(self, text: str) -> str:
+        text = str(text or "").lower().strip()
+        cleaned = []
+        for ch in text:
+            if ch.isalnum() or ch in {" ", "_"}:
+                cleaned.append(ch)
+            else:
+                cleaned.append(" ")
+        return " ".join("".join(cleaned).split())
+
+    def _goal_token_set(self, text: str) -> set[str]:
+        return {tok for tok in self._normalize_goal_text(text).split() if tok}
+
+    def _goal_core_loss_suspected(self, old_goal: str, new_goal: str) -> bool:
+        old_tokens = self._goal_token_set(old_goal)
+        new_tokens = self._goal_token_set(new_goal)
+        if not old_tokens or not new_tokens:
+            return False
+        overlap = len(old_tokens & new_tokens) / max(1, len(old_tokens))
+        return overlap < float(getattr(self._config, "INTENT_RELABEL_GOAL_CORE_OVERLAP_THRESHOLD", 0.45) if self._config is not None else 0.45)
+
     def note_problem_action(self, command: dict, result: dict, *, reason: str = ""):
         entry = {
             "fingerprint": self.get_action_fingerprint(command),
@@ -128,7 +152,12 @@ class AgentState:
             "reason": str(reason or "").strip(),
             "status": str((result or {}).get("status") or ""),
             "error_code": str((result or {}).get("error_code") or ""),
-            "output_preview": str((result or {}).get("output") or "")[:280],
+            "output_preview": str(
+                (result or {}).get("output")
+                or (result or {}).get("raw_output")
+                or (result or {}).get("stdout_full")
+                or ""
+            )[:280],
         }
         self.recent_problem_actions.append(entry)
         self._trim_recent_problem_actions()
@@ -200,20 +229,29 @@ class AgentState:
             and transition_info.get("same_lineage")
             and transition_info.get("old_goal")
             and contract.mode in {"activate", "replace"}
-            and self.recent_problem_actions
         ):
-            recent = self.recent_problem_actions[-1]
+            recent = self.recent_problem_actions[-1] if self.recent_problem_actions else {}
             same_allowed = transition_info.get("actions_overlap", 0.0) >= float(getattr(config, "INTENT_RELABEL_ACTION_OVERLAP_THRESHOLD", 0.6))
-            suspicious = same_allowed
+            goal_core_loss = self._goal_core_loss_suspected(
+                transition_info.get("old_goal", ""),
+                transition_info.get("new_goal", ""),
+            )
+            goal_changed = self._normalize_goal_text(transition_info.get("old_goal", "")) != self._normalize_goal_text(transition_info.get("new_goal", ""))
+            suspicious = bool(goal_core_loss or (same_allowed and goal_changed))
             if suspicious:
                 self.pending_suspect_intent_payload = payload
+                self.pending_goal_drift_payload = payload if goal_core_loss else None
                 self.last_defect_info = {
-                    "reason": "suspect_intent_relabel_repeat",
+                    "reason": "suspect_intent_goal_drift" if goal_core_loss else "suspect_intent_relabel_repeat",
                     "recoverable": True,
-                    "error_code": "SUSPECT_INTENT_RELABEL_REPEAT",
+                    "error_code": "SUSPECT_INTENT_GOAL_DRIFT" if goal_core_loss else "SUSPECT_INTENT_RELABEL_REPEAT",
                     "next_actions": list(contract.allowed_actions),
                     "command": recent.get("command", {}).copy() if isinstance(recent.get("command"), dict) else {},
-                    "message": "Є підозра на cosmetic intent relabel without a legitimate transition trigger.",
+                    "message": (
+                        "Модель підозріло змінила поточну ціль у межах тієї самої лінії роботи."
+                        if goal_core_loss else
+                        "Є підозра на cosmetic intent relabel without a legitimate transition trigger."
+                    ),
                     "suspicion": {
                         "old_intent_id": transition_info.get("old_intent_id", ""),
                         "old_goal": transition_info.get("old_goal", ""),
@@ -223,22 +261,33 @@ class AgentState:
                         "new_allowed_actions": transition_info.get("new_allowed_actions", []),
                         "goal_similarity": transition_info.get("goal_similarity", 0.0),
                         "actions_overlap": transition_info.get("actions_overlap", 0.0),
+                        "goal_core_loss": goal_core_loss,
                         "recent_problem_reason": recent.get("reason", ""),
                         "recent_problem_action": recent.get("fingerprint", ""),
                         "recent_problem_output": recent.get("output_preview", ""),
                     },
                 }
-                return False, "suspect_intent_relabel_repeat"
+                return False, "suspect_intent_goal_drift" if goal_core_loss else "suspect_intent_relabel_repeat"
 
         ok, msg = self.intent_runtime.apply_payload(payload)
         if ok:
             self.pending_suspect_intent_payload = None
+            self.pending_goal_drift_payload = None
         return ok, msg
 
     def allow_pending_suspect_intent_once(self, config) -> tuple[bool, str]:
         if not self.pending_suspect_intent_payload:
             return False, "no_pending_suspect_intent"
         payload = self.pending_suspect_intent_payload
+        self.allow_suspect_intent_once = True
+        ok, msg = self.apply_intent_contract(payload, config, bypass_suspicion=True)
+        self.allow_suspect_intent_once = False
+        return ok, msg
+
+    def allow_pending_goal_drift_once(self, config) -> tuple[bool, str]:
+        if not self.pending_goal_drift_payload:
+            return False, "no_pending_goal_drift"
+        payload = self.pending_goal_drift_payload
         self.allow_suspect_intent_once = True
         ok, msg = self.apply_intent_contract(payload, config, bypass_suspicion=True)
         self.allow_suspect_intent_once = False
@@ -251,6 +300,39 @@ class AgentState:
         if not self.intent_runtime:
             return None
         return self.intent_runtime.pre_action_check(command)
+
+    def block_action_for_current_intent(self, command: dict, reason: str) -> bool:
+        if not self.intent_runtime:
+            return False
+        blocker = getattr(self.intent_runtime, "block_action_for_current_intent", None)
+        if not callable(blocker):
+            return False
+        try:
+            return bool(blocker(command, reason))
+        except Exception:
+            return False
+
+    def is_action_blocked_for_current_intent(self, command: dict) -> bool:
+        if not self.intent_runtime:
+            return False
+        checker = getattr(self.intent_runtime, "is_action_blocked_for_current_intent", None)
+        if not callable(checker):
+            return False
+        try:
+            return bool(checker(command))
+        except Exception:
+            return False
+
+    def get_blocked_action_reason(self, command: dict) -> str:
+        if not self.intent_runtime:
+            return ""
+        getter = getattr(self.intent_runtime, "get_blocked_action_reason", None)
+        if not callable(getter):
+            return ""
+        try:
+            return str(getter(command) or "")
+        except Exception:
+            return ""
 
     def get_action_fingerprint(self, command: dict) -> str:
         cmd_type = command.get("type") or command.get("action") or "unknown"
