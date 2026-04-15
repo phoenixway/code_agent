@@ -264,6 +264,20 @@ class TuiUI:
             return "open_search"
         return "stop"
 
+
+    async def choose_intent_overrun_action(self, prompt: str) -> str:
+        """User handoff for hard intent limit: exactly two choices."""
+        self._count_confirmation()
+        options = [
+            "Approve more steps",
+            "Stop and answer from current evidence",
+        ]
+        screen = SelectionScreen(prompt, options)
+        result = await self._push_screen_wait(screen)
+        if result == options[0]:
+            return "approve_more_steps"
+        return "stop_and_answer"
+
     async def confirm_truncation(self, action_type: str, output_length: int) -> bool:
         self._count_confirmation()
         prompt = (

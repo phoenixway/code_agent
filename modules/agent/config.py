@@ -1,4 +1,9 @@
-"""Конфігурація та налаштування агента."""
+"""Конфігурація та налаштування агента.
+
+Updated for formal intent completion and intent-switch validation.
+The goal is to keep transition rules compact and configurable, without
+introducing new orchestration entities.
+"""
 
 from modules.config_loader import load_settings
 
@@ -42,7 +47,6 @@ class AgentConfig:
         # Narrow provenance after entrypoint discovery
         self.ENTRYPOINT_PROVENANCE_LIMIT = self._get_positive_int("entrypoint_provenance_limit", 1)
 
-
         # Intent contract + defect detector
         self.INTENT_CONTRACT_ENABLED = bool(self.settings.get("intent_contract_enabled", True))
         self.INTENT_REQUIRE_ON_DEFECT = bool(self.settings.get("intent_require_on_defect", True))
@@ -59,64 +63,175 @@ class AgentConfig:
         self.INTENT_USER_EXTENSION_STEPS = self._get_positive_int("intent_user_extension_steps", 4)
         self.INTENT_USER_ONE_SHOT_STEPS = self._get_positive_int("intent_user_one_shot_steps", 2)
         self.INTENT_ALLOW_UNLIMITED_OVERRIDE = bool(self.settings.get("intent_allow_unlimited_override", True))
-        self.DEFECT_SAME_ACTION_REPEAT_THRESHOLD = self._get_positive_int("defect_same_action_repeat_threshold", 3)
-        self.DEFECT_ACTION_CYCLE_WINDOW = self._get_positive_int("defect_action_cycle_window", 3)
-        self.DEFECT_ACTION_HISTORY_WINDOW = self._get_positive_int("defect_action_history_window", 12)
-        self.DEFECT_LOW_VALUE_BROAD_SEARCH_REPEAT_THRESHOLD = self._get_positive_int("defect_low_value_broad_search_repeat_threshold", 2)
-        self.DEFECT_TOO_BROAD_SEARCH_THRESHOLD = self._get_positive_int("defect_too_broad_search_threshold", 1)
-        self.DEFECT_STRATEGY_EXHAUSTED_THRESHOLD = self._get_positive_int("defect_strategy_exhausted_threshold", 3)
+
+        # Intent transition / relabel heuristics
+        self.INTENT_RETRY_GOAL_SIMILARITY_THRESHOLD = self._get_float(
+            "intent_retry_goal_similarity_threshold", 0.45
+        )
+        self.INTENT_RELABEL_GOAL_SIMILARITY_THRESHOLD = self._get_float(
+            "intent_relabel_goal_similarity_threshold", 0.60
+        )
+        self.INTENT_RELABEL_ACTION_OVERLAP_THRESHOLD = self._get_float(
+            "intent_relabel_action_overlap_threshold", 0.60
+        )
+        self.INTENT_RELABEL_SUSPICION_ENABLED = bool(
+            self.settings.get("intent_relabel_suspicion_enabled", True)
+        )
+        self.INTENT_RELABEL_PROBLEM_WINDOW = self._get_positive_int(
+            "intent_relabel_problem_window", 5
+        )
+
+        # Formal transition reasons.
+        # Keep the set small and explicit to avoid policy bloat.
+        self.INTENT_SWITCH_REASON_REQUIRED = bool(
+            self.settings.get("intent_switch_reason_required", True)
+        )
+        self.INTENT_COMPLETION_REASON_REQUIRED = bool(
+            self.settings.get("intent_completion_reason_required", True)
+        )
+        self.INTENT_SWITCH_EXPLANATION_REQUIRED = bool(
+            self.settings.get("intent_switch_explanation_required", False)
+        )
+        self.INTENT_COMPLETION_EXPLANATION_REQUIRED = bool(
+            self.settings.get("intent_completion_explanation_required", False)
+        )
+
+        self.INTENT_ALLOWED_SWITCH_REASONS = self._get_csv_set(
+            "intent_allowed_switch_reasons",
+            {
+                "user_requested_new_task",
+                "current_intent_completed",
+                "current_intent_exhausted",
+                "work_type_changed",
+                "current_intent_no_longer_fits",
+            },
+        )
+        self.INTENT_ALLOWED_COMPLETION_REASONS = self._get_csv_set(
+            "intent_allowed_completion_reasons",
+            {
+                "goal_completed",
+                "user_requested_stop",
+                "user_requested_switch",
+                "no_further_action_needed",
+                "handoff_to_user",
+            },
+        )
+
+        # Policy knobs for accepting legitimate transitions.
+        self.INTENT_ALLOW_SWITCH_ON_USER_REQUEST = bool(
+            self.settings.get("intent_allow_switch_on_user_request", True)
+        )
+        self.INTENT_ALLOW_SWITCH_ON_COMPLETION = bool(
+            self.settings.get("intent_allow_switch_on_completion", True)
+        )
+        self.INTENT_ALLOW_SWITCH_ON_EXHAUSTION = bool(
+            self.settings.get("intent_allow_switch_on_exhaustion", True)
+        )
+        self.INTENT_ALLOW_SWITCH_ON_WORK_TYPE_CHANGE = bool(
+            self.settings.get("intent_allow_switch_on_work_type_change", True)
+        )
+        self.INTENT_ALLOW_SWITCH_ON_NO_LONGER_FITS = bool(
+            self.settings.get("intent_allow_switch_on_no_longer_fits", True)
+        )
+
+        # If True, an exhausted current intent should no longer behave like a
+        # prison that blocks all new intents merely because it once set
+        # forbid_new_intent.
+        self.INTENT_EXHAUSTION_OVERRIDES_FORBID_NEW = bool(
+            self.settings.get("intent_exhaustion_overrides_forbid_new", True)
+        )
+
+        # Defect detector thresholds
+        self.DEFECT_SAME_ACTION_REPEAT_THRESHOLD = self._get_positive_int(
+            "defect_same_action_repeat_threshold", 3
+        )
+        self.DEFECT_ACTION_CYCLE_WINDOW = self._get_positive_int(
+            "defect_action_cycle_window", 3
+        )
+        self.DEFECT_ACTION_HISTORY_WINDOW = self._get_positive_int(
+            "defect_action_history_window", 12
+        )
+        self.DEFECT_LOW_VALUE_BROAD_SEARCH_REPEAT_THRESHOLD = self._get_positive_int(
+            "defect_low_value_broad_search_repeat_threshold", 2
+        )
+        self.DEFECT_TOO_BROAD_SEARCH_THRESHOLD = self._get_positive_int(
+            "defect_too_broad_search_threshold", 1
+        )
+        self.DEFECT_STRATEGY_EXHAUSTED_THRESHOLD = self._get_positive_int(
+            "defect_strategy_exhausted_threshold", 3
+        )
 
         # Existing phase/budget controls
         self.OBSERVE_PHASE_BUDGET = self._get_positive_int("observe_phase_budget", 8)
         self.MAX_ROOT_LISTINGS_PER_TURN = self._get_positive_int("max_root_listings_per_turn", 1)
-        self.MAX_LIST_DIRECTORY_ACTIONS_PER_TURN = self._get_positive_int("max_list_directory_actions_per_turn", 4)
-        self.MAX_DIRECTORY_DESCENT_CHAIN = self._get_positive_int("max_directory_descent_chain", 3)
+        self.MAX_LIST_DIRECTORY_ACTIONS_PER_TURN = self._get_positive_int(
+            "max_list_directory_actions_per_turn", 4
+        )
+        self.MAX_DIRECTORY_DESCENT_CHAIN = self._get_positive_int(
+            "max_directory_descent_chain", 3
+        )
         self.MAX_BROAD_RECON_BATCHES = self._get_positive_int("max_broad_recon_batches", 2)
-        self.MULTI_FILE_PER_FILE_READ_ONLY_LIMIT = self._get_positive_int("multi_file_per_file_read_only_limit", 3)
+        self.MULTI_FILE_PER_FILE_READ_ONLY_LIMIT = self._get_positive_int(
+            "multi_file_per_file_read_only_limit", 3
+        )
 
         # Task contract
         self.TASK_CONTRACT_FORCE_IMPLEMENT_FOR_HYBRID = bool(
             self.settings.get("task_contract_force_implement_for_hybrid", True)
         )
 
-        # Planner
+        # Compatibility / misc values expected by the rest of the codebase.
+        self.default_model = self.settings.get("default_model", "gpt-5")
+        self.max_history_tokens = self._get_positive_int("max_history_tokens", 16384)
+        self.history_size = str(self.settings.get("history_size", "medium") or "medium").strip()
+        self.autosummarize_requires_confirmation = bool(
+            self.settings.get("autosummarize_requires_confirmation", False)
+        )
+        self.permission_policy = self.settings.get("permission_policy", "ask")
         self.PLANNER_ENABLED = bool(self.settings.get("planner_enabled", False))
-        self.PLANNER_MODE = self.settings.get("planner_mode", "auto")
-        self.PLANNER_MAX_GOAL_CHARS = self._get_positive_int("planner_max_goal_chars", 240)
-        self.PLANNER_MAX_STEPS = self._get_positive_int("planner_max_steps", 12)
-        self.PLANNER_MAX_STEP_TITLE_CHARS = self._get_positive_int("planner_max_step_title_chars", 160)
-        self.PLANNER_MAX_STEP_NOTES_CHARS = self._get_positive_int("planner_max_step_notes_chars", 240)
-        self.PLANNER_MAX_VISIBLE_STEPS = self._get_positive_int("planner_max_visible_steps", 4)
+        self.PLANNER_MODE = str(self.settings.get("planner_mode", "auto") or "auto")
 
-        # Операції, що змінюють стан
+        # Operations that mutate repository / workspace state.
+        # Required by action_dispatcher/state_machine compatibility layer.
         self.STATE_CHANGING_OPS = {
-            "run_shell", "create_file", "replace",
-            "edit_file", "write_file", "git_add", "git_commit",
-            "git_checkout", "delete_file"
+            "run_shell",
+            "create_file",
+            "replace",
+            "edit_file",
+            "write_file",
+            "git_add",
+            "git_commit",
+            "git_checkout",
+            "delete_file",
         }
 
     def _get_positive_int(self, key: str, default: int) -> int:
         value = self.settings.get(key, default)
-        if isinstance(value, int) and value > 0:
-            return value
-        return default
+        try:
+            parsed = int(value)
+            return parsed if parsed > 0 else int(default)
+        except Exception:
+            return int(default)
 
-    @property
-    def default_model(self) -> str:
-        return self.settings.get("default_model", "ollama/qwen2.5-coder:7b")
+    def _get_float(self, key: str, default: float) -> float:
+        value = self.settings.get(key, default)
+        try:
+            parsed = float(value)
+            if parsed < 0:
+                return float(default)
+            return parsed
+        except Exception:
+            return float(default)
 
-    @property
-    def max_history_tokens(self) -> int:
-        return self.settings.get("max_history_tokens", 4000)
-
-    @property
-    def permission_policy(self) -> str:
-        return self.settings.get("permission_policy", "ask")
-
-    @property
-    def history_size(self) -> str:
-        return self.settings.get("history_size", "small")
-
-    @property
-    def autosummarize_requires_confirmation(self) -> bool:
-        return bool(self.settings.get("autosummarize_requires_confirmation", False))
+    def _get_csv_set(self, key: str, default: set[str]) -> set[str]:
+        raw = self.settings.get(key)
+        if raw is None:
+            return set(default)
+        if isinstance(raw, (list, tuple, set)):
+            return {str(x).strip() for x in raw if str(x).strip()} or set(default)
+        text = str(raw).strip()
+        if not text:
+            return set(default)
+        parts = [p.strip() for p in text.split(",")]
+        cleaned = {p for p in parts if p}
+        return cleaned or set(default)

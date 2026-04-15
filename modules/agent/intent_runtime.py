@@ -42,6 +42,10 @@ class IntentContract:
     safe_steps_limit: int
     retry_limit: int
     mode: str = "activate"
+    switch_reason: str = ""
+    switch_explanation: str = ""
+    completion_reason: str = ""
+    completion_explanation: str = ""
     step_count: int = 0
     retry_count: int = 0
     lineage_id: str = ""
@@ -57,7 +61,7 @@ class IntentContract:
 
 class IntentRuntime:
     SUPPORTED_TYPES = {"INVESTIGATE", "VERIFY", "MODIFY", "CLEANUP", "SUMMARIZE"}
-    SUPPORTED_MODES = {"activate", "retry", "replace"}
+    SUPPORTED_MODES = {"activate", "retry", "replace", "complete"}
 
     def __init__(self, config):
         self.config = config
@@ -121,6 +125,59 @@ class IntentRuntime:
             goal_sim >= float(getattr(self.config, "INTENT_RELABEL_GOAL_SIMILARITY_THRESHOLD", 0.6))
             and actions_overlap >= float(getattr(self.config, "INTENT_RELABEL_ACTION_OVERLAP_THRESHOLD", 0.6))
         )
+
+    def _normalize_transition_reason(self, value: object) -> str:
+        return str(value or "").strip().lower()
+
+    def _allowed_switch_reasons(self) -> set[str]:
+        return {
+            "user_requested_new_task",
+            "current_intent_completed",
+            "current_intent_exhausted",
+            "work_type_changed",
+            "current_intent_no_longer_fits",
+        }
+
+    def _allowed_completion_reasons(self) -> set[str]:
+        return {
+            "goal_completed",
+            "user_requested_stop",
+            "forced_plaintext_completion",
+            "handoff_to_user",
+        }
+
+    def _is_legitimate_switch_reason(self, reason: str) -> bool:
+        return self._normalize_transition_reason(reason) in self._allowed_switch_reasons()
+
+    def _is_legitimate_completion_reason(self, reason: str) -> bool:
+        return self._normalize_transition_reason(reason) in self._allowed_completion_reasons()
+
+    def _reason_allows_transition(self, contract: IntentContract, active: IntentContract | None, same_lineage: bool) -> bool:
+        if active is None:
+            return True
+        reason = self._normalize_transition_reason(contract.switch_reason)
+        if contract.mode == "retry":
+            return True
+        if contract.mode == "complete":
+            return self._is_legitimate_completion_reason(contract.completion_reason)
+        if contract.intent_type != active.intent_type:
+            return True
+        if not same_lineage:
+            return True
+        return self._is_legitimate_switch_reason(reason)
+
+    def should_bypass_relabel_suspicion(self, contract: IntentContract, transition_info: dict | None = None) -> bool:
+        if contract.mode == "complete":
+            return True
+        if contract.mode == "retry":
+            return True
+        active = self.active_intent
+        same_lineage = bool((transition_info or {}).get("same_lineage")) if transition_info is not None else self._same_lineage(contract)
+        if active is None:
+            return True
+        if contract.intent_type != active.intent_type:
+            return True
+        return self._is_legitimate_switch_reason(contract.switch_reason) or not same_lineage
 
     def _normalize_constraints(self, raw: dict | None) -> dict:
         if not isinstance(raw, dict):
@@ -216,6 +273,8 @@ class IntentRuntime:
             "new_goal": contract.goal,
             "new_allowed_actions": contract.allowed_actions[:],
             "mode": contract.mode,
+            "switch_reason": contract.switch_reason,
+            "completion_reason": contract.completion_reason,
         }
         if active is not None:
             info["goal_similarity"] = self._goal_similarity(contract.goal, active.goal)
@@ -226,19 +285,61 @@ class IntentRuntime:
     def validate_payload(self, payload: dict) -> tuple[IntentContract | None, str | None]:
         if not isinstance(payload, dict):
             return None, "intent_payload_must_be_object"
+
+        mode = str(payload.get("mode") or "activate").strip().lower()
+        if mode not in self.SUPPORTED_MODES:
+            return None, "unsupported_intent_mode"
+
+        active = self.active_intent
         intent_id = str(payload.get("intent_id") or "").strip()
+        if mode == "complete":
+            if active is None:
+                return None, "intent_complete_without_active_intent"
+            if not intent_id:
+                intent_id = active.intent_id
+            if intent_id != active.intent_id:
+                return None, "intent_complete_wrong_active_id"
+
+            completion_reason = self._normalize_transition_reason(payload.get("completion_reason"))
+            completion_explanation = str(payload.get("completion_explanation") or "").strip()
+            if not self._is_legitimate_completion_reason(completion_reason):
+                return None, "intent_completion_reason_required"
+
+            return IntentContract(
+                intent_id=active.intent_id,
+                intent_type=active.intent_type,
+                goal=active.goal,
+                allowed_actions=active.allowed_actions[:],
+                original_allowed_actions=active.original_allowed_actions[:] if active.original_allowed_actions else active.allowed_actions[:],
+                safe_steps_limit=active.safe_steps_limit,
+                retry_limit=active.retry_limit,
+                mode="complete",
+                completion_reason=completion_reason,
+                completion_explanation=completion_explanation[:240],
+                lineage_id=active.lineage_id or active.intent_id,
+                user_visible_note=active.user_visible_note,
+                step_count=active.step_count,
+                retry_count=active.retry_count,
+                hard_limit_hit_count=active.hard_limit_hit_count,
+                user_step_extension=active.user_step_extension,
+                user_one_shot_steps_remaining=active.user_one_shot_steps_remaining,
+                user_unlimited_override=active.user_unlimited_override,
+                force_plaintext_completion=active.force_plaintext_completion,
+                action_constraints=dict(active.action_constraints or {}),
+            ), None
+
         intent_type = str(payload.get("intent_type") or "").strip().upper()
         goal = str(payload.get("goal") or "").strip()
-        mode = str(payload.get("mode") or "activate").strip().lower()
         user_visible_note = str(payload.get("user_visible_note") or payload.get("chat_note") or "").strip()
+        switch_reason = self._normalize_transition_reason(payload.get("switch_reason"))
+        switch_explanation = str(payload.get("switch_explanation") or "").strip()
+
         if not intent_id:
             return None, "intent_id_required"
         if intent_type not in self.SUPPORTED_TYPES:
             return None, "unsupported_intent_type"
         if not goal:
             return None, "intent_goal_required"
-        if mode not in self.SUPPORTED_MODES:
-            return None, "unsupported_intent_mode"
 
         raw_allowed = payload.get("allowed_actions")
         if not isinstance(raw_allowed, list) or not raw_allowed:
@@ -250,6 +351,10 @@ class IntentRuntime:
                 allowed_actions.append(action)
         if not allowed_actions:
             return None, "intent_allowed_actions_empty"
+
+        if active is not None and mode in {"activate", "replace"} and not self._is_legitimate_switch_reason(switch_reason):
+            if self._same_lineage(IntentContract(intent_id=intent_id, intent_type=intent_type, goal=goal[:240], allowed_actions=allowed_actions[:], original_allowed_actions=allowed_actions[:], safe_steps_limit=1, retry_limit=1)):
+                return None, "intent_switch_reason_required"
 
         try:
             safe_steps_limit = int(payload.get("safe_steps_limit", getattr(self.config, "INTENT_DEFAULT_SAFE_STEPS", 4)))
@@ -270,6 +375,8 @@ class IntentRuntime:
             safe_steps_limit=safe_steps_limit,
             retry_limit=retry_limit,
             mode=mode,
+            switch_reason=switch_reason,
+            switch_explanation=switch_explanation[:240],
             lineage_id=intent_id,
             user_visible_note=user_visible_note[:240],
             action_constraints=action_constraints,
@@ -285,9 +392,27 @@ class IntentRuntime:
         active = self.active_intent
         same_lineage = self._same_lineage(contract)
 
+        if contract.mode == "complete":
+            if active is None:
+                return False, "intent_complete_without_active_intent"
+            if contract.intent_id != active.intent_id:
+                return False, "intent_complete_wrong_active_id"
+            self.last_transition_info = {
+                "transition": "intent_completed",
+                "same_lineage": True,
+                "completion_reason": contract.completion_reason,
+                "completion_explanation": contract.completion_explanation,
+                "completed_intent_id": active.intent_id,
+                "completed_goal": active.goal,
+            }
+            self.active_intent = None
+            self.clear_requirement()
+            return True, "intent_completed"
+
         if active is not None and active.action_constraints.get("forbid_new_intent") and same_lineage:
             if contract.mode in {"activate", "replace"} and contract.intent_id != active.intent_id:
-                return False, "intent_new_block_forbidden_for_current_lineage"
+                if not self._is_legitimate_switch_reason(contract.switch_reason):
+                    return False, "intent_new_block_forbidden_for_current_lineage"
 
         if contract.mode == "retry":
             if active is None:
@@ -308,12 +433,17 @@ class IntentRuntime:
                 active.lineage_id = active.lineage_id or active.intent_id
                 active.step_count = 0
                 active.force_plaintext_completion = False
+                active.switch_reason = contract.switch_reason
+                active.switch_explanation = contract.switch_explanation
                 active.action_constraints = self._merge_constraints(active.action_constraints, contract.action_constraints)
                 self.clear_requirement()
-                self.last_transition_info = {"transition": "intent_retried", "same_lineage": True}
+                self.last_transition_info = {"transition": "intent_retried", "same_lineage": True, "switch_reason": contract.switch_reason}
                 if active.retry_count > active.retry_limit:
                     return False, "intent_retry_limit_exceeded"
                 return True, "intent_retried"
+
+        if active is not None and not self._reason_allows_transition(contract, active, same_lineage):
+            return False, "intent_transition_trigger_required"
 
         if contract.mode == "replace" or active is None or contract.intent_id != active.intent_id:
             if active is not None and same_lineage:
@@ -327,10 +457,10 @@ class IntentRuntime:
                 contract.action_constraints = self._merge_constraints(active.action_constraints, contract.action_constraints)
                 if bool(getattr(self.config, "INTENT_RELABEL_PRESERVE_STEPS_ON_REFRESH", True)):
                     contract.step_count = min(active.step_count, contract.safe_steps_limit + max(0, contract.user_step_extension))
-                self.last_transition_info = {"transition": "intent_replaced", "same_lineage": True}
+                self.last_transition_info = {"transition": "intent_replaced", "same_lineage": True, "switch_reason": contract.switch_reason}
             else:
                 contract.lineage_id = contract.intent_id
-                self.last_transition_info = {"transition": "intent_activated", "same_lineage": False}
+                self.last_transition_info = {"transition": "intent_activated", "same_lineage": False, "switch_reason": contract.switch_reason}
             self.active_intent = contract
             self.clear_requirement()
             return True, self.last_transition_info["transition"]
@@ -350,7 +480,7 @@ class IntentRuntime:
             contract.step_count = min(active.step_count, contract.safe_steps_limit + max(0, contract.user_step_extension))
         self.active_intent = contract
         self.clear_requirement()
-        self.last_transition_info = {"transition": "intent_refreshed", "same_lineage": same_lineage}
+        self.last_transition_info = {"transition": "intent_refreshed", "same_lineage": same_lineage, "switch_reason": contract.switch_reason}
         return True, "intent_refreshed"
 
     def _apply_allowed_action_updates(self, normalized: dict) -> None:
@@ -432,7 +562,17 @@ class IntentRuntime:
     def grant_two_more_steps(self) -> bool:
         if self.active_intent is None:
             return False
-        self.active_intent.user_one_shot_steps_remaining += max(1, int(getattr(self.config, "INTENT_USER_ONE_SHOT_STEPS", 2)))
+        grant = max(1, int(getattr(self.config, "INTENT_USER_ONE_SHOT_STEPS", 2)))
+        self.active_intent.user_step_extension += grant
+        self.active_intent.force_plaintext_completion = False
+        return True
+
+    def grant_user_approved_step_budget(self, extra_steps: int | None = None) -> bool:
+        if self.active_intent is None:
+            return False
+        if extra_steps is None:
+            extra_steps = int(getattr(self.config, "INTENT_USER_ONE_SHOT_STEPS", 2))
+        self.active_intent.user_step_extension += max(1, int(extra_steps))
         self.active_intent.force_plaintext_completion = False
         return True
 
@@ -450,6 +590,8 @@ class IntentRuntime:
             return False
         if not bool(getattr(self.config, "INTENT_ALLOW_UNLIMITED_OVERRIDE", True)):
             return False
+        # Kept only for backward compatibility. The preferred hard-limit flow is
+        # explicit user approval of a small additional step budget.
         self.active_intent.user_unlimited_override = True
         self.active_intent.force_plaintext_completion = False
         return True
@@ -553,11 +695,10 @@ class IntentRuntime:
                 "next_actions": self.active_intent.allowed_actions[:],
                 "message": (
                     "Current intent exceeded its hard step limit repeatedly for the same lineage. "
-                    "Ask user what to do next."
+                    "Hand off the decision to the user: approve more steps, or stop and answer from current evidence."
                     if repeated else
                     "Current intent exceeded its hard step limit. "
-                    "Do not refresh/relabel the same intent again. "
-                    "Either conclude with current evidence or start a materially different retry/replace intent."
+                    "Do not continue automatically. Hand off the decision to the user: approve more steps, or stop and answer from current evidence."
                 ),
                 "command": command.copy(),
             }

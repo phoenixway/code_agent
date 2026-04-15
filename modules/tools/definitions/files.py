@@ -129,9 +129,11 @@ def _safe_int(value, default=None):
 class ReadChunkTool(BaseTool):
     name = "read_chunk"
     description = (
-        "Reads only a byte range from a file. Use this instead of full read_file when a file is too large "
-        "or when you only need a specific region around a known symbol or line range. "
-        "Params: 'path' (str), 'start_byte' (int), optional 'end_byte' (int)."
+        "Reads only a region from a file. Use this instead of full read_file when a file is too large "
+        "or when you only need a specific region around a known symbol. "
+        "Supports either byte ranges or line ranges. "
+        "Params: 'path' (str), EITHER ('start_byte' (int), optional 'end_byte' (int)) "
+        "OR ('start_line' (int), optional 'end_line' (int))."
     )
 
     MIN_NONEMPTY_CHARS = 1
@@ -139,8 +141,10 @@ class ReadChunkTool(BaseTool):
     async def execute(
         self,
         path: str,
-        start_byte: int,
+        start_byte: int | None = None,
         end_byte: int | None = None,
+        start_line: int | None = None,
+        end_line: int | None = None,
         **kwargs,
     ):
         try:
@@ -166,16 +170,121 @@ class ReadChunkTool(BaseTool):
 
             sb = _safe_int(start_byte)
             eb = _safe_int(end_byte)
+            sl = _safe_int(start_line)
+            el = _safe_int(end_line)
+
+            file_size = p.stat().st_size
+
+            using_lines = sl is not None
+            using_bytes = sb is not None
+
+            if using_lines and using_bytes:
+                return {
+                    "status": "error",
+                    "error_code": "VALIDATION_ERROR",
+                    "recoverable": True,
+                    "next_actions": ["read_chunk"],
+                    "output": "read_chunk accepts either byte range or line range, not both at once.",
+                }
+
+            if not using_lines and not using_bytes:
+                return {
+                    "status": "error",
+                    "error_code": "VALIDATION_ERROR",
+                    "recoverable": True,
+                    "next_actions": ["read_chunk"],
+                    "output": "read_chunk requires either 'start_byte' or 'start_line'.",
+                }
+
+            if using_lines:
+                if sl is None or sl < 1:
+                    return {
+                        "status": "error",
+                        "error_code": "VALIDATION_ERROR",
+                        "recoverable": True,
+                        "next_actions": ["read_chunk"],
+                        "output": "read_chunk requires start_line >= 1.",
+                    }
+
+                full_text = p.read_text(encoding="utf-8", errors="replace")
+                lines = full_text.splitlines(keepends=True)
+
+                if sl > max(1, len(lines)):
+                    return {
+                        "status": "error",
+                        "error_code": "EMPTY_CHUNK_RESULT",
+                        "recoverable": True,
+                        "next_actions": ["search_content", "read_file_skeleton", "read_chunk"],
+                        "output": (
+                            f"Requested chunk starts beyond EOF lines: start_line={sl}, total_lines={len(lines)}. "
+                            "Choose a smaller line range or locate the symbol first with search_content."
+                        ),
+                        "error_details": {"path": path, "start_line": sl, "total_lines": len(lines)},
+                    }
+
+                if el is None:
+                    el = min(len(lines), sl + 199)
+                if el < sl:
+                    return {
+                        "status": "error",
+                        "error_code": "VALIDATION_ERROR",
+                        "recoverable": True,
+                        "next_actions": ["read_chunk"],
+                        "output": "read_chunk requires end_line >= start_line.",
+                    }
+
+                el = min(el, len(lines))
+
+                start_idx = sum(len(x.encode("utf-8")) for x in lines[: sl - 1])
+                end_idx = sum(len(x.encode("utf-8")) for x in lines[:el])
+                content = "".join(lines[sl - 1 : el])
+                sb = start_idx
+                eb = end_idx
+
+                if len(content.strip()) < self.MIN_NONEMPTY_CHARS:
+                    return {
+                        "status": "error",
+                        "error_code": "EMPTY_CHUNK_RESULT",
+                        "recoverable": True,
+                        "next_actions": ["search_content", "read_file_skeleton", "read_chunk"],
+                        "output": (
+                            f"Line chunk [{sl}, {el}] produced no useful text. "
+                            "Choose a different range, or use search_content / read_file_skeleton first."
+                        ),
+                        "error_details": {
+                            "path": path,
+                            "start_line": sl,
+                            "end_line": el,
+                            "total_lines": len(lines),
+                            "file_size": file_size,
+                        },
+                    }
+
+                return {
+                    "status": "success",
+                    "output": content,
+                    "file_content": content,
+                    "file_path": str(p),
+                    "chunked": True,
+                    "start_byte": sb,
+                    "end_byte": eb,
+                    "start_line": sl,
+                    "end_line": el,
+                    "file_size": file_size,
+                    "total_lines": len(lines),
+                    "chunk_mode": "lines",
+                    "tool_variant": "read_chunk",
+                }
+
             if sb is None:
                 return {
                     "status": "error",
                     "error_code": "VALIDATION_ERROR",
                     "recoverable": True,
                     "next_actions": ["read_chunk"],
-                    "output": "read_chunk requires 'start_byte' (int).",
+                    "output": "read_chunk requires 'start_byte' (int) when using byte mode.",
                 }
 
-            file_size = p.stat().st_size
             if sb < 0:
                 return {
                     "status": "error",
@@ -237,6 +346,7 @@ class ReadChunkTool(BaseTool):
                 "start_byte": sb,
                 "end_byte": eb,
                 "file_size": file_size,
+                "chunk_mode": "bytes",
                 "tool_variant": "read_chunk",
             }
         except Exception as e:

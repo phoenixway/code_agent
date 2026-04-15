@@ -416,9 +416,11 @@ class ActionDispatcher:
                     ],
                     "message": (
                         "The planned full read_file action is too large for this path. "
-                        "Do NOT repeat the same full read_file action. "
-                        "Next step must be one of: read_chunk, read_file_skeleton, "
-                        "search_content, search_files, or run_shell with rg/fd. "
+                        "Do not repeat the same full read_file action for this path right now. "
+                        "Stay on the current goal, but switch to a smaller read strategy: "
+                        "read_chunk, read_file_skeleton, search_content, search_files, "
+                        "or run_shell with rg/fd. "
+                        "If you later need a new intent, request it formally with a legitimate switch reason. "
                         "Return EXACTLY ONE materially different read-only action."
                     ),
                     "command": cmd.copy(),
@@ -429,8 +431,6 @@ class ActionDispatcher:
                         "max_full_reads_per_step": 0,
                         "require_chunk_for_paths": [path],
                         "forbid_same_full_read_path": path,
-                        "forbid_new_intent": True,
-                        "reuse_current_intent": True,
                     },
                 }
 
@@ -450,9 +450,10 @@ class ActionDispatcher:
             ],
             "message": (
                 "The planned read/search output for this turn is too large to preserve safely in context. "
-                "Use a materially smaller step under the current intent: read fewer files at once, "
+                "Continue under the current goal with a materially smaller step: read fewer files at once, "
                 "read exactly one strongest candidate file, use read_chunk, use read_file_skeleton, "
                 "or narrow the investigation through search first (search_content, search_files, rg, fd). "
+                "If you truly need to change intent, do it only through a formal intent request with a legitimate switch reason. "
                 "Return EXACTLY ONE revised action or a smaller read-only batch."
             ),
             "command": first_command.copy() if isinstance(first_command, dict) else {},
@@ -461,8 +462,6 @@ class ActionDispatcher:
             "safe_budget_chars": safe_budget_chars,
             "intent_constraint_updates": {
                 "max_full_reads_per_step": 1,
-                "forbid_new_intent": True,
-                "reuse_current_intent": True,
             },
         }
 
@@ -602,9 +601,9 @@ class ActionDispatcher:
             intent_stop = intent_precheck(command)
             if intent_stop:
                 output_text = (
-                    "SYSTEM: Current intent contract does not allow this action. "
-                    "Reuse the current intent and choose one of its allowed actions now. "
-                    "Do not send a new equivalent intent unless you are explicitly retrying or replacing with a materially different goal."
+                    "SYSTEM: This action is outside the current intent contract. "
+                    "Keep the current intent active unless you formally complete it or submit a formal intent switch with a legitimate reason. "
+                    "Right now, choose one of the current intent's allowed actions, or complete the current intent if its goal is already satisfied."
                 )
                 state.pending_loop_stop_info = intent_stop
                 full_result_text = f"SYSTEM RESULT for `{cmd_type}`: {output_text}"
@@ -644,7 +643,8 @@ class ActionDispatcher:
         if state.consume_forbidden_action_if_matches(command):
             output_text = (
                 "Action blocked: repeating the previous action immediately after malformed-action recovery "
-                "is not allowed. Change tool or arguments."
+                "is not allowed. Change tool or arguments. "
+                "The current intent may continue, but this exact immediate retry is not accepted."
             )
             state.pending_loop_stop_info = {
                 "reason": "repeating_no_progress",

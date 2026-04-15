@@ -149,11 +149,13 @@ class Orchestrator:
 
     def _build_intent_overrun_message(self, stop_info: dict | None) -> str:
         stop_info = stop_info or {}
-        reason = str(stop_info.get("reason") or "intent_step_limit_exceeded_repeated")
+        reason = str(stop_info.get("reason") or "intent_step_limit_exceeded")
         return (
-            "Модель вийшла за межі кроків, схвалених для поточного intent lineage. "
-            "Це може означати або складне, але ще живе дослідження, або зациклення.\n"
-            f"Причина: {reason}. Що робити?"
+            "Поточний intent досяг жорсткого ліміту кроків. Далі агент не повинен продовжувати самовільно.\n"
+            f"Причина: {reason}.\n"
+            "Обери один із двох варіантів:\n"
+            "- Approve more steps: дозволити ще невеликий бюджет кроків для ЦЬОГО самого intent.\n"
+            "- Stop and answer from current evidence: зупинити tool use і отримати відповідь лише з уже зібраного."
         )
 
     async def _choose_intent_overrun_action(self, stop_info: dict | None) -> str | None:
@@ -165,13 +167,13 @@ class Orchestrator:
         if callable(fallback):
             decision = await fallback(
                 self._build_intent_overrun_message(stop_info)
-                + "\nТак = дозволити ще 2 кроки. Ні = завершити відповіддю на основі вже зібраного."
+                + "\nТак = Approve more steps. Ні = Stop and answer from current evidence."
             )
-            if decision in (True, "continue", "continue_silent"):
-                return "allow_2_steps"
-            if decision in (False, "stop", None):
-                return "force_completion_answer"
-        return "force_completion_answer"
+            if decision in (True, "continue", "continue_silent", "approve_more_steps"):
+                return "approve_more_steps"
+            if decision in (False, "stop", None, "stop_and_answer", "force_completion_answer"):
+                return "stop_and_answer"
+        return "stop_and_answer"
 
     async def _handle_defect_detector_stop(self, stop_info: dict | None) -> tuple[bool, str | None]:
         stop_info = stop_info or {}
@@ -195,79 +197,45 @@ class Orchestrator:
                 goal=getattr(active_intent, "goal", ""),
             )
 
-        if reason == "intent_step_limit_exceeded":
-            active_intent = getattr(self.state, "active_intent", None)
-            allowed = stop_info.get("next_actions") or getattr(active_intent, "allowed_actions", None) or []
-            prompt = (
-                "SYSTEM: The current intent exceeded its hard step limit.\n"
-                f"Allowed actions under the CURRENT intent: {', '.join(allowed)}.\n"
-                "Do NOT relabel or refresh the same intent again.\n"
-                "Either return a final plain-text answer now, or emit a materially different retry/replace <intent>.\n"
-                "If you still use a tool, it must be one final targeted action only."
-            )
-            return True, prompt
-
-        if reason == "intent_step_limit_exceeded_repeated":
+        if reason in {"intent_step_limit_exceeded", "intent_step_limit_exceeded_repeated"}:
             active_intent = getattr(self.state, "active_intent", None)
             allowed = stop_info.get("next_actions") or getattr(active_intent, "allowed_actions", None) or []
             decision = await self._choose_intent_overrun_action(stop_info)
             runtime = getattr(self.state, "intent_runtime", None)
 
-            if decision in (None, "stop"):
-                await self.ui.print_system("Execution stopped by user after repeated intent hard-limit.")
-                return True, None
-
-            if decision == "allow_2_steps":
+            if decision == "approve_more_steps":
+                granted = False
                 if runtime is not None and hasattr(runtime, "grant_two_more_steps"):
                     runtime.grant_two_more_steps()
-                self.state.add_confirmation(1)
-                return True, (
-                    self._build_reuse_current_intent_prompt(
-                        "user_granted_two_more_steps_after_repeated_hard_limit",
-                        allowed,
-                        goal=getattr(active_intent, "goal", ""),
-                    )
-                    + "\nUser granted 2 more steps for the current intent lineage. Return EXACTLY ONE valid <action> now."
-                )
+                    granted = True
+                elif runtime is not None and hasattr(runtime, "extend_current_intent_limit"):
+                    runtime.extend_current_intent_limit(2)
+                    granted = True
 
-            if decision == "extend_limit":
-                extra = int(getattr(self.config, "INTENT_USER_EXTENSION_STEPS", 4))
-                if runtime is not None and hasattr(runtime, "extend_current_intent_limit"):
-                    runtime.extend_current_intent_limit(extra)
-                self.state.add_confirmation(1)
-                return True, (
-                    self._build_reuse_current_intent_prompt(
-                        "user_extended_limit_for_current_intent",
-                        allowed,
-                        goal=getattr(active_intent, "goal", ""),
-                    )
-                    + f"\nUser extended the nominal step budget for this investigation by {extra} steps. Return EXACTLY ONE valid <action> now."
-                )
-
-            if decision == "unlimited_for_intent":
-                enabled = bool(
-                    runtime is not None
-                    and hasattr(runtime, "enable_unlimited_for_current_intent")
-                    and runtime.enable_unlimited_for_current_intent()
-                )
                 self.state.add_confirmation(1)
                 note = (
-                    "User explicitly granted unlimited continuation for this intent. Avoid loops and overclaim."
-                    if enabled else
-                    "Unlimited continuation for this intent is disabled in config. Continue carefully under the current intent."
+                    "User approved a small additional step budget for the CURRENT intent. Return EXACTLY ONE valid next <action> now."
+                    if granted else
+                    "User approved continuation for the CURRENT intent. Return EXACTLY ONE valid next <action> now."
                 )
-                return True, self._build_reuse_current_intent_prompt(
-                    "user_enabled_unlimited_for_current_intent",
-                    allowed,
-                    goal=getattr(active_intent, "goal", ""),
-                ) + f"\n{note}"
+                return True, (
+                    self._build_reuse_current_intent_prompt(
+                        "user_approved_more_steps_after_hard_limit",
+                        allowed,
+                        goal=getattr(active_intent, "goal", ""),
+                    )
+                    + f"\n{note}"
+                )
 
-            if decision == "force_completion_answer":
-                if runtime is not None and hasattr(runtime, "force_current_intent_completion"):
-                    runtime.force_current_intent_completion()
-                return True, self._build_plain_text_completion_prompt(getattr(self.state, "state_machine", None), stop_info)
-
-            return True, self._build_plain_text_completion_prompt(getattr(self.state, "state_machine", None), stop_info)
+            if runtime is not None and hasattr(runtime, "force_current_intent_completion"):
+                runtime.force_current_intent_completion()
+            return True, self._build_plain_text_completion_prompt(
+                getattr(self.state, "state_machine", None),
+                {
+                    **(stop_info or {}),
+                    "reason": "user_stopped_after_hard_limit_answer_from_current_evidence",
+                },
+            )
 
         reason_map = {
             "defect_repeated_action_cycle": "Defect detector: модель повторює 3 кроки в циклі. Продовжити?",
@@ -443,7 +411,7 @@ class Orchestrator:
         if code == "INTENT_STEP_LIMIT_EXCEEDED":
             return (
                 "The current intent exceeded its hard step limit. "
-                "Do not relabel the same intent again. Either conclude now or start a materially different retry/replace intent."
+                "Do not cosmetically relabel the same intent again. Either conclude now, formally complete the current intent, or start a materially different retry/replace intent with a legitimate trigger."
             ) + next_hint
         if code == "TOO_BROAD_SEARCH":
             return (
@@ -710,15 +678,6 @@ class Orchestrator:
 
                 if intent_payload is not None:
                     active_intent = getattr(self.state, "active_intent", None)
-                    constraints = getattr(active_intent, "action_constraints", {}) if active_intent is not None else {}
-                    if constraints.get("forbid_new_intent"):
-                        current_query = self._build_reuse_current_intent_prompt(
-                            "current_intent_constraints_forbid_new_intent",
-                            getattr(active_intent, "allowed_actions", None) or [],
-                            goal=getattr(active_intent, "goal", ""),
-                        )
-                        continue
-
                     ok, intent_msg = self.state.apply_intent_contract(intent_payload, self.config)
                     warning = ""
                     if getattr(self.state, "intent_runtime", None) is not None:
@@ -742,7 +701,11 @@ class Orchestrator:
                                 continue
                             active_loop = False
                             continue
-                        current_query = self._build_intent_required_prompt(intent_msg)
+                        current_query = self._build_intent_transition_rejected_prompt(
+                            intent_msg,
+                            getattr(getattr(self.state, "active_intent", None), "allowed_actions", None) or [],
+                            goal=getattr(getattr(self.state, "active_intent", None), "goal", ""),
+                        )
                         continue
 
                     if sm is not None:
@@ -751,11 +714,14 @@ class Orchestrator:
                     if not response.strip():
                         if hasattr(self.state, "note_intent_only_response"):
                             self.state.note_intent_only_response()
-                        current_query = (
-                            "SYSTEM: Intent activated. Now return the next valid step. "
-                            "If tool use is needed, return the next <action>. "
-                            "Do not repeat the same intent unless you are explicitly retrying or replacing it."
-                        )
+                        if intent_msg == "intent_completed":
+                            current_query = self._build_intent_completed_prompt()
+                        else:
+                            current_query = (
+                                "SYSTEM: Intent accepted. Now return the next valid step. "
+                                "If tool use is needed, return the next <action>. "
+                                "Do not repeat the same intent unless you are explicitly retrying, replacing, or formally completing it."
+                            )
                         continue
 
                 if getattr(self.state, "intent_required_until_activated", False) and "<action" in response.lower():

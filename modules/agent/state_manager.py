@@ -186,12 +186,17 @@ class AgentState:
         if error:
             return False, error
 
+        should_skip_suspicion = bool(
+            bypass_suspicion
+            or contract is None
+            or transition_info is None
+            or not bool(getattr(config, "INTENT_RELABEL_SUSPICION_ENABLED", True))
+            or (self.intent_runtime is not None and hasattr(self.intent_runtime, "should_bypass_relabel_suspicion") and self.intent_runtime.should_bypass_relabel_suspicion(contract, transition_info))
+        )
+
         suspicious = False
         if (
-            not bypass_suspicion
-            and bool(getattr(config, "INTENT_RELABEL_SUSPICION_ENABLED", True))
-            and contract is not None
-            and transition_info is not None
+            not should_skip_suspicion
             and transition_info.get("same_lineage")
             and transition_info.get("old_goal")
             and contract.mode in {"activate", "replace"}
@@ -208,7 +213,7 @@ class AgentState:
                     "error_code": "SUSPECT_INTENT_RELABEL_REPEAT",
                     "next_actions": list(contract.allowed_actions),
                     "command": recent.get("command", {}).copy() if isinstance(recent.get("command"), dict) else {},
-                    "message": "Є підозра на useless intent relabel.",
+                    "message": "Є підозра на cosmetic intent relabel without a legitimate transition trigger.",
                     "suspicion": {
                         "old_intent_id": transition_info.get("old_intent_id", ""),
                         "old_goal": transition_info.get("old_goal", ""),

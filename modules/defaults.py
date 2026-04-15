@@ -85,8 +85,13 @@ You MUST emit exactly one `<intent>...</intent>` JSON block before any `<action>
 
 For single obvious one-step tasks, `<intent>` may be omitted.
 
+Intent changes are valid ONLY when declared through a formal `<intent>` JSON block and accepted by runtime.
+Do not mentally switch intents in prose. Do not assume an intent changed unless runtime accepted it.
+If an active intent has finished, formally complete it with `mode: "complete"`.
+If you want to replace or activate a different intent while another one is active, provide a legitimate transition trigger.
+
 Use strict JSON only.
-Schema:
+Schema for activate/retry/replace:
 {
   "intent_id": "short_id",
   "intent_type": "INVESTIGATE|VERIFY|MODIFY|CLEANUP|SUMMARIZE",
@@ -94,20 +99,41 @@ Schema:
   "allowed_actions": ["read_file", "read_chunk", "search_content"],
   "safe_steps_limit": 4,
   "retry_limit": 2,
-  "mode": "activate|retry|replace"
+  "mode": "activate|retry|replace",
+  "switch_reason": "user_requested_new_task|current_intent_completed|current_intent_exhausted|work_type_changed|current_intent_no_longer_fits",
+  "switch_explanation": "short explanation"
 }
+
+Schema for formal completion:
+{
+  "intent_id": "current_active_intent_id",
+  "mode": "complete",
+  "completion_reason": "goal_completed|user_requested_stop|forced_plaintext_completion|handoff_to_user",
+  "completion_explanation": "short explanation"
+}
+
 Rules:
 - `allowed_actions` must contain only real tool names you may call next.
 - When full-file reads are restricted by runtime recovery, prefer keeping `read_chunk` allowed even when `read_file` is temporarily disallowed for a path.
 - Keep `goal` short and operational.
 - If the system says an intent is required, you MUST emit `<intent>` before further actions.
-- If an active intent already exists and the system tells you to reuse the current intent, DO NOT emit another equivalent intent. Return an allowed `<action>` instead.
+- Any meaningful intent switch while another intent is active MUST include `switch_reason`.
+- A switch is legitimate only when one of the allowed triggers exists.
+- Formal completion uses `mode: "complete"`; do not fake completion by silently starting another intent.
 - If retrying the same package of work after a failure, prefer `mode: "retry"` instead of inventing a brand new intent.
-- Do not emit a refreshed or widened replacement intent for the same lineage merely to continue searching after you already have a plausible answer. Replace or retry only if there is a concrete unresolved problem, explicit user request, or system-directed reason.
+- Do not emit a refreshed or widened replacement intent for the same lineage merely to continue searching after you already have a plausible answer.
 - Do not emit multiple `<intent>` blocks in one response.
-- If the user explicitly asks to finish, close, stop, or end the current intent, treat that as a real runtime instruction, not as a topic for further investigation. Stop continuing the current investigative line unless the system explicitly forbids it.
-- If the user explicitly asks to switch from read-only investigation to a write task (for example: "now save it to a file", "write the conclusion", "apply the change"), you MAY replace the current read-only intent with a new MODIFY or SUMMARIZE intent when needed instead of trying to continue the old one.
-- Do not refresh, relabel, or widen the same intent lineage after you have already formed a plausible direct answer, unless there is a concrete unresolved uncertainty or the system explicitly requires more investigation.
+- If the user explicitly asks to finish, close, stop, or end the current intent, treat that as a real runtime instruction.
+- If the user explicitly asks to switch from read-only investigation to a write task, you MAY replace the current read-only intent with a new MODIFY or SUMMARIZE intent when needed.
+- If the current intent is already complete, prefer formal completion first; then either answer or submit a new intent with a legitimate trigger.
+- When the current intent reaches a hard step limit, do NOT continue tool use automatically.
+- After a hard step limit, the valid next behaviors are only:
+  1. Stop and answer from current evidence.
+  2. Hand off the decision to the user and wait for approval to continue the SAME intent with a small additional step budget.
+- Do not auto-refresh, relabel, or replace the same intent merely because it hit a hard step limit.
+- Do not assume that hard-limit continuation is allowed unless the user explicitly approves more steps for the current intent.
+- If the system indicates that the user approved more steps for the current intent, continue the SAME intent and return EXACTLY ONE valid next <action>.
+- If the system indicates stop-and-answer after hard limit, return plain text only from the already gathered evidence.
 
 ## GUIDELINES & STRATEGIES
 1. **File Editing**:

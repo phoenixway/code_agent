@@ -1,14 +1,15 @@
 """Defect detector for repeated low-value agent behavior.
 
-Keep extension simple:
-- add a rule method
-- register it in `self._rules`
+Updated to stay in its lane:
+- it detects repeated/low-value action behavior
+- it does NOT become the main judge of legitimate intent transitions
+- it tolerates the post-completion / intent-switch protocol instead of fighting it
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from collections import deque
+from dataclasses import dataclass
 
 
 @dataclass
@@ -23,7 +24,9 @@ class DefectEvent:
 class DefectDetector:
     def __init__(self, config):
         self.config = config
-        self._fingerprints = deque(maxlen=max(12, int(getattr(config, "DEFECT_ACTION_HISTORY_WINDOW", 12))))
+        self._fingerprints = deque(
+            maxlen=max(12, int(getattr(config, "DEFECT_ACTION_HISTORY_WINDOW", 12)))
+        )
         self._strategy_history: dict[str, deque[str]] = {}
         self._strategy_failures: dict[str, set[str]] = {}
         self._rules = [
@@ -44,6 +47,8 @@ class DefectDetector:
         self._fingerprints.append(fingerprint)
 
     def evaluate(self, state, command: dict, result: dict) -> DefectEvent | None:
+        # The defect detector judges *actions*, not formal intent transitions.
+        # Intent acceptance/rejection belongs to apply_intent_contract.
         fp = state.get_action_fingerprint(command)
         self.note_fingerprint(fp)
         self._note_strategy(state, command, result)
@@ -83,7 +88,10 @@ class DefectDetector:
     def _repeated_cycle(self, state, command: dict, result: dict) -> DefectEvent | None:
         cycle_window = max(2, int(getattr(self.config, "DEFECT_ACTION_CYCLE_WINDOW", 3)))
         recent = list(self._fingerprints)
-        if len(recent) >= cycle_window * 2 and recent[-cycle_window:] == recent[-2 * cycle_window:-cycle_window]:
+        if len(recent) < cycle_window * 2:
+            return None
+
+        if recent[-cycle_window:] == recent[-2 * cycle_window:-cycle_window]:
             return DefectEvent(
                 reason="defect_repeated_action_cycle",
                 error_code="DEFECT_REPEATED_ACTION_CYCLE",
@@ -101,7 +109,11 @@ class DefectDetector:
             return DefectEvent(
                 reason="history_self_reference_hit",
                 error_code="HISTORY_SELF_REFERENCE_HIT",
-                next_actions=self._active_next_actions(state) or ["search_content", "search_files", "read_file"],
+                next_actions=self._active_next_actions(state) or [
+                    "search_content",
+                    "search_files",
+                    "read_file",
+                ],
                 message=(
                     "Search hit only self-referential history entries (for example modules/history.py). "
                     "This is not real usage evidence. Change the search strategy or narrow scope."
@@ -121,35 +133,36 @@ class DefectDetector:
         pattern = str(command.get("pattern") or command.get("query") or "")
         output = str((result or {}).get("output") or "")
 
-        too_many = ("Showing first" in output and ("matches" in output or "files" in output)) or ("Found 451 matches" in output)
+        too_many = (
+            ("Showing first" in output and ("matches" in output or "files" in output))
+            or ("Found 451 matches" in output)
+        )
         generic_pattern = pattern in {r"\.py", "*.py", ""} or len(pattern) <= 8
+        threshold = max(1, int(getattr(self.config, "DEFECT_TOO_BROAD_SEARCH_THRESHOLD", 1)))
 
-        if broad and recursive and (too_many or (not code_only and generic_pattern)):
+        if broad and recursive and not code_only and generic_pattern and too_many and threshold <= 1:
             return DefectEvent(
                 reason="too_broad_search",
                 error_code="TOO_BROAD_SEARCH",
-                next_actions=self._active_next_actions(state) or ["search_content", "search_files", "read_file", "list_directory"],
-                message="Search is too broad or too noisy. Narrow scope, disable recursion, enable code_only, or make the pattern more specific.",
+                next_actions=self._active_next_actions(state),
+                message="Search is too broad for the current goal. Narrow the scope before continuing.",
             )
         return None
 
     def _low_value_broad_search_repeat(self, state, command: dict, result: dict) -> DefectEvent | None:
         cmd_type = command.get("type") or command.get("action") or "unknown"
-        if cmd_type not in {"search_content", "search_files", "list_directory"}:
+        if cmd_type not in {"search_content", "search_files", "list_directory", "run_shell"}:
             return None
 
-        path = str(command.get("path") or "")
-        pattern = str(command.get("pattern") or command.get("query") or "")
-        output = str((result or {}).get("output") or "")
-        broad = path in {"", ".", "./", "/"} or path.endswith("/.")
-        low_value = ("Found 0" in output) or ("No matches" in output) or (len(output) > 2000 and ("Found " in output or "matches" in output or "files" in output))
-        generic_pattern = pattern in {r"\.py", "*.py", ""} or len(pattern) <= 6
-        if not (broad and (low_value or generic_pattern)):
-            return None
-
-        threshold = max(2, int(getattr(self.config, "DEFECT_LOW_VALUE_BROAD_SEARCH_REPEAT_THRESHOLD", 2)))
+        threshold = max(
+            2,
+            int(getattr(self.config, "DEFECT_LOW_VALUE_BROAD_SEARCH_REPEAT_THRESHOLD", 2)),
+        )
         tail = list(self._fingerprints)[-threshold:]
-        if len(tail) >= threshold and all(fp.split(":", 1)[0] == cmd_type for fp in tail):
+        if len(tail) < threshold:
+            return None
+
+        if all(fp.split(":", 1)[0] == cmd_type for fp in tail) and self._is_low_value_result(result):
             return DefectEvent(
                 reason="low_value_broad_search_repeat",
                 error_code="LOW_VALUE_BROAD_SEARCH_REPEAT",
@@ -185,11 +198,16 @@ class DefectDetector:
             return True
         return False
 
-    def _note_strategy(self, state, command: dict, result: dict):
+    def _lineage_key(self, state) -> str | None:
         intent = getattr(getattr(state, "intent_runtime", None), "active_intent", None)
         if intent is None:
+            return None
+        return f"{intent.intent_type}:{intent.intent_id}:{intent.goal[:120]}"
+
+    def _note_strategy(self, state, command: dict, result: dict):
+        lineage_key = self._lineage_key(state)
+        if not lineage_key:
             return
-        lineage_key = f"{intent.intent_type}:{intent.intent_id}:{intent.goal[:120]}"
         sig = self._strategy_signature(command)
         history = self._strategy_history.setdefault(lineage_key, deque(maxlen=8))
         if not history or history[-1] != sig:
@@ -199,10 +217,9 @@ class DefectDetector:
             failures.add(sig)
 
     def _strategy_exhausted(self, state, command: dict, result: dict) -> DefectEvent | None:
-        intent = getattr(getattr(state, "intent_runtime", None), "active_intent", None)
-        if intent is None:
+        lineage_key = self._lineage_key(state)
+        if not lineage_key:
             return None
-        lineage_key = f"{intent.intent_type}:{intent.intent_id}:{intent.goal[:120]}"
         failures = self._strategy_failures.get(lineage_key, set())
         threshold = max(2, int(getattr(self.config, "DEFECT_STRATEGY_EXHAUSTED_THRESHOLD", 3)))
         if len(failures) >= threshold:
