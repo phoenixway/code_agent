@@ -10,6 +10,8 @@ from modules.policy import PermissionPolicy
 from modules.parser import ResponseParser
 from modules.logger import setup_loggers, get_comm_logger, get_debug_logger
 from modules.files import FileModule
+from modules.memory_board_store import MemoryBoardStore
+from modules.memory_board_engine import MemoryBoardEngine
 
 # Імпорт підмодулів
 from .config import AgentConfig
@@ -17,7 +19,7 @@ from .state_manager import AgentState
 from .state_machine import AgentStateMachine
 from .model_client import ModelClient
 from .action_dispatcher import ActionDispatcher
-from .orchestrator import Orchestrator
+from .orchestration import Orchestrator
 from .planner import TaskBoardPlanner
 
 
@@ -55,6 +57,15 @@ class AngelicaAgent:
             max_tokens=self.config.max_history_tokens,
             autosummarize_requires_confirmation=self.config.autosummarize_requires_confirmation,
         )
+        self.memory_board_store = MemoryBoardStore(storage_path=".angelica/memory_board.json")
+        self.memory_board_engine = MemoryBoardEngine(
+            self.memory_board_store,
+            logger=self.log,
+        )
+        if hasattr(self.history, "set_memory_board_store"):
+            self.history.set_memory_board_store(self.memory_board_store)
+        self.state.memory_board_store = self.memory_board_store
+        self.state.memory_board_engine = self.memory_board_engine
         self.state.state_machine.history = self.history
 
         self.session_manager = SessionManager(
@@ -137,6 +148,8 @@ class AngelicaAgent:
             self.session_manager.history = self.history
             if hasattr(self.orchestrator, "history"):
                 self.orchestrator.history = self.history
+            if hasattr(self.state, "state_machine") and self.state.state_machine is not None:
+                self.state.state_machine.history = self.history
 
             # Re-apply user-configured history size after recreating HistoryManager.
             self.set_history_size(self.config.history_size)

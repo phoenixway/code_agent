@@ -13,7 +13,15 @@ The application is structured around a central **Agent** class that coordinates 
     -   Manages the main execution loop: `User Input -> Context Assembly -> LLM Request -> Response Parsing -> Action Execution -> Output Feedback`.
     -   Handles high-level error catching and session management.
 
-2.  **Response Processing (`modules/parser.py` & `modules/processor.py`)**
+2.  **Orchestration Runtime (`modules/agent/orchestration/`)**
+    -   **`core.py` / `Orchestrator`**: Thin runtime coordinator for the main Think -> Act -> Loop cycle.
+    -   **`lifecycle.py` / `TurnLifecycle`**: Bootstraps a user turn by updating history, state runtime, and state machine references.
+    -   **`policy.py` / `IntentGuard`**: Decides when a formal intent is required before additional tool use.
+    -   **`parsing.py` / `IntentResponseParser`**: Extracts `<intent>` blocks and detects malformed or dead-end model replies.
+    -   **`prompting.py` / `OrchestratorPromptBuilder`**: Owns wording for system prompts, recovery prompts, and completion prompts.
+    -   **`recovery.py` / `RecoveryCoordinator`**: Chooses recovery actions and stop/continue transitions from runtime stop reasons.
+
+3.  **Response Processing (`modules/parser.py` & `modules/processor.py`)**
     -   **Parser (`ResponseParser`)**:
         -   Splits the response into a sequence of `Segment` objects: `THOUGHT`, `TEXT`, `ACTION`.
         -   **Fallback Logic**: If `<think>` tags are malformed (e.g., more closing than opening), it treats everything up to the last `</think>` as thought content.
@@ -23,21 +31,21 @@ The application is structured around a central **Agent** class that coordinates 
         -   Executes the extracted `ACTION` segments.
         -   Handles the `return_control` logic: if a tool requests to return control, the execution loop pauses and returns results to the LLM.
 
-3.  **Tool System (`modules/tools/`)**
+4.  **Tool System (`modules/tools/`)**
     -   **`manager.py`**: Dynamically loads tool classes and exposes them to the processor.
     -   **`base.py`**: Base class for all tools.
     -   Tools are defined in `modules/tools/definitions/` (e.g., `files.py`, `shell.py`).
 
-4.  **Context Manager (`modules/context.py`)**
+5.  **Context Manager (`modules/context.py`)**
     -   Prepares the "Context Window" for the LLM.
     -   **Project Structure**: Generates a tree view of the current directory, respecting `.gitignore`.
     -   **File Basket**: Manages a cache of read files to include their content in the system prompt.
 
-5.  **History Manager (`modules/history.py`)**
+6.  **History Manager (`modules/history.py`)**
     -   Stores the conversation history (User, Assistant, System).
     -   **Summarization**: Automatically calls the LLM to summarize the conversation when the token limit is exceeded, preventing context overflow.
 
-6.  **Permission Policy (`modules/policy.py`)**
+7.  **Permission Policy (`modules/policy.py`)**
     -   Security layer that intercepts actions before execution.
     -   Modes:
         -   `ask`: Prompts the user for confirmation (default).
@@ -46,7 +54,7 @@ The application is structured around a central **Agent** class that coordinates 
     -   Global safety switch:
         -   `allow_side_effect_tools: false` blocks side-effect tools (shell/file writes/git changes) regardless of mode.
 
-7.  **File System (`modules/files.py`)**
+8.  **File System (`modules/files.py`)**
     -   A wrapper around `pathlib` to perform safe file operations (read, write, edit).
 
 ### Data Flow
@@ -55,10 +63,11 @@ The application is structured around a central **Agent** class that coordinates 
 2.  **Context**: `ContextManager` gathers the project tree and open files. `ToolManager` provides the list of available tools.
 3.  **Prompt**: `HistoryManager` combines history + context + tools definitions into a prompt.
 4.  **Inference**: The `ChatProvider` sends the prompt to the configured Model (Ollama, OpenAI, etc.).
-5.  **Parsing**: `ResponseProcessor` detects an <action> tag with a JSON command in the response.
-6.  **Verification**: `PermissionPolicy` checks if the action is allowed.
-7.  **Execution**: `ToolManager` calls the appropriate tool.
-8.  **Feedback**: The result (stdout/stderr/file content) is fed back into the history as a "System" message, allowing the agent to react to the result.
+5.  **Intent/Recovery Preprocessing**: The orchestration layer extracts intent contracts, memory-board updates, and malformed/dead-end responses.
+6.  **Parsing**: `ResponseParser` converts model output into typed segments.
+7.  **Verification**: `PermissionPolicy`, `IntentGuard`, and orchestration policy checks constrain what can execute next.
+8.  **Execution**: `ActionDispatcher` and `ToolManager` execute the permitted tool actions.
+9.  **Feedback**: The result (stdout/stderr/file content) is fed back into the history as a "System" message, allowing the agent to react to the result.
 
 ## Safety Model
 
@@ -85,6 +94,7 @@ Shell execution is additionally constrained by:
 │   ├── context.py      # Context management
 │   ├── history.py      # Chat history & summarization
 │   ├── logger.py       # Logging setup and utilities
+│   ├── agent/orchestration/ # Orchestrator runtime, recovery, prompting, turn lifecycle
 │   ├── tools/          # Tool definitions & manager
 │   ├── files.py        # File I/O
 │   └── ...

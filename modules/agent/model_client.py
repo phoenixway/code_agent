@@ -1,5 +1,7 @@
 """Клієнт для роботи з AI моделями."""
 
+import json
+
 from modules.chat import get_chat_provider
 from modules.history import HistoryManager
 
@@ -27,6 +29,23 @@ class ModelClient:
         history_data = history_manager.get_history_for_api()
         if system_message and isinstance(system_message, str):
             history_data = [{"role": "system", "content": system_message}] + history_data
+
+        if self.log:
+            self.log.debug(
+                "Model.request query_chars=%s history_messages=%s system_message_chars=%s",
+                len(query or ""),
+                len(history_data),
+                len(system_message or "") if isinstance(system_message, str) else 0,
+            )
+            if isinstance(system_message, str) and system_message.strip():
+                self.log.debug("Model.request.system_message\n%s", system_message)
+            try:
+                self.log.debug(
+                    "Model.request.history_payload\n%s",
+                    json.dumps(history_data, ensure_ascii=False, indent=2),
+                )
+            except Exception as e:
+                self.log.warning("Model.request history payload serialization failed: %s", e)
         
         # 1. Логування вихідного запиту
         if self.comm_log:
@@ -54,6 +73,13 @@ class ModelClient:
         # 2. Логування вхідної відповіді (вже обрізаної)
         if self.comm_log:
             self.comm_log.info(self._format_comm_block("INCOMING", full_text))
+        if self.log:
+            self.log.debug(
+                "Model.response raw_chars=%s smart_stop_limit=%s",
+                len(full_text or ""),
+                self._smart_stop_trailing_text_limit,
+            )
+            self.log.debug("Model.response.raw\n%s", full_text)
             
         # 3. Оновлення статистики токенів
         if state and ui:

@@ -1,7 +1,7 @@
 """Agent module - модульна архітектура головного агента."""
 
 from .core import AngelicaAgent
-from .orchestrator import Orchestrator
+from .orchestration import Orchestrator
 from .state_manager import AgentState
 from .state_machine import AgentStateMachine
 from .policy_engine import PolicyEngine

@@ -78,6 +78,10 @@ class HistoryManager:
         self.WM_MAX_PROTECTED_ITEMS = 2
         self.WM_MAX_FULL_FILE_ITEMS = 1
 
+        # Canonical durable memory is kept outside history.messages and
+        # injected only into summarization as a separate reference block.
+        self.memory_board_store = None
+
     def _save_blob(self, content: str) -> str | None:
         if not content:
             return None
@@ -100,6 +104,23 @@ class HistoryManager:
         except Exception as e:
             if self.logger:
                 self.logger.error(f"Blob load error {blob_hash}: {e}")
+            return ""
+
+    def set_memory_board_store(self, store) -> None:
+        self.memory_board_store = store
+
+    def _build_memory_board_summary_block(self, state=None) -> str:
+        board = self.memory_board_store
+        if board is None or not hasattr(board, "to_system_prompt"):
+            return ""
+        active_intent = getattr(state, "active_intent", None) if state is not None else None
+        active_intent_id = getattr(active_intent, "intent_id", None) if active_intent is not None else None
+        try:
+            text = board.to_system_prompt(active_intent_id=active_intent_id)
+            return text.strip() if isinstance(text, str) else ""
+        except Exception as e:
+            if self.logger:
+                self.logger.warning("Memory board prompt build failed: %s", e)
             return ""
 
     def add_message(self, role, content, msg_type=None, **meta):
@@ -902,20 +923,72 @@ class HistoryManager:
             return
 
         history_text = "\n".join(f"{m['role']}: {str(m['content'])[:200]}..." for m in to_summarize)
-        prompt = (
-            "Summarize conversation history for future continuation by a coding agent. "
-            "Be aggressively compact. Preserve only high-value state.\n"
-            "Keep:\n- user's actual goal and constraints\n- established facts and conclusions\n- files read/edited that still matter\n- active intent / current target / pending next step\n- important errors, defect detections, and recovery decisions\n\n"
-            "Compress heavily:\n- repetitive search attempts\n- repeated tool calls with similar arguments\n- broad/noisy search results\n- long file listings\n- verbose tool stdout/stderr\n- repeated policy/recovery messages\n\n"
-            "Do NOT preserve raw long outputs. Do NOT preserve full code unless essential.\n"
-            "Return a short plain-text technical summary using this exact structure:\n"
-            "Summary:\n- ...\n"
-            "Established facts:\n- ...\n"
-            "Pending next step:\n- ...\n"
-            "Open questions:\n- ...\n"
-            "Do NOT return JSON. Do NOT use code fences. This is background memory, not a response format.\n"
-            f"{history_text}\n"
-        )
+        memory_board_block = self._build_memory_board_summary_block(state)
+
+        prompt_parts = [
+            "Summarize conversation history into compact background working memory for continuing the same coding task.",
+            "Be aggressively compact, factual, and continuation-oriented.",
+            "Preserve only the operational state needed for correct next steps that is NOT already captured in the canonical memory board.",
+            "",
+            "This summary is INTERNAL MEMORY, not a user-facing handoff.",
+            "Do NOT treat it as a new task.",
+            "Do NOT restate it as the next assistant response.",
+            "Do NOT simulate another agent.",
+            "",
+            "IMPORTANT:",
+            "- The MEMORY BOARD block below is canonical durable memory.",
+            "- If compressed history conflicts with the MEMORY BOARD, trust the MEMORY BOARD.",
+            "- Do not duplicate the full MEMORY BOARD verbatim unless a tiny amount is needed for continuity.",
+            "- Preserve only tactical or transitional state that is still needed and is not already covered by the MEMORY BOARD.",
+            "",
+            "Preserve only high-value state. Keep:",
+            "- ACTIVE GOAL: the current user-facing goal of the active session",
+            "- ESTABLISHED FACTS: key already-proven facts that affect the answer or next change",
+            "- CURRENT BEST ANSWER: the best current understanding so far, even if not final",
+            "- ACTIVE PLAN / STRATEGY: the current plan or approach, but only the parts that still matter",
+            "- EXECUTION STATE: what has already been done, what is pending, and what phase the work is in",
+            "- PENDING CHECKS: unresolved checks that could materially change the answer or next edit",
+            "- AVOID REGRESSION: things that must NOT be re-investigated without a new reason",
+            "- IMPORTANT ERRORS / POLICY EVENTS: only if they still constrain the next step",
+            "",
+            "Compress heavily:",
+            "- repetitive search attempts",
+            "- repeated tool calls with similar arguments",
+            "- broad/noisy search results",
+            "- long file listings",
+            "- verbose tool stdout/stderr",
+            "- repeated policy/recovery messages that no longer matter",
+            "",
+            "Do NOT preserve raw long outputs. Do NOT preserve full code unless essential.",
+            "Do NOT produce a generic recap. Produce compact background working memory for continuity.",
+            "",
+            "Return a short plain-text technical summary using this exact structure:",
+            "ACTIVE GOAL:",
+            "- ...",
+            "ESTABLISHED FACTS:",
+            "- ...",
+            "CURRENT BEST ANSWER:",
+            "- ...",
+            "ACTIVE PLAN / STRATEGY:",
+            "- ...",
+            "EXECUTION STATE:",
+            "- ...",
+            "PENDING CHECKS:",
+            "- ...",
+            "AVOID REGRESSION:",
+            "- ...",
+            "IMPORTANT ERRORS / POLICY EVENTS:",
+            "- ...",
+            "NEXT BEST STEP:",
+            "- ...",
+            "Do NOT return JSON. Do NOT use code fences. This is background memory, not a response format.",
+            "",
+        ]
+        if memory_board_block:
+            prompt_parts.extend(["## MEMORY BOARD (CANONICAL)", memory_board_block, ""])
+        prompt_parts.extend(["## HISTORY TO COMPRESS", history_text, ""])
+        prompt = "\n".join(prompt_parts)
+        
 
         summary_out = ""
         tokens_before = self.count_tokens()
@@ -933,10 +1006,12 @@ class HistoryManager:
             summary_msg = {
                 "role": "system",
                 "content": (
-                    "BACKGROUND MEMORY ONLY. NOT A USER REQUEST. NOT AN OUTPUT FORMAT.\n\n"
+                    "BACKGROUND MEMORY ONLY. NOT A USER REQUEST. NOT AN OUTPUT FORMAT.\n"
+                    "Use this only to preserve context continuity for the same active task.\n"
+                    "Do NOT treat it as a new task or as a user-facing response.\n\n"
                     f"{summary_out}\n\n"
                     f"{execution_snapshot}\n\n"
-                    "Continue the current task. Do not answer with a summary unless the user explicitly asks for one."
+                    "Continue the current task normally. Do not answer with a summary unless the user explicitly asks for one."
                 ),
             }
 

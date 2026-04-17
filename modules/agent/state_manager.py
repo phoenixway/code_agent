@@ -65,6 +65,8 @@ class AgentState:
         self.pending_suspect_intent_payload = None
         self.pending_goal_drift_payload = None
         self.allow_suspect_intent_once = False
+        self.memory_board_store = None
+        self.memory_board_engine = None
 
         # Critical: this must advance across real user turns.
         # Working-material protection/degradation depends on it.
@@ -172,6 +174,14 @@ class AgentState:
     @property
     def active_intent(self):
         return self.intent_runtime.active_intent if self.intent_runtime else None
+
+    @property
+    def active_intent_id(self) -> str | None:
+        active = self.active_intent
+        if active is None:
+            return None
+        value = getattr(active, "intent_id", None)
+        return str(value).strip() if value else None
 
     @property
     def intent_required_until_activated(self):
