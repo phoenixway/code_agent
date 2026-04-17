@@ -311,6 +311,35 @@ class RecoveryCoordinator:
                 )
 
             if stop_info.get("recoverable"):
+                if str(stop_info.get("error_code") or "").strip().upper() == "VALIDATION_ERROR":
+                    active_intent = getattr(self.state, "active_intent", None)
+                    if active_intent is not None:
+                        allowed = stop_info.get("next_actions") or getattr(active_intent, "allowed_actions", None) or []
+                        details = stop_info.get("error_details") or {}
+                        mismatch_type = str(details.get("mismatch_type") or "")
+                        note = ""
+                        if mismatch_type == "multiple_similar_blocks":
+                            note = (
+                                "\nThe last edit failed because the search block matched multiple similar regions."
+                                "\nDo not open a new intent."
+                                "\nPrefer one deterministic recovery step inside the SAME intent:"
+                                "\n- read the exact target block,"
+                                "\n- then retry edit_file with exact copied whitespace,"
+                                "\n- or switch to write_file with full validated content."
+                            )
+                        return StopHandlingDecision(
+                            handled=True,
+                            next_query=(
+                                self.prompt_builder.build_reuse_current_intent_prompt(
+                                    "retry_or_continuation_after_failure",
+                                    allowed,
+                                    goal=getattr(active_intent, "goal", ""),
+                                )
+                                + note
+                            ),
+                            clear_pending_stop=True,
+                        )
+
                 return StopHandlingDecision(
                     handled=True,
                     next_query=self.prompt_builder.build_orchestrated_recovery_prompt(stop_info),

@@ -156,12 +156,14 @@ class OrchestratorPromptBuilder:
             "user_approved_more_steps_after_hard_limit": "Reuse the current intent for the next step.",
             "intent_blocked_action_signature": "A specific action is blocked, but the current intent is still valid.",
             "action_not_allowed_in_phase": "The current intent remains valid, but the previous phase-specific recovery conflicted with it.",
+            "retry_or_continuation_after_failure": "The previous step failed, but the current intent still remains valid.",
         }
         message_keys = {
             "intent_step_limit_soft_exceeded": "keep_current_intent_soft_limit",
             "user_approved_more_steps_after_hard_limit": "keep_current_intent_after_user_more_steps",
             "intent_blocked_action_signature": stop_info.get("message_key") or "blocked_action_keep_current_intent",
             "action_not_allowed_in_phase": "keep_current_intent_conflicting_phase_actions",
+            "retry_or_continuation_after_failure": stop_info.get("message_key") or "blocked_action_keep_current_intent",
         }
         header = self._render_recovery_message(
             message_keys.get(reason, "blocked_action_keep_current_intent"),
@@ -210,6 +212,19 @@ class OrchestratorPromptBuilder:
                     "Return EXACTLY ONE materially different next <action>, or provide a plain-text answer if the goal can already be answered.",
                 ]
             )
+        elif reason == "retry_or_continuation_after_failure":
+            details = stop_info.get("error_details") or {}
+            mismatch_type = str(details.get("mismatch_type") or "")
+            if mismatch_type:
+                base_lines.append(f"Last recoverable failure detail: {mismatch_type}.")
+            base_lines.extend(
+                [
+                    "Prefer a deterministic recovery step inside the SAME current intent.",
+                    "Do not open a new intent unless the work truly changed.",
+                    "If the previous edit failed because the search block was not unique or whitespace did not match, first read the exact target block, then retry edit_file with exact text, or use write_file with full validated content.",
+                    "Return EXACTLY ONE valid next <action>.",
+                ]
+            )
         elif reason == "action_not_allowed_in_phase":
             base_lines.extend(
                 [
@@ -238,6 +253,7 @@ class OrchestratorPromptBuilder:
             "intent_step_limit_soft_exceeded",
             "user_approved_more_steps_after_hard_limit",
             "intent_blocked_action_signature",
+            "retry_or_continuation_after_failure",
         }:
             return True
 

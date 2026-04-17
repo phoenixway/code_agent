@@ -21,6 +21,7 @@ class IntentGuard:
         "MALFORMED_READ_FILE_PAYLOAD",
         "MALFORMED_READ_FILE_SKELETON_PAYLOAD",
         "TOOL_ARGUMENT_ERROR",
+        "VALIDATION_ERROR",
     }
 
     def _is_rootish_path(self, path: object) -> bool:
@@ -91,14 +92,18 @@ class IntentGuard:
 
     def _is_soft_recoverable_retry_context(self, state) -> bool:
         code = str(getattr(state, "last_error_code", "") or "").strip().upper()
-        return code in self.SOFT_RECOVERABLE_ERROR_CODES
+        if code not in self.SOFT_RECOVERABLE_ERROR_CODES:
+            return False
+        if code == "VALIDATION_ERROR":
+            return bool(getattr(state, "last_error_recoverable", False))
+        return True
 
     def _should_require_new_intent_after_failure(self, command: dict, state) -> bool:
         """
         Failure-aware gate:
         - no retry context -> no new intent required
         - if current intent still covers this action and failure is a soft
-          recoverable payload/argument issue, allow continuation
+          recoverable payload/argument/validation issue, allow continuation
         - if runtime explicitly says current intent can continue, allow continuation
         - otherwise require formal retry/continuation intent
         """
@@ -125,16 +130,11 @@ class IntentGuard:
     ) -> tuple[bool, str]:
         cmd_type = command.get("type") or command.get("action") or "unknown"
         path = command.get("path")
-        active_intent = getattr(state, "active_intent", None)
         current_intent_allows = self._current_intent_allows_action(command, state)
-
-        logger = getattr(getattr(state, "_config", None), "logger", None)
 
         if getattr(state, "intent_required_until_activated", False):
             return True, getattr(state, "intent_required_reason", "intent_required")
 
-        # Strong default: if the current accepted intent already covers this action,
-        # do not require a fresh formal intent for normal continuation.
         if current_intent_allows:
             if self._should_require_new_intent_after_failure(command, state):
                 return True, "retry_or_continuation_after_failure"
@@ -148,9 +148,6 @@ class IntentGuard:
                 return True, "read_only_multi_step_requires_intent"
             if batch_size > 1:
                 return True, "read_only_batch_requires_intent"
-
-            # Important: do NOT force a new intent merely because this is not the
-            # first read-only step if the work is just normal continuation.
             if getattr(state, "readonly_steps_this_turn", 0) > 0 and not current_intent_allows:
                 return True, "not_first_read_only_step_requires_intent"
 
