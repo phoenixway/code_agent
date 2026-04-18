@@ -1,6 +1,5 @@
 import threading
 import asyncio
-import json
 import functools
 from typing import Any, Optional
 
@@ -9,13 +8,15 @@ from textual.containers import VerticalScroll
 from rich.markdown import Markdown as RichMarkdown
 from rich.text import Text
 from rich.markup import escape
-from rich.json import JSON
-from rich.console import Group
 
 from modules.ui_components.selection_widget import SelectionScreen
 from modules.ui_components.status_bar import StatusBar
 from modules.ui_components.diff_viewer import DiffViewer
 from modules.ui_components.token_status_bar import TokenStatusBar
+from modules.ui_components.generic_tool_call_card import (
+    GenericToolCallCard,
+    has_specialized_tool_call_renderer,
+)
 
 
 class MessageSeparator(Static):
@@ -60,6 +61,7 @@ class TuiUI:
         self.history = history_widget
         self.status_bar = status_bar
         self.main_thread = threading.main_thread()
+        self._auto_scroll_bottom_threshold = 3
 
     def _count_confirmation(self):
         """Track how many confirmation dialogs were shown in current session."""
@@ -78,12 +80,24 @@ class TuiUI:
     
     def _mount_widget(self, widget: Static):
         """Internal helper to mount a widget with a separator."""
+        should_follow = self._should_follow_history()
         if self.history.children:
             self.history.mount(MessageSeparator())
         
         self.history.mount(widget)
-        self.history.scroll_end(animate=False)
+        if should_follow:
+            self.history.scroll_end(animate=False)
         return widget
+
+    def _should_follow_history(self) -> bool:
+        """Auto-follow only when the user is already at, or very near, the bottom."""
+        try:
+            if self.history.is_vertical_scrollbar_grabbed:
+                return False
+            distance_from_bottom = float(self.history.max_scroll_y) - float(self.history.scroll_target_y)
+            return distance_from_bottom <= self._auto_scroll_bottom_threshold
+        except Exception:
+            return True
 
     def _create_styled_widget(self, text: str, style_key: str) -> Static:
         """Creates a Static widget based on STYLES config."""
@@ -369,6 +383,7 @@ class TuiUI:
         if not text or not text.strip():
             return
 
+        should_follow = self._should_follow_history()
         if self.history.children:
             self.history.mount(MessageSeparator())
 
@@ -390,7 +405,8 @@ class TuiUI:
 
         widget.can_focus = False
         self.history.mount(widget)
-        self.history.scroll_end(animate=False)
+        if should_follow:
+            self.history.scroll_end(animate=False)
 
     # ---------------------------------------------------------------------
     # Tool call rendering (Must be Async for ActionDispatcher)
@@ -402,42 +418,49 @@ class TuiUI:
             command,
             preview_limit=self.TOOL_ARG_PREVIEW_MAX_CHARS,
         )
-        tool_name = display_command.get("type") or display_command.get("action", "unknown")
-        
-        args = {
-            k: v for k, v in display_command.items()
-            if k not in {
-                "type", "action", "before_execution", 
-                "during_execution", "after_execution", "return_control"
-            }
-        }
+        if has_specialized_tool_call_renderer(display_command):
+            return await self._print_specialized_tool_call(display_command)
+        return await self._print_generic_tool_call(display_command)
 
-        # Header
-        header = Text()
-        header.append("Tool Call: ", style="bold cyan")
-        header.append(tool_name, style="bold")
+    async def _print_specialized_tool_call(self, command: dict) -> Static:
+        tool_name = command.get("type") or command.get("action", "unknown")
+        if tool_name == "run_shell":
+            return await self.print_shell_start(command)
+        if tool_name in {"read_file", "read_chunk"}:
+            return await self.print_read_file_start(command)
+        if tool_name == "edit_file":
+            return await self.print_edit_file_start(command)
+        return await self._print_generic_tool_call(command)
 
-        renderables = [header]
-
-        # Use Rich JSON for better formatting of arguments
-        if args:
-            for idx, (key, value) in enumerate(args.items()):
-                # Avoid leading empty line before the first key/value pair.
-                prefix = "\n" if idx > 0 else ""
-                key_text = Text(f"{prefix}{key}: ", style="bold green")
-                if isinstance(value, (dict, list)):
-                    # Elegant JSON rendering
-                    val_render = JSON.from_data(value)
-                    renderables.append(Group(key_text, val_render))
-                else:
-                    # Simple string rendering
-                    key_text.append(str(value)) 
-                    renderables.append(key_text)
-
-        widget = Static(Group(*renderables), classes="chat-message tool-call-message", expand=False)
+    async def _print_generic_tool_call(self, command: dict) -> Static:
+        widget = GenericToolCallCard(command)
         widget.command = command
-        widget.can_focus = False
         return self._mount_widget(widget)
+
+    @ui_task
+    async def update_tool_call(self, widget: Static, command: dict, result: dict):
+        display_command = self.sanitize_tool_call_for_display(
+            command,
+            preview_limit=self.TOOL_ARG_PREVIEW_MAX_CHARS,
+        )
+        if has_specialized_tool_call_renderer(display_command):
+            tool_name = display_command.get("type") or display_command.get("action", "unknown")
+            if tool_name == "run_shell":
+                await self.update_shell_result(widget, result)
+                return
+            if tool_name in {"read_file", "read_chunk"}:
+                await self.update_read_file_result(widget, result)
+                return
+            if tool_name == "edit_file":
+                await self.update_edit_file_result(widget, result)
+                return
+
+        if isinstance(widget, GenericToolCallCard):
+            widget.update_presentation(display_command, result)
+            return
+
+        fallback = GenericToolCallCard(display_command, result)
+        widget.update(fallback.build_renderable())
 
     @ui_task
     async def print_shell_start(self, command: dict) -> Static:

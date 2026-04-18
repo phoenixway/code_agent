@@ -92,7 +92,7 @@ class OrchestratorPromptBuilder:
             Rules:
             - Use memory tags only for high-value information that must survive history compression.
             - Do not log routine actions, tool calls, or noisy low-level observations.
-            - Use scope="intent" for knowledge needed to continue the current intent.
+            - Use scope="intent" for knowledge needed to continue the current intent contract.
             - Use scope="session" for preferences or guidance that should persist for the current session.
             - Use scope="project" only for durable project-wide facts or decisions.
             - Use <progress scope="intent"> only for milestone-level updates that would be critical if the rest of the history were lost.
@@ -104,7 +104,7 @@ class OrchestratorPromptBuilder:
     def build_intent_required_prompt(self, reason: str, allowed_actions: list[str] | None = None) -> str:
         next_hint = ""
         if allowed_actions:
-            next_hint = f"\nAllowed actions for the next intent: {', '.join(allowed_actions)}."
+            next_hint = f"\nAllowed actions for the next intent contract: {', '.join(allowed_actions)}."
         return (
             "SYSTEM: A formal intent contract is required before further tool use.\n"
             f"Reason: {reason}.{next_hint}\n"
@@ -129,19 +129,21 @@ class OrchestratorPromptBuilder:
     ) -> str:
         next_hint = ""
         if allowed_actions:
-            next_hint = f"\nAllowed actions under the CURRENT intent: {', '.join(allowed_actions)}."
+            next_hint = f"\nAllowed actions under the CURRENT intent contract: {', '.join(allowed_actions)}."
         goal_hint = ""
         if isinstance(goal, str) and goal.strip():
-            goal_hint = f"\nCurrent intent goal remains the same: {goal.strip()}."
+            goal_hint = f"\nCurrent contract goal remains the same: {goal.strip()}."
         return (
-            "SYSTEM: Reuse the current intent for the next step.\n"
+            "SYSTEM: Continue under the current intent contract.\n"
             f"Reason: {reason}.{next_hint}{goal_hint}\n"
-            "The current intent remains valid and its goal remains the same.\n"
+            "The current intent contract remains valid and its goal remains the same.\n"
+            "Intent here means the formal runtime contract for the current user-facing goal and allowed actions, not a new local intention, substep label, or next micro-step.\n"
             "Continue toward that goal using the updated allowed tools and constraints.\n"
             "Do not repeat the action pattern that was just blocked or low-value.\n"
-            "Choose the next action that most increases progress toward the goal.\n"
-            "Return EXACTLY ONE materially different next <action>, or provide a plain-text answer if the goal can already be answered.\n"
-            "Do not emit another cosmetic same-lineage <intent> relabel in this reply."
+            "Do not relabel, refresh, replace, or reactivate the intent contract unless there is a valid reason from the system prompt or runtime.\n"
+            "Do not restart the task from the beginning. Continue from already gathered evidence, files, and conclusions under the same contract.\n"
+            "Change the next action when needed. Do not change the contract without a valid reason.\n"
+            "Return the next step that most increases progress toward the goal, or provide a plain-text answer if the goal can already be answered."
         )
 
     def build_keep_current_intent_recovery_prompt(self, stop_info: dict | None) -> str:
@@ -149,14 +151,15 @@ class OrchestratorPromptBuilder:
         reason = str(stop_info.get("reason") or "").strip()
         allowed_actions = self._current_intent_allowed_actions()
         goal = self._current_intent_goal()
-        next_hint = f"\nAllowed actions under the CURRENT intent: {', '.join(allowed_actions)}." if allowed_actions else ""
+        next_hint = f"\nAllowed actions under the CURRENT intent contract: {', '.join(allowed_actions)}." if allowed_actions else ""
 
         message_defaults = {
-            "intent_step_limit_soft_exceeded": "Reuse the current intent for the next step.",
-            "user_approved_more_steps_after_hard_limit": "Reuse the current intent for the next step.",
-            "intent_blocked_action_signature": "A specific action is blocked, but the current intent is still valid.",
-            "action_not_allowed_in_phase": "The current intent remains valid, but the previous phase-specific recovery conflicted with it.",
-            "retry_or_continuation_after_failure": "The previous step failed, but the current intent still remains valid.",
+            "intent_step_limit_soft_exceeded": "Continue under the current intent contract.",
+            "user_approved_more_steps_after_hard_limit": "Continue under the current intent contract.",
+            "intent_blocked_action_signature": "A specific action is blocked, but the current intent contract is still valid.",
+            "action_not_allowed_in_phase": "The current intent contract remains valid, but the previous phase-specific recovery conflicted with it.",
+            "retry_or_continuation_after_failure": "The previous step failed, but the current intent contract still remains valid.",
+            "suspect_intent_relabel_repeat": "The current intent contract is still valid.",
         }
         message_keys = {
             "intent_step_limit_soft_exceeded": "keep_current_intent_soft_limit",
@@ -164,10 +167,11 @@ class OrchestratorPromptBuilder:
             "intent_blocked_action_signature": stop_info.get("message_key") or "blocked_action_keep_current_intent",
             "action_not_allowed_in_phase": "keep_current_intent_conflicting_phase_actions",
             "retry_or_continuation_after_failure": stop_info.get("message_key") or "blocked_action_keep_current_intent",
+            "suspect_intent_relabel_repeat": stop_info.get("message_key") or "suspect_intent_relabel_repeat",
         }
         header = self._render_recovery_message(
             message_keys.get(reason, "blocked_action_keep_current_intent"),
-            message_defaults.get(reason, "Reuse the current intent for the next step."),
+            message_defaults.get(reason, "Continue under the current intent contract."),
             next_hint=next_hint,
         )
 
@@ -176,13 +180,15 @@ class OrchestratorPromptBuilder:
             f"Reason: {reason}.",
         ]
         if allowed_actions:
-            base_lines.append(f"Allowed actions under the CURRENT intent: {', '.join(allowed_actions)}.")
+            base_lines.append(f"Allowed actions under the CURRENT intent contract: {', '.join(allowed_actions)}.")
         if goal:
-            base_lines.append(f"Current intent goal remains the same: {goal}.")
+            base_lines.append(f"Current contract goal remains the same: {goal}.")
         base_lines.extend(
             [
-                "The current intent remains valid and its goal remains the same.",
+                "The current intent contract remains valid and its goal remains the same.",
+                "Intent here means the formal runtime contract for the current user-facing goal and allowed actions, not a new local intention or next micro-step.",
                 "Continue toward that goal using the updated allowed tools and constraints.",
+                "Do not restart the task from the beginning. Continue from already gathered evidence under the same contract if there is no valid reason to change it.",
                 "Do not repeat the action pattern that was just blocked or low-value.",
             ]
         )
@@ -190,15 +196,15 @@ class OrchestratorPromptBuilder:
         if reason == "user_approved_more_steps_after_hard_limit":
             base_lines.extend(
                 [
-                    "User approved a small additional step budget for the CURRENT intent.",
-                    "Return EXACTLY ONE valid next <action> now.",
+                    "User approved a small additional step budget for the CURRENT intent contract.",
+                    "Return the next valid <action> now.",
                 ]
             )
         elif reason == "intent_step_limit_soft_exceeded":
             base_lines.extend(
                 [
                     "Choose the next action that most increases progress toward the goal.",
-                    "Prefer exactly one final allowed <action>, or return a final plain-text answer if the evidence is already enough.",
+                    "Prefer one final allowed <action>, or return a final plain-text answer if the evidence is already enough.",
                 ]
             )
         elif reason == "intent_blocked_action_signature":
@@ -209,7 +215,7 @@ class OrchestratorPromptBuilder:
                 [
                     "Do NOT retry the same action with cosmetic changes.",
                     "Choose the next action that most increases progress toward the goal.",
-                    "Return EXACTLY ONE materially different next <action>, or provide a plain-text answer if the goal can already be answered.",
+                    "Return one materially different next <action>, or provide a plain-text answer if the goal can already be answered.",
                 ]
             )
         elif reason == "retry_or_continuation_after_failure":
@@ -219,24 +225,34 @@ class OrchestratorPromptBuilder:
                 base_lines.append(f"Last recoverable failure detail: {mismatch_type}.")
             base_lines.extend(
                 [
-                    "Prefer a deterministic recovery step inside the SAME current intent.",
-                    "Do not open a new intent unless the work truly changed.",
+                    "Prefer a deterministic recovery step inside the SAME current intent contract.",
+                    "Do not open a new intent contract unless the work truly changed.",
                     "If the previous edit failed because the search block was not unique or whitespace did not match, first read the exact target block, then retry edit_file with exact text, or use write_file with full validated content.",
-                    "Return EXACTLY ONE valid next <action>.",
+                    "Return the next valid <action>.",
                 ]
             )
         elif reason == "action_not_allowed_in_phase":
             base_lines.extend(
                 [
-                    "Use the CURRENT intent action family instead of switching to a conflicting phase-specific action set.",
-                    "Return EXACTLY ONE valid next <action> that directly serves the current goal.",
+                    "Use the CURRENT intent contract action family instead of switching to a conflicting phase-specific action set.",
+                    "Return the next valid <action> that directly serves the current goal.",
+                ]
+            )
+        elif reason == "suspect_intent_relabel_repeat":
+            base_lines.extend(
+                [
+                    "There is no valid reason to relabel or replace the contract now.",
+                    "Do not treat the next local step as a new intent.",
+                    "Do not restart the same investigation path from the beginning.",
+                    "Continue from the strongest evidence already gathered under the current contract.",
+                    "Return the next step that directly continues the current work.",
                 ]
             )
         else:
             base_lines.extend(
                 [
                     "Choose the next action that most increases progress toward the goal.",
-                    "Return EXACTLY ONE materially different next <action>, or provide a plain-text answer if the goal can already be answered.",
+                    "Return the next materially different <action>, or provide a plain-text answer if the goal can already be answered.",
                 ]
             )
 
@@ -254,6 +270,7 @@ class OrchestratorPromptBuilder:
             "user_approved_more_steps_after_hard_limit",
             "intent_blocked_action_signature",
             "retry_or_continuation_after_failure",
+            "suspect_intent_relabel_repeat",
         }:
             return True
 
@@ -278,17 +295,17 @@ class OrchestratorPromptBuilder:
         new_goal = str(suspicion.get("new_goal") or "")
         reason = str(stop_info.get("reason") or "suspect_intent_relabel_repeat")
         parts = [
-            "Модель підозріло змінила поточну ціль у межах тієї самої лінії роботи.",
+            "Модель підозріло змінила поточний intent contract у межах тієї самої лінії роботи.",
             f"Причина: {reason}.",
         ]
         if old_goal:
-            parts.append(f"Стара ціль: {old_goal}")
+            parts.append(f"Стара ціль контракту: {old_goal}")
         if new_goal:
-            parts.append(f"Нова ціль: {new_goal}")
+            parts.append(f"Нова ціль контракту: {new_goal}")
         parts.extend(
             [
                 "Обери один із варіантів:",
-                "- Keep original goal: змусити модель триматися попередньої цілі.",
+                "- Keep original goal: змусити модель триматися попередньої цілі контракту.",
                 "- Allow changed goal: дозволити нову ціль один раз.",
                 "- Stop and answer from current evidence: зупинити tool use і відповісти з уже зібраного.",
             ]
@@ -299,10 +316,10 @@ class OrchestratorPromptBuilder:
         stop_info = stop_info or {}
         reason = str(stop_info.get("reason") or "intent_step_limit_exceeded")
         return (
-            "Поточний intent досяг жорсткого ліміту кроків. Далі агент не повинен продовжувати самовільно.\n"
+            "Поточний intent contract досяг жорсткого ліміту кроків. Далі агент не повинен продовжувати самовільно.\n"
             f"Причина: {reason}.\n"
             "Обери один із двох варіантів:\n"
-            "- Approve more steps: дозволити ще невеликий бюджет кроків для ЦЬОГО самого intent.\n"
+            "- Approve more steps: дозволити ще невеликий бюджет кроків для ЦЬОГО самого intent contract.\n"
             "- Stop and answer from current evidence: зупинити tool use і отримати відповідь лише з уже зібраного."
         )
 
@@ -362,7 +379,7 @@ class OrchestratorPromptBuilder:
     def build_missing_action_or_answer_prompt(self) -> str:
         return (
             "SYSTEM: You analyzed the next step but did not return a valid action or a final answer.\n"
-            "Return EXACTLY ONE valid <action> now, or provide a final plain-text answer if no tool is needed.\n"
+            "Return the next valid <action> now, or provide a final plain-text answer if no tool is needed.\n"
             "Do not output TOOL_HISTORY, SYSTEM_TOOL_AUDIT, or <previously_performed_action>.\n"
             "Do not output <think> without an action or final answer."
         )
@@ -370,7 +387,7 @@ class OrchestratorPromptBuilder:
     def build_intent_only_deadend_prompt(self) -> str:
         return (
             "SYSTEM: You returned an <intent> block but did not provide the next valid step.\n"
-            "If tool use is needed, return EXACTLY ONE valid <action> now.\n"
+            "If tool use is needed, return the next valid <action> now.\n"
             "If no tool is needed, return a final plain-text answer now.\n"
             "Do not repeat the same <intent> again unless you are explicitly retrying or replacing it.\n"
             "Do not output TOOL_HISTORY, SYSTEM_TOOL_AUDIT, or <previously_performed_action>."
@@ -439,7 +456,7 @@ class OrchestratorPromptBuilder:
         if code == "INTENT_FORCE_PLAINTEXT_COMPLETION":
             return (
                 "User requested final answer from already gathered evidence. "
-                "Do not use more tools under this intent now. Return plain text only."
+                "Do not use more tools under this intent contract now. Return plain text only."
             ) + next_hint
         if code == "FULL_READ_CONFIRMATION_REQUIRED":
             return (
@@ -473,10 +490,11 @@ class OrchestratorPromptBuilder:
             active_goal = getattr(active_intent, "goal", "") if active_intent is not None else ""
             prompt += (
                 "\nDo NOT send another <intent> block now."
-                f"\nCurrent intent goal remains the same: {active_goal}."
-                "\nReuse the current intent."
+                f"\nCurrent contract goal remains the same: {active_goal}."
+                "\nContinue under the current intent contract."
                 "\nContinue toward the same goal using the updated allowed tools and constraints."
                 "\nDo not repeat the blocked or low-value action pattern."
+                "\nDo not restart the task from the beginning. Continue from already gathered evidence under the same contract."
                 "\nReturn EXACTLY ONE materially different read-only action."
             )
         if single_readonly_action_only:
@@ -525,7 +543,7 @@ class OrchestratorPromptBuilder:
 
     def build_intent_completed_prompt(self) -> str:
         return (
-            "SYSTEM: The current intent is completed.\n"
+            "SYSTEM: The current intent contract is completed.\n"
             "Return a concise plain-text answer for the user using the evidence already gathered.\n"
             "Do not emit another <intent> block.\n"
             "Do not emit any <action> block."
@@ -533,9 +551,9 @@ class OrchestratorPromptBuilder:
 
     def build_approved_changed_goal_prompt(self) -> str:
         return (
-            "SYSTEM: User explicitly approved the changed intent goal for this one transition.\n"
-            "The new intent is now active.\n"
-            "Return EXACTLY ONE valid next <action> or a final plain-text answer if no tool is needed.\n"
+            "SYSTEM: User explicitly approved the changed intent contract goal for this one transition.\n"
+            "The new intent contract is now active.\n"
+            "Return the next valid <action> or a final plain-text answer if no tool is needed.\n"
             "Do not emit another cosmetic relabel."
         )
 
@@ -552,8 +570,8 @@ class OrchestratorPromptBuilder:
                 allowed_actions,
                 goal=goal,
             )
-            + "\nKeep the original goal. Do NOT rewrite or narrow the current intent goal."
-            + "\nReturn EXACTLY ONE valid next <action> that directly serves the current goal."
+            + "\nKeep the original goal. Do NOT rewrite or narrow the current contract goal."
+            + "\nReturn the next valid <action> that directly serves the current goal."
         )
 
     def build_retry_recovery_query(self, recovery_actions: list[str] | None = None) -> str:
@@ -631,7 +649,6 @@ class OrchestratorPromptBuilder:
             "planned_turn_working_material_too_large",
             "planned_full_read_too_large",
             "turn_working_material_too_large",
-            "suspect_intent_relabel_repeat",
             "suspect_intent_goal_drift",
         }:
             return self.build_typed_stop_recovery_prompt(stop_info)
@@ -641,5 +658,5 @@ class OrchestratorPromptBuilder:
         return (
             "SYSTEM: Previous action violated orchestration policy.\n"
             f"{required_hint}"
-            "Choose a different strategy and return EXACTLY ONE valid <action>."
+            "Choose a different strategy and return the next valid <action>."
         )

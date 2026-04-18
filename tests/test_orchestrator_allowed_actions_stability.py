@@ -28,7 +28,7 @@ class OrchestratorAllowedActionsStabilityTests(unittest.TestCase):
             )
         )
 
-    def test_current_intent_recovery_keeps_read_only_actions_stable_after_soft_limit(self):
+    def test_current_intent_contract_recovery_keeps_read_only_actions_stable_after_soft_limit(self):
         stop_info = {
             "reason": "intent_step_limit_soft_exceeded",
             "recoverable": True,
@@ -37,11 +37,12 @@ class OrchestratorAllowedActionsStabilityTests(unittest.TestCase):
 
         out = self.orch._build_orchestrated_recovery_prompt(stop_info)
 
-        self.assertIn("Allowed actions under the CURRENT intent: read_chunk, read_file, search_content.", out)
-        self.assertIn("Current intent goal remains the same", out)
+        self.assertIn("Allowed actions under the CURRENT intent contract: read_chunk, read_file, search_content.", out)
+        self.assertIn("Current contract goal remains the same", out)
+        self.assertIn("Do not restart the task from the beginning", out)
         self.assertNotIn("Allowed next actions: search_content, edit_file, write_file.", out)
 
-    def test_user_approved_more_steps_keeps_same_current_intent_actions(self):
+    def test_user_approved_more_steps_keeps_same_current_intent_contract_actions(self):
         stop_info = {
             "reason": "user_approved_more_steps_after_hard_limit",
             "recoverable": True,
@@ -50,8 +51,8 @@ class OrchestratorAllowedActionsStabilityTests(unittest.TestCase):
 
         out = self.orch._build_orchestrated_recovery_prompt(stop_info)
 
-        self.assertIn("Allowed actions under the CURRENT intent: read_chunk, read_file, search_content.", out)
-        self.assertIn("User approved a small additional step budget for the CURRENT intent.", out)
+        self.assertIn("Allowed actions under the CURRENT intent contract: read_chunk, read_file, search_content.", out)
+        self.assertIn("User approved a small additional step budget for the CURRENT intent contract.", out)
         self.assertIn("Return EXACTLY ONE valid next <action> now.", out)
         self.assertNotIn("Allowed next actions: search_content, edit_file, write_file.", out)
 
@@ -66,9 +67,9 @@ class OrchestratorAllowedActionsStabilityTests(unittest.TestCase):
 
         self.assertNotIn("Allowed next actions: search_content, edit_file, write_file.", out)
         self.assertNotIn("Required next actions: search_content, edit_file, write_file.", out)
-        self.assertIn("Allowed actions under the CURRENT intent: read_chunk, read_file, search_content.", out)
+        self.assertIn("Allowed actions under the CURRENT intent contract: read_chunk, read_file, search_content.", out)
 
-    def test_blocked_action_keep_current_intent_reuses_current_read_family(self):
+    def test_blocked_action_keeps_current_intent_contract_read_family(self):
         stop_info = {
             "reason": "intent_blocked_action_signature",
             "recoverable": True,
@@ -78,8 +79,8 @@ class OrchestratorAllowedActionsStabilityTests(unittest.TestCase):
 
         out = self.orch._build_orchestrated_recovery_prompt(stop_info)
 
-        self.assertIn("Allowed actions under the CURRENT intent: read_chunk, read_file, search_content.", out)
-        self.assertIn("The current intent remains valid and its goal remains the same.", out)
+        self.assertIn("Allowed actions under the CURRENT intent contract: read_chunk, read_file, search_content.", out)
+        self.assertIn("The current intent contract remains valid", out)
         self.assertNotIn("Allowed next actions: search_content, edit_file, write_file.", out)
 
     def test_modify_phase_may_offer_write_actions_after_real_intent_switch(self):

@@ -102,7 +102,7 @@ class RecoveryCoordinator:
                         allowed,
                         goal=getattr(active_intent, "goal", ""),
                     )
-                    + "\nPrefer exactly one final allowed <action>, or return a final plain-text answer if the evidence is already enough."
+                    + "\nPrefer a final allowed action, or return a final plain-text answer if the evidence is already enough."
                 )
             if reason == "intent_blocked_action_signature":
                 blocked_reason = ""
@@ -112,23 +112,23 @@ class RecoveryCoordinator:
                     except Exception:
                         blocked_reason = ""
                 note = (
-                    "This exact action shape is blocked for the current intent."
+                    "This exact action shape is blocked for the current intent contract."
                     if not blocked_reason
-                    else f"This exact action shape is blocked for the current intent because of: {blocked_reason}."
+                    else f"This exact action shape is blocked for the current intent contract because of: {blocked_reason}."
                 )
                 base = render_intent_message(
                     stop_info.get("message_key") or "blocked_action_keep_current_intent",
-                    default="A specific action is blocked, but the current intent is still valid.",
+                    default="A specific action is blocked, but the current intent contract is still valid.",
                 )
                 return True, (
                     f"SYSTEM: {base}\n"
                     f"Reason: {reason}.\n"
-                    f"Allowed actions under the CURRENT intent: {', '.join(allowed) if allowed else 'none'}.\n"
+                    f"Allowed actions under the CURRENT intent contract: {', '.join(allowed) if allowed else 'none'}.\n"
                     f"Current intent goal remains the same: {getattr(active_intent, 'goal', '')}.\n"
                     f"{note}\n"
                     "Do NOT retry the same action with cosmetic changes.\n"
-                    "Choose EXACTLY ONE materially different next <action>, or answer from current evidence if enough is already known.\n"
-                    "A legitimate intent transition is not globally forbidden, but do not propose one unless the work truly changed."
+                    "Choose a materially different next <action>, or answer from current evidence if enough is already known.\n"
+                    "A legitimate intent contract transition is not globally forbidden, but do not propose one unless the work truly changed."
                 )
             if reason in {"suspect_intent_relabel_repeat", "suspect_intent_goal_drift"}:
                 decision = await self.choose_suspect_intent_change_action(stop_info)
@@ -187,9 +187,9 @@ class RecoveryCoordinator:
 
                 self.state.add_confirmation(1)
                 note = (
-                    "User approved a small additional step budget for the CURRENT intent. Return EXACTLY ONE valid next <action> now."
+                    "User approved a small additional step budget for the CURRENT intent contract. Return the next valid <action> now."
                     if granted
-                    else "User approved continuation for the CURRENT intent. Return EXACTLY ONE valid next <action> now."
+                    else "User approved continuation for the CURRENT intent contract. Return the next valid <action> now."
                 )
                 return True, (
                     self.prompt_builder.build_reuse_current_intent_prompt(
@@ -321,8 +321,8 @@ class RecoveryCoordinator:
                         if mismatch_type == "multiple_similar_blocks":
                             note = (
                                 "\nThe last edit failed because the search block matched multiple similar regions."
-                                "\nDo not open a new intent."
-                                "\nPrefer one deterministic recovery step inside the SAME intent:"
+                                "\nDo not open a new intent contract."
+                                "\nPrefer one deterministic recovery step inside the SAME intent contract:"
                                 "\n- read the exact target block,"
                                 "\n- then retry edit_file with exact copied whitespace,"
                                 "\n- or switch to write_file with full validated content."

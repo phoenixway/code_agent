@@ -116,7 +116,7 @@ class OrchestratorFinalRecoveryOutputTests(unittest.TestCase):
         self.assertIn("Previous action violated orchestration policy", out)
         self.assertIn("Required next actions: search_content, edit_file, write_file.", out)
 
-    def test_blocked_large_read_keeps_current_intent_recovery_not_plain_text(self):
+    def test_blocked_large_read_keeps_current_intent_contract_recovery_not_plain_text(self):
         sm = self._sm(task_kind="INSPECTION", phase="OBSERVE")
         stop_info = {
             "reason": "planned_full_read_too_large",
@@ -129,7 +129,8 @@ class OrchestratorFinalRecoveryOutputTests(unittest.TestCase):
 
         self.assertIn("The planned full read_file action is too large", out)
         self.assertIn("Do NOT send another <intent> block now.", out)
-        self.assertIn("Reuse the current intent.", out)
+        self.assertIn("Continue under the current intent contract.", out)
+        self.assertIn("Do not restart the task from the beginning.", out)
         self.assertIn("Return EXACTLY ONE materially different read-only action.", out)
 
 

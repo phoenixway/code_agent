@@ -1243,21 +1243,21 @@ class ActionDispatcher:
         return None
 
     async def _handle_shell(self, command):
-        widget = await self.ui.print_shell_start(command)
+        widget = await self.ui.print_tool_call(command)
         await self.ui.start_action(command.get("during_execution", "Executing shell..."))
         result = await self.processor.process_single_action(command)
-        await self.ui.update_shell_result(widget, result)
+        await self.ui.update_tool_call(widget, command, result)
         return result
 
     async def _handle_read_file(self, command):
-        widget = await self.ui.print_read_file_start(command)
+        widget = await self.ui.print_tool_call(command)
         await self.ui.start_action(f"Reading {command.get('path', 'file')}...")
         result = await self.processor.process_single_action(command)
-        await self.ui.update_read_file_result(widget, result)
+        await self.ui.update_tool_call(widget, command, result)
         return result
 
     async def _handle_read_chunk(self, command):
-        widget = await self.ui.print_read_file_start(command)
+        widget = await self.ui.print_tool_call(command)
         if command.get("start_line") is not None and command.get("end_line") is not None:
             await self.ui.start_action(
                 f"Reading lines {command.get('start_line')}:{command.get('end_line')} from {command.get('path', 'file')}..."
@@ -1269,25 +1269,21 @@ class ActionDispatcher:
                 f"Reading chunk {start_byte}:{end_byte} from {command.get('path', 'file')}..."
             )
         result = await self.processor.process_single_action(command)
-        await self.ui.update_read_file_result(widget, result)
+        await self.ui.update_tool_call(widget, command, result)
         return result
 
     async def _handle_edit_file(self, command):
-        widget = await self.ui.print_edit_file_start(command)
+        widget = await self.ui.print_tool_call(command)
         await self.ui.start_action(f"Editing {command.get('path', 'file')}...")
         result = await self.processor.process_single_action(command)
-        await self.ui.update_edit_file_result(widget, result)
+        await self.ui.update_tool_call(widget, command, result)
         return result
 
     async def _handle_create_file(self, command):
-        await self.ui.print_tool_call(self._sanitize_create_file_payload(command))
+        widget = await self.ui.print_tool_call(self._sanitize_create_file_payload(command))
         await self.ui.start_action(f"Creating {command.get('path')}...")
         result = await self.processor.process_single_action(command)
-
-        if result.get("status") == "success":
-            await self.ui.print_confirmation(f"File {command.get('path')} created.")
-        else:
-            await self.ui.print_command_result(result.get("output"))
+        await self.ui.update_tool_call(widget, self._sanitize_create_file_payload(command), result)
         return result
 
     def _sanitize_create_file_payload(self, command: dict) -> dict:
@@ -1322,17 +1318,10 @@ class ActionDispatcher:
         return command.copy()
 
     async def _handle_default(self, command):
-        await self.ui.print_tool_call(command)
-        if command.get("before_execution"):
-            await self.ui.print_plan(command["before_execution"])
-
+        widget = await self.ui.print_tool_call(command)
         await self.ui.start_action(command.get("during_execution", "Working..."))
         result = await self.processor.process_single_action(command)
-
-        if result.get("status") == "success" and command.get("after_execution"):
-            await self.ui.print_confirmation(command["after_execution"])
-
-        await self.ui.print_command_result(result.get("output", ""))
+        await self.ui.update_tool_call(widget, command, result)
         return result
 
     def _capture_turn_working_material(self, command: dict, result: dict, state) -> None:

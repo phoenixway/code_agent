@@ -7,73 +7,79 @@ INTENT_MESSAGES: dict[str, dict] = {
     "blocked_action_keep_current_intent": {
         "type": "action_block",
         "template": (
-            "A specific action is blocked, but the current intent remains valid. "
+            "A specific action is blocked, but the current intent contract remains valid. "
             "Choose one materially different allowed action, or answer from current evidence if enough is already known."
         ),
     },
     "suspect_intent_relabel_repeat": {
         "type": "policy_reject",
         "template": (
-            "You attempted a suspicious same-lineage relabel of the current intent. "
-            "Do not rewrite the goal or relabel the same work cosmetically. "
-            "Keep the current intent and return one next action that directly serves the existing goal."
+            "The current intent contract is still valid. "
+            "Do not treat intent as a new local intention or next micro-step. "
+            "Intent here means the formal runtime contract for the current user-facing goal and allowed actions. "
+            "Do not relabel or replace it unless there is a valid reason from the system prompt list. "
+            "Do not restart the task from the beginning. "
+            "Continue from already gathered evidence under the same intent contract."
         ),
     },
     "suspect_intent_goal_drift": {
         "type": "policy_reject",
         "template": (
-            "You changed the current intent goal in a suspicious way and may have lost part of the user's real question. "
+            "The current intent contract is still valid. "
+            "You changed the current goal in a suspicious way and may have lost part of the user's real question. "
             "Keep the original goal unless the user explicitly approves the changed goal. "
-            "Return one next action that serves the existing goal."
+            "Continue under the same intent contract from already gathered evidence."
         ),
     },
     "retry_goal_change_forbidden": {
         "type": "policy_reject",
         "template": (
-            "Retry must keep the same current goal. "
+            "Retry must keep the same current goal and the same intent contract scope. "
             "Do not rewrite the goal during retry. "
-            "Keep the current intent and continue with one next action that serves the existing goal."
+            "Continue under the same intent contract."
         ),
     },
     "allow_activate": {
         "type": "allow",
-        "template": "Intent activation is allowed.",
+        "template": "Intent contract activation is allowed.",
     },
     "allow_replace": {
         "type": "allow",
-        "template": "Intent replacement is allowed.",
+        "template": "Intent contract replacement is allowed.",
     },
     "allow_retry": {
         "type": "allow",
-        "template": "Intent retry is allowed.",
+        "template": "Intent contract retry is allowed.",
     },
     "allow_complete": {
         "type": "allow",
-        "template": "Intent completion is allowed.",
+        "template": "Intent contract completion is allowed.",
     },
 
     # Current-intent recovery registry entries
     "keep_current_intent_soft_limit": {
         "type": "current_intent_recovery",
         "template": (
-            "Reuse the current intent for the next step. "
-            "The current intent reached its nominal step limit, but it still remains valid. "
+            "Continue under the current intent contract. "
+            "The current intent contract reached its nominal step limit, but it still remains valid. "
+            "Do not relabel or restart the task. "
             "Prefer one final allowed action or conclude with current evidence."
         ),
     },
     "keep_current_intent_after_user_more_steps": {
         "type": "current_intent_recovery",
         "template": (
-            "Reuse the current intent for the next step. "
-            "The user explicitly approved a small additional step budget for this same intent."
+            "Continue under the current intent contract. "
+            "The user explicitly approved a small additional step budget for this same intent contract. "
+            "Do not relabel or restart the task."
         ),
     },
     "keep_current_intent_conflicting_phase_actions": {
         "type": "current_intent_recovery",
         "template": (
-            "Reuse the current intent for the next step. "
-            "The current intent remains valid, but a phase-specific recovery tried to push a conflicting action family. "
-            "Keep the current intent action family instead."
+            "Continue under the current intent contract. "
+            "The current intent contract remains valid, but a phase-specific recovery tried to push a conflicting action family. "
+            "Keep the current intent contract action family instead."
         ),
     },
 
@@ -101,23 +107,23 @@ INTENT_MESSAGES: dict[str, dict] = {
     "intent_step_limit_soft_exceeded": {
         "type": "limit",
         "template": (
-            "The current intent reached its nominal step limit. "
+            "The current intent contract reached its nominal step limit. "
             "Prefer one final allowed action or conclude with current evidence. "
-            "Do not refresh or cosmetically relabel the same intent unless strategy materially changed."
+            "Do not refresh or cosmetically relabel the same intent contract unless strategy materially changed."
         ),
     },
     "intent_step_limit_exceeded": {
         "type": "limit",
         "template": (
-            "The current intent exceeded its hard step limit. "
-            "Do not cosmetically relabel the same intent again. "
-            "Either conclude now, formally complete the current intent, or start a materially different retry/replace intent with a legitimate trigger."
+            "The current intent contract exceeded its hard step limit. "
+            "Do not cosmetically relabel the same intent contract again. "
+            "Either conclude now, formally complete the current intent contract, or start a materially different retry/replace intent with a legitimate trigger."
         ),
     },
     "intent_step_limit_exceeded_repeated": {
         "type": "limit",
         "template": (
-            "The current intent exceeded its hard step limit repeatedly for the same lineage. "
+            "The current intent contract exceeded its hard step limit repeatedly for the same lineage. "
             "Hand off the decision to the user: approve more steps, or stop and answer from current evidence."
         ),
     },

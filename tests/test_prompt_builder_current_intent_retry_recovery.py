@@ -14,7 +14,7 @@ class PromptBuilderCurrentIntentRetryRecoveryTests(unittest.TestCase):
         )
         return OrchestratorPromptBuilder(agent)
 
-    def test_retry_after_failure_prefers_current_intent_recovery_over_generic_fallback(self):
+    def test_retry_after_failure_prefers_current_intent_contract_recovery_over_generic_fallback(self):
         active_intent = SimpleNamespace(
             intent_id="modify_sorting_and_dialog",
             intent_type="MODIFY",
@@ -35,8 +35,13 @@ class PromptBuilderCurrentIntentRetryRecoveryTests(unittest.TestCase):
 
         out = builder.build_orchestrated_recovery_prompt(stop_info)
 
-        self.assertIn("Allowed actions under the CURRENT intent: edit_file, read_chunk, search_content, run_shell.", out)
-        self.assertIn("Current intent goal remains the same:", out)
+        self.assertIn(
+            "Allowed actions under the CURRENT intent contract: edit_file, read_chunk, search_content, run_shell.",
+            out,
+        )
+        self.assertIn("Current contract goal remains the same:", out)
+        self.assertIn("Intent here means the formal runtime contract", out)
+        self.assertIn("Do not restart the task from the beginning", out)
         self.assertNotIn("Previous action violated orchestration policy.", out)
 
     def test_retry_after_failure_without_active_intent_falls_back_to_generic_prompt(self):

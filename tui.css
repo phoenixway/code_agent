@@ -88,6 +88,26 @@ Screen {
     padding: 1 2;
 }
 
+.generic-tool-call-card {
+    background: $surface;
+    color: $text;
+    border-left: wide $surface-lighten-1;
+    padding: 1 2;
+    margin: 0;
+}
+
+.generic-tool-call-card.-success {
+    border-left: wide $success;
+}
+
+.generic-tool-call-card.-error {
+    border-left: wide $error;
+}
+
+.generic-tool-call-card.-running {
+    border-left: wide $warning;
+}
+
 /* --- TOOL RESULT MESSAGE --- */
 
 .tool-result-message {

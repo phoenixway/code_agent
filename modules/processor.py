@@ -113,13 +113,12 @@ class ResponseProcessor:
                         end_byte = result.get("end_byte", args.get("end_byte"))
 
                         if start_line is not None and end_line is not None:
-                            range_label = f" lines [{start_line}, {end_line}]"
+                            read_label = f"Read chunks ({start_line}, {end_line}) from {file_path}"
                         else:
-                            range_label = f" [{start_byte}, {end_byte})"
+                            read_label = f"Read chunks ({start_byte}, {end_byte}) from {file_path}"
 
                         result["output"] = (
-                            f"Read chunk of '{file_path}'"
-                            f"{range_label}"
+                            f"{read_label}"
                             f"{' and added to history as ' if is_new_version else ' (already in history as '}v{version}"
                             f"{'' if is_new_version else ')'}."
                         )
