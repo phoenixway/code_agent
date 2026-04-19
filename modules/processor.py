@@ -90,14 +90,15 @@ class ResponseProcessor:
 
         result = await self.tools.call(action_type, ui=self.ui, **args)
 
-        if action_type in {"read_file", "read_chunk"} and result.get("status") == "success":
+        if action_type in {"read_file", "read_chunk", "extract_kotlin_function"} and result.get("status") == "success":
             file_path = result.get("file_path") or args.get("path")
             content = result.get("file_content") or result.get("output")
             has_history_api = (
                 self.history is not None
                 and hasattr(self.history, "add_file_version")
             )
-            if file_path and content and has_history_api:
+            should_track_full_file_version = action_type in {"read_file", "read_chunk"}
+            if file_path and content and has_history_api and should_track_full_file_version:
                 meta = self.history.add_file_version(file_path, content, return_metadata=True)
                 if isinstance(meta, dict):
                     version = meta.get("version")
@@ -129,6 +130,19 @@ class ResponseProcessor:
                             result["output"] = (
                                 f"Read file '{file_path}' (unchanged, already in history as v{version})."
                             )
+            elif file_path and action_type == "extract_kotlin_function":
+                function_name = result.get("function_name") or args.get("function_name") or "function"
+                class_name = result.get("class_name") or args.get("class_name")
+                start_line = result.get("start_line")
+                end_line = result.get("end_line")
+                owner = f" from {class_name}." if isinstance(class_name, str) and class_name else ""
+                if start_line is not None and end_line is not None:
+                    result["output"] = (
+                        f"Extracted Kotlin function '{function_name}' "
+                        f"({start_line}-{end_line}) from {file_path}{owner}"
+                    )
+                else:
+                    result["output"] = f"Extracted Kotlin function '{function_name}' from {file_path}{owner}"
 
         from modules.types import ChangeProposal
 
@@ -160,7 +174,7 @@ class ResponseProcessor:
 
         if not result.get("skip_truncation"):
             if isinstance(result, dict) and "output" in result and isinstance(result["output"], str):
-                if action_type in ["read_file", "read_chunk", "run_shell"]:
+                if action_type in ["read_file", "read_chunk", "extract_kotlin_function", "run_shell"]:
                     threshold = self.LARGE_FILE_THRESHOLD
                 else:
                     threshold = self.MAX_OUTPUT_LENGTH

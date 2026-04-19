@@ -92,9 +92,15 @@ class ActionDispatcher:
         execute_indices, batch_notes = self._plan_action_batch(action_commands)
         execute_set = set(execute_indices)
         total_exec = len(execute_indices)
+        executed_commands = [action_commands[i] for i in execute_indices]
+        pure_readonly_batch = bool(executed_commands) and total_exec > 1 and all(
+            self._is_read_only_action(cmd) for cmd in executed_commands
+        )
 
         state.last_batch_actions_executed = 0
         state.last_batch_actions_total = len(action_segments)
+        state.intent_step_batch_mode = "single_readonly_batch" if pure_readonly_batch else ""
+        state.intent_step_batch_consumed = False
         action_ordinal = 0
 
         if batch_notes:
@@ -112,104 +118,108 @@ class ActionDispatcher:
         )
         preflight_triggered = False
 
-        for segment in segments:
-            if segment.type == "thought":
-                await self.ui.print_thought(segment.content)
-                processed_segments.append(segment)
+        try:
+            for segment in segments:
+                if segment.type == "thought":
+                    await self.ui.print_thought(segment.content)
+                    processed_segments.append(segment)
 
-            elif segment.type == "text":
-                await self.ui.print_message(segment.content, role="assistant")
-                processed_segments.append(segment)
+                elif segment.type == "text":
+                    await self.ui.print_message(segment.content, role="assistant")
+                    processed_segments.append(segment)
 
-            elif segment.type == "action":
-                current_idx = action_ordinal
-                action_ordinal += 1
-                cmd_type = (
-                    segment.content.get("type")
-                    or segment.content.get("action")
-                    or "unknown"
-                    if isinstance(segment.content, dict)
-                    else "unknown"
-                )
-
-                if preflight_stop and not preflight_triggered and current_idx in execute_set:
-                    preflight_triggered = True
-                    should_stop = True
-                    state.pending_loop_stop_info = preflight_stop
-
-                    stop_reason = str(preflight_stop.get("reason") or "").strip()
-                    blocked = False
-                    if stop_reason in {"planned_turn_working_material_too_large", "planned_full_read_too_large"}:
-                        blocked = self._block_current_intent_action_if_supported(
-                            state,
-                            segment.content if isinstance(segment.content, dict) else {},
-                            stop_reason,
-                        )
-
-                    result_text = (
-                        f"SYSTEM RESULT for `{cmd_type}`: {preflight_stop['message']}"
+                elif segment.type == "action":
+                    current_idx = action_ordinal
+                    action_ordinal += 1
+                    cmd_type = (
+                        segment.content.get("type")
+                        or segment.content.get("action")
+                        or "unknown"
+                        if isinstance(segment.content, dict)
+                        else "unknown"
                     )
-                    if blocked:
-                        result_text += "\n[SYSTEM: This exact action shape is now blocked for the current intent. Choose a materially different action.]"
+
+                    if preflight_stop and not preflight_triggered and current_idx in execute_set:
+                        preflight_triggered = True
+                        should_stop = True
+                        state.pending_loop_stop_info = preflight_stop
+
+                        stop_reason = str(preflight_stop.get("reason") or "").strip()
+                        blocked = False
+                        if stop_reason in {"planned_turn_working_material_too_large", "planned_full_read_too_large"}:
+                            blocked = self._block_current_intent_action_if_supported(
+                                state,
+                                segment.content if isinstance(segment.content, dict) else {},
+                                stop_reason,
+                            )
+
+                        result_text = (
+                            f"SYSTEM RESULT for `{cmd_type}`: {preflight_stop['message']}"
+                        )
+                        if blocked:
+                            result_text += "\n[SYSTEM: This exact action shape is now blocked for the current intent. Choose a materially different action.]"
+                        system_results.append(result_text)
+
+                        if self.agent.log:
+                            self.agent.log.debug(
+                                "Action.finish type=%s should_stop=True reason=%s",
+                                cmd_type,
+                                preflight_stop.get("reason"),
+                            )
+                        break
+
+                    if current_idx not in execute_set:
+                        system_results.append(
+                            f"SYSTEM RESULT for `{cmd_type}`: Skipped by batch policy."
+                        )
+                        continue
+
+                    cmd_copy, result_text, stop_flag = await self._execute_action(
+                        segment.content, state
+                    )
+                    state.last_batch_actions_executed += 1
+
+                    if total_exec > 1:
+                        batch_pos = execute_indices.index(current_idx) + 1
+                        result_text = f"[BATCH {batch_pos}/{total_exec}] {result_text}"
+
                     system_results.append(result_text)
 
-                    if self.agent.log:
-                        self.agent.log.debug(
-                            "Action.finish type=%s should_stop=True reason=%s",
-                            cmd_type,
-                            preflight_stop.get("reason"),
-                        )
-                    break
-
-                if current_idx not in execute_set:
-                    system_results.append(
-                        f"SYSTEM RESULT for `{cmd_type}`: Skipped by batch policy."
-                    )
-                    continue
-
-                cmd_copy, result_text, stop_flag = await self._execute_action(
-                    segment.content, state
-                )
-                state.last_batch_actions_executed += 1
-
-                if total_exec > 1:
-                    batch_pos = execute_indices.index(current_idx) + 1
-                    result_text = f"[BATCH {batch_pos}/{total_exec}] {result_text}"
-
-                system_results.append(result_text)
-
-                if stop_flag:
-                    should_stop = True
-                    if total_exec > 1 and batch_pos < total_exec:
-                        system_results.append(
-                            f"SYSTEM RESULT for `{cmd_type}`: Batch aborted after action {batch_pos}/{total_exec} due to stop condition."
-                        )
-
-                        all_exec_cmds = [action_commands[i] for i in execute_indices]
-                        only_search_batch = all(
-                            isinstance(cmd, dict)
-                            and (cmd.get("type") or cmd.get("action")) == "search_content"
-                            for cmd in all_exec_cmds
-                        )
-                        if only_search_batch and cmd_type == "search_content":
-                            existing = getattr(state, "pending_loop_stop_info", None) or {}
-                            state.pending_loop_stop_info = self._recovery_payload(
-                                reason="search_batch_aborted_after_first_action",
-                                recoverable=True,
-                                error_code="SEARCH_BATCH_ABORTED_AFTER_FIRST_ACTION",
-                                next_actions=["search_content"],
-                                command=cmd_copy.copy(),
-                                message=(
-                                    "Your read-only search batch was aborted after the first action. "
-                                    "Return exactly one narrower search_content action next. "
-                                    "Do not send another broad batch."
-                                ),
-                                policy_allowed_actions=["search_content"],
-                                policy_recommended_actions=["search_content"],
-                                policy_authoritative_source="recommended",
-                                previous_reason=existing.get("reason"),
+                    if stop_flag:
+                        should_stop = True
+                        if total_exec > 1 and batch_pos < total_exec:
+                            system_results.append(
+                                f"SYSTEM RESULT for `{cmd_type}`: Batch aborted after action {batch_pos}/{total_exec} due to stop condition."
                             )
-                    break
+
+                            all_exec_cmds = [action_commands[i] for i in execute_indices]
+                            only_search_batch = all(
+                                isinstance(cmd, dict)
+                                and (cmd.get("type") or cmd.get("action")) == "search_content"
+                                for cmd in all_exec_cmds
+                            )
+                            if only_search_batch and cmd_type == "search_content":
+                                existing = getattr(state, "pending_loop_stop_info", None) or {}
+                                state.pending_loop_stop_info = self._recovery_payload(
+                                    reason="search_batch_aborted_after_first_action",
+                                    recoverable=True,
+                                    error_code="SEARCH_BATCH_ABORTED_AFTER_FIRST_ACTION",
+                                    next_actions=["search_content"],
+                                    command=cmd_copy.copy(),
+                                    message=(
+                                        "Your read-only search batch was aborted after the first action. "
+                                        "Return exactly one narrower search_content action next. "
+                                        "Do not send another broad batch."
+                                    ),
+                                    policy_allowed_actions=["search_content"],
+                                    policy_recommended_actions=["search_content"],
+                                    policy_authoritative_source="recommended",
+                                    previous_reason=existing.get("reason"),
+                                )
+                        break
+        finally:
+            state.intent_step_batch_mode = ""
+            state.intent_step_batch_consumed = False
 
         return processed_segments, system_results, should_stop
 
@@ -254,6 +264,7 @@ class ActionDispatcher:
             "read_file",
             "read_chunk",
             "read_file_skeleton",
+            "extract_kotlin_function",
             "search_content",
             "search_files",
             "list_directory",
@@ -373,6 +384,14 @@ class ActionDispatcher:
                 return 4000
             estimate = int(size * self._SKELETON_FRACTION)
             return max(self._SKELETON_MIN_CHARS, min(estimate, self._SKELETON_MAX_CHARS))
+
+        if cmd_type == "extract_kotlin_function":
+            path = command.get("path") if isinstance(command.get("path"), str) else ""
+            size = self._estimate_file_chars(path)
+            if size is None:
+                return 5000
+            estimate = int(size * 0.18)
+            return max(1200, min(estimate, 12000))
 
         if cmd_type in {"search_content", "search_files"}:
             limit = command.get("limit", 50)
@@ -1467,6 +1486,33 @@ class ActionDispatcher:
                     "path": path,
                     "output": skeleton,
                     "status": status,
+                }
+                add_material(
+                    payload,
+                    msg_type="turn_working_material",
+                    turn_id=turn_id,
+                )
+                return
+
+        if cmd_type == "extract_kotlin_function":
+            source = (
+                result.get("file_content")
+                or result.get("content")
+                or result.get("output")
+            )
+            if isinstance(source, str) and source:
+                payload = {
+                    "tool": "extract_kotlin_function",
+                    "path": path,
+                    "filename": path,
+                    "output": source,
+                    "file_content": source,
+                    "status": status,
+                    "function_name": result.get("function_name") or command.get("function_name"),
+                    "class_name": result.get("class_name") or command.get("class_name"),
+                    "signature": result.get("signature"),
+                    "start_line": result.get("start_line"),
+                    "end_line": result.get("end_line"),
                 }
                 add_material(
                     payload,

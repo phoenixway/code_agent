@@ -85,6 +85,41 @@ class ModelResponsePipeline:
             invalid_kind=parsed_output.invalid_kind or "",
             has_action_segment=parsed_output.has_action_segment,
         )
+
+        active_intent = getattr(self.state, "active_intent", None)
+        if (
+            active_intent is not None
+            and bool(getattr(active_intent, "force_plaintext_completion", False))
+            and parsed_output.has_action_segment
+        ):
+            self.stage_logger.log(
+                "response_pipeline",
+                "continue",
+                reason="intent_force_plaintext_completion",
+                source="force_plaintext_gate",
+            )
+            return ResponsePipelineOutcome.continue_with(
+                self.prompt_builder.build_plain_text_completion_prompt(
+                    ctx.state_machine,
+                    {
+                        "reason": "intent_force_plaintext_completion",
+                        "recoverable": True,
+                        "error_code": "INTENT_FORCE_PLAINTEXT_COMPLETION",
+                        "next_actions": [],
+                        "intent_allowed_actions": [],
+                        "next_actions_source": "intent",
+                    },
+                ),
+                response_text=response,
+                segments=segments,
+                parsed_output=parsed_output,
+                parsed_action_count=0,
+                malformed_action_retries=0,
+                audit_marker_retries=0,
+                reason="intent_force_plaintext_completion",
+                source="force_plaintext_gate",
+            )
+
         action_policy_decision = await self.action_policy.decide(
             ctx,
             segments,

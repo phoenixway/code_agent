@@ -25,6 +25,24 @@ class PermissionPolicyReadChunkTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result)
         ui.confirm_action.assert_not_awaited()
 
+    async def test_extract_kotlin_function_is_auto_allowed_as_read_only_action(self):
+        ui = SimpleNamespace(
+            confirm_action=AsyncMock(return_value=False),
+            print_error=AsyncMock(),
+        )
+        policy = PermissionPolicy(ui, mode="ask")
+
+        result = await policy.check(
+            {
+                "type": "extract_kotlin_function",
+                "path": "Sample.kt",
+                "function_name": "renderCard",
+            }
+        )
+
+        self.assertTrue(result)
+        ui.confirm_action.assert_not_awaited()
+
 
 if __name__ == "__main__":
     unittest.main()

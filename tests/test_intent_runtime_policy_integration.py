@@ -121,6 +121,24 @@ class IntentRuntimePolicyIntegrationTests(unittest.TestCase):
         self.assertIn("write_file", self.runtime.active_intent.allowed_actions)
         self.assertIn("create_file", self.runtime.active_intent.allowed_actions)
 
+    def test_extract_kotlin_function_is_retained_as_known_allowed_action(self):
+        payload = {
+            "intent_id": "activity_tracker_extract",
+            "intent_type": "INVESTIGATE",
+            "goal": "Extract the exact Kotlin function implementation for EditRecordDialog",
+            "allowed_actions": ["extract_kotlin_function", "search_content"],
+            "safe_steps_limit": 4,
+            "retry_limit": 2,
+            "mode": "replace",
+            "switch_reason": "current_intent_no_longer_fits",
+            "switch_explanation": "switch to exact function extraction",
+        }
+
+        ok, msg = self.runtime.apply_payload(payload)
+
+        self.assertTrue(ok, msg)
+        self.assertIn("extract_kotlin_function", self.runtime.active_intent.allowed_actions)
+
     def test_modify_payload_with_read_only_run_shell_is_still_upgraded_for_editing(self):
         payload = {
             "intent_id": "activity_tracker_modify",

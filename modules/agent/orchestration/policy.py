@@ -8,6 +8,7 @@ class IntentGuard:
         "read_file",
         "read_chunk",
         "read_file_skeleton",
+        "extract_kotlin_function",
         "search_content",
         "search_files",
         "list_directory",

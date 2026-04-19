@@ -6,9 +6,77 @@ from unittest.mock import AsyncMock, MagicMock
 from modules.agent.action_dispatcher import ActionDispatcher
 from modules.agent.state_manager import AgentState
 from modules.agent.state_machine import AgentStateMachine
+from modules.agent.intent_runtime import IntentRuntime
 
 
 class TestActionDispatcherLoopGuard(unittest.IsolatedAsyncioTestCase):
+    async def test_pure_readonly_batch_counts_as_one_intent_step(self):
+        ui = SimpleNamespace(
+            print_edit_file_start=AsyncMock(return_value=object()),
+            start_action=AsyncMock(),
+            update_edit_file_result=AsyncMock(),
+            print_tool_call=AsyncMock(),
+            print_plan=AsyncMock(),
+            print_command_result=AsyncMock(),
+            print_confirmation=AsyncMock(),
+            print_shell_start=AsyncMock(return_value=object()),
+            update_shell_result=AsyncMock(),
+            print_read_file_start=AsyncMock(return_value=object()),
+            update_read_file_result=AsyncMock(),
+        )
+        processor = SimpleNamespace(
+            process_single_action=AsyncMock(return_value={"status": "success", "output": "ok"})
+        )
+        config = SimpleNamespace(
+            STATE_CHANGING_OPS={"edit_file", "create_file", "run_shell"},
+            LOOP_ERROR_REPEAT_THRESHOLD=2,
+            READ_ONLY_REPEAT_THRESHOLD=3,
+            RECOVERABLE_ERROR_RETRY_BUDGET=2,
+            CRITICAL_ERROR_RETRY_BUDGET=1,
+            MAX_READONLY_BATCH_ACTIONS=6,
+            INTENT_DEFAULT_SAFE_STEPS=4,
+            INTENT_MAX_SAFE_STEPS=8,
+            INTENT_DEFAULT_RETRY_LIMIT=2,
+            INTENT_MAX_RETRY_LIMIT=4,
+            INTENT_RELABEL_PRESERVE_STEPS_ON_REFRESH=True,
+        )
+        agent = SimpleNamespace(ui=ui, processor=processor, config=config, log=None)
+        dispatcher = ActionDispatcher(agent)
+        state = AgentState(config)
+        runtime = IntentRuntime(config)
+        ok, _msg = runtime.apply_payload(
+            {
+                "intent_id": "batch_read_test",
+                "intent_type": "INVESTIGATE",
+                "goal": "Investigate two files in one read-only batch.",
+                "allowed_actions": ["search_content", "read_file_skeleton", "read_chunk"],
+                "safe_steps_limit": 4,
+                "retry_limit": 2,
+                "mode": "activate",
+                "switch_reason": "user_requested_new_task",
+                "switch_explanation": "Test read-only batch accounting.",
+            }
+        )
+        self.assertTrue(ok)
+        state.intent_runtime = runtime
+
+        class _Seg:
+            def __init__(self, seg_type, content):
+                self.type = seg_type
+                self.content = content
+
+        segments = [
+            _Seg("action", {"type": "search_content", "path": "a.txt", "pattern": "foo"}),
+            _Seg("action", {"type": "read_file_skeleton", "path": "b.py"}),
+        ]
+
+        _processed, _system_results, should_stop = await dispatcher.dispatch_segments(segments, state)
+
+        self.assertFalse(should_stop)
+        self.assertEqual(2, state.last_batch_actions_executed)
+        self.assertIsNotNone(state.intent_runtime.active_intent)
+        self.assertEqual(1, state.intent_runtime.active_intent.step_count)
+
     async def test_state_machine_policy_allows_cross_target_read_while_guard_is_disabled(self):
         ui = SimpleNamespace(
             print_edit_file_start=AsyncMock(return_value=object()),

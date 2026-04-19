@@ -15,6 +15,7 @@ class PermissionPolicy:
             "read_file",
             "read_chunk",
             "read_file_skeleton",
+            "extract_kotlin_function",
             "list_directory",
             "search_files",
             "search_content",
@@ -37,10 +38,24 @@ class PermissionPolicy:
     async def check(self, action): # Make it async
         """Checks if the action is allowed based on the current policy."""
         action_type = action.get("type")
-        force_truncated_readonly = {"search_content", "search_files", "list_directory", "read_file_skeleton"}
+        force_truncated_readonly = {
+            "search_content",
+            "search_files",
+            "list_directory",
+            "read_file_skeleton",
+            "extract_kotlin_function",
+        }
         is_recovery_probe = bool(action.get("_recovery_context"))
 
-        if self.mode == "ask" and is_recovery_probe and action_type in {"search_content", "search_files", "list_directory", "read_file", "read_chunk", "read_file_skeleton"}:
+        if self.mode == "ask" and is_recovery_probe and action_type in {
+            "search_content",
+            "search_files",
+            "list_directory",
+            "read_file",
+            "read_chunk",
+            "read_file_skeleton",
+            "extract_kotlin_function",
+        }:
             return "allow_truncated"
 
         if self.mode == "ask" and action_type in force_truncated_readonly:

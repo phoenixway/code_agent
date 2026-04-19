@@ -11,6 +11,7 @@ READ_ONLY_RECOVERY_ACTIONS = {
     "read_file",
     "read_chunk",
     "read_file_skeleton",
+    "extract_kotlin_function",
     "search_content",
     "search_files",
     "list_directory",
@@ -47,6 +48,8 @@ class AgentState:
         self.state_machine = None
         self.last_batch_actions_executed = 0
         self.last_batch_actions_total = 0
+        self.intent_step_batch_mode = ""
+        self.intent_step_batch_consumed = False
         self.stop_reason_counts = {}
 
         self.recoverable_retry_budget_remaining = 2
@@ -463,7 +466,14 @@ class AgentState:
 
         defect_info = None
         if self.intent_runtime:
-            intent_defect = self.intent_runtime.note_action(command)
+            should_count_intent_step = True
+            batch_mode = str(getattr(self, "intent_step_batch_mode", "") or "").strip()
+            if batch_mode == "single_readonly_batch" and is_readonly:
+                if bool(getattr(self, "intent_step_batch_consumed", False)):
+                    should_count_intent_step = False
+                else:
+                    self.intent_step_batch_consumed = True
+            intent_defect = self.intent_runtime.note_action(command) if should_count_intent_step else None
             if intent_defect:
                 defect_info = intent_defect
         if defect_info is None and self.defect_detector:

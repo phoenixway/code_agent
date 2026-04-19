@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 from modules.agent.orchestration.action_policy import ActionPolicyHandler
-from modules.agent.orchestration.decision_models import DispatchHandlingDecision, ModelStepResult, OrchestrationTraceEntry, ParsedModelOutput, RecoveryDecision
+from modules.agent.orchestration.decision_models import DispatchHandlingDecision, MemoryBoardDecision, ModelStepResult, OrchestrationTraceEntry, ParsedModelOutput, RecoveryDecision
 from modules.agent.orchestration.loop_gate import LoopGateHandler
 from modules.agent.orchestration.lifecycle import TurnLifecycle
 from modules.agent.orchestration.core import LoopContext, Orchestrator
@@ -16,6 +16,7 @@ from modules.agent.orchestration.parsing import IntentResponseParser
 from modules.agent.orchestration.pipeline import OrchestrationPipeline
 from modules.agent.orchestration.policy import IntentGuard
 from modules.agent.orchestration.prompting import OrchestratorPromptBuilder
+from modules.agent.orchestration.response_pipeline import ModelResponsePipeline
 from modules.agent.orchestration.recovery import RecoveryCoordinator, StopHandlingDecision
 from modules.agent.orchestration.trace_export import OrchestrationTraceExporter
 from modules.command_handler import CommandHandler
@@ -404,6 +405,80 @@ class ActionPolicyHandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("multi_step_without_intent_contract", decision.reason)
         self.assertIn("formal intent contract is required", decision.next_query.lower())
         self.assertEqual(["multi_step_without_intent_contract"], required_reasons)
+
+
+class ResponsePipelineForcePlaintextGateTests(unittest.IsolatedAsyncioTestCase):
+    async def test_force_plaintext_completion_blocks_actions_before_dispatch(self):
+        state = SimpleNamespace(
+            active_intent=SimpleNamespace(
+                intent_id="fix_dialog",
+                intent_type="MODIFY",
+                goal="Fix dialog behavior",
+                force_plaintext_completion=True,
+            ),
+            orchestration_trace=[],
+            orchestration_trace_sequence=0,
+            intent_required_until_activated=False,
+        )
+        agent = SimpleNamespace(
+            state=state,
+            log=None,
+            memory_board_engine=None,
+        )
+        parser = SimpleNamespace(
+            parse=lambda response: [_Segment("action", {"type": "search_content", "path": "a.py"})]
+        )
+        intent_parser = SimpleNamespace(
+            classify=lambda response, segments: ParsedModelOutput(
+                response=response,
+                segments=segments,
+                has_action_segment=True,
+            )
+        )
+        prompt_builder = SimpleNamespace(
+            build_plain_text_completion_prompt=lambda sm, stop_info: "SYSTEM: Stop tool use now.\nReturn plain text only."
+        )
+        intent_transitions = SimpleNamespace(
+            handle_model_step=AsyncMock(return_value=RecoveryDecision.pass_through())
+        )
+        output_recovery = SimpleNamespace(decide=AsyncMock())
+        action_policy = SimpleNamespace(decide=AsyncMock())
+        memory_board_stage = SimpleNamespace(
+            apply=AsyncMock(
+                return_value=MemoryBoardDecision.pass_through(
+                    response_text='<action>{"type":"search_content","path":"a.py"}</action>'
+                )
+            )
+        )
+        response_pipeline = ModelResponsePipeline(
+            agent=agent,
+            parser=parser,
+            intent_response_parser=intent_parser,
+            prompt_builder=prompt_builder,
+            intent_transitions=intent_transitions,
+            output_recovery=output_recovery,
+            action_policy=action_policy,
+            memory_board_stage=memory_board_stage,
+        )
+        ctx = SimpleNamespace(
+            state_machine=SimpleNamespace(task_kind="MODIFICATION", target_file="a.py"),
+            malformed_action_retries=0,
+            audit_marker_retries=0,
+        )
+        step = SimpleNamespace(
+            response='<action>{"type":"search_content","path":"a.py"}</action>',
+            intent_payload=None,
+            intent_error=None,
+        )
+
+        outcome = await response_pipeline.run_step(ctx, step)
+
+        self.assertTrue(outcome.continue_loop)
+        self.assertEqual("intent_force_plaintext_completion", outcome.reason)
+        self.assertEqual("force_plaintext_gate", outcome.source)
+        self.assertIn("Return plain text only", outcome.next_query)
+        output_recovery.decide.assert_not_awaited()
+        action_policy.decide.assert_not_awaited()
 
 
 class LoopGateHandlerTests(unittest.IsolatedAsyncioTestCase):
