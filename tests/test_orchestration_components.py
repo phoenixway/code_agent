@@ -114,6 +114,39 @@ class IntentResponseParserTests(unittest.TestCase):
         self.assertEqual("inspect", payload["goal"])
         self.assertIsNone(error)
 
+    def test_extract_intent_update_and_strip_ignores_intent_markup_inside_think_block(self):
+        response = (
+            "<think>\n"
+            'We may need to emit <intent mode="retry">{"goal":"inspect"}</intent> later.\n'
+            "</think>\n"
+            '<action>{"type":"search_content","pattern":"ActivityRecord","path":"."}</action>'
+        )
+
+        clean_text, payload, error = self.parser.extract_intent_update_and_strip(response)
+
+        self.assertEqual(response, clean_text)
+        self.assertIsNone(payload)
+        self.assertIsNone(error)
+
+    def test_extract_intent_update_and_strip_still_parses_real_intent_after_think_block(self):
+        response = (
+            "<think>\n"
+            'We may need to emit <intent mode="retry">{"goal":"inspect"}</intent> later.\n'
+            "</think>\n"
+            '<intent mode="activate">{"goal":"inspect","allowed_actions":["read_file"]}</intent>\n'
+            '<action>{"type":"read_file","path":"a.py"}</action>'
+        )
+
+        clean_text, payload, error = self.parser.extract_intent_update_and_strip(response)
+
+        self.assertEqual(
+            "<think>\nWe may need to emit <intent mode=\"retry\">{\"goal\":\"inspect\"}</intent> later.\n</think>\n\n"
+            '<action>{"type":"read_file","path":"a.py"}</action>',
+            clean_text,
+        )
+        self.assertEqual("inspect", payload["goal"])
+        self.assertIsNone(error)
+
     def test_needs_action_or_answer_recovery_when_only_thought_present(self):
         needs = self.parser.needs_action_or_answer_recovery(
             "<think>analyzing</think>",
@@ -160,7 +193,21 @@ class IntentResponseParserTests(unittest.TestCase):
             [_Segment("intent", {"goal": "inspect"})],
         )
 
-        self.assertEqual("intent_only_deadend", parsed.invalid_kind)
+        self.assertEqual("intent_only_without_next_step", parsed.invalid_kind)
+
+    def test_classify_model_output_detects_transition_bundle_too_dense(self):
+        parsed = self.parser.classify(
+            '<intent mode="complete">{"mode":"complete"}</intent>\n'
+            '<intent mode="activate">{"goal":"inspect"}</intent>\n'
+            '<action>{"type":"read_chunk","path":"a.py","start_line":1,"end_line":10}</action>',
+            [
+                _Segment("intent", {"mode": "complete"}),
+                _Segment("intent", {"goal": "inspect"}),
+                _Segment("action", {"type": "read_chunk", "path": "a.py", "start_line": 1, "end_line": 10}),
+            ],
+        )
+
+        self.assertEqual("transition_bundle_too_dense", parsed.invalid_kind)
 
 
 class TurnLifecycleTests(unittest.TestCase):
@@ -489,7 +536,7 @@ class ModelOutputRecoveryHandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Return the next valid output now.", decision.next_query)
         self.assertIn("If a tool is needed, return EXACTLY ONE valid <action>...</action> block.", decision.next_query)
 
-    async def test_intent_only_deadend_returns_unified_valid_output_prompt(self):
+    async def test_intent_only_without_next_step_returns_unified_valid_output_prompt(self):
         ui = SimpleNamespace(print_error=AsyncMock())
         state = SimpleNamespace(
             set_malformed_grace=MagicMock(),
@@ -515,7 +562,7 @@ class ModelOutputRecoveryHandlerTests(unittest.IsolatedAsyncioTestCase):
         decision = await handler.decide(
             ParsedModelOutput(
                 response='<intent mode="activate">{"goal":"inspect"}</intent>',
-                invalid_kind="intent_only_deadend",
+                invalid_kind="intent_only_without_next_step",
             ),
             malformed_action_retries=0,
             audit_marker_retries=0,
@@ -523,9 +570,44 @@ class ModelOutputRecoveryHandlerTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(decision.handled)
         self.assertFalse(decision.stop_loop)
-        self.assertIn("included an <intent> block but did not include a valid next step or a final answer", decision.next_query)
+        self.assertIn("changed or referenced intent state but did not provide a valid next step", decision.next_query)
         self.assertIn("Return the next valid output now.", decision.next_query)
         self.assertIn("If a tool is needed, return EXACTLY ONE valid <action>...</action> block.", decision.next_query)
+
+    async def test_transition_bundle_too_dense_returns_transition_specific_prompt(self):
+        ui = SimpleNamespace(print_error=AsyncMock())
+        state = SimpleNamespace(
+            set_malformed_grace=MagicMock(),
+            forbid_next_action_fingerprint=MagicMock(),
+            last_completed_fingerprint=None,
+        )
+        agent = SimpleNamespace(
+            ui=ui,
+            state=state,
+            config=SimpleNamespace(MALFORMED_ACTION_GRACE_STEPS=2),
+            log=None,
+        )
+        prompt_builder = OrchestratorPromptBuilder(
+            SimpleNamespace(
+                state=SimpleNamespace(active_intent=None),
+                config=SimpleNamespace(),
+                memory_board_store=None,
+                log=None,
+            )
+        )
+        handler = ModelOutputRecoveryHandler(agent, prompt_builder)
+
+        decision = await handler.decide(
+            ParsedModelOutput(
+                response="x",
+                invalid_kind="transition_bundle_too_dense",
+            ),
+            malformed_action_retries=0,
+            audit_marker_retries=0,
+        )
+
+        self.assertTrue(decision.handled)
+        self.assertIn("bundled too many transition/control items together", decision.next_query)
 
 
 class OrchestrationPipelineTests(unittest.IsolatedAsyncioTestCase):
@@ -760,10 +842,157 @@ class IntentTransitionHandlerTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertTrue(decision.handled)
-        self.assertIn("Intent accepted and now remains active", decision.next_query)
+        self.assertIn("Intent accepted. The current contract is now active.", decision.next_query)
         self.assertIn("Current contract goal remains the same", decision.next_query)
         state.note_intent_only_response.assert_called_once()
         self.assertIs(state_machine.intent_runtime, state.intent_runtime)
+
+    async def test_transition_bundle_after_applied_intent_requests_clean_next_output(self):
+        active_intent = SimpleNamespace(
+            intent_id="inspect_activity_tracker",
+            intent_type="MODIFY",
+            goal="Implement the planned change",
+            allowed_actions=["edit_file", "read_chunk"],
+        )
+        state = SimpleNamespace(
+            intent_required_until_activated=False,
+            active_intent=active_intent,
+            intent_runtime=SimpleNamespace(
+                last_apply_warning="",
+                last_transition_info={
+                    "transition": "intent_activated",
+                    "before_active_intent_id": "",
+                    "after_active_intent_id": "inspect_activity_tracker",
+                },
+            ),
+            apply_intent_contract=MagicMock(return_value=(True, "intent_activated")),
+            note_intent_only_response=MagicMock(),
+            active_intent_summary=MagicMock(return_value="inspect_activity_tracker"),
+        )
+        agent = SimpleNamespace(
+            ui=SimpleNamespace(),
+            state=state,
+            config=SimpleNamespace(),
+            log=None,
+        )
+        prompt_builder = OrchestratorPromptBuilder(
+            SimpleNamespace(
+                state=state,
+                config=SimpleNamespace(),
+                memory_board_store=None,
+                log=None,
+            )
+        )
+        recovery = SimpleNamespace(handle_defect_detector_stop=AsyncMock())
+        handler = IntentTransitionHandler(agent, prompt_builder, recovery)
+
+        decision = await handler.handle_model_step(
+            intent_payload={"goal": "Implement the planned change"},
+            intent_error=None,
+            response_text='<intent mode="complete">{"mode":"complete"}</intent>\n<action>{"type":"edit_file"}</action>',
+            state_machine=None,
+        )
+
+        self.assertTrue(decision.handled)
+        self.assertEqual("transition_bundle_too_dense", decision.reason)
+        self.assertIn("Return only the next valid output now", decision.next_query)
+
+    async def test_completed_intent_with_plaintext_answer_is_allowed_to_continue_as_final_answer(self):
+        state = SimpleNamespace(
+            intent_required_until_activated=False,
+            active_intent=SimpleNamespace(
+                intent_id="activity_tracker_edit_sort",
+                intent_type="INVESTIGATE",
+                goal="Understand current implementation",
+                allowed_actions=["read_chunk", "search_content"],
+            ),
+            intent_runtime=SimpleNamespace(
+                last_apply_warning="",
+                last_transition_info={
+                    "transition": "intent_completed",
+                    "before_active_intent_id": "activity_tracker_edit_sort",
+                    "after_active_intent_id": "",
+                },
+            ),
+            apply_intent_contract=MagicMock(return_value=(True, "intent_completed")),
+            note_intent_only_response=MagicMock(),
+            active_intent_summary=MagicMock(return_value="activity_tracker_edit_sort"),
+            pending_loop_stop_info=None,
+        )
+        agent = SimpleNamespace(
+            ui=SimpleNamespace(),
+            state=state,
+            config=SimpleNamespace(),
+            log=None,
+        )
+        prompt_builder = OrchestratorPromptBuilder(
+            SimpleNamespace(
+                state=state,
+                config=SimpleNamespace(),
+                memory_board_store=None,
+                log=None,
+            )
+        )
+        recovery = SimpleNamespace(handle_defect_detector_stop=AsyncMock())
+        handler = IntentTransitionHandler(agent, prompt_builder, recovery)
+
+        decision = await handler.handle_model_step(
+            intent_payload={"intent_id": "activity_tracker_edit_sort", "mode": "complete"},
+            intent_error=None,
+            response_text="Final answer from current evidence.",
+            state_machine=None,
+        )
+
+        self.assertFalse(decision.handled)
+        self.assertEqual("", getattr(state, "pending_loop_stop_info", None) or "")
+
+    async def test_completed_intent_with_followup_action_is_still_transition_bundle_too_dense(self):
+        state = SimpleNamespace(
+            intent_required_until_activated=False,
+            active_intent=SimpleNamespace(
+                intent_id="activity_tracker_edit_sort",
+                intent_type="INVESTIGATE",
+                goal="Understand current implementation",
+                allowed_actions=["read_chunk", "search_content"],
+            ),
+            intent_runtime=SimpleNamespace(
+                last_apply_warning="",
+                last_transition_info={
+                    "transition": "intent_completed",
+                    "before_active_intent_id": "activity_tracker_edit_sort",
+                    "after_active_intent_id": "",
+                },
+            ),
+            apply_intent_contract=MagicMock(return_value=(True, "intent_completed")),
+            note_intent_only_response=MagicMock(),
+            active_intent_summary=MagicMock(return_value="activity_tracker_edit_sort"),
+        )
+        agent = SimpleNamespace(
+            ui=SimpleNamespace(),
+            state=state,
+            config=SimpleNamespace(),
+            log=None,
+        )
+        prompt_builder = OrchestratorPromptBuilder(
+            SimpleNamespace(
+                state=state,
+                config=SimpleNamespace(),
+                memory_board_store=None,
+                log=None,
+            )
+        )
+        recovery = SimpleNamespace(handle_defect_detector_stop=AsyncMock())
+        handler = IntentTransitionHandler(agent, prompt_builder, recovery)
+
+        decision = await handler.handle_model_step(
+            intent_payload={"intent_id": "activity_tracker_edit_sort", "mode": "complete"},
+            intent_error=None,
+            response_text='<action>{"type":"read_chunk","path":"a.py","start_line":1,"end_line":10}</action>',
+            state_machine=None,
+        )
+
+        self.assertTrue(decision.handled)
+        self.assertEqual("transition_bundle_too_dense", decision.reason)
 
     async def test_suspect_intent_relabel_repeat_forces_keep_current_contract(self):
         ui = SimpleNamespace(
@@ -910,7 +1139,7 @@ class OrchestratorIntentContinuationTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(outcome.continue_loop)
         self.assertTrue(ctx.active_loop)
         self.assertIn("Intent accepted", outcome.next_query)
-        self.assertIn("return the next valid step", outcome.next_query.lower())
+        self.assertIn("return the next valid output", outcome.next_query.lower())
 
     async def test_response_pipeline_records_structured_trace_entries(self):
         state = SimpleNamespace(

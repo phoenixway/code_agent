@@ -22,6 +22,11 @@ class RecoveryCoordinator:
             getattr(agent, "allowed_actions_resolver", None)
         )
 
+    def _intent_universe_label(self) -> str:
+        if getattr(self.state, "active_intent", None) is not None:
+            return "active_contract"
+        return "no_active_contract"
+
     @property
     def ui(self):
         return self.agent.ui
@@ -115,6 +120,7 @@ class RecoveryCoordinator:
             "evaluate",
             reason=reason,
             source="defect_detector",
+            universe=self._intent_universe_label(),
         )
 
         if reason in {
@@ -129,15 +135,14 @@ class RecoveryCoordinator:
             allowed = self._intent_actions_from_stop_info(stop_info, active_intent)
             if reason == "intent_step_limit_soft_exceeded":
                 return RecoveryDecision.continue_with(
-                    (
-                        self.prompt_builder.build_reuse_current_intent_prompt(
-                        reason,
-                        allowed,
-                        goal=getattr(active_intent, "goal", ""),
-                    )
-                    + "\nFirst decide whether the current evidence is already sufficient for a useful answer."
-                    + "\nIf it is sufficient, return a final plain-text answer now."
-                    + "\nIf it is not sufficient, return exactly one next <action> that most increases progress toward the goal."
+                    self.prompt_builder.build_keep_current_intent_recovery_prompt(
+                        {
+                            **(stop_info or {}),
+                            "reason": "intent_step_limit_soft_exceeded",
+                            "next_actions": allowed,
+                            "intent_allowed_actions": allowed,
+                            "next_actions_source": "intent",
+                        }
                     ),
                     reason=reason,
                     source="defect_detector",
@@ -162,6 +167,7 @@ class RecoveryCoordinator:
                     (
                         f"SYSTEM: {base}\n"
                         f"Reason: {reason}.\n"
+                        "This blocked tool step does NOT close or invalidate the current intent contract.\n"
                         f"Allowed actions under the CURRENT intent contract: {', '.join(allowed) if allowed else 'none'}.\n"
                         f"Current intent goal remains the same: {getattr(active_intent, 'goal', '')}.\n"
                         f"{note}\n"
@@ -280,14 +286,15 @@ class RecoveryCoordinator:
                     "Return the next valid output."
                 )
                 return RecoveryDecision.continue_with(
-                    (
-                        self.prompt_builder.build_reuse_current_intent_prompt(
-                        "user_approved_more_steps_after_hard_limit",
-                        allowed,
-                        goal=getattr(active_intent, "goal", ""),
-                    )
-                    + f"\n{note}"
-                    ),
+                    self.prompt_builder.build_keep_current_intent_recovery_prompt(
+                        {
+                            **(stop_info or {}),
+                            "reason": "user_approved_more_steps_after_hard_limit",
+                            "next_actions": allowed,
+                            "intent_allowed_actions": allowed,
+                            "next_actions_source": "intent",
+                        }
+                    ) + f"\n{note}",
                     reason=reason,
                     source="defect_detector",
                 )
@@ -448,14 +455,15 @@ class RecoveryCoordinator:
                                 "\n- or switch to write_file with full validated content."
                             )
                         return StopHandlingDecision.continue_with(
-                            (
-                                self.prompt_builder.build_reuse_current_intent_prompt(
-                                    "retry_or_continuation_after_failure",
-                                    allowed,
-                                    goal=getattr(active_intent, "goal", ""),
-                                )
-                                + note
-                            ),
+                            self.prompt_builder.build_keep_current_intent_recovery_prompt(
+                                {
+                                    **(stop_info or {}),
+                                    "reason": "retry_or_continuation_after_failure",
+                                    "next_actions": allowed,
+                                    "intent_allowed_actions": allowed,
+                                    "next_actions_source": "intent",
+                                }
+                            ) + note,
                             clear_pending_stop=True,
                         )
 

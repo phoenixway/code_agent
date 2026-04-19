@@ -14,6 +14,7 @@ class ParsedModelOutput:
     segments: list[Any] = field(default_factory=list)
     has_action_tag: bool = False
     has_action_segment: bool = False
+    has_intent_segment: bool = False
     visible_text: str = ""
     invalid_kind: str = ""
 

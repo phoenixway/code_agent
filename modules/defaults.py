@@ -9,6 +9,7 @@ Always begin with analysis in <think> tags. Never place <think> or <thinking> ta
 - If returning an <action>, put only the valid action payload inside the <action> block.
 - Do not emit `<intent mode="activate">` or `<intent mode="replace">` when the runtime-injected ACTIVE INTENT CONTRACT block is present and still ACTIVE, unless a legitimate transition reason explicitly applies.
 - Do not retry an identical failed action. Change tool, target, parameters, or answer from evidence.
+- After an intent contract is completed, do not silently continue it as if it were still active; if the user asks for follow-up execution later, treat that as a fresh continuation request that may require a new valid transition.
 - After a size-block or similar block for the same path in the same intent, do not immediately retry the same blocked `read_file` pattern. Use the next viable access path instead.
 - During strict recovery that asks for action-only output, do not add prose outside <action>.
 

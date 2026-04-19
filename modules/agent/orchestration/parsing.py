@@ -10,6 +10,8 @@ from .decision_models import ParsedModelOutput
 
 class IntentResponseParser:
     INTENT_TAG_RE = re.compile(r"<intent(?:\s+[^>]*)?>(.*?)</intent>", re.IGNORECASE | re.DOTALL)
+    THINK_TAG_RE = re.compile(r"<think(?:\s+[^>]*)?>.*?</think>", re.IGNORECASE | re.DOTALL)
+    ACTION_TAG_RE = re.compile(r"<action(?:\s+[^>]*)?>.*?</action>", re.IGNORECASE | re.DOTALL)
     TOOL_HISTORY_RE = re.compile(r"(?im)^\s*tool_history\s+\{.*?$")
     HISTORY_TOOL_ACTION_RE = re.compile(r'(?is)<action[^>]*\btype\s*=\s*"history_tool"[^>]*>.*?</action>')
     HISTORY_TOOL_TAG_RE = re.compile(r"(?is)<history_tool\b[^>]*>.*?</history_tool>")
@@ -21,12 +23,19 @@ class IntentResponseParser:
         if self.logger is not None:
             self.logger.debug(message, *args)
 
+    def _mask_think_blocks(self, response_text: str) -> str:
+        def _mask(match: re.Match) -> str:
+            return " " * (match.end() - match.start())
+
+        return self.THINK_TAG_RE.sub(_mask, response_text)
+
     def extract_intent_update_and_strip(self, response_text: str) -> tuple[str, dict | None, str | None]:
         if not isinstance(response_text, str) or not response_text:
             self._debug("IntentParser.extract skipped: empty_or_non_string response=%r", response_text)
             return response_text, None, None
 
-        matches = list(self.INTENT_TAG_RE.finditer(response_text))
+        masked_response = self._mask_think_blocks(response_text)
+        matches = list(self.INTENT_TAG_RE.finditer(masked_response))
         if not matches:
             self._debug(
                 "IntentParser.extract no_intent_match response_chars=%s preview=%r",
@@ -36,9 +45,10 @@ class IntentResponseParser:
             return response_text, None, None
 
         last_match = matches[-1]
+        full_span = last_match.span(0)
         raw_block = last_match.group(1)
         last_block = raw_block.strip()
-        clean_text = self.INTENT_TAG_RE.sub("", response_text).strip()
+        clean_text = (response_text[: full_span[0]] + response_text[full_span[1] :]).strip()
 
         self._debug(
             "IntentParser.extract matched_intent blocks=%s full_response_chars=%s raw_block_chars=%s stripped_block_chars=%s",
@@ -145,16 +155,31 @@ class IntentResponseParser:
         visible_text = self.extract_visible_non_action_text(response)
         return not bool(visible_text)
 
+    def is_transition_bundle_too_dense(self, response: str, segments) -> bool:
+        if not isinstance(response, str):
+            return False
+        intent_count = sum(1 for seg in segments if seg.type == "intent")
+        has_action_segment = any(seg.type == "action" for seg in segments)
+        if intent_count >= 2 and has_action_segment:
+            return True
+        if intent_count >= 2:
+            return True
+        response_lower = response.lower()
+        return response_lower.count("<intent") >= 2 and "<action" in response_lower
+
     def classify(self, response: str, segments) -> ParsedModelOutput:
         safe_response = response if isinstance(response, str) else ""
         safe_segments = list(segments or [])
         has_action_tag = "<action" in safe_response.lower()
         has_action_segment = any(seg.type == "action" for seg in safe_segments)
+        has_intent_segment = any(seg.type == "intent" for seg in safe_segments)
         visible_text = self.extract_visible_non_action_text(safe_response)
         invalid_kind = ""
 
         if has_action_tag and not has_action_segment:
             invalid_kind = "malformed_action"
+        elif self.is_transition_bundle_too_dense(safe_response, safe_segments):
+            invalid_kind = "transition_bundle_too_dense"
         elif self.is_tool_history_echo_without_action(safe_response, safe_segments):
             invalid_kind = "tool_history_echo"
         else:
@@ -167,7 +192,7 @@ class IntentResponseParser:
             if contains_audit_marker and not has_action_segment:
                 invalid_kind = "audit_marker_echo"
             elif self.is_intent_only_response(safe_response, safe_segments):
-                invalid_kind = "intent_only_deadend"
+                invalid_kind = "intent_only_without_next_step"
             elif self.needs_action_or_answer_recovery(safe_response, safe_segments):
                 invalid_kind = "missing_action_or_answer"
 
@@ -176,6 +201,7 @@ class IntentResponseParser:
             segments=safe_segments,
             has_action_tag=has_action_tag,
             has_action_segment=has_action_segment,
+            has_intent_segment=has_intent_segment,
             visible_text=visible_text,
             invalid_kind=invalid_kind,
         )

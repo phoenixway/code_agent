@@ -213,6 +213,7 @@ class OrchestratorPromptBuilder:
             f"safe_steps_limit: {safe_steps_limit}",
             f"steps_used: {steps_used}",
             f"steps_remaining: {steps_remaining}",
+            ("step_budget_status: nominal" if steps_remaining > 0 else "step_budget_status: nominal limit reached; do not assume this means the contract should be refreshed or relabeled automatically"),
             f"retry_limit: {retry_limit}",
             f"retry_count: {retry_count}",
             f"mode: {mode}",
@@ -328,7 +329,7 @@ class OrchestratorPromptBuilder:
         return dedent(
             """
             ## MEMORY BOARD PROTOCOL
-            You may emit inline durable-memory tags directly in your normal response text.
+            Memory tags are part of working continuity, not decoration.
             Supported tags:
             - <fact scope="intent|session|project">...</fact>
             - <finding scope="intent|session|project">...</finding>
@@ -337,14 +338,18 @@ class OrchestratorPromptBuilder:
             - <progress scope="intent">...</progress>
 
             Rules:
-            - Use memory tags only for high-value information that must survive history compression.
+            - Use memory tags only for high-value information that should survive history compression.
             - Do not log routine actions, tool calls, or noisy low-level observations.
-            - Use scope="intent" for knowledge needed to continue the current intent contract.
-            - Use scope="session" for preferences or guidance that should persist for the current session.
-            - Use scope="project" only for durable project-wide facts or decisions.
-            - Use <progress scope="intent"> only for milestone-level updates that would be critical if the rest of the history were lost.
+            - Use scope="intent" for information useful for continuing the current line of work.
+            - Use scope="session" for information useful later in the current session.
+            - Use scope="project" only for durable project-wide facts, decisions, or preferences.
+            - After each meaningful evidence gain, emit one concise memory tag when the information is useful for the current intent, session, or project scope and is not already preserved.
+            - After a recovery redirect, preserve useful conclusions about the reason for the recovery, what it means operationally, or which rules and constraints now govern continuation.
+            - After planned_full_read_too_large or another blocking recovery, immediately preserve in intent-scoped memory which path or access pattern is blocked, what is already known from other sources about that target, and what the next viable tool or access path is.
+            - If the current best answer changed, record the updated best answer in memory tags.
+            - Prefer the narrowest correct scope.
+            - Prefer 1-4 sentences, compact wording, and the conclusion, rule, fact, or decision rather than the whole reasoning chain.
             - Do not silently contradict previously committed memory; if new evidence changes something important, emit a new explicit correcting tag.
-            - Memory tags are optional and can appear alongside normal prose, <intent>, and <action>.
             """
         ).strip()
 
@@ -408,14 +413,11 @@ class OrchestratorPromptBuilder:
         return (
             "SYSTEM: Continue under the current intent contract.\n"
             f"Reason: {reason}.{next_hint}{goal_hint}\n"
-            "The current intent contract remains valid and its goal remains the same.\n"
-            "Intent here means the formal runtime contract for the current user-facing goal and allowed actions, not a new local intention, substep label, or next micro-step.\n"
-            "Continue toward that goal using the updated allowed tools and constraints.\n"
-            "Do not repeat the action pattern that was just blocked or low-value.\n"
-            "Do not relabel, refresh, replace, or reactivate the intent contract unless there is a valid reason from the system prompt or runtime.\n"
-            "Do not restart the task from the beginning. Continue from already gathered evidence, files, and conclusions under the same contract.\n"
-            "Change the next action when needed. Do not change the contract without a valid reason.\n"
-            "Return the next step that most increases progress toward the goal, or provide a plain-text answer if the goal can already be answered."
+            "The current runtime contract remains active for this same user-facing goal.\n"
+            "Do not reactivate, replace, relabel, or restart this work without a valid runtime reason.\n"
+            "Do not repeat the blocked or low-value action pattern.\n"
+            "Continue from current evidence under the same contract.\n"
+            "Return the next valid output, or a plain-text answer if current evidence is already sufficient."
         )
 
     def build_keep_current_intent_recovery_prompt(self, stop_info: dict | None) -> str:
@@ -462,8 +464,8 @@ class OrchestratorPromptBuilder:
             [
                 "The current intent contract remains valid and its goal remains the same.",
                 "Intent here means the formal runtime contract for the current user-facing goal and allowed actions, not a new local intention or next micro-step.",
-                "Continue toward that goal using the updated allowed tools and constraints.",
-                "Do not restart the task from the beginning. Continue from already gathered evidence under the same contract if there is no valid reason to change it.",
+                "Continue from already gathered evidence under the same contract.",
+                "Do not restart the task from the beginning unless runtime explicitly changes the contract.",
                 "Do not repeat the action pattern that was just blocked or low-value.",
             ]
         )
@@ -479,9 +481,9 @@ class OrchestratorPromptBuilder:
         elif reason == "intent_step_limit_soft_exceeded":
             base_lines.extend(
                 [
-                    "First decide whether the current evidence is already sufficient for a useful answer.",
-                    "If it is sufficient, return a final plain-text answer now.",
-                    "If it is not sufficient, return the next valid output under the current contract.",
+                    "First decide whether current evidence is already sufficient.",
+                    "If yes, return a final plain-text answer now.",
+                    "If not, return the next valid output under the same contract.",
                     "Prefer exactly one next <action> only if tool use is still needed.",
                 ]
             )
@@ -720,14 +722,35 @@ class OrchestratorPromptBuilder:
             "Do not output <think> without an action or final answer."
         )
 
-    def build_intent_only_deadend_prompt(self) -> str:
+    def build_intent_only_without_next_step_prompt(self) -> str:
         return (
-            "SYSTEM: Your last response included an <intent> block but did not include a valid next step or a final answer.\n"
+            "SYSTEM: Your last response changed or referenced intent state but did not provide a valid next step or a final answer.\n"
             "Return the next valid output now.\n"
             "If a tool is needed, return EXACTLY ONE valid <action>...</action> block.\n"
             "If no tool is needed, return a plain-text answer.\n"
-            "Do not repeat the same <intent> again unless you are explicitly retrying or replacing it.\n"
+            "Do not repeat the same <intent> again unless runtime explicitly requires a legitimate transition.\n"
             "Do not output historical tool markers, SYSTEM_TOOL_AUDIT, or <previously_performed_action>."
+        )
+
+    def build_intent_accepted_without_followup_prompt(self, active_goal: str = "") -> str:
+        goal_hint = f"\nCurrent contract goal remains the same: {active_goal}." if active_goal else ""
+        return (
+            "SYSTEM: Intent accepted. The current contract is now active.\n"
+            "Return the next valid output under the SAME current contract now.\n"
+            "If tool use is needed, return exactly one valid <action>.\n"
+            "If no tool is needed, return a plain-text answer.\n"
+            "Do not emit another <intent> block for this same ongoing work."
+            f"{goal_hint}"
+        )
+
+    def build_transition_bundle_too_dense_prompt(self) -> str:
+        return (
+            "SYSTEM: Your last response bundled too many transition/control items together.\n"
+            "The runtime handles intent transition separately from the next execution step.\n"
+            "Return only the next valid output now under the current runtime state.\n"
+            "If a contract is already active, do not emit another <intent> block.\n"
+            "If tool use is needed, return EXACTLY ONE valid <action>...</action> block.\n"
+            "If no tool is needed, return a plain-text answer."
         )
 
     def typed_recovery_header(self, stop_info: dict | None) -> str:
@@ -854,7 +877,7 @@ class OrchestratorPromptBuilder:
                 "\nDo not repeat the blocked or low-value action pattern."
                 "\nDo not restart the task from the beginning. Continue from already gathered evidence under the same contract."
                 "\nReturn the next valid output under the current contract."
-                "\nPrefer exactly one materially different read-only action only if tool use is still needed."
+                "\nPrefer one materially different read-only action only if tool use is still needed."
                 "\nIf current evidence is already sufficient, return a plain-text answer instead."
             )
         if single_readonly_action_only:

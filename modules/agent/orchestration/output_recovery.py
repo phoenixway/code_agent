@@ -14,6 +14,11 @@ class ModelOutputRecoveryHandler:
         self.prompt_builder = prompt_builder
         self.stage_logger = OrchestrationStageLogger(getattr(agent, "log", None), self.state)
 
+    def _intent_universe_label(self) -> str:
+        if getattr(self.state, "active_intent", None) is not None:
+            return "active_contract"
+        return "no_active_contract"
+
     @property
     def ui(self):
         return self.agent.ui
@@ -73,7 +78,7 @@ class ModelOutputRecoveryHandler:
             )
 
         if invalid_kind == "tool_history_echo":
-            self.stage_logger.log("output_recovery", "continue", reason=invalid_kind)
+            self.stage_logger.log("output_recovery", "continue", reason=invalid_kind, universe=self._intent_universe_label())
             return OutputRecoveryDecision.continue_with(
                 self.prompt_builder.build_tool_history_echo_without_action_prompt(),
                 reason=invalid_kind,
@@ -122,7 +127,7 @@ class ModelOutputRecoveryHandler:
             )
 
         if invalid_kind == "missing_action_or_answer":
-            self.stage_logger.log("output_recovery", "continue", reason=invalid_kind)
+            self.stage_logger.log("output_recovery", "continue", reason=invalid_kind, universe=self._intent_universe_label())
             return OutputRecoveryDecision.continue_with(
                 self.prompt_builder.build_missing_action_or_answer_prompt(),
                 reason=invalid_kind,
@@ -131,10 +136,20 @@ class ModelOutputRecoveryHandler:
                 audit_marker_retries=0,
             )
 
-        if invalid_kind == "intent_only_deadend":
-            self.stage_logger.log("output_recovery", "continue", reason=invalid_kind)
+        if invalid_kind == "intent_only_without_next_step":
+            self.stage_logger.log("output_recovery", "continue", reason=invalid_kind, universe=self._intent_universe_label())
             return OutputRecoveryDecision.continue_with(
-                self.prompt_builder.build_intent_only_deadend_prompt(),
+                self.prompt_builder.build_intent_only_without_next_step_prompt(),
+                reason=invalid_kind,
+                source="output_recovery",
+                malformed_action_retries=0,
+                audit_marker_retries=0,
+            )
+
+        if invalid_kind == "transition_bundle_too_dense":
+            self.stage_logger.log("output_recovery", "continue", reason=invalid_kind, universe="transition_in_progress")
+            return OutputRecoveryDecision.continue_with(
+                self.prompt_builder.build_transition_bundle_too_dense_prompt(),
                 reason=invalid_kind,
                 source="output_recovery",
                 malformed_action_retries=0,
