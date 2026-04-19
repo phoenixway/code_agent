@@ -11,23 +11,75 @@ from .decision_models import ParsedModelOutput
 class IntentResponseParser:
     INTENT_TAG_RE = re.compile(r"<intent(?:\s+[^>]*)?>(.*?)</intent>", re.IGNORECASE | re.DOTALL)
     TOOL_HISTORY_RE = re.compile(r"(?im)^\s*tool_history\s+\{.*?$")
-    HISTORY_TOOL_ACTION_RE = re.compile(r"(?is)<action[^>]*\btype\s*=\s*\"history_tool\"[^>]*>.*?</action>")
+    HISTORY_TOOL_ACTION_RE = re.compile(r'(?is)<action[^>]*\btype\s*=\s*"history_tool"[^>]*>.*?</action>')
     HISTORY_TOOL_TAG_RE = re.compile(r"(?is)<history_tool\b[^>]*>.*?</history_tool>")
+
+    def __init__(self, logger=None):
+        self.logger = logger
+
+    def _debug(self, message: str, *args) -> None:
+        if self.logger is not None:
+            self.logger.debug(message, *args)
 
     def extract_intent_update_and_strip(self, response_text: str) -> tuple[str, dict | None, str | None]:
         if not isinstance(response_text, str) or not response_text:
+            self._debug("IntentParser.extract skipped: empty_or_non_string response=%r", response_text)
             return response_text, None, None
+
         matches = list(self.INTENT_TAG_RE.finditer(response_text))
         if not matches:
+            self._debug(
+                "IntentParser.extract no_intent_match response_chars=%s preview=%r",
+                len(response_text),
+                response_text[:400],
+            )
             return response_text, None, None
-        last_block = matches[-1].group(1).strip()
+
+        last_match = matches[-1]
+        raw_block = last_match.group(1)
+        last_block = raw_block.strip()
         clean_text = self.INTENT_TAG_RE.sub("", response_text).strip()
+
+        self._debug(
+            "IntentParser.extract matched_intent blocks=%s full_response_chars=%s raw_block_chars=%s stripped_block_chars=%s",
+            len(matches),
+            len(response_text),
+            len(raw_block or ""),
+            len(last_block or ""),
+        )
+        self._debug("IntentParser.extract matched_block_raw=%r", raw_block)
+        self._debug("IntentParser.extract matched_block_stripped=%r", last_block)
+        self._debug("IntentParser.extract clean_text_preview=%r", clean_text[:400])
+
         if not last_block:
+            self._debug("IntentParser.extract empty_intent_block after_strip=True")
             return clean_text, None, "empty_intent_block"
+
         try:
             payload = json.loads(last_block)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
+            self._debug(
+                "IntentParser.extract invalid_intent_json msg=%s line=%s col=%s pos=%s",
+                exc.msg,
+                exc.lineno,
+                exc.colno,
+                exc.pos,
+            )
+            start = max(0, exc.pos - 80)
+            end = min(len(last_block), exc.pos + 80)
+            self._debug(
+                "IntentParser.extract invalid_intent_json_context start=%s end=%s context=%r",
+                start,
+                end,
+                last_block[start:end],
+            )
             return clean_text, None, "invalid_intent_json"
+
+        self._debug(
+            "IntentParser.extract parsed_intent_payload type=%s keys=%s",
+            type(payload).__name__,
+            sorted(payload.keys()) if isinstance(payload, dict) else "<non-dict>",
+        )
         return clean_text, payload, None
 
     def extract_visible_non_action_text(self, response: str) -> str:
@@ -36,7 +88,7 @@ class IntentResponseParser:
         text = response
         text = re.sub(r"<think>.*?</think>", " ", text, flags=re.DOTALL | re.IGNORECASE)
         text = re.sub(r"<intent(?:\s+[^>]*)?>.*?</intent>", " ", text, flags=re.DOTALL | re.IGNORECASE)
-        text = re.sub(r"<action(?:\s+type=\"[^\"]+\")?>.*?</action>", " ", text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r'<action(?:\s+type="[^"]+")?>.*?</action>', " ", text, flags=re.DOTALL | re.IGNORECASE)
         text = re.sub(self.TOOL_HISTORY_RE, " ", text)
         text = re.sub(self.HISTORY_TOOL_ACTION_RE, " ", text)
         text = re.sub(self.HISTORY_TOOL_TAG_RE, " ", text)

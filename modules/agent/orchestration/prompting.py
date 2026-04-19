@@ -481,7 +481,8 @@ class OrchestratorPromptBuilder:
                 [
                     "First decide whether the current evidence is already sufficient for a useful answer.",
                     "If it is sufficient, return a final plain-text answer now.",
-                    "If it is not sufficient, return exactly one next <action> that most increases progress toward the goal.",
+                    "If it is not sufficient, return the next valid output under the current contract.",
+                    "Prefer exactly one next <action> only if tool use is still needed.",
                 ]
             )
         elif reason == "intent_blocked_action_signature":
@@ -491,8 +492,10 @@ class OrchestratorPromptBuilder:
             base_lines.extend(
                 [
                     "Do NOT retry the same action with cosmetic changes.",
-                    "Choose the next action that most increases progress toward the goal.",
-                    "Return one materially different next <action>, or provide a plain-text answer if the goal can already be answered.",
+                    "Choose the next step that most increases progress toward the goal.",
+                    "Return the next valid output under the current contract.",
+                    "Prefer one materially different next <action> only if tool use is still needed.",
+                    "If the goal can already be answered, return a plain-text answer instead.",
                 ]
             )
         elif reason == "retry_or_continuation_after_failure":
@@ -505,14 +508,16 @@ class OrchestratorPromptBuilder:
                     "Prefer a deterministic recovery step inside the SAME current intent contract.",
                     "Do not open a new intent contract unless the work truly changed.",
                     "If the previous edit failed because the search block was not unique or whitespace did not match, first read the exact target block, then retry edit_file with exact text, or use write_file with full validated content.",
-                    "Return the next valid <action>.",
+                    "Return the next valid output.",
+                    "If tool use is needed, return exactly one valid <action>.",
                 ]
             )
         elif reason == "action_not_allowed_in_phase":
             base_lines.extend(
                 [
                     "Use the CURRENT intent contract action family instead of switching to a conflicting legacy recovery action set.",
-                    "Return the next valid <action> that directly serves the current goal.",
+                    "Return the next valid output that directly serves the current goal.",
+                    "If tool use is needed, return the next valid <action>.",
                 ]
             )
         elif reason == "unnecessary_intent_reactivation_or_replace":
@@ -522,7 +527,9 @@ class OrchestratorPromptBuilder:
                     "It will remain active until runtime explicitly completes, replaces, rejects, or closes it for a valid listed reason.",
                     "There is no valid reason to reactivate or replace this same active intent contract now.",
                     "Do not emit another <intent mode=\"activate\"> or <intent mode=\"replace\"> for this same contract.",
-                    "Return the next valid <action> under the current contract, or provide a plain-text answer if the evidence is already sufficient.",
+                    "Return the next valid output under the current contract.",
+                    "If tool use is needed, return the next valid <action>.",
+                    "If the evidence is already sufficient, return a plain-text answer.",
                 ]
             )
         elif reason == "suspect_intent_relabel_repeat":
@@ -532,14 +539,16 @@ class OrchestratorPromptBuilder:
                     "Do not treat the next local step as a new intent.",
                     "Do not restart the same investigation path from the beginning.",
                     "Continue from the strongest evidence already gathered under the current contract.",
-                    "Return the next step that directly continues the current work.",
+                    "Return the next valid output that directly continues the current work.",
                 ]
             )
         else:
             base_lines.extend(
                 [
-                    "Choose the next action that most increases progress toward the goal.",
-                    "Return the next materially different <action>, or provide a plain-text answer if the goal can already be answered.",
+                    "Choose the next step that most increases progress toward the goal.",
+                    "Return the next valid output under the current contract.",
+                    "If tool use is needed, return the next materially different <action>.",
+                    "If the goal can already be answered, return a plain-text answer instead.",
                 ]
             )
 
@@ -627,22 +636,24 @@ class OrchestratorPromptBuilder:
     ) -> str:
         lines = [
             f"SYSTEM: {header}",
-            "Return only valid <action> content for the next step.",
+            "Return the next valid output for the next step.",
         ]
         if state_changing_only:
             lines.extend(
                 [
-                    "For this recovery step, return exactly one valid state-changing <action>.",
+                    "For this recovery step, prefer exactly one valid state-changing <action> if tool use is still needed.",
                     "Do not return read-only batching here.",
+                    "If no tool is needed, return a plain-text answer.",
                 ]
             )
         elif single_readonly_action_only:
             lines.extend(
                 [
-                    "For this recovery step, return EXACTLY ONE valid read-only <action>.",
+                    "For this recovery step, prefer exactly one valid read-only <action> if tool use is still needed.",
                     "Do not return a batch.",
                     "Do not return multiple <action> blocks.",
                     "Make the next search/action narrower and more targeted than before.",
+                    "If no tool is needed or current evidence is already sufficient, return a plain-text answer instead.",
                 ]
             )
         else:
@@ -652,12 +663,14 @@ class OrchestratorPromptBuilder:
                     "Compatible format: one <action>...</action> block may contain a JSON array of read-only action objects.",
                     "For any state-changing step, return only one valid <action>.",
                     "Do not use JSON arrays for state-changing actions.",
+                    "If no tool is needed, return a plain-text answer.",
                 ]
             )
         lines.extend(
             [
-                "No prose outside <action>.",
-                "If unsure, prefer separate <action> blocks.",
+                "No prose outside <action> when returning an <action> block.",
+                "If you return plain text instead, do not include any <action> block.",
+                "If unsure, prefer one simple valid next step.",
             ]
         )
         if forbid_audit_markers:
@@ -667,7 +680,8 @@ class OrchestratorPromptBuilder:
     def build_malformed_action_strict_recovery_prompt(self) -> str:
         return (
             "SYSTEM: Your last response contained malformed <action> content.\n"
-            "Return EXACTLY ONE valid <action>...</action> block now.\n"
+            "Return the next valid output now.\n"
+            "If a tool is needed, return EXACTLY ONE valid <action>...</action> block.\n"
             "Inside it:\n"
             "- include exactly ONE JSON object for exactly ONE next action.\n"
             "- Do not return multiple <action> blocks.\n"
@@ -778,7 +792,7 @@ class OrchestratorPromptBuilder:
         if code == "SEARCH_BATCH_ABORTED_AFTER_FIRST_ACTION":
             return (
                 "Your previous read-only search batch was aborted after the first action. "
-                "Do not send another batch. Return exactly one narrower search_content action."
+                "Do not send another batch. Return one narrower search_content action, or answer from current evidence if enough is already known."
             ) + next_hint
         if code == "INTENT_FORCE_PLAINTEXT_COMPLETION":
             return (
@@ -839,7 +853,9 @@ class OrchestratorPromptBuilder:
                 "\nContinue toward the same goal using the updated allowed tools and constraints."
                 "\nDo not repeat the blocked or low-value action pattern."
                 "\nDo not restart the task from the beginning. Continue from already gathered evidence under the same contract."
-                "\nReturn EXACTLY ONE materially different read-only action."
+                "\nReturn the next valid output under the current contract."
+                "\nPrefer exactly one materially different read-only action only if tool use is still needed."
+                "\nIf current evidence is already sufficient, return a plain-text answer instead."
             )
         if single_readonly_action_only:
             prompt += (
@@ -916,7 +932,7 @@ class OrchestratorPromptBuilder:
                 goal=goal,
             )
             + "\nKeep the original goal. Do NOT rewrite or narrow the current contract goal."
-            + "\nReturn the next valid <action> that directly serves the current goal."
+            + "\nReturn the next valid output that directly serves the current goal."
         )
 
     def build_retry_recovery_query(self, recovery_actions: list[str] | None = None) -> str:

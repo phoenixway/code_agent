@@ -4,15 +4,21 @@ import logging
 from dataclasses import dataclass
 from typing import List, Any, Optional
 
+
 @dataclass
 class Segment:
     type: str  # 'thought', 'text', 'action'
     content: Any
 
+
 class ResponseParser:
     ACTION_KEYS = ("type", "command", "action")
     NESTED_TOOL_TAG_RE = re.compile(
         r'^\s*<([a-zA-Z_][\w\-]*)>(.*?)</\1>\s*$',
+        re.DOTALL | re.IGNORECASE,
+    )
+    ACTION_INTERNAL_THINK_RE = re.compile(
+        r'<(?:think|thinking)>(.*?)</(?:think|thinking)>',
         re.DOTALL | re.IGNORECASE,
     )
 
@@ -28,9 +34,9 @@ class ResponseParser:
             return []
 
         segments = []
-        
+
         # 1. Fallback Logic for Malformed Tags
-        # Check if there are more closing tags than opening tags, 
+        # Check if there are more closing tags than opening tags,
         # or if the structure implies we should just grab everything up to the last </think>
         open_tags = len(re.findall(r'<think>', text, re.IGNORECASE))
         close_tags = len(re.findall(r'</think>', text, re.IGNORECASE))
@@ -40,44 +46,33 @@ class ResponseParser:
             last_close_match = None
             for match in re.finditer(r'</think>', text, re.IGNORECASE):
                 last_close_match = match
-            
+
             if last_close_match:
                 end_pos = last_close_match.end()
                 thought_content = text[:last_close_match.start()].strip()
-                # Clean up any partial opening tags inside if needed, or just take it raw
                 # Remove <think> tags from the content to make it clean
                 thought_content = re.sub(r'<think>', '', thought_content, flags=re.IGNORECASE).strip()
-                
+
                 segments.append(Segment('thought', thought_content))
-                
+
                 # The rest is potential Actions/Text
                 remaining_text = text[end_pos:]
                 segments.extend(self._parse_mixed_content(remaining_text))
                 return segments
 
         # 2. Standard Logic: Split by <think> blocks
-        # We use a regex to find all properly balanced (or as best as regex can) blocks
-        # But since we want to handle "Action | Text | Thought | Action", 
-        # we iterate through the string.
-        
-        # Strategy: Use split to separate Thoughts from Content
-        # This regex splits the string by the think blocks, keeping the delimiters
-        # Note: This is a non-greedy match for the content inside
         parts = re.split(r'(<think>.*?</think>)', text, flags=re.DOTALL | re.IGNORECASE)
-        
+
         for part in parts:
             if not part.strip():
                 continue
-                
-            # Check if this part is a think block
+
             think_match = re.match(r'<think>(.*?)</think>', part, flags=re.DOTALL | re.IGNORECASE)
             if think_match:
                 content = think_match.group(1).strip()
                 if content:
                     segments.append(Segment('thought', content))
             else:
-                # This is "Active Content" (Text or JSON)
-                # We need to scan this for JSONs
                 segments.extend(self._parse_mixed_content(part))
 
         return segments
@@ -87,20 +82,21 @@ class ResponseParser:
         Scans a string for <action> tags. Anything not in an action tag is Text.
         """
         segments = []
-        # Split by action tag, keeping the tag itself. This regex is broad on purpose.
         parts = re.split(r'(<action[^>]*>.*?</action>)', text, flags=re.DOTALL | re.IGNORECASE)
 
         for part in parts:
             if not part.strip():
                 continue
 
-            # More specific regex to extract data from the potential action block
             action_match = re.match(r'<action([^>]*)>(.*?)</action>', part, flags=re.DOTALL | re.IGNORECASE)
-            
+
             if action_match:
                 action_attrs_raw = action_match.group(1) or ""
-                json_content = action_match.group(2).strip()
+                raw_action_content = action_match.group(2).strip()
                 action_attrs = self._parse_action_attributes(action_attrs_raw)
+
+                json_content = self._strip_internal_action_thoughts(raw_action_content)
+
                 json_payload = self._extract_nested_tool_payload(json_content)
                 if json_payload is None:
                     json_payload = self._extract_json(json_content)
@@ -115,19 +111,50 @@ class ResponseParser:
                             self.log.warning(
                                 f"Parser warning: action block missing required keys. Preview: {preview}"
                             )
-                        segments.append(Segment('text', part)) # Not a valid command, treat as text
+                        segments.append(Segment('text', part))
                 else:
                     if self.log:
                         preview = part.strip().replace("\n", " ")[:240]
-                        self.log.warning(f"Parser warning: failed to parse action JSON. Preview: {preview}")
-                    segments.append(Segment('text', part)) # Not valid JSON, treat as text
+                        cleaned_preview = json_content.strip().replace("\n", " ")[:240]
+                        self.log.warning(
+                            "Parser warning: failed to parse action JSON. Preview: %s | cleaned_action_content: %s",
+                            preview,
+                            cleaned_preview,
+                        )
+                    segments.append(Segment('text', part))
             else:
-                # This is a text part
                 stripped_part = part.strip()
                 if stripped_part:
                     segments.append(Segment('text', stripped_part))
 
         return segments
+
+    def _strip_internal_action_thoughts(self, text: str) -> str:
+        """
+        Removes ignorable internal reasoning tags accidentally placed inside <action>...</action>,
+        such as <thinking>...</thinking> or <think>...</think>, before attempting payload parse.
+        """
+        if not isinstance(text, str) or not text.strip():
+            return text
+
+        matches = list(self.ACTION_INTERNAL_THINK_RE.finditer(text))
+        if not matches:
+            return text
+
+        cleaned = self.ACTION_INTERNAL_THINK_RE.sub("", text).strip()
+
+        if self.log:
+            previews = []
+            for match in matches[:3]:
+                snippet = (match.group(1) or "").strip().replace("\n", " ")
+                previews.append(snippet[:120])
+            self.log.debug(
+                "Parser debug: stripped %s internal think/thinking block(s) from inside <action>. previews=%s",
+                len(matches),
+                previews,
+            )
+
+        return cleaned
 
     def _parse_action_attributes(self, attrs_raw: str) -> dict:
         """Parses attributes from <action ...> into a dict, e.g. type/path."""
@@ -155,7 +182,6 @@ class ResponseParser:
         for key, value in simple_tag_pattern.findall(text):
             key_clean = key.strip()
             if key_clean.lower() == "value":
-                # Already handled above to avoid collisions.
                 continue
             data[key_clean] = value.strip()
 
@@ -261,16 +287,10 @@ class ResponseParser:
             if segment.type == 'thought':
                 response_parts.append(f"<think>\n{segment.content}\n</think>")
             elif segment.type == 'action':
-                # Make a copy to avoid modifying the original segment content
                 action_content = segment.content.copy()
-                
-                # Extract 'type' for the tag attribute, then remove it from the JSON payload
                 action_type = action_content.pop('type', None)
-                
-                # The remaining content is the JSON payload
                 action_str = json.dumps(action_content, indent=4)
-                
-                # Construct the tag with the type attribute if it exists
+
                 if action_type:
                     response_parts.append(f'<action type="{action_type}">\n{action_str}\n</action>')
                 else:
@@ -286,12 +306,9 @@ class ResponseParser:
         Handles CDATA blocks for cases like shell commands.
         Returns json_obj or None.
         """
-        # First, check for CDATA block
         cdata_match = re.match(r'^\s*<!\[CDATA\[(.*?)\]\]>\s*$', text, re.DOTALL)
         if cdata_match:
             cdata_body = cdata_match.group(1).strip()
-            # Prefer structured JSON payload if CDATA contains JSON.
-            # Fallback to raw command string for shell-like payloads.
             try:
                 parsed = json.loads(cdata_body)
                 if isinstance(parsed, dict):
@@ -301,24 +318,17 @@ class ResponseParser:
             return {"command": cdata_body}
 
         try:
-            # First, try to load directly
             return json.loads(text)
         except json.JSONDecodeError:
-            # If that fails, it might be because of escaped characters.
-            # Let's try to find the JSON object within the string.
-            # This is a common issue when the model returns a string with a JSON object inside.
-            # For example: "`json\n{...}\n`"
             try:
-                # Find the first '{' and the last '}'
                 start_brace = text.find('{')
                 end_brace = text.rfind('}')
                 if start_brace != -1 and end_brace != -1 and start_brace < end_brace:
-                    json_str = text[start_brace:end_brace+1]
+                    json_str = text[start_brace:end_brace + 1]
                     return json.loads(json_str)
             except json.JSONDecodeError:
-                pass # If it still fails, we'll try the next method
+                pass
 
-        # Fallback to XML-like key-value pair parsing
         parsed_data = self._parse_key_value_tags(text)
         if parsed_data:
             return parsed_data

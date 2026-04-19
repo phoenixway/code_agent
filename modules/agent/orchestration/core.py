@@ -56,7 +56,7 @@ class Orchestrator:
         self.agent.recovery_policy_resolver = self.recovery_policy_resolver
 
         self.intent_guard = IntentGuard()
-        self.intent_response_parser = IntentResponseParser()
+        self.intent_response_parser = IntentResponseParser(getattr(agent, "log", None))
         self.prompt_builder = OrchestratorPromptBuilder(agent)
         self.output_recovery = ModelOutputRecoveryHandler(agent, self.prompt_builder)
         self.recovery = RecoveryCoordinator(agent, self.prompt_builder)

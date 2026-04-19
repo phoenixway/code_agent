@@ -57,10 +57,18 @@ class IntentTransitionHandler:
         response_text: str,
         state_machine=None,
     ) -> IntentHandlingDecision:
-        if intent_error and (
-            getattr(self.state, "intent_required_until_activated", False)
-            or getattr(self.state, "active_intent", None) is None
-        ):
+        intent_required_until_activated = bool(getattr(self.state, "intent_required_until_activated", False))
+        has_active_intent = getattr(self.state, "active_intent", None) is not None
+
+        if intent_error and (intent_required_until_activated or not has_active_intent):
+            if self.agent.log:
+                self.agent.log.warning(
+                    "Intent.parse_error intent_error=%s intent_required_until_activated=%s has_active_intent=%s response_preview=%r",
+                    intent_error,
+                    intent_required_until_activated,
+                    has_active_intent,
+                    (response_text or "")[:500],
+                )
             if hasattr(self.state, "require_intent"):
                 self.state.require_intent("invalid_intent_json")
             self.stage_logger.log(
@@ -68,6 +76,9 @@ class IntentTransitionHandler:
                 "continue",
                 reason="intent_required_parse_error",
                 source="intent_parser",
+                intent_error=intent_error,
+                intent_required_until_activated=intent_required_until_activated,
+                has_active_intent=has_active_intent,
             )
             return IntentHandlingDecision(
                 handled=True,
