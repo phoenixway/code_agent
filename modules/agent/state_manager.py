@@ -47,6 +47,7 @@ class AgentState:
         self.state_machine = None
         self.last_batch_actions_executed = 0
         self.last_batch_actions_total = 0
+        self.stop_reason_counts = {}
 
         self.recoverable_retry_budget_remaining = 2
         self.critical_retry_budget_remaining = 1
@@ -71,6 +72,9 @@ class AgentState:
         # Critical: this must advance across real user turns.
         # Working-material protection/degradation depends on it.
         self.current_turn_id = 0
+        self.orchestration_trace = []
+        self.orchestration_trace_sequence = 0
+        self.stop_reason_counts = {}
 
     @property
     def pending_loop_stop_info(self):
@@ -81,9 +85,18 @@ class AgentState:
         self._pending_loop_stop_info = value
         if not isinstance(value, dict):
             return
+        reason = str(value.get("reason") or "").strip()
+        if reason:
+            self.stop_reason_counts[reason] = int(self.stop_reason_counts.get(reason, 0) or 0) + 1
         updates = value.get("intent_constraint_updates")
         if isinstance(updates, dict):
             self.apply_intent_constraint_updates(updates)
+
+    def get_stop_reason_count(self, reason: str) -> int:
+        key = str(reason or "").strip()
+        if not key:
+            return 0
+        return int(self.stop_reason_counts.get(key, 0) or 0)
 
     def apply_intent_constraint_updates(self, updates: dict) -> bool:
         if not isinstance(updates, dict):
@@ -106,6 +119,8 @@ class AgentState:
         self.pending_suspect_intent_payload = None
         self.pending_goal_drift_payload = None
         self.allow_suspect_intent_once = False
+        self.orchestration_trace = []
+        self.orchestration_trace_sequence = 0
 
         # FIX:
         # Do not reset to 0. Each new user turn must get a new turn id so that
@@ -454,13 +469,20 @@ class AgentState:
         if defect_info is None and self.defect_detector:
             evt = self.defect_detector.evaluate(self, command, result)
             if evt is not None:
+                policy_actions = list(evt.next_actions or [])
                 defect_info = {
                     "reason": evt.reason,
                     "recoverable": evt.recoverable,
                     "error_code": evt.error_code or evt.reason.upper(),
-                    "next_actions": evt.next_actions or [],
+                    "next_actions": policy_actions,
                     "command": command.copy(),
                     "message": evt.message,
+                    "policy_allowed_actions": policy_actions,
+                    "policy_recommended_actions": [],
+                    "policy_blocked_actions": [],
+                    "policy_intent_actions": policy_actions,
+                    "policy_authoritative_source": "intent" if policy_actions else "",
+                    "policy_keep_current_intent": True if policy_actions else False,
                 }
 
         if status in {"failed", "error"}:

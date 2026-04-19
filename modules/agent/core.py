@@ -113,9 +113,6 @@ class AngelicaAgent:
         if hasattr(self, "session_manager") and hasattr(self.session_manager, "_emit_load_notice"):
             self.session_manager._emit_load_notice()
 
-        # New modular architecture FIX
-        if hasattr(self, "orchestrator"):
-            self.orchestrator.ui = value
         if hasattr(self, "action_dispatcher"):
             self.action_dispatcher.ui = value
 

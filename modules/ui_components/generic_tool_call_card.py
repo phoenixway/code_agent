@@ -11,7 +11,7 @@ from rich.text import Text
 from textual.widgets import Static
 
 
-SPECIALIZED_TOOL_CALLS = {"run_shell", "read_file", "read_chunk", "edit_file"}
+SPECIALIZED_TOOL_CALLS = {"run_shell", "read_file", "edit_file"}
 _SERVICE_FIELDS = {
     "type",
     "action",

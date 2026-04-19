@@ -17,7 +17,7 @@ class TurnLifecycle:
             sm.intent_runtime = getattr(self.state, "intent_runtime", None)
             if self.agent.log:
                 self.agent.log.debug(
-                    f"Task contract: kind={getattr(sm, 'task_kind', None)} phase={getattr(sm, 'phase', None)}"
+                    f"Task contract: kind={getattr(sm, 'task_kind', None)}"
                 )
         if hasattr(self.state, "clear_intent_requirement"):
             self.state.clear_intent_requirement()

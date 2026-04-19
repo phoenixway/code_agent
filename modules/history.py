@@ -710,6 +710,10 @@ class HistoryManager:
             content = msg.get("content", "")
             if not isinstance(content, str):
                 content = json.dumps(content, ensure_ascii=False)
+            if msg.get("role") == "assistant":
+                stripped = content.lstrip()
+                if stripped.startswith("TOOL_HISTORY ") or "TOOL_HISTORY {" in content or "\nTOOL_HISTORY {" in content:
+                    continue
             api_history.append({"role": msg["role"], "content": content})
 
         if self.logger:
@@ -799,13 +803,13 @@ class HistoryManager:
         return count
 
     def _build_execution_snapshot(self, state=None) -> str:
-        phase = None
         target = None
+        task_kind = None
         if state is not None:
             sm = getattr(state, "state_machine", None)
             if sm is not None:
-                phase = getattr(sm, "phase", None)
                 target = getattr(sm, "target_file", None)
+                task_kind = getattr(sm, "task_kind", None)
         recent_files = []
         for msg in reversed(self.messages):
             payload = msg.get("content")
@@ -829,8 +833,8 @@ class HistoryManager:
             if m.get("turn_working_material") and int(m.get("protection_hops_remaining", 0) or 0) > 0
         )
         lines = ["EXECUTION SNAPSHOT"]
-        if phase is not None:
-            lines.append(f"phase={getattr(phase, 'value', phase)}")
+        if task_kind is not None:
+            lines.append(f"task_kind={getattr(task_kind, 'value', task_kind)}")
         if target:
             lines.append(f"target_file={target}")
         if recent_files:
@@ -868,8 +872,9 @@ class HistoryManager:
             }
 
         sm = getattr(state, "state_machine", None) if state is not None else None
-        in_observe = sm is not None and getattr(sm.phase, "value", sm.phase) == "OBSERVE"
-        if in_observe:
+        current_task_kind = getattr(getattr(sm, "task_kind", None), "value", getattr(sm, "task_kind", None))
+        in_inspection = sm is not None and current_task_kind == "INSPECTION"
+        if in_inspection:
             defer_budget = max(0, int(getattr(sm.config, "SUMMARY_DEFER_OBSERVE_STEPS", 1)))
             min_reads = max(1, int(getattr(sm.config, "SUMMARY_MIN_READS_BEFORE_DEFER", 2)))
             if self._observe_summary_deferrals_remaining <= 0:
@@ -946,7 +951,7 @@ class HistoryManager:
             "- ESTABLISHED FACTS: key already-proven facts that affect the answer or next change",
             "- CURRENT BEST ANSWER: the best current understanding so far, even if not final",
             "- ACTIVE PLAN / STRATEGY: the current plan or approach, but only the parts that still matter",
-            "- EXECUTION STATE: what has already been done, what is pending, and what phase the work is in",
+            "- EXECUTION STATE: what has already been done, what is pending, and what execution mode the work is in",
             "- PENDING CHECKS: unresolved checks that could materially change the answer or next edit",
             "- AVOID REGRESSION: things that must NOT be re-investigated without a new reason",
             "- IMPORTANT ERRORS / POLICY EVENTS: only if they still constrain the next step",

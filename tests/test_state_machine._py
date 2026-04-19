@@ -66,6 +66,53 @@ class TestStateMachine(unittest.TestCase):
         )
         self.assertEqual(self.sm.stagnation_count, 0)
 
+    def test_modify_intent_keeps_edit_plan_after_successful_edit(self):
+        self.sm.start_turn("fix code")
+        self.sm.intent_runtime = SimpleNamespace(
+            active_intent=SimpleNamespace(intent_type="MODIFY")
+        )
+
+        self.sm.note_action(
+            {"type": "edit_file", "path": "a.txt", "search_text": "x", "replace_text": "y"},
+            {"status": "success", "output": "applied"},
+            self.state_ops,
+        )
+
+        self.assertEqual(self.sm.target_file, "a.txt")
+
+    def test_modification_task_keeps_target_after_successful_readonly_step(self):
+        self.sm.start_turn("fix code")
+
+        self.sm.note_action(
+            {"type": "read_file", "path": "a.txt"},
+            {"status": "success", "output": "ok"},
+            self.state_ops,
+        )
+
+        self.assertEqual(self.sm.target_file, "a.txt")
+
+    def test_modify_intent_allows_follow_up_write_and_shell_after_successful_edit(self):
+        self.sm.start_turn("fix code")
+        self.sm.intent_runtime = SimpleNamespace(
+            active_intent=SimpleNamespace(intent_type="MODIFY")
+        )
+
+        self.sm.note_action(
+            {"type": "edit_file", "path": "a.txt", "search_text": "x", "replace_text": "y"},
+            {"status": "success", "output": "applied"},
+            self.state_ops,
+        )
+
+        write_pre = self.sm.pre_action_policy(
+            {"type": "write_file", "path": "a.txt", "content": "updated"}
+        )
+        shell_pre = self.sm.pre_action_policy(
+            {"type": "run_shell", "command": "sed -i 's/x/y/' a.txt"}
+        )
+
+        self.assertTrue(write_pre.allow)
+        self.assertTrue(shell_pre.allow)
+
     def test_write_file_success_updates_target_file(self):
         self.sm.start_turn("fix code")
         state_ops = self.state_ops | {"write_file"}
@@ -96,7 +143,7 @@ class TestStateMachine(unittest.TestCase):
 
         self.assertEqual(self.sm.decide().decision, DecisionType.CONTINUE)
 
-    def test_pre_action_policy_blocks_cross_target_read_without_reason(self):
+    def test_pre_action_policy_allows_cross_target_read_while_guard_is_disabled(self):
         self.sm.start_turn("fix this bug")
         self.sm.note_action(
             {"type": "edit_file", "path": "a.txt", "search_text": "x", "replace_text": "y"},
@@ -104,8 +151,22 @@ class TestStateMachine(unittest.TestCase):
             self.state_ops,
         )
         pre = self.sm.pre_action_policy({"type": "read_file", "path": "b.txt"})
-        self.assertFalse(pre.allow)
-        self.assertEqual(pre.stop_reason, "cross_target_read_without_reason")
+        self.assertTrue(pre.allow)
+
+    def test_pre_action_policy_allows_investigate_intent_search(self):
+        self.sm.start_turn("analyze how to move activity record to yesterday")
+        self.sm.intent_runtime = SimpleNamespace(
+            active_intent=SimpleNamespace(
+                intent_type="INVESTIGATE",
+                allowed_actions=["read_chunk", "read_file", "search_content"],
+                step_count=4,
+                safe_steps_limit=4,
+            )
+        )
+
+        pre = self.sm.pre_action_policy({"type": "search_content", "path": "a.txt", "pattern": "EditRecordDialog"})
+
+        self.assertTrue(pre.allow)
 
     def test_pre_action_policy_allows_cross_target_with_reason(self):
         self.sm.start_turn("fix this bug")

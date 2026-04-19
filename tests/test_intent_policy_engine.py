@@ -127,6 +127,39 @@ class IntentPolicyEngineTests(unittest.TestCase):
         self.assertTrue(decision.allow_user_handoff)
         self.assertEqual("allow_pending_suspect_intent_once", decision.allow_once_via_state_method)
 
+    def test_same_active_contract_reactivation_rejected_as_unnecessary_reactivation(self):
+        active = make_intent(
+            intent_id="activity_tracker_edit",
+            goal="Determine how to allow moving today's record to yesterday in the activity tracker",
+            allowed_actions=["read_file", "read_chunk", "search_content"],
+        )
+        proposed = make_intent(
+            intent_id="activity_tracker_edit",
+            goal="Determine how to allow moving today's record to yesterday in the activity tracker",
+            allowed_actions=["read_file", "read_chunk", "search_content"],
+            mode="activate",
+        )
+        ctx = self.build_ctx(
+            active=active,
+            proposed=proposed,
+            transition_info={
+                "same_lineage": True,
+                "goal_similarity": 1.0,
+                "actions_overlap": 1.0,
+            },
+        )
+
+        decision = self.engine.evaluate_transition(ctx)
+
+        self.assertFalse(decision.allowed)
+        self.assertEqual("unnecessary_intent_reactivation_or_replace", decision.reason)
+        self.assertEqual("UNNECESSARY_INTENT_REACTIVATION_OR_REPLACE", decision.error_code)
+        self.assertEqual("unnecessary_intent_reactivation_or_replace", decision.message_key)
+        self.assertTrue(decision.keep_current_intent)
+        self.assertTrue(decision.preserve_goal)
+        self.assertTrue(decision.preserve_intent_id)
+        self.assertFalse(decision.allow_user_handoff)
+
     def test_same_lineage_goal_drift_rejected(self):
         active = make_intent(
             intent_id="activity_tracker_edit",

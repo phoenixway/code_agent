@@ -11,6 +11,10 @@ class Segment:
 
 class ResponseParser:
     ACTION_KEYS = ("type", "command", "action")
+    NESTED_TOOL_TAG_RE = re.compile(
+        r'^\s*<([a-zA-Z_][\w\-]*)>(.*?)</\1>\s*$',
+        re.DOTALL | re.IGNORECASE,
+    )
 
     def __init__(self):
         self.log = logging.getLogger("debug")
@@ -97,7 +101,9 @@ class ResponseParser:
                 action_attrs_raw = action_match.group(1) or ""
                 json_content = action_match.group(2).strip()
                 action_attrs = self._parse_action_attributes(action_attrs_raw)
-                json_payload = self._extract_json(json_content)
+                json_payload = self._extract_nested_tool_payload(json_content)
+                if json_payload is None:
+                    json_payload = self._extract_json(json_content)
 
                 if json_payload is not None:
                     normalized_actions = self._normalize_action_payload(action_attrs, json_payload)
@@ -212,6 +218,39 @@ class ResponseParser:
         if any(key in merged_obj for key in self.ACTION_KEYS):
             return merged_obj
         return None
+
+    def _extract_nested_tool_payload(self, text: str):
+        """
+        Supports malformed-but-common wrapper formats like:
+        <action><run_shell>{...}</run_shell></action>
+        """
+        if not isinstance(text, str) or not text.strip():
+            return None
+
+        match = self.NESTED_TOOL_TAG_RE.match(text)
+        if not match:
+            return None
+
+        tool_name = match.group(1).strip()
+        inner = (match.group(2) or "").strip()
+        if not tool_name:
+            return None
+
+        payload = self._extract_json(inner)
+        if isinstance(payload, dict):
+            if "type" not in payload and "action" not in payload:
+                payload["type"] = tool_name
+            return payload
+
+        kv_payload = self._parse_key_value_tags(inner)
+        if isinstance(kv_payload, dict):
+            kv_payload.setdefault("type", tool_name)
+            return kv_payload
+
+        if inner:
+            return {"type": tool_name, "command": inner}
+
+        return {"type": tool_name}
 
     def reconstruct(self, segments: List[Segment]) -> str:
         """

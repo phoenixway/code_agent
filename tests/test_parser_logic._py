@@ -219,5 +219,25 @@ class TestResponseParser(unittest.TestCase):
         self.assertEqual(segments[0].content["type"], "read_file")
         self.assertEqual(segments[0].content["path"], "go_examples/05_control_flow.go")
 
+    def test_nested_tool_tag_inside_action_is_parsed(self):
+        text = (
+            "<action>\n"
+            "<run_shell>\n"
+            '{\n'
+            '  "command": "grep -n \'EditRecordDialog\' ActivityTrackerScreen.kt",\n'
+            '  "before_execution": "Search for EditRecordDialog",\n'
+            '  "during_execution": "Searching...",\n'
+            '  "after_execution": "Found EditRecordDialog function"\n'
+            "}\n"
+            "</run_shell>\n"
+            "</action>"
+        )
+        segments = self.parser.parse(text)
+
+        self.assertEqual(len(segments), 1)
+        self.assertEqual(segments[0].type, "action")
+        self.assertEqual(segments[0].content["type"], "run_shell")
+        self.assertIn("grep -n", segments[0].content["command"])
+
 if __name__ == "__main__":
     unittest.main()

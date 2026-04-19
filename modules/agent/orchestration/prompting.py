@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import json
 from textwrap import dedent
 
 from modules.defaults import DEFAULT_SYSTEM_PROMPT
 
 from ..intent_message_resolver import resolve_intent_message_key
 from ..intent_messages import render_intent_message
+from .decision_models import RecoveryContext
+from .intent_universe import IntentUniverseResolver
+from .recovery_policy import RecoveryPolicyResolver
 
 
 class OrchestratorPromptBuilder:
@@ -16,9 +20,22 @@ class OrchestratorPromptBuilder:
         self.state = agent.state
         self.config = agent.config
         self.memory_board_store = getattr(agent, "memory_board_store", None)
+        self.recovery_policy_resolver = getattr(agent, "recovery_policy_resolver", None) or RecoveryPolicyResolver(
+            getattr(agent, "allowed_actions_resolver", None)
+        )
+        self.intent_universe_resolver = IntentUniverseResolver()
+
+    def _recovery_context(self, stop_info: dict | RecoveryContext | None) -> RecoveryContext:
+        return self.recovery_policy_resolver.normalize_context(
+            stop_info,
+            active_intent=self._current_active_intent(),
+        )
 
     def _current_active_intent(self):
         return getattr(self.state, "active_intent", None)
+
+    def _intent_universe(self):
+        return self.intent_universe_resolver.resolve(self.state, self.config)
 
     def _current_active_intent_id(self) -> str | None:
         active_intent = self._current_active_intent()
@@ -43,12 +60,242 @@ class OrchestratorPromptBuilder:
         rendered = render_intent_message(message_key, next_hint=next_hint, default="")
         return rendered or default
 
+    def _action_hints_from_stop_info(self, stop_info: dict | None) -> tuple[list[str], list[str], str]:
+        ctx = self._recovery_context(stop_info)
+        resolved = ctx.resolved_action_policy()
+        if resolved is None:
+            return ctx.intent_allowed_actions, ctx.recommended_next_actions, ctx.next_actions_source
+        return resolved.intent_actions, resolved.recommended_actions, resolved.authoritative_source
+
+    def _effective_intent_step_limit(self, active_intent) -> int:
+        if active_intent is None:
+            return 0
+        safe_steps_limit = int(getattr(active_intent, "safe_steps_limit", 0) or 0)
+        user_step_extension = int(getattr(active_intent, "user_step_extension", 0) or 0)
+        return max(0, safe_steps_limit + max(0, user_step_extension))
+
+    def _intent_steps_remaining(self, active_intent) -> int:
+        if active_intent is None:
+            return 0
+        return max(
+            0,
+            self._effective_intent_step_limit(active_intent) - int(getattr(active_intent, "step_count", 0) or 0),
+        )
+
+    def _summarize_last_action(self) -> str:
+        state = getattr(self, "state", None)
+        if state is None:
+            return "none"
+
+        fingerprint = str(getattr(state, "last_action_fingerprint", "") or "").strip()
+        status = str(getattr(state, "last_action_status", "") or "").strip().lower()
+        if fingerprint:
+            cmd_type, _, payload = fingerprint.partition(":")
+            rendered = cmd_type or "action"
+            if payload:
+                try:
+                    data = json.loads(payload)
+                    path = data.get("path")
+                    command = data.get("command")
+                    pattern = data.get("pattern") or data.get("query") or data.get("name")
+                    if isinstance(path, str) and path.strip():
+                        rendered += f'("{path}")'
+                    elif isinstance(command, str) and command.strip():
+                        rendered += f'("{command[:80]}")'
+                    elif pattern not in (None, ""):
+                        rendered += f'("{str(pattern)[:80]}")'
+                except Exception:
+                    pass
+            if status:
+                return f"{rendered} -> {status}"
+            return rendered
+
+        recent_problem_actions = getattr(state, "recent_problem_actions", None) or []
+        if recent_problem_actions:
+            latest = recent_problem_actions[-1]
+            cmd = latest.get("command") if isinstance(latest, dict) else None
+            if isinstance(cmd, dict):
+                cmd_type = str(cmd.get("type") or cmd.get("action") or "action")
+                path = cmd.get("path")
+                rendered = cmd_type
+                if isinstance(path, str) and path.strip():
+                    rendered += f'("{path}")'
+                latest_status = str(latest.get("status") or "").strip().lower()
+                if latest_status:
+                    return f"{rendered} -> {latest_status}"
+                return rendered
+
+        return "none"
+
+    def _derive_current_best_answer(self, active_intent) -> str:
+        memory_board = getattr(self.agent, "memory_board_store", None)
+        if memory_board is None or not hasattr(memory_board, "entries") or active_intent is None:
+            return "none yet"
+
+        intent_id = getattr(active_intent, "intent_id", None)
+        if not intent_id:
+            return "none yet"
+
+        try:
+            entries = memory_board.entries(
+                status="active",
+                scope="intent",
+                intent_id=intent_id,
+                newest_first=True,
+            )
+        except Exception:
+            return "none yet"
+
+        ranked = []
+        for entry in entries:
+            kind = str(getattr(entry, "kind", "") or "")
+            text = str(getattr(entry, "text", "") or "").strip()
+            if not text:
+                continue
+            if kind == "progress":
+                score = 3
+            elif kind == "finding":
+                score = 2
+            elif kind == "fact":
+                score = 1
+            else:
+                score = 0
+            ranked.append((score, text))
+
+        if not ranked:
+            return "none yet"
+
+        ranked.sort(key=lambda item: item[0], reverse=True)
+        top = [text for _, text in ranked[:2]]
+        joined = " | ".join(top)
+        return joined[:280].rstrip() + ("…" if len(joined) > 280 else "")
+
+    def build_active_intent_contract_prompt(self) -> str:
+        universe = self._intent_universe()
+        active_intent = self._current_active_intent()
+        if active_intent is None or not universe.has_active_contract:
+            return ""
+
+        intent_id = str(getattr(active_intent, "intent_id", "") or "").strip() or "<none>"
+        intent_type = str(getattr(active_intent, "intent_type", "") or "").strip() or "<none>"
+        goal = str(getattr(active_intent, "goal", "") or "").strip() or "<none>"
+        allowed_actions = list(getattr(active_intent, "allowed_actions", []) or [])
+        safe_steps_limit = int(getattr(active_intent, "safe_steps_limit", 0) or 0)
+        steps_used = int(getattr(active_intent, "step_count", 0) or 0)
+        steps_remaining = self._intent_steps_remaining(active_intent)
+        retry_limit = int(getattr(active_intent, "retry_limit", 0) or 0)
+        retry_count = int(getattr(active_intent, "retry_count", 0) or 0)
+        last_action = self._summarize_last_action()
+        current_best_answer = self._derive_current_best_answer(active_intent)
+        accepted = "yes"
+        mode = "active"
+
+        lines = [
+            "## ACTIVE INTENT CONTRACT",
+            "Status: ACTIVE",
+            f"Accepted by runtime: {accepted}",
+            "This contract remains active until runtime explicitly completes, replaces, rejects, or closes it.",
+            "Do not emit another <intent mode=\"activate\"> for the same ongoing work.",
+            "Continue under this contract unless runtime explicitly requires a legitimate transition.",
+            "",
+            "VALID REASONS TO CHANGE THE ACTIVE INTENT CONTRACT:",
+            "- user_requested_new_task",
+            "- current_intent_completed",
+            "- current_intent_exhausted",
+            "- work_type_changed",
+            "- current_intent_no_longer_fits",
+            "If none of these reasons applies, do NOT emit <intent mode=\"activate\"> or <intent mode=\"replace\"> again for this same ongoing work.",
+            "",
+            f"intent_id: {intent_id}",
+            f"intent_type: {intent_type}",
+            f"goal: {goal}",
+            f"allowed_actions: {', '.join(allowed_actions) if allowed_actions else 'none'}",
+            f"safe_steps_limit: {safe_steps_limit}",
+            f"steps_used: {steps_used}",
+            f"steps_remaining: {steps_remaining}",
+            f"retry_limit: {retry_limit}",
+            f"retry_count: {retry_count}",
+            f"mode: {mode}",
+            "",
+            f"last_action: {last_action}",
+            f"current_best_answer: {current_best_answer}",
+            "",
+            "Next valid behaviors:",
+            "- return exactly one allowed action to advance the current work",
+            "- or return a plain-text answer if current evidence is already sufficient",
+            "- or emit <intent mode=\"complete\"> followed by a plain-text answer if the goal is achieved",
+            "",
+            "Do NOT:",
+            "- emit a new <intent mode=\"activate\"> or <intent mode=\"replace\"> for the same goal",
+            "- restart reconnaissance from the beginning",
+            "- ignore already established current_best_answer and intent-scoped memory without new evidence",
+        ]
+        return "\n".join(lines)
+
+    def build_no_active_intent_contract_prompt(self) -> str:
+        universe = self._intent_universe()
+        active_intent = self._current_active_intent()
+        if active_intent is not None or universe.has_active_contract:
+            return ""
+
+        steps_used = universe.intentless_steps_used
+        steps_limit = universe.intentless_steps_limit
+        intent_required = universe.intent_required_now
+        intent_required_reason = str(universe.intent_requirement_reason or "").strip() or "none"
+        last_action = self._summarize_last_action()
+
+        lines = [
+            "## INTENT MODE STATUS",
+            "Status: NO ACTIVE INTENT CONTRACT",
+            "Runtime mode: INTENTLESS_SHORT_MODE",
+            "Accepted by runtime: no active contract",
+            "There is currently NO active accepted formal intent contract for this work.",
+            "This mode is only for short unguided continuation before a formal contract is required.",
+            "Do not claim that a current intent contract remains active, because none exists.",
+            "",
+            f"intentless_steps_used: {steps_used}",
+            f"intentless_steps_limit: {steps_limit}",
+            f"formal_intent_required_now: {'yes' if intent_required else 'no'}",
+            f"intent_requirement_reason: {intent_required_reason}",
+            f"last_action: {last_action}",
+            "",
+            "Rules in this mode:",
+            "- continue from already gathered evidence; do not restart from zero",
+            "- if the next step needs governed multi-step execution, emit a formal <intent> now",
+            "- until activation succeeds, do not assume contract-scoped permissions or allowed_actions",
+            "- if a formal intent is already required, do not return another bare <action> first",
+            "- if current evidence is already sufficient, answer directly in plain text",
+        ]
+        return "\n".join(lines)
+
     def build_system_message(self, tools_prompt: str, ctx_prompt: str) -> str:
         prompt = DEFAULT_SYSTEM_PROMPT.replace("__TOOLS_DESCRIPTION__", tools_prompt)
         blocks = [prompt, ctx_prompt]
 
         memory_board = getattr(self.agent, "memory_board_store", None)
         active_intent_id = self._current_active_intent_id()
+
+        active_intent_prompt = self.build_active_intent_contract_prompt()
+        if active_intent_prompt:
+            blocks.append(active_intent_prompt)
+            if self.agent.log:
+                self.agent.log.debug(
+                    "PromptBuilder.active_intent_contract_prompt active_intent_id=%s chars=%s\n%s",
+                    active_intent_id or "",
+                    len(active_intent_prompt),
+                    active_intent_prompt,
+                )
+        else:
+            no_active_prompt = self.build_no_active_intent_contract_prompt()
+            if no_active_prompt:
+                blocks.append(no_active_prompt)
+                if self.agent.log:
+                    self.agent.log.debug(
+                        "PromptBuilder.no_active_intent_contract_prompt chars=%s\n%s",
+                        len(no_active_prompt),
+                        no_active_prompt,
+                    )
+
         if memory_board is not None and hasattr(memory_board, "to_system_prompt"):
             try:
                 memory_prompt = memory_board.to_system_prompt(active_intent_id=active_intent_id)
@@ -105,19 +352,44 @@ class OrchestratorPromptBuilder:
         next_hint = ""
         if allowed_actions:
             next_hint = f"\nAllowed actions for the next intent contract: {', '.join(allowed_actions)}."
+        universe = self._intent_universe()
+        active_intent = self._current_active_intent()
+        if not universe.has_active_contract or active_intent is None:
+            return (
+                "SYSTEM: A formal intent contract is required before further tool use.\n"
+                f"Reason: {reason}.{next_hint}\n"
+                "There is currently NO active accepted intent contract for this work.\n"
+                "Continue from already gathered evidence. Do not restart the task from zero.\n"
+                "Return EXACTLY ONE <intent> JSON block first.\n"
+                "Until activation succeeds, do not assume contract-scoped permissions or allowed_actions.\n"
+                "Optional schema fields:\n"
+                "- intent_id\n"
+                "- intent_type\n"
+                "- goal\n"
+                "- allowed_actions\n"
+                "- safe_steps_limit\n"
+                "- retry_limit\n"
+                "- mode\n"
+                "If you also need an action now, place the <intent> block before the action."
+            )
         return (
-            "SYSTEM: A formal intent contract is required before further tool use.\n"
+            "SYSTEM: A formal intent transition/update is required before further tool use.\n"
             f"Reason: {reason}.{next_hint}\n"
-            "Return EXACTLY ONE <intent> JSON block first.\n"
-            "Optional schema fields:\n"
-            "- intent_id\n"
-            "- intent_type\n"
-            "- goal\n"
-            "- allowed_actions\n"
-            "- safe_steps_limit\n"
-            "- retry_limit\n"
-            "- mode\n"
-            "If you also need an action now, place the <intent> block before the action."
+            "A formal runtime intent contract is already relevant for this work.\n"
+            "Return the required <intent> block first, then the next valid step if needed."
+        )
+
+    def build_invalid_intent_contract_prompt(self, reason: str, allowed_actions: list[str] | None = None) -> str:
+        next_hint = ""
+        if allowed_actions:
+            next_hint = f"\nAllowed actions for the next intent contract: {', '.join(allowed_actions)}."
+        return (
+            "SYSTEM: Your last <intent> block was syntactically invalid and was not accepted by runtime.\n"
+            f"Reason: {reason}.{next_hint}\n"
+            "There is still NO active accepted intent contract unless runtime explicitly says otherwise.\n"
+            "Continue from already gathered evidence. Do not restart from zero.\n"
+            "Return EXACTLY ONE corrected <intent> JSON block now.\n"
+            "Do not return a bare <action> before the corrected <intent> is accepted."
         )
 
     def build_reuse_current_intent_prompt(
@@ -147,8 +419,9 @@ class OrchestratorPromptBuilder:
         )
 
     def build_keep_current_intent_recovery_prompt(self, stop_info: dict | None) -> str:
-        stop_info = stop_info or {}
-        reason = str(stop_info.get("reason") or "").strip()
+        ctx = self._recovery_context(stop_info)
+        stop_info = ctx.to_stop_info()
+        reason = ctx.reason.strip()
         allowed_actions = self._current_intent_allowed_actions()
         goal = self._current_intent_goal()
         next_hint = f"\nAllowed actions under the CURRENT intent contract: {', '.join(allowed_actions)}." if allowed_actions else ""
@@ -157,8 +430,9 @@ class OrchestratorPromptBuilder:
             "intent_step_limit_soft_exceeded": "Continue under the current intent contract.",
             "user_approved_more_steps_after_hard_limit": "Continue under the current intent contract.",
             "intent_blocked_action_signature": "A specific action is blocked, but the current intent contract is still valid.",
-            "action_not_allowed_in_phase": "The current intent contract remains valid, but the previous phase-specific recovery conflicted with it.",
+            "action_not_allowed_in_phase": "The current intent contract remains valid, but a legacy recovery suggestion conflicted with it.",
             "retry_or_continuation_after_failure": "The previous step failed, but the current intent contract still remains valid.",
+            "unnecessary_intent_reactivation_or_replace": "The active intent contract is already present and remains active.",
             "suspect_intent_relabel_repeat": "The current intent contract is still valid.",
         }
         message_keys = {
@@ -167,6 +441,7 @@ class OrchestratorPromptBuilder:
             "intent_blocked_action_signature": stop_info.get("message_key") or "blocked_action_keep_current_intent",
             "action_not_allowed_in_phase": "keep_current_intent_conflicting_phase_actions",
             "retry_or_continuation_after_failure": stop_info.get("message_key") or "blocked_action_keep_current_intent",
+            "unnecessary_intent_reactivation_or_replace": stop_info.get("message_key") or "unnecessary_intent_reactivation_or_replace",
             "suspect_intent_relabel_repeat": stop_info.get("message_key") or "suspect_intent_relabel_repeat",
         }
         header = self._render_recovery_message(
@@ -196,15 +471,17 @@ class OrchestratorPromptBuilder:
         if reason == "user_approved_more_steps_after_hard_limit":
             base_lines.extend(
                 [
-                    "User approved a small additional step budget for the CURRENT intent contract.",
-                    "Return the next valid <action> now.",
+                    "User approved additional budget for this same intent contract.",
+                    "Continue from current evidence under the same contract.",
+                    "Return the next valid output.",
                 ]
             )
         elif reason == "intent_step_limit_soft_exceeded":
             base_lines.extend(
                 [
-                    "Choose the next action that most increases progress toward the goal.",
-                    "Prefer one final allowed <action>, or return a final plain-text answer if the evidence is already enough.",
+                    "First decide whether the current evidence is already sufficient for a useful answer.",
+                    "If it is sufficient, return a final plain-text answer now.",
+                    "If it is not sufficient, return exactly one next <action> that most increases progress toward the goal.",
                 ]
             )
         elif reason == "intent_blocked_action_signature":
@@ -234,8 +511,18 @@ class OrchestratorPromptBuilder:
         elif reason == "action_not_allowed_in_phase":
             base_lines.extend(
                 [
-                    "Use the CURRENT intent contract action family instead of switching to a conflicting phase-specific action set.",
+                    "Use the CURRENT intent contract action family instead of switching to a conflicting legacy recovery action set.",
                     "Return the next valid <action> that directly serves the current goal.",
+                ]
+            )
+        elif reason == "unnecessary_intent_reactivation_or_replace":
+            base_lines.extend(
+                [
+                    "The active intent contract is already shown in the system prompt and remains active by default.",
+                    "It will remain active until runtime explicitly completes, replaces, rejects, or closes it for a valid listed reason.",
+                    "There is no valid reason to reactivate or replace this same active intent contract now.",
+                    "Do not emit another <intent mode=\"activate\"> or <intent mode=\"replace\"> for this same contract.",
+                    "Return the next valid <action> under the current contract, or provide a plain-text answer if the evidence is already sufficient.",
                 ]
             )
         elif reason == "suspect_intent_relabel_repeat":
@@ -258,42 +545,43 @@ class OrchestratorPromptBuilder:
 
         return "\n".join(base_lines)
 
+    def build_no_active_intent_recovery_prompt(self, stop_info: dict | None) -> str:
+        ctx = self._recovery_context(stop_info)
+        stop_info = ctx.to_stop_info()
+        reason = ctx.reason.strip()
+        required = stop_info.get("next_actions") or []
+        source = str(ctx.next_actions_source or "").strip().lower()
+        if source == "recommended" and required:
+            required_hint = (
+                f"Runtime-suggested next actions: {', '.join(required)}.\n"
+                "These are recovery hints, not proof that contract-scoped tool use is already allowed."
+            )
+        else:
+            required_hint = f"Allowed next actions: {', '.join(required)}." if required else "Allowed next actions: none."
+        return (
+            "SYSTEM: No active intent contract is currently in force.\n"
+            f"Reason: {reason}.\n"
+            f"{required_hint}\n"
+            "Continue from already gathered evidence and conclusions. Do not restart the task from zero.\n"
+            "If the next step needs governed multi-step execution, activate a formal <intent> now.\n"
+            "Until activation succeeds, do not assume contract-scoped permissions or allowed_actions.\n"
+            "If current evidence is already sufficient, return a plain-text answer instead of more tool use.\n"
+            "Return the next valid step accordingly."
+        )
+
     def _should_prefer_current_intent_recovery(self, stop_info: dict | None) -> bool:
-        stop_info = stop_info or {}
-        reason = str(stop_info.get("reason") or "").strip()
-        active_intent = self._current_active_intent()
-        if active_intent is None:
-            return False
-
-        if reason in {
-            "intent_step_limit_soft_exceeded",
-            "user_approved_more_steps_after_hard_limit",
-            "intent_blocked_action_signature",
-            "retry_or_continuation_after_failure",
-            "suspect_intent_relabel_repeat",
-        }:
-            return True
-
-        if reason == "action_not_allowed_in_phase":
-            active_allowed = set(self._current_intent_allowed_actions())
-            next_actions = stop_info.get("next_actions") or []
-            next_set = set(next_actions if isinstance(next_actions, list) else [])
-            active_type = self._current_intent_type()
-            if not active_allowed:
-                return False
-            if active_type == "MODIFY":
-                return False
-            if next_set and not next_set.issubset(active_allowed):
-                return True
-
-        return False
+        ctx = self._recovery_context(stop_info)
+        return self.recovery_policy_resolver.should_prefer_current_intent_recovery(
+            ctx,
+            active_intent=self._current_active_intent(),
+        )
 
     def build_suspect_intent_change_message(self, stop_info: dict | None) -> str:
-        stop_info = stop_info or {}
-        suspicion = stop_info.get("suspicion") or {}
+        ctx = self._recovery_context(stop_info)
+        suspicion = ctx.suspicion or {}
         old_goal = str(suspicion.get("old_goal") or "")
         new_goal = str(suspicion.get("new_goal") or "")
-        reason = str(stop_info.get("reason") or "suspect_intent_relabel_repeat")
+        reason = ctx.reason or "suspect_intent_relabel_repeat"
         parts = [
             "Модель підозріло змінила поточний intent contract у межах тієї самої лінії роботи.",
             f"Причина: {reason}.",
@@ -313,8 +601,8 @@ class OrchestratorPromptBuilder:
         return "\n".join(parts)
 
     def build_intent_overrun_message(self, stop_info: dict | None) -> str:
-        stop_info = stop_info or {}
-        reason = str(stop_info.get("reason") or "intent_step_limit_exceeded")
+        ctx = self._recovery_context(stop_info)
+        reason = ctx.reason or "intent_step_limit_exceeded"
         return (
             "Поточний intent contract досяг жорсткого ліміту кроків. Далі агент не повинен продовжувати самовільно.\n"
             f"Причина: {reason}.\n"
@@ -373,35 +661,75 @@ class OrchestratorPromptBuilder:
             ]
         )
         if forbid_audit_markers:
-            lines.append("Do not output audit markers like SYSTEM_TOOL_AUDIT, TOOL_HISTORY, or <previously_performed_action>.")
+            lines.append("Do not output audit/history markers such as SYSTEM_TOOL_AUDIT or <previously_performed_action>.")
         return "\n".join(lines)
+
+    def build_malformed_action_strict_recovery_prompt(self) -> str:
+        return (
+            "SYSTEM: Your last response contained malformed <action> content.\n"
+            "Return EXACTLY ONE valid <action>...</action> block now.\n"
+            "Inside it:\n"
+            "- include exactly ONE JSON object for exactly ONE next action.\n"
+            "- Do not return multiple <action> blocks.\n"
+            "- Do not return a JSON array.\n"
+            "- Do not include prose outside <action>.\n"
+            "If no tool is needed, return a plain-text answer instead of any <action>."
+        )
+
+    def build_audit_marker_echo_strict_recovery_prompt(self) -> str:
+        return (
+            "SYSTEM: Your last response echoed an internal audit marker instead of a valid next step.\n"
+            "Do not output audit/history markers such as SYSTEM_TOOL_AUDIT or <previously_performed_action>.\n"
+            "Return the next valid output now.\n"
+            "If a tool is needed, return EXACTLY ONE valid <action>...</action> block.\n"
+            "If no tool is needed, return a plain-text answer.\n"
+            "Do not output <think> without an action or final answer."
+        )
 
     def build_missing_action_or_answer_prompt(self) -> str:
         return (
-            "SYSTEM: You analyzed the next step but did not return a valid action or a final answer.\n"
-            "Return the next valid <action> now, or provide a final plain-text answer if no tool is needed.\n"
-            "Do not output TOOL_HISTORY, SYSTEM_TOOL_AUDIT, or <previously_performed_action>.\n"
+            "SYSTEM: Your last response did not include a valid next step or a final answer.\n"
+            "Return the next valid output now.\n"
+            "If a tool is needed, return EXACTLY ONE valid <action>...</action> block.\n"
+            "If no tool is needed, return a plain-text answer.\n"
+            "Do not output historical tool markers, SYSTEM_TOOL_AUDIT, or <previously_performed_action>.\n"
+            "Do not output <think> without an action or final answer."
+        )
+
+    def build_tool_history_echo_without_action_prompt(self) -> str:
+        return (
+            "SYSTEM: Your last response echoed a historical tool marker instead of a valid next step.\n"
+            "Do not output TOOL_HISTORY, history_tool, or other historical markers again.\n"
+            "Return the next valid output now.\n"
+            "If a tool is needed, return EXACTLY ONE valid <action>...</action> block.\n"
+            "If no tool is needed, return a plain-text answer.\n"
             "Do not output <think> without an action or final answer."
         )
 
     def build_intent_only_deadend_prompt(self) -> str:
         return (
-            "SYSTEM: You returned an <intent> block but did not provide the next valid step.\n"
-            "If tool use is needed, return the next valid <action> now.\n"
-            "If no tool is needed, return a final plain-text answer now.\n"
+            "SYSTEM: Your last response included an <intent> block but did not include a valid next step or a final answer.\n"
+            "Return the next valid output now.\n"
+            "If a tool is needed, return EXACTLY ONE valid <action>...</action> block.\n"
+            "If no tool is needed, return a plain-text answer.\n"
             "Do not repeat the same <intent> again unless you are explicitly retrying or replacing it.\n"
-            "Do not output TOOL_HISTORY, SYSTEM_TOOL_AUDIT, or <previously_performed_action>."
+            "Do not output historical tool markers, SYSTEM_TOOL_AUDIT, or <previously_performed_action>."
         )
 
     def typed_recovery_header(self, stop_info: dict | None) -> str:
-        stop_info = stop_info or {}
-        reason = str(stop_info.get("reason") or "").strip()
-        code = str(stop_info.get("error_code") or "").strip()
+        ctx = self._recovery_context(stop_info)
+        stop_info = ctx.to_stop_info()
+        reason = ctx.reason.strip()
+        code = ctx.error_code.strip()
         message_key = resolve_intent_message_key(stop_info)
-        next_actions = stop_info.get("next_actions") or []
-        if not isinstance(next_actions, list):
-            next_actions = []
-        next_hint = f"\nAllowed next actions: {', '.join(next_actions)}." if next_actions else ""
+        intent_actions, recommended_actions, source = self._action_hints_from_stop_info(stop_info)
+        next_hint = ""
+        if intent_actions:
+            next_hint = self._format_next_actions_hint(intent_actions, "intent")
+        elif recommended_actions:
+            next_hint = self._format_next_actions_hint(recommended_actions, "recommended")
+        elif source:
+            next_hint = self._format_next_actions_hint(stop_info.get("next_actions") or [], source)
 
         registry_rendered = render_intent_message(message_key, next_hint=next_hint, default="")
         if registry_rendered:
@@ -410,13 +738,12 @@ class OrchestratorPromptBuilder:
         headers = {
             "reread_after_summary": "You just summarized context and then tried to re-read a file already in history without a specific reason. Use existing context instead.",
             "reread_already_in_history": "You tried to re-read a file that is already available in history without a specific reason.",
-            "observe_budget_exhausted": "OBSERVE phase budget is exhausted. Transition to EDIT_PLAN now.",
-            "action_not_allowed_in_phase": "The requested action is not allowed in the current phase.",
+            "observe_budget_exhausted": "Read-only exploration budget is exhausted. Move to a more concrete next step now.",
+            "action_not_allowed_in_phase": "A legacy recovery suggestion conflicted with the current execution contract.",
             "root_listing_budget_exhausted": "Root-level directory listing budget is exhausted for this turn.",
             "list_directory_budget_exhausted": "list_directory budget is exhausted for this turn.",
             "directory_descent_budget_exhausted": "Directory descent budget is exhausted. Stop walking folders one level at a time.",
             "broad_recon_budget_exhausted": "Broad reconnaissance budget is exhausted. Narrow the search or move to editing.",
-            "cross_target_read_without_reason": "Target file is pinned. Reading another file now requires an explicit reason.",
             "recover_repeated_fingerprint": "You repeated the same action fingerprint after recovery.",
             "repeating_no_progress": "You are repeating actions without measurable progress.",
             "repeating_failure": "You are repeating failing actions without changing strategy.",
@@ -464,11 +791,28 @@ class OrchestratorPromptBuilder:
                 "Prefer read_file_skeleton first, or use read_chunk with line ranges. "
                 "If full content is truly required, repeat read_file with confirm_large_read=true."
             ) + next_hint
-        return "Previous action violated orchestration policy. Choose a different strategy and follow the required next actions." + next_hint
+        return (
+            "Previous action violated orchestration policy. "
+            "Choose a different valid next step consistent with the current contract and current evidence."
+        ) + next_hint
+
+    def _format_next_actions_hint(self, next_actions: list[str] | None, source: str = "") -> str:
+        actions = next_actions or []
+        if not actions:
+            return ""
+        source_value = str(source or "").strip().lower()
+        if source_value == "intent":
+            label = "Allowed actions under the CURRENT intent contract"
+        elif source_value == "recommended":
+            label = "Runtime-suggested next actions"
+        else:
+            label = "Allowed next actions"
+        return f"\n{label}: {', '.join(actions)}."
 
     def build_typed_stop_recovery_prompt(self, stop_info: dict | None) -> str:
-        stop_info = stop_info or {}
-        reason = str(stop_info.get("reason") or "").strip()
+        ctx = self._recovery_context(stop_info)
+        stop_info = ctx.to_stop_info()
+        reason = ctx.reason.strip()
         state_changing_only = reason in {"repeating_failure", "repeating_no_progress", "observe_budget_exhausted"}
         single_readonly_action_only = reason in {
             "too_broad_search",
@@ -505,11 +849,10 @@ class OrchestratorPromptBuilder:
         return prompt
 
     def build_plain_text_completion_prompt(self, sm, stop_info: dict | None) -> str:
+        ctx = self._recovery_context(stop_info)
         task_kind = getattr(sm, "task_kind", None)
         kind = getattr(task_kind, "value", str(task_kind or "UNKNOWN"))
-        phase = getattr(sm, "phase", None)
-        phase_value = getattr(phase, "value", str(phase or "UNKNOWN"))
-        reason = str((stop_info or {}).get("reason") or "")
+        reason = ctx.reason
         target = getattr(sm, "target_file", None) or "<unknown>"
         route_hint = ""
         if hasattr(sm, "_inspection_route_hint"):
@@ -519,7 +862,7 @@ class OrchestratorPromptBuilder:
                 route_hint = ""
         parts = [
             "SYSTEM: Stop tool use now.",
-            f"Task kind: {kind}. Current phase: {phase_value}.",
+            f"Task kind: {kind}.",
             f"Recovery reason: {reason}.",
             f"Current target: {target}.",
             "Return a concise plain-text answer in the user's language using only the evidence already gathered.",
@@ -536,6 +879,8 @@ class OrchestratorPromptBuilder:
             "reason": reason,
             "recoverable": True,
             "next_actions": allowed_actions or [],
+            "intent_allowed_actions": allowed_actions or [],
+            "next_actions_source": "intent",
         }
         if goal:
             stop_info["goal"] = goal
@@ -628,15 +973,45 @@ class OrchestratorPromptBuilder:
             "Do not switch back to guessed byte offsets unless they are explicitly required."
         )
 
+    def build_repeated_malformed_read_chunk_payload_prompt(self, allowed_actions=None, goal: str = "") -> str:
+        filtered = []
+        for action in list(allowed_actions or []):
+            action_value = str(action or "").strip()
+            if action_value and action_value != "read_chunk" and action_value not in filtered:
+                filtered.append(action_value)
+        allowed_text = ", ".join(filtered) if filtered else "plain-text answer"
+        goal_text = str(goal or "").strip()
+        goal_line = f"Current intent goal remains the same: {goal_text}.\n" if goal_text else ""
+        return (
+            "SYSTEM: Your read_chunk payload was already invalid once in this turn, and the corrective retry did not recover.\n"
+            "Do NOT output read_chunk again in the next reply.\n"
+            f"{goal_line}"
+            f"Next valid options now: {allowed_text}.\n"
+            "Return EXACTLY ONE materially different next step.\n"
+            "Prefer search_content, read_file_skeleton, search_files, list_directory, or a narrow read-only run_shell if allowed.\n"
+            "If current evidence is already sufficient, return a plain-text answer instead.\n"
+            "Do not re-send another malformed recovery attempt."
+        )
+
     def build_orchestrated_recovery_prompt(self, stop_info: dict | None) -> str:
-        stop_info = stop_info or {}
-        reason = str(stop_info.get("reason") or "")
+        ctx = self._recovery_context(stop_info)
+        stop_info = ctx.to_stop_info()
+        reason = ctx.reason
+        universe = self._intent_universe()
 
         if self._should_prefer_current_intent_recovery(stop_info):
             return self.build_keep_current_intent_recovery_prompt(stop_info)
 
+        if not universe.has_active_contract and reason in {
+            "retry_or_continuation_after_failure",
+            "multi_step_without_intent_contract",
+            "invalid_intent_json",
+            "empty_intent_block",
+            "intent_required_parse_error",
+        }:
+            return self.build_no_active_intent_recovery_prompt(stop_info)
+
         if reason in {
-            "cross_target_read_without_reason",
             "recover_repeated_fingerprint",
             "policy_denied",
             "malformed_read_file_payload",
@@ -653,10 +1028,22 @@ class OrchestratorPromptBuilder:
         }:
             return self.build_typed_stop_recovery_prompt(stop_info)
 
-        required = stop_info.get("next_actions") or []
-        required_hint = f"Required next actions: {', '.join(required)}.\n" if required else ""
+        intent_actions, recommended_actions, source = self._action_hints_from_stop_info(stop_info)
+        if intent_actions:
+            required_hint = f"Allowed actions under the CURRENT intent contract: {', '.join(intent_actions)}.\n"
+        elif recommended_actions:
+            required_hint = f"Runtime-suggested next actions: {', '.join(recommended_actions)}.\n"
+        else:
+            required = stop_info.get("next_actions") or []
+            if required and source == "intent":
+                required_hint = f"Allowed actions under the CURRENT intent contract: {', '.join(required)}.\n"
+            elif required and source == "recommended":
+                required_hint = f"Runtime-suggested next actions: {', '.join(required)}.\n"
+            else:
+                required_hint = f"Runtime-provided next-action hints: {', '.join(required)}.\n" if required else ""
         return (
             "SYSTEM: Previous action violated orchestration policy.\n"
             f"{required_hint}"
-            "Choose a different strategy and return the next valid <action>."
+            "Use these only as recovery hints, not as a replacement for the current contract.\n"
+            "Return the next valid output."
         )

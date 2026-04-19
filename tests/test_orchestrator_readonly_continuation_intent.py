@@ -2,6 +2,7 @@ import unittest
 from types import SimpleNamespace
 
 from modules.agent.orchestrator import Orchestrator
+from modules.agent.orchestration.policy import IntentGuard
 
 
 def _make_orchestrator(active_intent=None, readonly_steps_this_turn=0):
@@ -27,6 +28,9 @@ def _make_orchestrator(active_intent=None, readonly_steps_this_turn=0):
 
 
 class OrchestratorReadOnlyContinuationIntentTests(unittest.TestCase):
+    def setUp(self):
+        self.guard = IntentGuard()
+
     def test_second_read_only_step_with_active_compatible_intent_does_not_require_new_intent(self):
         active_intent = SimpleNamespace(
             intent_id="investigate_activity_tracker",
@@ -41,7 +45,7 @@ class OrchestratorReadOnlyContinuationIntentTests(unittest.TestCase):
             "path": "core-data-models/src/main/java/com/romankozak/forwardappmobile/core/data/models/entities/ActivityRecord.kt",
         }
 
-        required, reason = orch._action_requires_intent(
+        required, reason = self.guard.action_requires_intent(
             command,
             state,
             batch_size=1,
@@ -69,7 +73,7 @@ class OrchestratorReadOnlyContinuationIntentTests(unittest.TestCase):
             "pattern": r"data class ActivityRecord\(",
         }
 
-        required, reason = orch._action_requires_intent(
+        required, reason = self.guard.action_requires_intent(
             command,
             state,
             batch_size=1,
@@ -87,7 +91,7 @@ class OrchestratorReadOnlyContinuationIntentTests(unittest.TestCase):
             "path": "app/src/main/java/com/romankozak/forwardappmobile/features/activitytracker/ActivityTrackerViewModel.kt",
         }
 
-        required, reason = orch._action_requires_intent(
+        required, reason = self.guard.action_requires_intent(
             command,
             state,
             batch_size=1,
@@ -97,7 +101,7 @@ class OrchestratorReadOnlyContinuationIntentTests(unittest.TestCase):
         self.assertTrue(required)
         self.assertEqual("investigation_task_requires_formal_intent", reason)
 
-    def test_incompatible_active_intent_does_not_whitelist_unallowed_read_only_action(self):
+    def test_incompatible_active_intent_does_not_force_new_intent_just_for_readonly_continuation(self):
         active_intent = SimpleNamespace(
             intent_id="search_only_intent",
             intent_type="INVESTIGATE",
@@ -111,21 +115,15 @@ class OrchestratorReadOnlyContinuationIntentTests(unittest.TestCase):
             "path": "app/src/main/java/com/romankozak/forwardappmobile/features/activitytracker/ActivityTrackerViewModel.kt",
         }
 
-        required, reason = orch._action_requires_intent(
+        required, reason = self.guard.action_requires_intent(
             command,
             state,
             batch_size=1,
             current_user_input="Continue the same investigation.",
         )
 
-        self.assertTrue(required)
-        self.assertIn(
-            reason,
-            {
-                "investigation_task_requires_formal_intent",
-                "not_first_read_only_step_requires_intent",
-            },
-        )
+        self.assertFalse(required)
+        self.assertEqual("", reason)
 
 
 if __name__ == "__main__":

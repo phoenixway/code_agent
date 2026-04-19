@@ -76,6 +76,17 @@ class IntentContract:
 
 class IntentRuntime:
     SUPPORTED_TYPES = {"INVESTIGATE", "VERIFY", "MODIFY", "CLEANUP", "SUMMARIZE"}
+    MODIFY_DEFAULT_ACTIONS = (
+        "edit_file",
+        "write_file",
+        "create_file",
+        "run_shell",
+        "read_chunk",
+        "read_file_skeleton",
+        "search_content",
+        "search_files",
+        "read_file",
+    )
     SUPPORTED_MODES = {"activate", "retry", "replace", "complete"}
 
     def __init__(self, config):
@@ -168,6 +179,31 @@ class IntentRuntime:
         if not sa or not sb:
             return 0.0
         return len(sa & sb) / max(1, len(sa | sb))
+
+    def _normalize_allowed_actions_for_intent_type(
+        self,
+        intent_type: str,
+        allowed_actions: list[str],
+    ) -> list[str]:
+        cleaned: list[str] = []
+        for action in allowed_actions or []:
+            if action in KNOWN_TOOL_ACTIONS and action not in cleaned:
+                cleaned.append(action)
+
+        if intent_type != "MODIFY":
+            return cleaned
+
+        has_state_changing = any(
+            action in {"edit_file", "write_file", "create_file"}
+            for action in cleaned
+        )
+        if has_state_changing:
+            return cleaned
+
+        for action in self.MODIFY_DEFAULT_ACTIONS:
+            if action in KNOWN_TOOL_ACTIONS and action not in cleaned:
+                cleaned.append(action)
+        return cleaned
 
     def _same_lineage(self, contract: IntentContract) -> bool:
         if self.active_intent is None:
@@ -483,6 +519,10 @@ class IntentRuntime:
             action = str(item or "").strip()
             if action in KNOWN_TOOL_ACTIONS and action not in allowed_actions:
                 allowed_actions.append(action)
+        allowed_actions = self._normalize_allowed_actions_for_intent_type(
+            intent_type,
+            allowed_actions,
+        )
         if not allowed_actions:
             return None, "intent_allowed_actions_empty"
 
@@ -797,6 +837,14 @@ class IntentRuntime:
                 "recoverable": True,
                 "error_code": "INTENT_FORCE_PLAINTEXT_COMPLETION",
                 "next_actions": [],
+                "intent_allowed_actions": [],
+                "next_actions_source": "intent",
+                "policy_allowed_actions": [],
+                "policy_recommended_actions": [],
+                "policy_blocked_actions": list(self.active_intent.allowed_actions[:]),
+                "policy_intent_actions": [],
+                "policy_authoritative_source": "intent",
+                "policy_keep_current_intent": True,
                 "command": command.copy(),
                 "message": (
                     "User requested final answer from already gathered evidence. "
@@ -818,6 +866,14 @@ class IntentRuntime:
                 "recoverable": decision.recoverable,
                 "error_code": decision.error_code,
                 "next_actions": list(decision.next_actions or []),
+                "intent_allowed_actions": list(decision.next_actions or []),
+                "next_actions_source": "intent",
+                "policy_allowed_actions": list(decision.next_actions or []),
+                "policy_recommended_actions": [],
+                "policy_blocked_actions": [],
+                "policy_intent_actions": list(decision.next_actions or []),
+                "policy_authoritative_source": "intent",
+                "policy_keep_current_intent": True,
                 "command": command.copy(),
                 "message": (
                     "This exact action shape is blocked for the current intent. "
@@ -836,6 +892,14 @@ class IntentRuntime:
                 "recoverable": True,
                 "error_code": "INTENT_ACTION_NOT_ALLOWED",
                 "next_actions": self.active_intent.allowed_actions[:],
+                "intent_allowed_actions": self.active_intent.allowed_actions[:],
+                "next_actions_source": "intent",
+                "policy_allowed_actions": self.active_intent.allowed_actions[:],
+                "policy_recommended_actions": [],
+                "policy_blocked_actions": [cmd_type],
+                "policy_intent_actions": self.active_intent.allowed_actions[:],
+                "policy_authoritative_source": "intent",
+                "policy_keep_current_intent": True,
                 "command": command.copy(),
             }
 
@@ -857,6 +921,14 @@ class IntentRuntime:
                     "recoverable": True,
                     "error_code": "INTENT_REQUIRES_CHUNK_FOR_PATH",
                     "next_actions": next_actions,
+                    "intent_allowed_actions": next_actions,
+                    "next_actions_source": "intent",
+                    "policy_allowed_actions": next_actions,
+                    "policy_recommended_actions": [],
+                    "policy_blocked_actions": ["read_file"],
+                    "policy_intent_actions": next_actions,
+                    "policy_authoritative_source": "intent",
+                    "policy_keep_current_intent": True,
                     "command": command.copy(),
                     "message": (
                         "This file may not be read with full read_file under the current intent. "
@@ -873,6 +945,14 @@ class IntentRuntime:
                     "recoverable": True,
                     "error_code": "INTENT_FORBID_SAME_FULL_READ_PATH",
                     "next_actions": next_actions,
+                    "intent_allowed_actions": next_actions,
+                    "next_actions_source": "intent",
+                    "policy_allowed_actions": next_actions,
+                    "policy_recommended_actions": [],
+                    "policy_blocked_actions": ["read_file"],
+                    "policy_intent_actions": next_actions,
+                    "policy_authoritative_source": "intent",
+                    "policy_keep_current_intent": True,
                     "command": command.copy(),
                     "message": (
                         "Do not repeat the same full read_file action for this path. "
@@ -904,6 +984,14 @@ class IntentRuntime:
                 "recoverable": True,
                 "error_code": "INTENT_STEP_LIMIT_EXCEEDED_REPEATED" if repeated else "INTENT_STEP_LIMIT_EXCEEDED",
                 "next_actions": self.active_intent.allowed_actions[:],
+                "intent_allowed_actions": self.active_intent.allowed_actions[:],
+                "next_actions_source": "intent",
+                "policy_allowed_actions": self.active_intent.allowed_actions[:],
+                "policy_recommended_actions": [],
+                "policy_blocked_actions": [],
+                "policy_intent_actions": self.active_intent.allowed_actions[:],
+                "policy_authoritative_source": "intent",
+                "policy_keep_current_intent": True,
                 "message": (
                     "Current intent exceeded its hard step limit repeatedly for the same lineage. "
                     "Hand off the decision to the user: approve more steps, or stop and answer from current evidence."
@@ -920,6 +1008,14 @@ class IntentRuntime:
                 "recoverable": True,
                 "error_code": "INTENT_STEP_LIMIT_SOFT_EXCEEDED",
                 "next_actions": self.active_intent.allowed_actions[:],
+                "intent_allowed_actions": self.active_intent.allowed_actions[:],
+                "next_actions_source": "intent",
+                "policy_allowed_actions": self.active_intent.allowed_actions[:],
+                "policy_recommended_actions": [],
+                "policy_blocked_actions": [],
+                "policy_intent_actions": self.active_intent.allowed_actions[:],
+                "policy_authoritative_source": "intent",
+                "policy_keep_current_intent": True,
                 "message": (
                     "Current intent reached its nominal step limit. "
                     "Prefer one final allowed action or a plain-text conclusion. "

@@ -9,7 +9,7 @@ from modules.agent.state_machine import AgentStateMachine
 
 
 class TestActionDispatcherLoopGuard(unittest.IsolatedAsyncioTestCase):
-    async def test_state_machine_policy_denies_cross_target_read(self):
+    async def test_state_machine_policy_allows_cross_target_read_while_guard_is_disabled(self):
         ui = SimpleNamespace(
             print_edit_file_start=AsyncMock(return_value=object()),
             start_action=AsyncMock(),
@@ -49,10 +49,9 @@ class TestActionDispatcherLoopGuard(unittest.IsolatedAsyncioTestCase):
         command = {"type": "read_file", "path": "b.txt"}
         _cmd_copy, result_text, should_stop = await dispatcher._execute_action(command, state)
 
-        self.assertTrue(should_stop)
-        self.assertIn("Target file is pinned", result_text)
-        processor.process_single_action.assert_not_called()
-        self.assertEqual(state.pending_loop_stop_info.get("reason"), "cross_target_read_without_reason")
+        self.assertFalse(should_stop)
+        self.assertIn("Read file", result_text)
+        processor.process_single_action.assert_called_once()
 
     async def test_repeated_read_file_no_progress_stops(self):
         ui = SimpleNamespace(
@@ -184,6 +183,72 @@ class TestActionDispatcherLoopGuard(unittest.IsolatedAsyncioTestCase):
         self.assertIn("SYSTEM RESULT for `read_file`", result_text)
         self.assertEqual(cmd_copy.get("path"), "a.txt")
         processor.process_single_action.assert_awaited()
+
+    async def test_read_chunk_string_line_numbers_are_auto_normalized(self):
+        ui = SimpleNamespace(
+            print_edit_file_start=AsyncMock(return_value=object()),
+            start_action=AsyncMock(),
+            update_edit_file_result=AsyncMock(),
+            print_tool_call=AsyncMock(),
+            print_plan=AsyncMock(),
+            print_command_result=AsyncMock(),
+            print_confirmation=AsyncMock(),
+            print_shell_start=AsyncMock(return_value=object()),
+            update_shell_result=AsyncMock(),
+            print_read_file_start=AsyncMock(return_value=object()),
+            update_read_file_result=AsyncMock(),
+        )
+        processor = SimpleNamespace(process_single_action=AsyncMock(return_value={"status": "success", "output": "ok"}))
+        config = SimpleNamespace(
+            STATE_CHANGING_OPS={"edit_file", "create_file", "run_shell"},
+            LOOP_ERROR_REPEAT_THRESHOLD=2,
+            READ_ONLY_REPEAT_THRESHOLD=3,
+            RECOVERABLE_ERROR_RETRY_BUDGET=2,
+            CRITICAL_ERROR_RETRY_BUDGET=1,
+        )
+        agent = SimpleNamespace(ui=ui, processor=processor, config=config, log=None)
+        dispatcher = ActionDispatcher(agent)
+
+        command = {"type": "read_chunk", "path": "a.txt", "start_line": "70", "end_line": "75"}
+        normalized = dispatcher._normalize_read_chunk_command(command)
+
+        self.assertEqual(normalized.get("start_line"), 70)
+        self.assertEqual(normalized.get("end_line"), 75)
+
+    async def test_read_chunk_nested_command_string_line_numbers_are_auto_normalized(self):
+        ui = SimpleNamespace(
+            print_edit_file_start=AsyncMock(return_value=object()),
+            start_action=AsyncMock(),
+            update_edit_file_result=AsyncMock(),
+            print_tool_call=AsyncMock(),
+            print_plan=AsyncMock(),
+            print_command_result=AsyncMock(),
+            print_confirmation=AsyncMock(),
+            print_shell_start=AsyncMock(return_value=object()),
+            update_shell_result=AsyncMock(),
+            print_read_file_start=AsyncMock(return_value=object()),
+            update_read_file_result=AsyncMock(),
+        )
+        processor = SimpleNamespace(process_single_action=AsyncMock(return_value={"status": "success", "output": "ok"}))
+        config = SimpleNamespace(
+            STATE_CHANGING_OPS={"edit_file", "create_file", "run_shell"},
+            LOOP_ERROR_REPEAT_THRESHOLD=2,
+            READ_ONLY_REPEAT_THRESHOLD=3,
+            RECOVERABLE_ERROR_RETRY_BUDGET=2,
+            CRITICAL_ERROR_RETRY_BUDGET=1,
+        )
+        agent = SimpleNamespace(ui=ui, processor=processor, config=config, log=None)
+        dispatcher = ActionDispatcher(agent)
+
+        command = {
+            "type": "read_chunk",
+            "command": '{"path":"a.txt","start_line":"70","end_line":"75"}',
+        }
+        normalized = dispatcher._normalize_read_chunk_command(command)
+
+        self.assertEqual(normalized.get("path"), "a.txt")
+        self.assertEqual(normalized.get("start_line"), 70)
+        self.assertEqual(normalized.get("end_line"), 75)
 
     async def test_read_file_without_path_is_blocked_with_recovery_hint(self):
         ui = SimpleNamespace(

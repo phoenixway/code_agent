@@ -1,7 +1,9 @@
 import unittest
 from types import SimpleNamespace
 
+from modules.agent.allowed_actions_resolver import AllowedActionsContext, AllowedActionsResolver
 from modules.agent.orchestrator import Orchestrator
+from modules.agent.orchestration.prompting import OrchestratorPromptBuilder
 
 
 def _make_orchestrator(active_intent):
@@ -17,16 +19,26 @@ def _make_orchestrator(active_intent):
     return Orchestrator(agent)
 
 
+def _make_prompt_builder(active_intent):
+    return OrchestratorPromptBuilder(
+        SimpleNamespace(
+            state=SimpleNamespace(active_intent=active_intent),
+            config=SimpleNamespace(),
+            memory_board_store=None,
+            log=None,
+        )
+    )
+
+
 class OrchestratorAllowedActionsStabilityTests(unittest.TestCase):
     def setUp(self):
-        self.orch = _make_orchestrator(
-            SimpleNamespace(
-                intent_id="activity_tracker_edit",
-                intent_type="INVESTIGATE",
-                goal="determine how to allow moving today's activity to yesterday via the edit dialog in ActivityTrackerScreen",
-                allowed_actions=["read_chunk", "read_file", "search_content"],
-            )
+        self.active_intent = SimpleNamespace(
+            intent_id="activity_tracker_edit",
+            intent_type="INVESTIGATE",
+            goal="determine how to allow moving today's activity to yesterday via the edit dialog in ActivityTrackerScreen",
+            allowed_actions=["read_chunk", "read_file", "search_content"],
         )
+        self.prompt_builder = _make_prompt_builder(self.active_intent)
 
     def test_current_intent_contract_recovery_keeps_read_only_actions_stable_after_soft_limit(self):
         stop_info = {
@@ -35,7 +47,7 @@ class OrchestratorAllowedActionsStabilityTests(unittest.TestCase):
             "next_actions": ["read_chunk", "read_file", "search_content"],
         }
 
-        out = self.orch._build_orchestrated_recovery_prompt(stop_info)
+        out = self.prompt_builder.build_orchestrated_recovery_prompt(stop_info)
 
         self.assertIn("Allowed actions under the CURRENT intent contract: read_chunk, read_file, search_content.", out)
         self.assertIn("Current contract goal remains the same", out)
@@ -49,11 +61,12 @@ class OrchestratorAllowedActionsStabilityTests(unittest.TestCase):
             "next_actions": ["read_chunk", "read_file", "search_content"],
         }
 
-        out = self.orch._build_orchestrated_recovery_prompt(stop_info)
+        out = self.prompt_builder.build_orchestrated_recovery_prompt(stop_info)
 
         self.assertIn("Allowed actions under the CURRENT intent contract: read_chunk, read_file, search_content.", out)
-        self.assertIn("User approved a small additional step budget for the CURRENT intent contract.", out)
-        self.assertIn("Return EXACTLY ONE valid next <action> now.", out)
+        self.assertIn("User approved additional budget for this same intent contract.", out)
+        self.assertIn("Continue from current evidence under the same contract.", out)
+        self.assertIn("Return the next valid output.", out)
         self.assertNotIn("Allowed next actions: search_content, edit_file, write_file.", out)
 
     def test_same_intent_action_not_allowed_in_phase_should_not_jump_to_write_actions(self):
@@ -61,12 +74,28 @@ class OrchestratorAllowedActionsStabilityTests(unittest.TestCase):
             "reason": "action_not_allowed_in_phase",
             "recoverable": True,
             "next_actions": ["search_content", "edit_file", "write_file"],
+            "next_actions_source": "recommended",
         }
 
-        out = self.orch._build_orchestrated_recovery_prompt(stop_info)
+        out = self.prompt_builder.build_orchestrated_recovery_prompt(stop_info)
 
         self.assertNotIn("Allowed next actions: search_content, edit_file, write_file.", out)
         self.assertNotIn("Required next actions: search_content, edit_file, write_file.", out)
+        self.assertNotIn("Allowed actions under the CURRENT intent contract: search_content, edit_file, write_file.", out)
+        self.assertIn("Allowed actions under the CURRENT intent contract: read_chunk, read_file, search_content.", out)
+        self.assertIn("Use the CURRENT intent contract action family instead of switching to a conflicting legacy recovery action set.", out)
+
+    def test_same_intent_recommended_actions_are_filtered_before_rendering(self):
+        stop_info = {
+            "reason": "retry_or_continuation_after_failure",
+            "recoverable": True,
+            "next_actions": ["search_content", "edit_file", "write_file"],
+            "next_actions_source": "recommended",
+        }
+
+        out = self.prompt_builder.build_orchestrated_recovery_prompt(stop_info)
+
+        self.assertNotIn("Recommended next actions: search_content, edit_file, write_file.", out)
         self.assertIn("Allowed actions under the CURRENT intent contract: read_chunk, read_file, search_content.", out)
 
     def test_blocked_action_keeps_current_intent_contract_read_family(self):
@@ -77,30 +106,59 @@ class OrchestratorAllowedActionsStabilityTests(unittest.TestCase):
             "next_actions": ["read_chunk", "read_file", "search_content"],
         }
 
-        out = self.orch._build_orchestrated_recovery_prompt(stop_info)
+        out = self.prompt_builder.build_orchestrated_recovery_prompt(stop_info)
 
         self.assertIn("Allowed actions under the CURRENT intent contract: read_chunk, read_file, search_content.", out)
         self.assertIn("The current intent contract remains valid", out)
         self.assertNotIn("Allowed next actions: search_content, edit_file, write_file.", out)
 
-    def test_modify_phase_may_offer_write_actions_after_real_intent_switch(self):
-        self.orch = _make_orchestrator(
-            SimpleNamespace(
-                intent_id="activity_tracker_doc_write",
-                intent_type="MODIFY",
-                goal="write documentation file with findings",
-                allowed_actions=["search_content", "edit_file", "write_file"],
-            )
+    def test_modify_recovery_may_offer_write_actions_after_real_intent_switch(self):
+        self.active_intent = SimpleNamespace(
+            intent_id="activity_tracker_doc_write",
+            intent_type="MODIFY",
+            goal="write documentation file with findings",
+            allowed_actions=["search_content", "edit_file", "write_file"],
         )
+        self.prompt_builder = _make_prompt_builder(self.active_intent)
         stop_info = {
             "reason": "action_not_allowed_in_phase",
             "recoverable": True,
             "next_actions": ["search_content", "edit_file", "write_file"],
+            "next_actions_source": "recommended",
         }
 
-        out = self.orch._build_orchestrated_recovery_prompt(stop_info)
+        out = self.prompt_builder.build_orchestrated_recovery_prompt(stop_info)
 
-        self.assertIn("Required next actions: search_content, edit_file, write_file.", out)
+        self.assertIn("Runtime-suggested next actions: search_content, edit_file, write_file.", out)
+
+    def test_policy_violation_without_source_uses_runtime_provided_hints_label(self):
+        stop_info = {
+            "reason": "custom_recovery_case",
+            "recoverable": True,
+            "next_actions": ["search_content", "read_chunk"],
+        }
+
+        out = self.prompt_builder.build_orchestrated_recovery_prompt(stop_info)
+
+        self.assertIn("Runtime-provided next-action hints: search_content, read_chunk.", out)
+        self.assertNotIn("Required next actions: search_content, read_chunk.", out)
+
+    def test_allowed_actions_resolver_prefers_current_intent_for_conflicting_recommended_actions(self):
+        resolver = AllowedActionsResolver()
+        resolved = resolver.resolve_stop_info(
+            AllowedActionsContext(
+                reason="retry_or_continuation_after_failure",
+                source="recommended",
+                next_actions=["search_content", "edit_file", "write_file"],
+                active_intent_allowed_actions=["read_chunk", "read_file", "search_content"],
+                active_intent_type="INVESTIGATE",
+            )
+        )
+
+        self.assertEqual("recommended", resolved.authoritative_source)
+        self.assertEqual(["search_content"], resolved.recommended_actions)
+        self.assertTrue(resolved.keep_current_intent)
+        self.assertEqual(["search_content"], resolved.allowed_actions)
 
 
 if __name__ == "__main__":

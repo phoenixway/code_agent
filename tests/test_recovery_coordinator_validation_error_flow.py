@@ -3,6 +3,7 @@ import unittest
 
 from modules.agent.orchestration.recovery import RecoveryCoordinator
 from modules.agent.orchestration.prompting import OrchestratorPromptBuilder
+from modules.agent.state_manager import AgentState
 
 
 class RecoveryCoordinatorValidationErrorFlowTests(unittest.IsolatedAsyncioTestCase):
@@ -66,3 +67,43 @@ class RecoveryCoordinatorValidationErrorFlowTests(unittest.IsolatedAsyncioTestCa
         self.assertTrue(decision.clear_pending_stop)
         self.assertIsInstance(decision.next_query, str)
         self.assertIn("Retry with recovery strategy.", decision.next_query)
+
+    async def test_repeated_malformed_read_chunk_payload_forces_different_action(self):
+        config = SimpleNamespace(
+            INTENT_REQUIRE_ON_DEFECT=True,
+            RECOVERABLE_ERROR_RETRY_BUDGET=2,
+            CRITICAL_ERROR_RETRY_BUDGET=1,
+        )
+        state = AgentState(config)
+        state.pending_loop_stop_info = {"reason": "malformed_read_chunk_payload"}
+        state.pending_loop_stop_info = {"reason": "malformed_read_chunk_payload"}
+        state.intent_runtime.active_intent = SimpleNamespace(
+            intent_id="investigate_dialog",
+            intent_type="INVESTIGATE",
+            goal="Find the exact dialog implementation before editing",
+            allowed_actions=["read_chunk", "search_content", "read_file_skeleton", "run_shell"],
+        )
+        state.set_retry_budgets(2, 1)
+        state.last_error_code = "MALFORMED_READ_CHUNK_PAYLOAD"
+        state.last_error_message = "read_chunk requires top-level integer line fields"
+
+        agent = SimpleNamespace(
+            ui=SimpleNamespace(confirm_continue=None, confirm_loop_recovery=None, print_system=None),
+            state=state,
+            config=config,
+            log=None,
+            memory_board_store=None,
+        )
+        prompt_builder = OrchestratorPromptBuilder(agent)
+        recovery = RecoveryCoordinator(agent, prompt_builder)
+
+        decision = await recovery.handle_dispatch_stop(
+            {"reason": "malformed_read_chunk_payload", "recoverable": True},
+            sm=None,
+        )
+
+        self.assertTrue(decision.handled)
+        self.assertTrue(decision.clear_pending_stop)
+        self.assertIn("Do NOT output read_chunk again", decision.next_query)
+        self.assertIn("search_content", decision.next_query)
+        self.assertNotIn("Return EXACTLY ONE valid read_chunk action now.", decision.next_query)

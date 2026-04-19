@@ -55,6 +55,7 @@ class AgentConfig:
         self.INTENT_REQUIRE_FOR_BROAD_SEARCH = bool(self.settings.get("intent_require_for_broad_search", True))
         self.INTENT_REQUIRE_FOR_RETRY = bool(self.settings.get("intent_require_for_retry", True))
         self.INTENT_REQUIRE_FOR_CLEANUP = bool(self.settings.get("intent_require_for_cleanup", True))
+        self.INTENTLESS_SHORT_MODE_MAX_STEPS = self._get_positive_int("intentless_short_mode_max_steps", 2)
         self.INTENT_DEFAULT_SAFE_STEPS = self._get_positive_int("intent_default_safe_steps", 4)
         self.INTENT_DEFAULT_RETRY_LIMIT = self._get_positive_int("intent_default_retry_limit", 2)
         self.INTENT_MAX_SAFE_STEPS = self._get_positive_int("intent_max_safe_steps", 8)

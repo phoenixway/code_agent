@@ -2,26 +2,50 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
+from .decision_models import RecoveryDecision
+from .decision_models import RecoveryContext
+from .recovery_policy import RecoveryPolicyResolver
+from .stage_logging import OrchestrationStageLogger
 from ..intent_messages import render_intent_message
 
-
-@dataclass
-class StopHandlingDecision:
-    handled: bool
-    next_query: str | None = None
-    stop_loop: bool = False
-    clear_pending_stop: bool = False
+StopHandlingDecision = RecoveryDecision
 
 
 class RecoveryCoordinator:
     def __init__(self, agent, prompt_builder):
         self.agent = agent
-        self.ui = agent.ui
         self.state = agent.state
         self.config = agent.config
         self.prompt_builder = prompt_builder
+        self.stage_logger = OrchestrationStageLogger(getattr(agent, "log", None), self.state)
+        self.recovery_policy_resolver = getattr(agent, "recovery_policy_resolver", None) or RecoveryPolicyResolver(
+            getattr(agent, "allowed_actions_resolver", None)
+        )
+
+    @property
+    def ui(self):
+        return self.agent.ui
+
+    def _recovery_context(self, stop_info: dict | RecoveryContext | None) -> RecoveryContext:
+        return self.recovery_policy_resolver.normalize_context(
+            stop_info,
+            active_intent=getattr(self.state, "active_intent", None),
+        )
+
+    def _intent_actions_from_stop_info(self, stop_info: dict | None, active_intent) -> list[str]:
+        ctx = self._recovery_context(stop_info)
+        resolved = ctx.resolved_action_policy()
+        if resolved is not None and resolved.intent_actions:
+            return resolved.intent_actions
+        if resolved is not None and resolved.authoritative_source == "intent" and resolved.allowed_actions:
+            return resolved.allowed_actions
+        intent_actions = ctx.intent_allowed_actions
+        if isinstance(intent_actions, list) and intent_actions:
+            return intent_actions
+        legacy = ctx.next_actions
+        if str(ctx.next_actions_source or "").strip().lower() == "intent" and isinstance(legacy, list) and legacy:
+            return legacy
+        return list(getattr(active_intent, "allowed_actions", None) or [])
 
     def inspection_can_finish_with_text(self, sm, stop_info: dict | None) -> bool:
         if sm is None:
@@ -30,7 +54,7 @@ class RecoveryCoordinator:
         task_kind_value = getattr(task_kind, "value", str(task_kind))
         if task_kind_value not in {"INSPECTION", "HYBRID"}:
             return False
-        reason = str((stop_info or {}).get("reason") or "")
+        reason = self._recovery_context(stop_info).reason
         return reason in {
             "broad_recon_budget_exhausted",
             "observe_budget_exhausted",
@@ -82,27 +106,41 @@ class RecoveryCoordinator:
                 return "stop_and_answer"
         return "stop_and_answer"
 
-    async def handle_defect_detector_stop(self, stop_info: dict | None) -> tuple[bool, str | None]:
-        stop_info = stop_info or {}
-        reason = str(stop_info.get("reason") or "")
+    async def handle_defect_detector_stop(self, stop_info: dict | None) -> RecoveryDecision:
+        ctx = self._recovery_context(stop_info)
+        stop_info = ctx.to_stop_info()
+        reason = ctx.reason
+        self.stage_logger.log(
+            "dispatch_recovery",
+            "evaluate",
+            reason=reason,
+            source="defect_detector",
+        )
 
         if reason in {
             "intent_action_not_allowed",
             "intent_step_limit_soft_exceeded",
             "intent_blocked_action_signature",
+            "unnecessary_intent_reactivation_or_replace",
             "suspect_intent_relabel_repeat",
             "suspect_intent_goal_drift",
         }:
             active_intent = getattr(self.state, "active_intent", None)
-            allowed = stop_info.get("next_actions") or getattr(active_intent, "allowed_actions", None) or []
+            allowed = self._intent_actions_from_stop_info(stop_info, active_intent)
             if reason == "intent_step_limit_soft_exceeded":
-                return True, (
-                    self.prompt_builder.build_reuse_current_intent_prompt(
+                return RecoveryDecision.continue_with(
+                    (
+                        self.prompt_builder.build_reuse_current_intent_prompt(
                         reason,
                         allowed,
                         goal=getattr(active_intent, "goal", ""),
                     )
-                    + "\nPrefer a final allowed action, or return a final plain-text answer if the evidence is already enough."
+                    + "\nFirst decide whether the current evidence is already sufficient for a useful answer."
+                    + "\nIf it is sufficient, return a final plain-text answer now."
+                    + "\nIf it is not sufficient, return exactly one next <action> that most increases progress toward the goal."
+                    ),
+                    reason=reason,
+                    source="defect_detector",
                 )
             if reason == "intent_blocked_action_signature":
                 blocked_reason = ""
@@ -120,59 +158,105 @@ class RecoveryCoordinator:
                     stop_info.get("message_key") or "blocked_action_keep_current_intent",
                     default="A specific action is blocked, but the current intent contract is still valid.",
                 )
-                return True, (
-                    f"SYSTEM: {base}\n"
-                    f"Reason: {reason}.\n"
-                    f"Allowed actions under the CURRENT intent contract: {', '.join(allowed) if allowed else 'none'}.\n"
-                    f"Current intent goal remains the same: {getattr(active_intent, 'goal', '')}.\n"
-                    f"{note}\n"
-                    "Do NOT retry the same action with cosmetic changes.\n"
-                    "Choose a materially different next <action>, or answer from current evidence if enough is already known.\n"
-                    "A legitimate intent contract transition is not globally forbidden, but do not propose one unless the work truly changed."
+                return RecoveryDecision.continue_with(
+                    (
+                        f"SYSTEM: {base}\n"
+                        f"Reason: {reason}.\n"
+                        f"Allowed actions under the CURRENT intent contract: {', '.join(allowed) if allowed else 'none'}.\n"
+                        f"Current intent goal remains the same: {getattr(active_intent, 'goal', '')}.\n"
+                        f"{note}\n"
+                        "Do NOT retry the same action with cosmetic changes.\n"
+                        "Choose a materially different next <action>, or answer from current evidence if enough is already known.\n"
+                        "A legitimate intent contract transition is not globally forbidden, but do not propose one unless the work truly changed."
+                    ),
+                    reason=reason,
+                    source="defect_detector",
                 )
-            if reason in {"suspect_intent_relabel_repeat", "suspect_intent_goal_drift"}:
+            if reason == "unnecessary_intent_reactivation_or_replace":
+                return RecoveryDecision.continue_with(
+                    self.prompt_builder.build_keep_current_intent_recovery_prompt(
+                        {
+                            **(stop_info or {}),
+                            "reason": "unnecessary_intent_reactivation_or_replace",
+                            "next_actions": allowed,
+                            "intent_allowed_actions": allowed,
+                            "next_actions_source": "intent",
+                        }
+                    ),
+                    reason=reason,
+                    source="defect_detector",
+                )
+            if reason == "suspect_intent_relabel_repeat":
+                return RecoveryDecision.continue_with(
+                    self.prompt_builder.build_keep_original_goal_prompt(
+                        reason,
+                        allowed,
+                        goal=getattr(active_intent, "goal", ""),
+                    ),
+                    reason=reason,
+                    source="defect_detector",
+                )
+            if reason == "suspect_intent_goal_drift":
                 decision = await self.choose_suspect_intent_change_action(stop_info)
                 if decision == "allow_changed_goal":
                     allow_method = (
                         getattr(self.state, "allow_pending_goal_drift_once", None)
-                        if reason == "suspect_intent_goal_drift"
-                        else getattr(self.state, "allow_pending_suspect_intent_once", None)
                     )
                     if callable(allow_method):
                         ok, msg = allow_method(self.config)
                         if ok:
                             self.state.add_confirmation(1)
-                            return True, self.prompt_builder.build_approved_changed_goal_prompt()
-                    return True, self.prompt_builder.build_intent_transition_rejected_prompt(
-                        "suspect_intent_relabel_repeat",
-                        allowed,
-                        goal=getattr(active_intent, "goal", ""),
+                            return RecoveryDecision.continue_with(
+                                self.prompt_builder.build_approved_changed_goal_prompt(),
+                                reason=reason,
+                                source="defect_detector",
+                            )
+                    return RecoveryDecision.continue_with(
+                        self.prompt_builder.build_intent_transition_rejected_prompt(
+                            "suspect_intent_relabel_repeat",
+                            allowed,
+                            goal=getattr(active_intent, "goal", ""),
+                        ),
+                        reason=reason,
+                        source="defect_detector",
                     )
                 if decision == "stop_and_answer":
                     runtime = getattr(self.state, "intent_runtime", None)
                     if runtime is not None and hasattr(runtime, "force_current_intent_completion"):
                         runtime.force_current_intent_completion()
-                    return True, self.prompt_builder.build_plain_text_completion_prompt(
-                        getattr(self.state, "state_machine", None),
-                        {
-                            **(stop_info or {}),
-                            "reason": "user_stopped_after_suspect_goal_change",
-                        },
+                    return RecoveryDecision.continue_with(
+                        self.prompt_builder.build_plain_text_completion_prompt(
+                            getattr(self.state, "state_machine", None),
+                            {
+                                **(stop_info or {}),
+                                "reason": "user_stopped_after_suspect_goal_change",
+                            },
+                        ),
+                        reason=reason,
+                        source="defect_detector",
                     )
-                return True, self.prompt_builder.build_keep_original_goal_prompt(
+                return RecoveryDecision.continue_with(
+                    self.prompt_builder.build_keep_original_goal_prompt(
+                        reason,
+                        allowed,
+                        goal=getattr(active_intent, "goal", ""),
+                    ),
+                    reason=reason,
+                    source="defect_detector",
+                )
+            return RecoveryDecision.continue_with(
+                self.prompt_builder.build_reuse_current_intent_prompt(
                     reason,
                     allowed,
                     goal=getattr(active_intent, "goal", ""),
-                )
-            return True, self.prompt_builder.build_reuse_current_intent_prompt(
-                reason,
-                allowed,
-                goal=getattr(active_intent, "goal", ""),
+                ),
+                reason=reason,
+                source="defect_detector",
             )
 
         if reason in {"intent_step_limit_exceeded", "intent_step_limit_exceeded_repeated"}:
             active_intent = getattr(self.state, "active_intent", None)
-            allowed = stop_info.get("next_actions") or getattr(active_intent, "allowed_actions", None) or []
+            allowed = self._intent_actions_from_stop_info(stop_info, active_intent)
             decision = await self.choose_intent_overrun_action(stop_info)
             runtime = getattr(self.state, "intent_runtime", None)
 
@@ -187,27 +271,39 @@ class RecoveryCoordinator:
 
                 self.state.add_confirmation(1)
                 note = (
-                    "User approved a small additional step budget for the CURRENT intent contract. Return the next valid <action> now."
+                    "User approved additional budget for this same intent contract.\n"
+                    "Continue from current evidence under the same contract.\n"
+                    "Return the next valid output."
                     if granted
-                    else "User approved continuation for the CURRENT intent contract. Return the next valid <action> now."
+                    else "User approved additional budget for this same intent contract.\n"
+                    "Continue from current evidence under the same contract.\n"
+                    "Return the next valid output."
                 )
-                return True, (
-                    self.prompt_builder.build_reuse_current_intent_prompt(
+                return RecoveryDecision.continue_with(
+                    (
+                        self.prompt_builder.build_reuse_current_intent_prompt(
                         "user_approved_more_steps_after_hard_limit",
                         allowed,
                         goal=getattr(active_intent, "goal", ""),
                     )
                     + f"\n{note}"
+                    ),
+                    reason=reason,
+                    source="defect_detector",
                 )
 
             if runtime is not None and hasattr(runtime, "force_current_intent_completion"):
                 runtime.force_current_intent_completion()
-            return True, self.prompt_builder.build_plain_text_completion_prompt(
-                getattr(self.state, "state_machine", None),
-                {
-                    **(stop_info or {}),
-                    "reason": "user_stopped_after_hard_limit_answer_from_current_evidence",
-                },
+            return RecoveryDecision.continue_with(
+                self.prompt_builder.build_plain_text_completion_prompt(
+                    getattr(self.state, "state_machine", None),
+                    {
+                        **(stop_info or {}),
+                        "reason": "user_stopped_after_hard_limit_answer_from_current_evidence",
+                    },
+                ),
+                reason=reason,
+                source="defect_detector",
             )
 
         reason_map = {
@@ -217,33 +313,51 @@ class RecoveryCoordinator:
         }
         message = reason_map.get(reason)
         if not message:
-            return False, None
+            return RecoveryDecision.pass_through(reason=reason, source="defect_detector")
         decision = await self.ui.confirm_continue(message)
         if decision in (False, "stop", None):
             await self.ui.print_system("Execution stopped by defect detector.")
-            return True, None
+            return RecoveryDecision.stop(reason=reason, source="defect_detector")
         self.state.add_confirmation(1)
         if bool(getattr(self.config, "INTENT_REQUIRE_ON_DEFECT", True)):
-            self.state.require_intent(reason)
-            return True, self.prompt_builder.build_intent_required_prompt(reason, stop_info.get("next_actions") or [])
-        return True, self.prompt_builder.build_typed_stop_recovery_prompt(stop_info)
+            if hasattr(self.state, "require_intent"):
+                self.state.require_intent(reason)
+            return RecoveryDecision.continue_with(
+                self.prompt_builder.build_intent_required_prompt(reason, stop_info.get("next_actions") or []),
+                reason=reason,
+                source="defect_detector",
+            )
+        return RecoveryDecision.continue_with(
+            self.prompt_builder.build_typed_stop_recovery_prompt(stop_info),
+            reason=reason,
+            source="defect_detector",
+        )
 
     async def handle_dispatch_stop(
         self,
         stop_info: dict | None,
         sm,
     ) -> StopHandlingDecision:
-        handled_defect, next_query = await self.handle_defect_detector_stop(stop_info)
-        if handled_defect:
-            if next_query:
-                return StopHandlingDecision(
-                    handled=True,
-                    next_query=next_query,
+        ctx = self._recovery_context(stop_info)
+        stop_info = ctx.to_stop_info()
+        defect_decision = await self.handle_defect_detector_stop(stop_info)
+        if defect_decision.handled:
+            self.stage_logger.log(
+                "dispatch_recovery",
+                "continue" if defect_decision.next_query else "stop",
+                reason=defect_decision.reason,
+                source=defect_decision.source,
+            )
+            if defect_decision.next_query:
+                return StopHandlingDecision.continue_with(
+                    defect_decision.next_query,
+                    reason=defect_decision.reason,
+                    source=defect_decision.source,
                     clear_pending_stop=True,
                 )
-            return StopHandlingDecision(
-                handled=True,
-                stop_loop=True,
+            return StopHandlingDecision.stop(
+                reason=defect_decision.reason,
+                source=defect_decision.source,
             )
 
         if stop_info and stop_info.get("reason") in {"repeating_failure", "repeating_no_progress"}:
@@ -258,9 +372,8 @@ class RecoveryCoordinator:
                     self.config.CRITICAL_ERROR_RETRY_BUDGET,
                 )
                 recovery_actions = stop_info.get("next_actions") or []
-                return StopHandlingDecision(
-                    handled=True,
-                    next_query=self.prompt_builder.build_retry_recovery_query(recovery_actions),
+                return StopHandlingDecision.continue_with(
+                    self.prompt_builder.build_retry_recovery_query(recovery_actions),
                     clear_pending_stop=True,
                 )
             if decision == "open_search":
@@ -275,38 +388,45 @@ class RecoveryCoordinator:
                     f"{self.state.last_error_code or 'UNSPECIFIED'}, "
                     f"msg={self.state.last_error_message or ''}"
                 )
-                return StopHandlingDecision(
-                    handled=True,
-                    next_query=self.prompt_builder.build_open_search_recovery_query(error_details),
+                return StopHandlingDecision.continue_with(
+                    self.prompt_builder.build_open_search_recovery_query(error_details),
                     clear_pending_stop=True,
                 )
 
         if stop_info:
             if stop_info.get("reason") == "malformed_read_file_payload":
-                return StopHandlingDecision(
-                    handled=True,
-                    next_query=self.prompt_builder.build_malformed_read_file_payload_prompt(),
+                return StopHandlingDecision.continue_with(
+                    self.prompt_builder.build_malformed_read_file_payload_prompt(),
                     clear_pending_stop=True,
                 )
 
             if stop_info.get("reason") == "malformed_read_file_skeleton_payload":
-                return StopHandlingDecision(
-                    handled=True,
-                    next_query=self.prompt_builder.build_malformed_read_file_skeleton_payload_prompt(),
+                return StopHandlingDecision.continue_with(
+                    self.prompt_builder.build_malformed_read_file_skeleton_payload_prompt(),
                     clear_pending_stop=True,
                 )
 
             if stop_info.get("reason") == "malformed_read_chunk_payload":
-                return StopHandlingDecision(
-                    handled=True,
-                    next_query=self.prompt_builder.build_malformed_read_chunk_payload_prompt(),
+                active_intent = getattr(self.state, "active_intent", None)
+                allowed = self._intent_actions_from_stop_info(stop_info, active_intent)
+                count_getter = getattr(self.state, "get_stop_reason_count", None)
+                malformed_count = count_getter("malformed_read_chunk_payload") if callable(count_getter) else 0
+                if malformed_count >= 2:
+                    return StopHandlingDecision.continue_with(
+                        self.prompt_builder.build_repeated_malformed_read_chunk_payload_prompt(
+                            allowed,
+                            goal=getattr(active_intent, "goal", "") if active_intent is not None else "",
+                        ),
+                        clear_pending_stop=True,
+                    )
+                return StopHandlingDecision.continue_with(
+                    self.prompt_builder.build_malformed_read_chunk_payload_prompt(),
                     clear_pending_stop=True,
                 )
 
             if self.inspection_can_finish_with_text(sm, stop_info):
-                return StopHandlingDecision(
-                    handled=True,
-                    next_query=self.prompt_builder.build_plain_text_completion_prompt(sm, stop_info),
+                return StopHandlingDecision.continue_with(
+                    self.prompt_builder.build_plain_text_completion_prompt(sm, stop_info),
                     clear_pending_stop=True,
                 )
 
@@ -314,7 +434,7 @@ class RecoveryCoordinator:
                 if str(stop_info.get("error_code") or "").strip().upper() == "VALIDATION_ERROR":
                     active_intent = getattr(self.state, "active_intent", None)
                     if active_intent is not None:
-                        allowed = stop_info.get("next_actions") or getattr(active_intent, "allowed_actions", None) or []
+                        allowed = self._intent_actions_from_stop_info(stop_info, active_intent)
                         details = stop_info.get("error_details") or {}
                         mismatch_type = str(details.get("mismatch_type") or "")
                         note = ""
@@ -327,9 +447,8 @@ class RecoveryCoordinator:
                                 "\n- then retry edit_file with exact copied whitespace,"
                                 "\n- or switch to write_file with full validated content."
                             )
-                        return StopHandlingDecision(
-                            handled=True,
-                            next_query=(
+                        return StopHandlingDecision.continue_with(
+                            (
                                 self.prompt_builder.build_reuse_current_intent_prompt(
                                     "retry_or_continuation_after_failure",
                                     allowed,
@@ -340,10 +459,10 @@ class RecoveryCoordinator:
                             clear_pending_stop=True,
                         )
 
-                return StopHandlingDecision(
-                    handled=True,
-                    next_query=self.prompt_builder.build_orchestrated_recovery_prompt(stop_info),
+                return StopHandlingDecision.continue_with(
+                    self.prompt_builder.build_orchestrated_recovery_prompt(stop_info),
                     clear_pending_stop=True,
                 )
 
-        return StopHandlingDecision(handled=False)
+        self.stage_logger.log("dispatch_recovery", "pass")
+        return StopHandlingDecision.pass_through()

@@ -1,7 +1,6 @@
 """Simplified state machine.
 
-Phase 2 keeps only:
-- coarse phases
+Keeps only:
 - task kind detection
 - broad read-only budgets
 - anti-reread / target pin cooperation with simplified policy engine
@@ -13,6 +12,7 @@ import json
 from dataclasses import dataclass, field
 from enum import Enum
 
+from .allowed_actions_resolver import AllowedActionsContext, AllowedActionsResolver
 from .policy_engine import (
     EngineLoopDecision,
     LoopPolicyInput,
@@ -31,14 +31,6 @@ READ_ONLY_ACTIONS = {
     "git_diff",
     "run_shell",
 }
-
-
-class AgentPhase(str, Enum):
-    OBSERVE = "OBSERVE"
-    EDIT_PLAN = "EDIT_PLAN"
-    APPLY = "APPLY"
-    VERIFY = "VERIFY"
-    RECOVER = "RECOVER"
 
 
 class WorkMode(str, Enum):
@@ -72,13 +64,17 @@ class PreActionDecision:
     stop_reason: str = ""
     recovery_prompt: str = ""
     required_next_action_types: list[str] = field(default_factory=list)
+    required_next_action_source: str = ""
+    intent_allowed_actions: list[str] = field(default_factory=list)
+    recommended_next_actions: list[str] = field(default_factory=list)
+    keep_current_intent: bool = False
 
 
 class AgentStateMachine:
     def __init__(self, config):
         self.config = config
         self.policy_engine = PolicyEngine()
-        self.phase = AgentPhase.OBSERVE
+        self.allowed_actions_resolver = AllowedActionsResolver()
         self.mode = WorkMode.IMPLEMENT
         self.task_kind = TaskKind.MODIFICATION
         self.target_file: str | None = None
@@ -91,17 +87,6 @@ class AgentStateMachine:
         self.invariant_violations = 0
         self.observe_actions_used = 0
         self.broad_recon_batches_used = 0
-
-        self._phase_allowed_actions = {
-            AgentPhase.OBSERVE: {
-                "read_file", "read_chunk", "read_file_skeleton", "search_content", "search_files",
-                "list_directory", "find_files", "git_diff", "run_shell",
-            },
-            AgentPhase.EDIT_PLAN: {"search_content", "search_files", "read_file", "read_chunk", "edit_file", "write_file", "run_shell"},
-            AgentPhase.APPLY: {"edit_file", "write_file", "run_shell"},
-            AgentPhase.VERIFY: {"read_file", "read_chunk", "search_content", "git_diff", "run_shell"},
-            AgentPhase.RECOVER: {"read_file", "read_chunk", "search_content", "search_files", "list_directory", "edit_file", "write_file", "run_shell"},
-        }
 
     def _is_read_only_action(self, command: dict) -> bool:
         if not isinstance(command, dict):
@@ -138,7 +123,6 @@ class AgentStateMachine:
     def start_turn(self, user_input: str):
         self.task_kind = self._classify_task_kind(user_input)
         self.mode = WorkMode.RESEARCH if self.task_kind == TaskKind.INSPECTION else WorkMode.IMPLEMENT
-        self.phase = AgentPhase.OBSERVE
         self.target_file = None
         self.stagnation_count = 0
         self.diagnostic_attempts = 0
@@ -188,13 +172,6 @@ class AgentStateMachine:
                 return False
         return False
 
-    def _allowed_actions_for_phase(self) -> set[str]:
-        return set(self._phase_allowed_actions.get(self.phase, set()))
-
-    def _phase_allows_action(self, command: dict) -> bool:
-        cmd_type = command.get("type") or command.get("action") or "unknown"
-        return cmd_type in self._allowed_actions_for_phase()
-
     def note_planned_batch(self, action_commands: list[dict]):
         readonly = all(self._is_read_only_action(cmd) for cmd in action_commands if isinstance(cmd, dict))
         if readonly and len(action_commands) >= 2:
@@ -206,15 +183,12 @@ class AgentStateMachine:
         active_intent = getattr(self.intent_runtime, "active_intent", None) if self.intent_runtime is not None else None
         eng = self.policy_engine.evaluate_pre_action(
             PreActionPolicyInput(
-                phase=self.phase.value,
                 cmd_type=cmd_type,
                 path=path,
                 fingerprint=self._fingerprint(command),
                 target_file=self.target_file,
                 forbidden_recover_fingerprint=None,
                 has_cross_target_reason=self._has_cross_target_reason(command),
-                phase_allows_action=self._phase_allows_action(command),
-                phase_allowed_next_actions=sorted(self._allowed_actions_for_phase()),
                 observe_budget_exhausted=self.observe_actions_used >= self._observe_budget(),
                 broad_recon_budget_exhausted=self.broad_recon_batches_used >= int(getattr(self.config, "MAX_BROAD_RECON_BATCHES", 2)),
                 task_kind=self.task_kind.value,
@@ -231,6 +205,28 @@ class AgentStateMachine:
             stop_reason=eng.stop_reason,
             recovery_prompt=eng.recovery_prompt,
             required_next_action_types=eng.required_next_action_types,
+            required_next_action_source=getattr(eng, "required_next_action_source", ""),
+        ) if eng.allow else self._resolve_pre_action_denial(eng, active_intent)
+
+    def _resolve_pre_action_denial(self, eng: EngineLoopDecision, active_intent) -> PreActionDecision:
+        resolved = self.allowed_actions_resolver.resolve_stop_info(
+            AllowedActionsContext(
+                reason=getattr(eng, "stop_reason", "") or "",
+                source=getattr(eng, "required_next_action_source", "") or "",
+                next_actions=getattr(eng, "required_next_action_types", []) or [],
+                active_intent_allowed_actions=getattr(active_intent, "allowed_actions", []) if active_intent is not None else [],
+                active_intent_type=getattr(active_intent, "intent_type", "") if active_intent is not None else "",
+            )
+        )
+        return PreActionDecision(
+            allow=False,
+            stop_reason=getattr(eng, "stop_reason", ""),
+            recovery_prompt=getattr(eng, "recovery_prompt", ""),
+            required_next_action_types=resolved.allowed_actions or resolved.recommended_actions,
+            required_next_action_source=resolved.authoritative_source,
+            intent_allowed_actions=resolved.intent_actions,
+            recommended_next_actions=resolved.recommended_actions,
+            keep_current_intent=resolved.keep_current_intent,
         )
 
     def note_action(self, command: dict, result: dict, state_changing_ops: set[str]):
@@ -239,33 +235,39 @@ class AgentStateMachine:
         path = command.get("path") if isinstance(command.get("path"), str) else None
         is_read_only = self._is_read_only_action(command)
         is_state_changing = (cmd_type in state_changing_ops) and not is_read_only
+        active_intent = getattr(self.intent_runtime, "active_intent", None) if self.intent_runtime is not None else None
+        active_intent_type = getattr(active_intent, "intent_type", None)
 
         if status in {"error", "failed", "denied"}:
-            self.phase = AgentPhase.RECOVER
             self.stagnation_count += 1
             return
 
         if is_state_changing and status == "success":
-            self.phase = AgentPhase.VERIFY
+            if self.mode == WorkMode.IMPLEMENT and path:
+                self.target_file = path
             self.stagnation_count = 0
             self.observe_actions_used = 0
             return
 
         if is_read_only and status == "success":
             self.observe_actions_used += 1
-            self.phase = AgentPhase.OBSERVE
             if self.mode == WorkMode.IMPLEMENT and self.target_file is None and cmd_type == "read_file" and path:
                 self.target_file = path
             self.last_progress_score = 1
             return
 
-        self.phase = AgentPhase.EDIT_PLAN
-
     def build_diagnostic_prompt(self) -> str:
-        allowed = ", ".join(sorted(self._allowed_actions_for_phase())) or "none"
+        allowed = ", ".join(sorted({
+            "search_content",
+            "search_files",
+            "read_file",
+            "read_chunk",
+            "edit_file",
+            "write_file",
+        })) or "none"
         return (
             "SYSTEM_DIAGNOSTIC: You are in a no-progress loop.\n"
-            f"Task kind: {self.task_kind.value}. Current phase: {self.phase.value}.\n"
+            f"Task kind: {self.task_kind.value}.\n"
             f"Allowed next actions now: {allowed}.\n"
             "Return EXACTLY ONE action and choose a different strategy."
         )
@@ -280,7 +282,6 @@ class AgentStateMachine:
                 diagnostic_prompt=self.build_diagnostic_prompt(),
                 required_next_action_types=["search_content", "search_files", "read_file", "read_chunk", "edit_file", "write_file"],
                 task_kind=self.task_kind.value,
-                phase=self.phase.value,
                 observe_budget_exhausted=self.observe_actions_used >= self._observe_budget(),
             )
         )

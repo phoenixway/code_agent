@@ -11,6 +11,16 @@ INTENT_MESSAGES: dict[str, dict] = {
             "Choose one materially different allowed action, or answer from current evidence if enough is already known."
         ),
     },
+    "unnecessary_intent_reactivation_or_replace": {
+        "type": "policy_reject",
+        "template": (
+            "The active intent contract is already shown in the system prompt and remains active by default. "
+            "It will stay active until runtime explicitly completes, replaces, rejects, or closes it for a valid listed reason. "
+            "There is no valid reason to reactivate or replace this same active intent contract now. "
+            "Do not emit another activate/replace for the same contract. "
+            "Continue with the next valid action under the current contract, or answer from current evidence if enough is already known."
+        ),
+    },
     "suspect_intent_relabel_repeat": {
         "type": "policy_reject",
         "template": (
@@ -78,7 +88,7 @@ INTENT_MESSAGES: dict[str, dict] = {
         "type": "current_intent_recovery",
         "template": (
             "Continue under the current intent contract. "
-            "The current intent contract remains valid, but a phase-specific recovery tried to push a conflicting action family. "
+            "The current intent contract remains valid, but a conflicting legacy recovery tried to push a different action family. "
             "Keep the current intent contract action family instead."
         ),
     },

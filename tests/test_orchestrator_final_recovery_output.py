@@ -1,7 +1,8 @@
 import unittest
 from types import SimpleNamespace
 
-from modules.agent.orchestrator import Orchestrator
+from modules.agent.orchestration.prompting import OrchestratorPromptBuilder
+from modules.agent.orchestration.recovery import RecoveryCoordinator
 
 
 class _EnumLike:
@@ -12,44 +13,54 @@ class _EnumLike:
         return self.value
 
 
-def _make_orchestrator(active_intent):
-    agent = SimpleNamespace(
-        ui=SimpleNamespace(),
-        state=SimpleNamespace(active_intent=active_intent),
-        history=SimpleNamespace(),
-        model_client=SimpleNamespace(),
-        action_dispatcher=SimpleNamespace(),
-        parser=SimpleNamespace(),
-        config=SimpleNamespace(),
+def _make_components(active_intent):
+    state = SimpleNamespace(active_intent=active_intent)
+    prompt_builder = OrchestratorPromptBuilder(
+        SimpleNamespace(
+            state=state,
+            config=SimpleNamespace(),
+            memory_board_store=None,
+            log=None,
+        )
     )
-    return Orchestrator(agent)
+    recovery = RecoveryCoordinator(
+        SimpleNamespace(
+            ui=SimpleNamespace(),
+            state=state,
+            config=SimpleNamespace(
+                RECOVERABLE_ERROR_RETRY_BUDGET=2,
+                CRITICAL_ERROR_RETRY_BUDGET=1,
+            ),
+            log=None,
+        ),
+        prompt_builder,
+    )
+    return prompt_builder, recovery
 
 
 class OrchestratorFinalRecoveryOutputTests(unittest.TestCase):
     def setUp(self):
-        self.orch = _make_orchestrator(
-            SimpleNamespace(
-                intent_id="activity_tracker_edit",
-                intent_type="INVESTIGATE",
-                goal="determine how to allow moving today's activity to yesterday via the edit dialog in ActivityTrackerScreen",
-                allowed_actions=["read_chunk", "read_file", "search_content"],
-            )
+        self.active_intent = SimpleNamespace(
+            intent_id="activity_tracker_edit",
+            intent_type="INVESTIGATE",
+            goal="determine how to allow moving today's activity to yesterday via the edit dialog in ActivityTrackerScreen",
+            allowed_actions=["read_chunk", "read_file", "search_content"],
         )
+        self.prompt_builder, self.recovery = _make_components(self.active_intent)
 
-    def _sm(self, *, task_kind: str = "INSPECTION", phase: str = "OBSERVE", target_file: str = "app/src/main/java/com/romankozak/forwardappmobile/features/activitytracker/ActivityTrackerScreen.kt"):
+    def _sm(self, *, task_kind: str = "INSPECTION", target_file: str = "app/src/main/java/com/romankozak/forwardappmobile/features/activitytracker/ActivityTrackerScreen.kt"):
         return SimpleNamespace(
             task_kind=_EnumLike(task_kind),
-            phase=_EnumLike(phase),
             target_file=target_file,
         )
 
     def _final_recovery_output(self, sm, stop_info: dict) -> str:
-        if self.orch._inspection_can_finish_with_text(sm, stop_info):
-            return self.orch._build_plain_text_completion_prompt(sm, stop_info)
-        return self.orch._build_orchestrated_recovery_prompt(stop_info)
+        if self.recovery.inspection_can_finish_with_text(sm, stop_info):
+            return self.prompt_builder.build_plain_text_completion_prompt(sm, stop_info)
+        return self.prompt_builder.build_orchestrated_recovery_prompt(stop_info)
 
     def test_inspection_soft_limit_prefers_plain_text_completion_over_more_actions(self):
-        sm = self._sm(task_kind="INSPECTION", phase="OBSERVE")
+        sm = self._sm(task_kind="INSPECTION")
         stop_info = {
             "reason": "intent_step_limit_soft_exceeded",
             "recoverable": True,
@@ -65,11 +76,12 @@ class OrchestratorFinalRecoveryOutputTests(unittest.TestCase):
         self.assertNotIn("Return EXACTLY ONE materially different next <action>", out)
 
     def test_inspection_action_not_allowed_in_phase_prefers_plain_text_completion(self):
-        sm = self._sm(task_kind="INSPECTION", phase="OBSERVE")
+        sm = self._sm(task_kind="INSPECTION")
         stop_info = {
             "reason": "action_not_allowed_in_phase",
             "recoverable": True,
             "next_actions": ["search_content", "edit_file", "write_file"],
+            "next_actions_source": "recommended",
         }
 
         out = self._final_recovery_output(sm, stop_info)
@@ -80,44 +92,46 @@ class OrchestratorFinalRecoveryOutputTests(unittest.TestCase):
         self.assertNotIn("Allowed next actions: search_content, edit_file, write_file.", out)
 
     def test_hybrid_action_not_allowed_in_phase_also_prefers_plain_text_completion(self):
-        sm = self._sm(task_kind="HYBRID", phase="OBSERVE")
+        sm = self._sm(task_kind="HYBRID")
         stop_info = {
             "reason": "action_not_allowed_in_phase",
             "recoverable": True,
             "next_actions": ["search_content", "edit_file", "write_file"],
+            "next_actions_source": "recommended",
         }
 
         out = self._final_recovery_output(sm, stop_info)
 
         self.assertIn("SYSTEM: Stop tool use now.", out)
-        self.assertIn("Task kind: HYBRID. Current phase: OBSERVE.", out)
+        self.assertIn("Task kind: HYBRID.", out)
         self.assertNotIn("Choose a different strategy and return EXACTLY ONE valid <action>.", out)
 
     def test_modification_mode_does_not_falsely_force_plain_text_completion(self):
-        sm = self._sm(task_kind="MODIFICATION", phase="OBSERVE")
+        sm = self._sm(task_kind="MODIFICATION")
         stop_info = {
             "reason": "action_not_allowed_in_phase",
             "recoverable": True,
             "next_actions": ["search_content", "edit_file", "write_file"],
+            "next_actions_source": "recommended",
         }
 
-        self.orch = _make_orchestrator(
-            SimpleNamespace(
-                intent_id="activity_tracker_doc_write",
-                intent_type="MODIFY",
-                goal="write documentation file with findings",
-                allowed_actions=["search_content", "edit_file", "write_file"],
-            )
+        self.active_intent = SimpleNamespace(
+            intent_id="activity_tracker_doc_write",
+            intent_type="MODIFY",
+            goal="write documentation file with findings",
+            allowed_actions=["search_content", "edit_file", "write_file"],
         )
+        self.prompt_builder, self.recovery = _make_components(self.active_intent)
 
         out = self._final_recovery_output(sm, stop_info)
 
         self.assertNotIn("SYSTEM: Stop tool use now.", out)
         self.assertIn("Previous action violated orchestration policy", out)
-        self.assertIn("Required next actions: search_content, edit_file, write_file.", out)
+        self.assertIn("Runtime-suggested next actions: search_content, edit_file, write_file.", out)
+        self.assertIn("Use these only as recovery hints, not as a replacement for the current contract.", out)
 
     def test_blocked_large_read_keeps_current_intent_contract_recovery_not_plain_text(self):
-        sm = self._sm(task_kind="INSPECTION", phase="OBSERVE")
+        sm = self._sm(task_kind="INSPECTION")
         stop_info = {
             "reason": "planned_full_read_too_large",
             "recoverable": True,
@@ -125,7 +139,7 @@ class OrchestratorFinalRecoveryOutputTests(unittest.TestCase):
             "next_actions": ["read_chunk", "read_file_skeleton", "search_content"],
         }
 
-        out = self.orch._build_orchestrated_recovery_prompt(stop_info)
+        out = self.prompt_builder.build_orchestrated_recovery_prompt(stop_info)
 
         self.assertIn("The planned full read_file action is too large", out)
         self.assertIn("Do NOT send another <intent> block now.", out)

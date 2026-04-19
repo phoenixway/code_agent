@@ -6,6 +6,9 @@ import shlex
 from pathlib import Path
 from types import SimpleNamespace
 
+from .allowed_actions_resolver import AllowedActionsResolver
+from .orchestration.decision_models import RecoveryContext
+
 
 class ActionDispatcher:
     def __init__(self, agent):
@@ -13,6 +16,7 @@ class ActionDispatcher:
         self.ui = agent.ui
         self.processor = agent.processor
         self.config = agent.config
+        self.allowed_actions_resolver = getattr(agent, "allowed_actions_resolver", None) or AllowedActionsResolver()
 
         # Мапінг команд до методів відображення/обробки
         self._handlers = {
@@ -32,6 +36,49 @@ class ActionDispatcher:
         self._RUN_SHELL_DEFAULT_ESTIMATE = 12000
         self._RUN_SHELL_RG_FD_ESTIMATE = 8000
         self._READ_BATCH_SOFT_MIN_ACTIONS = 2
+
+    def _recovery_payload(
+        self,
+        *,
+        reason: str,
+        recoverable: bool = True,
+        error_code: str = "",
+        next_actions: list[str] | None = None,
+        command: dict | None = None,
+        message: str = "",
+        message_key: str = "",
+        policy_allowed_actions: list[str] | None = None,
+        policy_recommended_actions: list[str] | None = None,
+        policy_blocked_actions: list[str] | None = None,
+        policy_intent_actions: list[str] | None = None,
+        policy_authoritative_source: str = "",
+        policy_keep_current_intent: bool = False,
+        next_actions_source: str = "",
+        intent_allowed_actions: list[str] | None = None,
+        recommended_next_actions: list[str] | None = None,
+        **extra,
+    ) -> dict:
+        next_actions = list(next_actions or [])
+        ctx = RecoveryContext(
+            reason=reason,
+            recoverable=recoverable,
+            error_code=error_code,
+            message_key=message_key,
+            message=message,
+            next_actions=next_actions,
+            next_actions_source=next_actions_source,
+            intent_allowed_actions=list(intent_allowed_actions or []),
+            recommended_next_actions=list(recommended_next_actions or []),
+            policy_allowed_actions=list(policy_allowed_actions or next_actions),
+            policy_recommended_actions=list(policy_recommended_actions or []),
+            policy_blocked_actions=list(policy_blocked_actions or []),
+            policy_intent_actions=list(policy_intent_actions or []),
+            policy_authoritative_source=policy_authoritative_source,
+            policy_keep_current_intent=policy_keep_current_intent,
+            command=dict(command or {}),
+            raw=dict(extra or {}),
+        )
+        return ctx.to_stop_info()
 
     async def dispatch_segments(self, segments, state):
         """Обробляє список сегментів, виконує дії та повертає результати."""
@@ -129,13 +176,6 @@ class ActionDispatcher:
                     batch_pos = execute_indices.index(current_idx) + 1
                     result_text = f"[BATCH {batch_pos}/{total_exec}] {result_text}"
 
-                processed_segments.append(
-                    SimpleNamespace(
-                        type="text",
-                        content=self._build_history_audit_line(cmd_copy),
-                    )
-                )
-
                 system_results.append(result_text)
 
                 if stop_flag:
@@ -153,19 +193,22 @@ class ActionDispatcher:
                         )
                         if only_search_batch and cmd_type == "search_content":
                             existing = getattr(state, "pending_loop_stop_info", None) or {}
-                            state.pending_loop_stop_info = {
-                                "reason": "search_batch_aborted_after_first_action",
-                                "recoverable": True,
-                                "error_code": "SEARCH_BATCH_ABORTED_AFTER_FIRST_ACTION",
-                                "next_actions": ["search_content"],
-                                "message": (
+                            state.pending_loop_stop_info = self._recovery_payload(
+                                reason="search_batch_aborted_after_first_action",
+                                recoverable=True,
+                                error_code="SEARCH_BATCH_ABORTED_AFTER_FIRST_ACTION",
+                                next_actions=["search_content"],
+                                command=cmd_copy.copy(),
+                                message=(
                                     "Your read-only search batch was aborted after the first action. "
                                     "Return exactly one narrower search_content action next. "
                                     "Do not send another broad batch."
                                 ),
-                                "previous_reason": existing.get("reason"),
-                                "command": cmd_copy.copy(),
-                            }
+                                policy_allowed_actions=["search_content"],
+                                policy_recommended_actions=["search_content"],
+                                policy_authoritative_source="recommended",
+                                previous_reason=existing.get("reason"),
+                            )
                     break
 
         return processed_segments, system_results, should_stop
@@ -220,38 +263,6 @@ class ActionDispatcher:
         if cmd_type == "run_shell":
             return self._is_read_only_shell_command(command.get("command"))
         return cmd_type in read_only_tools
-
-    def _build_history_audit_line(self, command: dict) -> str:
-        cmd_type = command.get("type") or command.get("action", "unknown")
-        path = (
-            command.get("path")
-            if isinstance(command.get("path"), str) and command.get("path")
-            else None
-        )
-
-        payload = {"type": cmd_type}
-        if path:
-            payload["path"] = path
-
-        if cmd_type == "read_chunk":
-            if "start_byte" in command:
-                payload["start_byte"] = command.get("start_byte")
-            if "end_byte" in command:
-                payload["end_byte"] = command.get("end_byte")
-            if "start_line" in command:
-                payload["start_line"] = command.get("start_line")
-            if "end_line" in command:
-                payload["end_line"] = command.get("end_line")
-
-        if command.get("content_redacted") is True:
-            size = command.get("content_size")
-            blob = command.get("content_blob_hash")
-            blob_short = (str(blob)[:12] + "...") if blob else "unknown"
-            payload["content"] = f"REDACTED(size={size}, blob={blob_short})"
-        else:
-            payload["content"] = "none"
-
-        return "TOOL_HISTORY " + json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
     def _has_explicit_reread_reason(self, command: dict) -> bool:
         reason_fields = (
@@ -507,17 +518,20 @@ class ActionDispatcher:
                     "Example:\n"
                     '<action type="read_file">{"path":"relative/or/absolute/path"}</action>'
                 )
-                state.pending_loop_stop_info = {
-                    "reason": "malformed_read_file_payload",
-                    "recoverable": True,
-                    "error_code": "MALFORMED_READ_FILE_PAYLOAD",
-                    "next_actions": ["read_file"],
-                    "message": (
+                state.pending_loop_stop_info = self._recovery_payload(
+                    reason="malformed_read_file_payload",
+                    recoverable=True,
+                    error_code="MALFORMED_READ_FILE_PAYLOAD",
+                    next_actions=["read_file"],
+                    command=command.copy(),
+                    message=(
                         "read_file requires a top-level `path` field. "
                         "Return exactly one read_file action with only the corrected payload."
                     ),
-                    "command": command.copy(),
-                }
+                    policy_allowed_actions=["read_file"],
+                    policy_recommended_actions=["read_file"],
+                    policy_authoritative_source="recommended",
+                )
                 full_result_text = f"SYSTEM RESULT for `{cmd_type}`: {output_text}"
                 if self.agent.log:
                     self.agent.log.debug(
@@ -556,19 +570,22 @@ class ActionDispatcher:
                     "Preferred format:\n"
                     '<action type="read_chunk">{"path":"relative/or/absolute/path","start_line":1304,"end_line":1500}</action>'
                 )
-                state.pending_loop_stop_info = {
-                    "reason": "malformed_read_chunk_payload",
-                    "recoverable": True,
-                    "error_code": "MALFORMED_READ_CHUNK_PAYLOAD",
-                    "next_actions": ["read_chunk"],
-                    "message_key": "malformed_read_chunk_payload",
-                    "message": (
+                state.pending_loop_stop_info = self._recovery_payload(
+                    reason="malformed_read_chunk_payload",
+                    recoverable=True,
+                    error_code="MALFORMED_READ_CHUNK_PAYLOAD",
+                    next_actions=["read_chunk"],
+                    command=command.copy(),
+                    message_key="malformed_read_chunk_payload",
+                    message=(
                         "read_chunk accepts either line ranges or byte ranges, not both at once. "
                         "Preferred format uses top-level `path`, `start_line`, and `end_line`."
                     ),
-                    "command": command.copy(),
-                    "validation_snapshot": snapshot,
-                }
+                    policy_allowed_actions=["read_chunk"],
+                    policy_recommended_actions=["read_chunk"],
+                    policy_authoritative_source="recommended",
+                    validation_snapshot=snapshot,
+                )
                 full_result_text = f"SYSTEM RESULT for `{cmd_type}`: {output_text}"
                 if self.agent.log:
                     self.agent.log.debug(
@@ -591,20 +608,23 @@ class ActionDispatcher:
                     "Use top-level `path`, `start_line`, and `end_line` fields.\n"
                     "Byte offsets are optional only when explicitly needed."
                 )
-                state.pending_loop_stop_info = {
-                    "reason": "malformed_read_chunk_payload",
-                    "recoverable": True,
-                    "error_code": "MALFORMED_READ_CHUNK_PAYLOAD",
-                    "next_actions": ["read_chunk"],
-                    "message_key": "malformed_read_chunk_payload",
-                    "message": (
+                state.pending_loop_stop_info = self._recovery_payload(
+                    reason="malformed_read_chunk_payload",
+                    recoverable=True,
+                    error_code="MALFORMED_READ_CHUNK_PAYLOAD",
+                    next_actions=["read_chunk"],
+                    command=command.copy(),
+                    message_key="malformed_read_chunk_payload",
+                    message=(
                         "read_chunk requires a valid top-level payload. "
                         "Preferred format uses line ranges: `path`, `start_line`, `end_line`. "
                         "Return exactly one corrected read_chunk action."
                     ),
-                    "command": command.copy(),
-                    "validation_snapshot": snapshot,
-                }
+                    policy_allowed_actions=["read_chunk"],
+                    policy_recommended_actions=["read_chunk"],
+                    policy_authoritative_source="recommended",
+                    validation_snapshot=snapshot,
+                )
                 full_result_text = f"SYSTEM RESULT for `{cmd_type}`: {output_text}"
                 if self.agent.log:
                     self.agent.log.debug(
@@ -628,17 +648,20 @@ class ActionDispatcher:
                     "Example:\n"
                     '<action type="read_file_skeleton">{"path":"relative/or/absolute/path"}</action>'
                 )
-                state.pending_loop_stop_info = {
-                    "reason": "malformed_read_file_skeleton_payload",
-                    "recoverable": True,
-                    "error_code": "MALFORMED_READ_FILE_SKELETON_PAYLOAD",
-                    "next_actions": ["read_file_skeleton"],
-                    "message": (
+                state.pending_loop_stop_info = self._recovery_payload(
+                    reason="malformed_read_file_skeleton_payload",
+                    recoverable=True,
+                    error_code="MALFORMED_READ_FILE_SKELETON_PAYLOAD",
+                    next_actions=["read_file_skeleton"],
+                    command=command.copy(),
+                    message=(
                         "read_file_skeleton requires a top-level `path` field. "
                         "Return exactly one read_file_skeleton action with only the corrected payload."
                     ),
-                    "command": command.copy(),
-                }
+                    policy_allowed_actions=["read_file_skeleton"],
+                    policy_recommended_actions=["read_file_skeleton"],
+                    policy_authoritative_source="recommended",
+                )
                 full_result_text = f"SYSTEM RESULT for `{cmd_type}`: {output_text}"
                 if self.agent.log:
                     self.agent.log.debug(
@@ -667,13 +690,16 @@ class ActionDispatcher:
                         "Re-reading it without a specific reason is blocked. Use existing context, "
                         "narrow with search_content, or proceed to edit_file/write_file."
                     )
-                    state.pending_loop_stop_info = {
-                        "reason": reason,
-                        "recoverable": True,
-                        "error_code": "FILE_ALREADY_AVAILABLE_USE_EXISTING_CONTEXT",
-                        "next_actions": ["search_content", "edit_file", "write_file"],
-                        "command": command.copy(),
-                    }
+                    state.pending_loop_stop_info = self._recovery_payload(
+                        reason=reason,
+                        recoverable=True,
+                        error_code="FILE_ALREADY_AVAILABLE_USE_EXISTING_CONTEXT",
+                        next_actions=["search_content", "edit_file", "write_file"],
+                        command=command.copy(),
+                        policy_allowed_actions=["search_content", "edit_file", "write_file"],
+                        policy_recommended_actions=["search_content", "edit_file", "write_file"],
+                        policy_authoritative_source="recommended",
+                    )
                     full_result_text = f"SYSTEM RESULT for `{cmd_type}`: {output_text}"
                     return self._sanitize_command_for_history(command), full_result_text, True
 
@@ -682,13 +708,16 @@ class ActionDispatcher:
                 "SYSTEM: Invalid list_directory payload: explicit `path` is required. "
                 "Do not omit path in read-only batches. Root listing without intent is blocked."
             )
-            state.pending_loop_stop_info = {
-                "reason": "list_directory_missing_path",
-                "recoverable": True,
-                "error_code": "LIST_DIRECTORY_MISSING_PATH",
-                "next_actions": ["list_directory", "search_files", "search_content"],
-                "command": command.copy(),
-            }
+            state.pending_loop_stop_info = self._recovery_payload(
+                reason="list_directory_missing_path",
+                recoverable=True,
+                error_code="LIST_DIRECTORY_MISSING_PATH",
+                next_actions=["list_directory", "search_files", "search_content"],
+                command=command.copy(),
+                policy_allowed_actions=["list_directory", "search_files", "search_content"],
+                policy_recommended_actions=["list_directory", "search_files", "search_content"],
+                policy_authoritative_source="recommended",
+            )
             full_result_text = f"SYSTEM RESULT for `{cmd_type}`: {output_text}"
             return self._sanitize_command_for_history(command), full_result_text, True
 
@@ -720,16 +749,23 @@ class ActionDispatcher:
                 output_text = (
                     pre_decision.recovery_prompt or "Action blocked by state machine policy."
                 )
-                state.pending_loop_stop_info = {
-                    "reason": pre_decision.stop_reason or "policy_denied",
-                    "recoverable": True,
-                    "error_code": self._error_code_from_reason(
-                        pre_decision.stop_reason
-                    ),
-                    "next_actions": pre_decision.required_next_action_types or [],
-                    "message": output_text,
-                    "command": command.copy(),
-                }
+                state.pending_loop_stop_info = self._recovery_payload(
+                    reason=pre_decision.stop_reason or "policy_denied",
+                    recoverable=True,
+                    error_code=self._error_code_from_reason(pre_decision.stop_reason),
+                    next_actions=pre_decision.required_next_action_types or [],
+                    command=command.copy(),
+                    message=output_text,
+                    next_actions_source=pre_decision.required_next_action_source or "",
+                    intent_allowed_actions=getattr(pre_decision, "intent_allowed_actions", []) or [],
+                    recommended_next_actions=getattr(pre_decision, "recommended_next_actions", []) or [],
+                    policy_allowed_actions=getattr(pre_decision, "required_next_action_types", []) or [],
+                    policy_recommended_actions=getattr(pre_decision, "recommended_next_actions", []) or [],
+                    policy_blocked_actions=[],
+                    policy_intent_actions=getattr(pre_decision, "intent_allowed_actions", []) or [],
+                    policy_authoritative_source=pre_decision.required_next_action_source or "",
+                    policy_keep_current_intent=bool(getattr(pre_decision, "keep_current_intent", False)),
+                )
                 full_result_text = f"SYSTEM RESULT for `{cmd_type}`: {output_text}"
                 if self.agent.log:
                     self.agent.log.debug(
@@ -745,13 +781,16 @@ class ActionDispatcher:
                 "is not allowed. Change tool or arguments. "
                 "The current intent may continue, but this exact immediate retry is not accepted."
             )
-            state.pending_loop_stop_info = {
-                "reason": "repeating_no_progress",
-                "recoverable": True,
-                "error_code": "REPEATED_ACTION_AFTER_MALFORMED",
-                "next_actions": ["search_content", "search_files", "edit_file", "write_file"],
-                "command": command.copy(),
-            }
+            state.pending_loop_stop_info = self._recovery_payload(
+                reason="repeating_no_progress",
+                recoverable=True,
+                error_code="REPEATED_ACTION_AFTER_MALFORMED",
+                next_actions=["search_content", "search_files", "edit_file", "write_file"],
+                command=command.copy(),
+                policy_allowed_actions=["search_content", "search_files", "edit_file", "write_file"],
+                policy_recommended_actions=["search_content", "search_files", "edit_file", "write_file"],
+                policy_authoritative_source="recommended",
+            )
             full_result_text = f"SYSTEM RESULT for `{cmd_type}`: {output_text}"
             if self.agent.log:
                 self.agent.log.debug(
@@ -836,13 +875,16 @@ class ActionDispatcher:
                 "\n[SYSTEM: Repeated read-file calls detected with no progress. "
                 "Stop and switch to a different strategy.]"
             )
-            state.pending_loop_stop_info = {
-                "reason": "repeating_no_progress",
-                "recoverable": True,
-                "error_code": "READ_ONLY_LOOP",
-                "next_actions": ["search_content", "read_file_skeleton", "read_chunk", "edit_file", "write_file"],
-                "command": command.copy(),
-            }
+            state.pending_loop_stop_info = self._recovery_payload(
+                reason="repeating_no_progress",
+                recoverable=True,
+                error_code="READ_ONLY_LOOP",
+                next_actions=["search_content", "read_file_skeleton", "read_chunk", "edit_file", "write_file"],
+                command=command.copy(),
+                policy_allowed_actions=["search_content", "read_file_skeleton", "read_chunk", "edit_file", "write_file"],
+                policy_recommended_actions=["search_content", "read_file_skeleton", "read_chunk", "edit_file", "write_file"],
+                policy_authoritative_source="recommended",
+            )
 
         elif repeated_search_no_match_no_progress:
             should_stop = True
@@ -851,13 +893,16 @@ class ActionDispatcher:
                 "\n[SYSTEM: Repeated search_content calls returned no matches. "
                 "Stop and switch to deterministic recovery.]"
             )
-            state.pending_loop_stop_info = {
-                "reason": "repeating_no_progress",
-                "recoverable": True,
-                "error_code": "SEARCH_NO_MATCH_LOOP",
-                "next_actions": ["search_files", "read_chunk", "read_file_skeleton", "edit_file", "write_file"],
-                "command": command.copy(),
-            }
+            state.pending_loop_stop_info = self._recovery_payload(
+                reason="repeating_no_progress",
+                recoverable=True,
+                error_code="SEARCH_NO_MATCH_LOOP",
+                next_actions=["search_files", "read_chunk", "read_file_skeleton", "edit_file", "write_file"],
+                command=command.copy(),
+                policy_allowed_actions=["search_files", "read_chunk", "read_file_skeleton", "edit_file", "write_file"],
+                policy_recommended_actions=["search_files", "read_chunk", "read_file_skeleton", "edit_file", "write_file"],
+                policy_authoritative_source="recommended",
+            )
 
         elif repeated_readonly_shell_no_progress:
             should_stop = True
@@ -866,13 +911,16 @@ class ActionDispatcher:
                 "\n[SYSTEM: Repeated read-only run_shell commands detected with no progress. "
                 "Stop and switch to deterministic edit/write step.]"
             )
-            state.pending_loop_stop_info = {
-                "reason": "repeating_no_progress",
-                "recoverable": True,
-                "error_code": "READONLY_SHELL_LOOP",
-                "next_actions": ["read_chunk", "read_file_skeleton", "edit_file", "write_file"],
-                "command": command.copy(),
-            }
+            state.pending_loop_stop_info = self._recovery_payload(
+                reason="repeating_no_progress",
+                recoverable=True,
+                error_code="READONLY_SHELL_LOOP",
+                next_actions=["read_chunk", "read_file_skeleton", "edit_file", "write_file"],
+                command=command.copy(),
+                policy_allowed_actions=["read_chunk", "read_file_skeleton", "edit_file", "write_file"],
+                policy_recommended_actions=["read_chunk", "read_file_skeleton", "edit_file", "write_file"],
+                policy_authoritative_source="recommended",
+            )
 
         elif action_denied:
             output_text += "\n[SYSTEM: Action denied by user.]"
@@ -900,13 +948,16 @@ class ActionDispatcher:
                         "\n[SYSTEM: Repeated edit_file search mismatch detected. "
                         "Stop this loop and switch to deterministic recovery.]"
                     )
-                    state.pending_loop_stop_info = {
-                        "reason": "repeating_failure",
-                        "recoverable": recoverable,
-                        "error_code": error_code,
-                        "next_actions": next_actions,
-                        "command": command.copy(),
-                    }
+                    state.pending_loop_stop_info = self._recovery_payload(
+                        reason="repeating_failure",
+                        recoverable=recoverable,
+                        error_code=error_code,
+                        next_actions=next_actions,
+                        command=command.copy(),
+                        policy_allowed_actions=next_actions,
+                        policy_recommended_actions=next_actions,
+                        policy_authoritative_source="recommended" if next_actions else "",
+                    )
                 elif state.consume_malformed_grace():
                     output_text += (
                         "\n[SYSTEM: Grace retry granted after malformed action recovery. "
@@ -919,13 +970,16 @@ class ActionDispatcher:
                         output_text += (
                             "\n[SYSTEM: Repeated no-progress failure detected and retry budget exhausted.]"
                         )
-                        state.pending_loop_stop_info = {
-                            "reason": "repeating_failure",
-                            "recoverable": recoverable,
-                            "error_code": error_code,
-                            "next_actions": next_actions,
-                            "command": command.copy(),
-                        }
+                        state.pending_loop_stop_info = self._recovery_payload(
+                            reason="repeating_failure",
+                            recoverable=recoverable,
+                            error_code=error_code,
+                            next_actions=next_actions,
+                            command=command.copy(),
+                            policy_allowed_actions=next_actions,
+                            policy_recommended_actions=next_actions,
+                            policy_authoritative_source="recommended" if next_actions else "",
+                        )
                     else:
                         output_text += (
                             "\n[SYSTEM: Repeated failure detected. Retry budget remains, "
@@ -1132,30 +1186,54 @@ class ActionDispatcher:
             ",".join(payload.get("normalized_keys") or []),
         )
 
+    def _coerce_int_like_value(self, value):
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, int):
+            return value
+        if isinstance(value, str):
+            text = value.strip()
+            if re.fullmatch(r"[+-]?\d+", text):
+                try:
+                    return int(text)
+                except Exception:
+                    return value
+        return value
+
     def _normalize_read_chunk_command(self, command: dict) -> dict:
         if not isinstance(command, dict):
             return {"type": "read_chunk"}
 
-        has_path = bool(command.get("path"))
-        has_line_mode = command.get("start_line") is not None
-        has_byte_mode = command.get("start_byte") is not None
-        if has_path and ((has_line_mode and command.get("end_line") is not None) or (has_byte_mode and command.get("end_byte") is not None)):
-            return command
+        normalized = command.copy()
+        for key in ("start_byte", "end_byte", "start_line", "end_line"):
+            if key in normalized:
+                normalized[key] = self._coerce_int_like_value(normalized.get(key))
 
-        raw = command.get("command")
+        has_path = bool(normalized.get("path"))
+        has_line_mode = normalized.get("start_line") is not None
+        has_byte_mode = normalized.get("start_byte") is not None
+        if has_path and ((has_line_mode and normalized.get("end_line") is not None) or (has_byte_mode and normalized.get("end_byte") is not None)):
+            return normalized
+
+        raw = normalized.get("command")
         if not isinstance(raw, str):
-            return command
+            return normalized
         text = raw.strip()
         if not text.startswith("{"):
-            return command
+            return normalized
         try:
             nested = json.loads(text)
         except Exception:
-            return command
+            return normalized
         if not isinstance(nested, dict):
-            return command
+            return normalized
 
-        merged = command.copy()
+        nested_normalized = nested.copy()
+        for key in ("start_byte", "end_byte", "start_line", "end_line"):
+            if key in nested_normalized:
+                nested_normalized[key] = self._coerce_int_like_value(nested_normalized.get(key))
+
+        merged = normalized.copy()
         for key in (
             "path",
             "start_byte",
@@ -1166,8 +1244,8 @@ class ActionDispatcher:
             "during_execution",
             "after_execution",
         ):
-            if merged.get(key) in (None, "") and nested.get(key) is not None:
-                merged[key] = nested.get(key)
+            if merged.get(key) in (None, "") and nested_normalized.get(key) is not None:
+                merged[key] = nested_normalized.get(key)
         return merged
 
     def _normalize_read_file_skeleton_command(self, command: dict) -> dict:

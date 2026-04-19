@@ -6,6 +6,7 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 import re
+from modules.agent.orchestration.trace_export import OrchestrationTraceExporter
 from modules.config_loader import update_settings
 from modules.logger import get_log_files
 
@@ -346,6 +347,11 @@ class CommandHandler:
             out.write("\n\n")
         else:
             out.write("LAST FAILED ACTION RESULT: unavailable\n\n")
+
+        exporter = OrchestrationTraceExporter()
+        out.write("ORCHESTRATION TRACE:\n")
+        out.write(exporter.render_text(state))
+        out.write("\n")
 
         if not full_dump or not isinstance(last_failed_command, dict):
             out.write("\n")

@@ -163,6 +163,116 @@ class TestOrchestratorPlanner(unittest.IsolatedAsyncioTestCase):
         self.assertGreaterEqual(len(queries), 2)
         self.assertIn("planner_mode=always is enforced", queries[1])
 
+    async def test_intent_activation_and_nested_tool_action_continue_within_same_process(self):
+        ui = SimpleNamespace(
+            print_error=AsyncMock(),
+            print_system=AsyncMock(),
+            start_thinking=AsyncMock(),
+            stop_loading=AsyncMock(),
+            confirm_continue=AsyncMock(return_value=False),
+            confirm_loop_recovery=AsyncMock(return_value="stop"),
+            print_plan=AsyncMock(),
+        )
+        config = SimpleNamespace(
+            MAX_SESSION_SECONDS=120,
+            MAX_CONSECUTIVE_CALLS=12,
+            MAX_STEP_SECONDS=60,
+            LOOP_ERROR_REPEAT_THRESHOLD=2,
+            MALFORMED_ACTION_GRACE_STEPS=1,
+            RECOVERABLE_ERROR_RETRY_BUDGET=2,
+            CRITICAL_ERROR_RETRY_BUDGET=1,
+            STATE_CHANGING_OPS={"edit_file", "write_file", "run_shell"},
+            IMPLEMENT_STAGNATION_LIMIT=2,
+            RESEARCH_STAGNATION_LIMIT=4,
+            STAGNATION_MAX_DIAGNOSTICS=1,
+            INVARIANT_VIOLATION_LIMIT=1,
+            PLANNER_ENABLED=True,
+            PLANNER_MODE="auto",
+            PLANNER_MAX_STEPS=12,
+            PLANNER_MAX_VISIBLE_STEPS=4,
+            PLANNER_MAX_GOAL_CHARS=240,
+            PLANNER_MAX_STEP_TITLE_CHARS=160,
+            PLANNER_MAX_STEP_NOTES_CHARS=240,
+            PLANNER_ALWAYS_MISSING_RETRY_LIMIT=2,
+            INTENT_RELABEL_SUSPICION_ENABLED=False,
+        )
+        state = AgentState(config)
+        state.state_machine = SimpleNamespace(
+            start_turn=MagicMock(),
+            decide=MagicMock(return_value=SimpleNamespace(decision=SimpleNamespace(name="CONTINUE"))),
+            intent_runtime=None,
+        )
+
+        history = SimpleNamespace(
+            add_message=MagicMock(),
+            check_and_summarize=AsyncMock(),
+            current_token_count=0,
+            max_tokens=4096,
+            start_turn=MagicMock(),
+        )
+
+        responses = [
+            (
+                '<intent mode="activate">{'
+                '"intent_id":"activity_tracker_edit",'
+                '"intent_type":"INVESTIGATE",'
+                '"goal":"Understand current implementation of activity tracker sorting and edit dialog to plan changes for editable startTime and sorting by startTime",'
+                '"allowed_actions":["run_shell","read_chunk","search_content"],'
+                '"safe_steps_limit":4,'
+                '"retry_limit":2,'
+                '"mode":"activate"'
+                "}</intent>"
+            ),
+            (
+                "<action>\n"
+                "<run_shell>{\"command\":\"echo ok\"}</run_shell>\n"
+                "</action>"
+            ),
+        ]
+        model_client = SimpleNamespace(get_streaming_response=AsyncMock(side_effect=responses))
+        parser = ResponseParser()
+        dispatched_commands = []
+
+        async def dispatch_segments(segments, _state):
+            action_segments = [seg for seg in segments if seg.type == "action"]
+            dispatched_commands.extend(seg.content for seg in action_segments)
+            return segments, ["SYSTEM RESULT for `run_shell`: ok"], True
+
+        agent = SimpleNamespace(
+            ui=ui,
+            state=state,
+            history=history,
+            model_client=model_client,
+            action_dispatcher=SimpleNamespace(dispatch_segments=dispatch_segments),
+            parser=parser,
+            config=config,
+            tool_manager=SimpleNamespace(get_tools_prompt=MagicMock(return_value="")),
+            context_manager=SimpleNamespace(get_context_prompt=MagicMock(return_value="")),
+            planner=TaskBoardPlanner(config),
+            memory_board_store=None,
+            memory_board_engine=None,
+            log=None,
+        )
+
+        orchestrator = Orchestrator(agent)
+        await orchestrator.process("inspect the activity tracker flow")
+
+        queries = [call.args[0] for call in model_client.get_streaming_response.await_args_list]
+        self.assertEqual(len(queries), 2)
+        self.assertIn("inspect the activity tracker flow", queries[0])
+        self.assertIn("Intent accepted and now remains active", queries[1])
+        self.assertIn(
+            "Current contract goal remains the same: Understand current implementation of activity tracker sorting and edit dialog to plan changes for editable startTime and sorting by startTime.",
+            queries[1],
+        )
+
+        self.assertEqual(len(dispatched_commands), 1)
+        self.assertEqual(dispatched_commands[0]["type"], "run_shell")
+        self.assertEqual(dispatched_commands[0]["command"], "echo ok")
+        self.assertIsNotNone(state.active_intent)
+        self.assertEqual(state.active_intent.intent_id, "activity_tracker_edit")
+        self.assertEqual(state.active_intent.mode, "activate")
+
 
 if __name__ == "__main__":
     unittest.main()

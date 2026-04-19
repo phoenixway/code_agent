@@ -271,6 +271,27 @@ class IntentPolicyEngine:
             getattr(proposed, "allowed_actions", []) or [],
         )
 
+        if old_id == new_id:
+            decision = IntentPolicyDecision(
+                allowed=False,
+                reason="unnecessary_intent_reactivation_or_replace",
+                error_code="UNNECESSARY_INTENT_REACTIVATION_OR_REPLACE",
+                message_key="unnecessary_intent_reactivation_or_replace",
+                keep_current_intent=True,
+                preserve_goal=True,
+                preserve_intent_id=True,
+                next_actions=list(getattr(active, "allowed_actions", []) or []),
+                metadata={
+                    "intent_id": old_id,
+                    "old_goal": old_goal,
+                    "new_goal": new_goal,
+                    "proposed_mode": getattr(proposed, "mode", ""),
+                    "actions_overlap": overlap,
+                },
+            )
+            self._log_decision(stage="same_lineage_relabel", decision=decision, ctx=ctx)
+            return decision
+
         if old_id != new_id and self._normalize_goal(old_goal) == self._normalize_goal(new_goal):
             decision = IntentPolicyDecision(
                 allowed=False,

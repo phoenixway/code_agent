@@ -426,7 +426,7 @@ class TuiUI:
         tool_name = command.get("type") or command.get("action", "unknown")
         if tool_name == "run_shell":
             return await self.print_shell_start(command)
-        if tool_name in {"read_file", "read_chunk"}:
+        if tool_name == "read_file":
             return await self.print_read_file_start(command)
         if tool_name == "edit_file":
             return await self.print_edit_file_start(command)
@@ -448,7 +448,7 @@ class TuiUI:
             if tool_name == "run_shell":
                 await self.update_shell_result(widget, result)
                 return
-            if tool_name in {"read_file", "read_chunk"}:
+            if tool_name == "read_file":
                 await self.update_read_file_result(widget, result)
                 return
             if tool_name == "edit_file":

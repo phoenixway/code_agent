@@ -5,6 +5,7 @@ from __future__ import annotations
 
 REASON_TO_MESSAGE_KEY = {
     "intent_blocked_action_signature": "blocked_action_keep_current_intent",
+    "unnecessary_intent_reactivation_or_replace": "unnecessary_intent_reactivation_or_replace",
     "suspect_intent_relabel_repeat": "suspect_intent_relabel_repeat",
     "suspect_intent_goal_drift": "suspect_intent_goal_drift",
     "retry_goal_change_forbidden": "retry_goal_change_forbidden",
@@ -24,6 +25,7 @@ REASON_TO_MESSAGE_KEY = {
 
 ERROR_CODE_TO_MESSAGE_KEY = {
     "INTENT_BLOCKED_ACTION_SIGNATURE": "blocked_action_keep_current_intent",
+    "UNNECESSARY_INTENT_REACTIVATION_OR_REPLACE": "unnecessary_intent_reactivation_or_replace",
     "SUSPECT_INTENT_RELABEL_REPEAT": "suspect_intent_relabel_repeat",
     "SUSPECT_INTENT_GOAL_DRIFT": "suspect_intent_goal_drift",
     "RETRY_GOAL_CHANGE_FORBIDDEN": "retry_goal_change_forbidden",

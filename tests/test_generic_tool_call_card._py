@@ -10,6 +10,7 @@ class TestGenericToolCallPresentation(unittest.TestCase):
     def test_specialized_router_keeps_special_tools_out_of_generic_fallback(self):
         self.assertTrue(has_specialized_tool_call_renderer({"type": "read_file"}))
         self.assertTrue(has_specialized_tool_call_renderer({"type": "run_shell"}))
+        self.assertFalse(has_specialized_tool_call_renderer({"type": "read_chunk"}))
         self.assertFalse(has_specialized_tool_call_renderer({"type": "search_content"}))
 
     def test_search_content_builds_human_summary_and_hits_chip(self):

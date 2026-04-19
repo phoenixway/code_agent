@@ -55,6 +55,33 @@ class IntentRuntimePolicyIntegrationTests(unittest.TestCase):
             self.runtime.last_transition_info.get("message_key"),
         )
 
+    def test_apply_payload_rejects_same_active_contract_reactivation(self):
+        payload = {
+            "intent_id": "activity_tracker_edit",
+            "intent_type": "INVESTIGATE",
+            "goal": "Determine how to move today's record to yesterday via edit dialog",
+            "allowed_actions": ["read_chunk", "search_content", "read_file_skeleton"],
+            "safe_steps_limit": 4,
+            "retry_limit": 2,
+            "mode": "activate",
+            "switch_reason": "user_requested_new_task",
+            "switch_explanation": "repeat same active contract",
+        }
+
+        ok, msg = self.runtime.apply_payload(payload)
+
+        self.assertFalse(ok)
+        self.assertEqual("unnecessary_intent_reactivation_or_replace", msg)
+        self.assertEqual("policy_rejected", self.runtime.last_transition_info.get("transition"))
+        self.assertEqual(
+            "unnecessary_intent_reactivation_or_replace",
+            self.runtime.last_transition_info.get("reason"),
+        )
+        self.assertEqual(
+            "unnecessary_intent_reactivation_or_replace",
+            self.runtime.last_transition_info.get("message_key"),
+        )
+
     def test_apply_payload_rejects_goal_drift_and_marks_policy_rejected(self):
         payload = {
             "intent_id": "activity_tracker_edit",
@@ -72,6 +99,57 @@ class IntentRuntimePolicyIntegrationTests(unittest.TestCase):
 
         self.assertFalse(ok)
         self.assertEqual("intent_goal_too_local_or_underspecified", msg)
+
+    def test_modify_payload_with_read_only_allowed_actions_is_upgraded_for_editing(self):
+        payload = {
+            "intent_id": "activity_tracker_modify",
+            "intent_type": "MODIFY",
+            "goal": "Change activity tracker sorting to use startTime",
+            "allowed_actions": ["read_chunk", "search_content"],
+            "safe_steps_limit": 4,
+            "retry_limit": 2,
+            "mode": "replace",
+            "switch_reason": "work_type_changed",
+            "switch_explanation": "move from investigation to modification",
+        }
+
+        ok, msg = self.runtime.apply_payload(payload)
+
+        self.assertTrue(ok, msg)
+        self.assertEqual("MODIFY", self.runtime.active_intent.intent_type)
+        self.assertIn("edit_file", self.runtime.active_intent.allowed_actions)
+        self.assertIn("write_file", self.runtime.active_intent.allowed_actions)
+        self.assertIn("create_file", self.runtime.active_intent.allowed_actions)
+
+    def test_modify_payload_with_read_only_run_shell_is_still_upgraded_for_editing(self):
+        payload = {
+            "intent_id": "activity_tracker_modify",
+            "intent_type": "MODIFY",
+            "goal": "Change activity tracker sorting to use startTime",
+            "allowed_actions": [
+                "read_file",
+                "read_file_skeleton",
+                "read_chunk",
+                "search_content",
+                "search_files",
+                "run_shell",
+                "list_directory",
+            ],
+            "safe_steps_limit": 6,
+            "retry_limit": 2,
+            "mode": "replace",
+            "switch_reason": "work_type_changed",
+            "switch_explanation": "move from investigation to modification",
+        }
+
+        ok, msg = self.runtime.apply_payload(payload)
+
+        self.assertTrue(ok, msg)
+        self.assertEqual("MODIFY", self.runtime.active_intent.intent_type)
+        self.assertIn("edit_file", self.runtime.active_intent.allowed_actions)
+        self.assertIn("write_file", self.runtime.active_intent.allowed_actions)
+        self.assertIn("create_file", self.runtime.active_intent.allowed_actions)
+        self.assertIn("run_shell", self.runtime.active_intent.allowed_actions)
 
 
 if __name__ == "__main__":
