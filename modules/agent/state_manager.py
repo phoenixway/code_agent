@@ -12,6 +12,7 @@ READ_ONLY_RECOVERY_ACTIONS = {
     "read_chunk",
     "read_file_skeleton",
     "extract_kotlin_function",
+    "extract_symbol",
     "search_content",
     "search_files",
     "list_directory",
@@ -71,6 +72,12 @@ class AgentState:
         self.allow_suspect_intent_once = False
         self.memory_board_store = None
         self.memory_board_engine = None
+        self.last_memory_board_parsed_count = 0
+        self.last_memory_board_accepted_count = 0
+        self.last_memory_board_rejected_count = 0
+        self.memory_tag_expected_next_step = False
+        self.memory_tag_reason = ""
+        self.memory_tag_expected_intent_id = ""
 
         # Critical: this must advance across real user turns.
         # Working-material protection/degradation depends on it.
@@ -124,6 +131,21 @@ class AgentState:
         self.allow_suspect_intent_once = False
         self.orchestration_trace = []
         self.orchestration_trace_sequence = 0
+        self.last_memory_board_parsed_count = 0
+        self.last_memory_board_accepted_count = 0
+        self.last_memory_board_rejected_count = 0
+        self.memory_tag_expected_next_step = False
+        self.memory_tag_reason = ""
+        self.memory_tag_expected_intent_id = ""
+
+        # Forced plain-text completion is a recovery latch for the previous
+        # turn. A fresh user turn must not inherit "no more tools" state.
+        if self.intent_runtime is not None and self.intent_runtime.active_intent is not None:
+            self.intent_runtime.active_intent.force_plaintext_completion = False
+            # Hard-limit overrun escalation is also turn-local. A fresh user
+            # turn may continue the same contract, but it should not start in a
+            # pre-escalated "repeated overrun" state.
+            self.intent_runtime.active_intent.hard_limit_hit_count = 0
 
         # FIX:
         # Do not reset to 0. Each new user turn must get a new turn id so that

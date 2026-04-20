@@ -51,6 +51,7 @@ class ActionPolicyHandler:
                         "read_chunk",
                         "read_file_skeleton",
                         "extract_kotlin_function",
+                        "extract_symbol",
                         "search_content",
                         "search_files",
                         "list_directory",

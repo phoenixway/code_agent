@@ -17,6 +17,9 @@ class MemoryBoardStageHandler:
     async def apply(self, ctx, response: str) -> MemoryBoardDecision:
         board_result = None
         clean_response = response
+        self.state.last_memory_board_parsed_count = 0
+        self.state.last_memory_board_accepted_count = 0
+        self.state.last_memory_board_rejected_count = 0
 
         if self.memory_board_engine is not None:
             try:
@@ -27,6 +30,9 @@ class MemoryBoardStageHandler:
                     source="model",
                 )
                 if board_result.parsed_count:
+                    self.state.memory_tag_expected_next_step = False
+                    self.state.memory_tag_reason = ""
+                    self.state.memory_tag_expected_intent_id = ""
                     clean_response = board_result.clean_text
                     if self.agent.log:
                         self.agent.log.debug(
@@ -38,6 +44,11 @@ class MemoryBoardStageHandler:
             except Exception as exc:
                 if self.agent.log:
                     self.agent.log.warning(f"Memory board apply failed: {exc}")
+
+        if board_result is not None:
+            self.state.last_memory_board_parsed_count = int(board_result.parsed_count or 0)
+            self.state.last_memory_board_accepted_count = int(board_result.accepted_count or 0)
+            self.state.last_memory_board_rejected_count = int(board_result.rejected_count or 0)
 
         if board_result is not None and board_result.parsed_count > 0 and not str(clean_response or "").strip():
             next_query = (

@@ -19,6 +19,51 @@ class DispatchOutcomeHandler:
     def ui(self):
         return self.agent.ui
 
+    def _completed_actions(self, processed_segs) -> list[dict]:
+        actions = []
+        for seg in processed_segs or []:
+            if getattr(seg, "type", None) != "action":
+                continue
+            content = getattr(seg, "content", None)
+            if isinstance(content, dict):
+                actions.append(content)
+        return actions
+
+    def _is_memory_worthy_system_result(self, text: str) -> bool:
+        lowered = str(text or "").lower()
+        if not lowered.strip():
+            return False
+        blocked_markers = (
+            "action denied by user",
+            "action failed",
+            "outside the current intent contract",
+            "invalid read_",
+            "invalid list_directory payload",
+            "skipped by batch policy",
+            "batch aborted after action",
+            "repeated no-progress failure",
+            "repeated read-file calls detected with no progress",
+            "repeated search_content calls returned no matches",
+            "defect detector flagged",
+        )
+        return not any(marker in lowered for marker in blocked_markers)
+
+    def _note_missing_memory_tag_after_step(self, processed_segs, sys_results, should_stop: bool) -> None:
+        if should_stop:
+            return
+        if int(getattr(self.state, "last_memory_board_parsed_count", 0) or 0) > 0:
+            return
+        if not self._completed_actions(processed_segs):
+            return
+        if not any(self._is_memory_worthy_system_result(text) for text in (sys_results or [])):
+            return
+
+        active_intent = getattr(self.state, "active_intent", None)
+        intent_id = str(getattr(active_intent, "intent_id", "") or "").strip() if active_intent is not None else ""
+        self.state.memory_tag_expected_next_step = True
+        self.state.memory_tag_reason = "meaningful_evidence_gain"
+        self.state.memory_tag_expected_intent_id = intent_id
+
     async def handle(self, ctx, processed_segs, sys_results, should_stop: bool) -> DispatchHandlingDecision:
         recon_msg = self.parser.reconstruct(processed_segs)
         if recon_msg:
@@ -129,6 +174,7 @@ class DispatchOutcomeHandler:
                     source="state_machine",
                 )
 
+        self._note_missing_memory_tag_after_step(processed_segs, sys_results, should_stop)
         ctx.current_query = "\n---\n".join(sys_results)
         return DispatchHandlingDecision.pass_through(
             reason="system_results_forwarded",

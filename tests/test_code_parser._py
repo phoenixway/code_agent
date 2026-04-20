@@ -33,5 +33,14 @@ class TestCodeParserLibPath(unittest.TestCase):
         self.assertTrue(path.endswith("libs/linux_x86_64/python.so"))
 
 
+class TestCodeParserSkeletonRanges(unittest.TestCase):
+    def test_unsupported_file_type_falls_back_without_ranges(self):
+        parser = CodeParser()
+
+        out = parser.get_skeleton("notes.txt", "hello\nworld")
+
+        self.assertIn("skeleton not supported for this file type", out)
+
+
 if __name__ == "__main__":
     unittest.main()

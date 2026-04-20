@@ -134,7 +134,7 @@ class TestFileTools(unittest.IsolatedAsyncioTestCase):
         file_path.write_text("def foo():\n    return 1\n")
         parser_mock = MagicMock()
         parser_mock.configs = {".py": {"name": "python"}}
-        parser_mock.get_skeleton.return_value = "ƒ def foo() : # ... implementation hidden ..."
+        parser_mock.get_skeleton.return_value = "ƒ def foo() : # ... implementation hidden ... [1-2]"
         self.tool_manager.tools["read_file_skeleton"].code_parser = parser_mock
         command = {"type": "read_file_skeleton", "path": str(file_path)}
         result = await self.processor.process_single_action(command)
@@ -142,6 +142,7 @@ class TestFileTools(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.get("view"), "skeleton")
         self.assertIn("Skeleton for", result["output"])
         self.assertIn("def foo", result["output"])
+        self.assertIn("line ranges", result["output"])
 
     async def test_read_file_skeleton_unsupported_extension(self):
         file_path = Path(self.test_dir) / "sample.txt"
@@ -172,6 +173,7 @@ class TestFileTools(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["status"], "success")
         self.assertEqual(result.get("view"), "skeleton")
         self.assertIn("Greeter", result["output"])
+        self.assertRegex(result["output"], r"\[\d+-\d+\]")
         self.assertNotIn("skeleton not supported for this file type", result["output"].lower())
 
     async def test_extract_kotlin_function_success_is_compact_in_output(self):

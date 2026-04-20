@@ -16,6 +16,7 @@ class PermissionPolicy:
             "read_chunk",
             "read_file_skeleton",
             "extract_kotlin_function",
+            "extract_symbol",
             "list_directory",
             "search_files",
             "search_content",
@@ -44,6 +45,7 @@ class PermissionPolicy:
             "list_directory",
             "read_file_skeleton",
             "extract_kotlin_function",
+            "extract_symbol",
         }
         is_recovery_probe = bool(action.get("_recovery_context"))
 
@@ -55,6 +57,7 @@ class PermissionPolicy:
             "read_chunk",
             "read_file_skeleton",
             "extract_kotlin_function",
+            "extract_symbol",
         }:
             return "allow_truncated"
 

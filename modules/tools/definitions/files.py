@@ -458,8 +458,8 @@ class ReadFileTool(BaseTool):
 class ReadFileSkeletonTool(BaseTool):
     name = "read_file_skeleton"
     description = (
-        "Extracts a structural skeleton (classes/functions/signatures) from a source file "
-        "using tree-sitter for supported languages. Preferred first step before full read_file. "
+        "Extracts a structural skeleton (classes/functions/signatures with line ranges) from a source file "
+        "using tree-sitter for supported languages. Preferred fast-navigation step before broad read_file. "
         "Params: 'path' (str)"
     )
 
@@ -501,7 +501,12 @@ class ReadFileSkeletonTool(BaseTool):
             skeleton = self.code_parser.get_skeleton(str(p), content)
             return {
                 "status": "success",
-                "output": f"Skeleton for {p}:\n{skeleton}\n\nNote: this is a structural view. Use read_file for exact implementation details.",
+                "output": (
+                    f"Skeleton for {p}:\n{skeleton}\n\n"
+                    "Note: this is a structural view with line ranges. "
+                    "Prefer read_chunk with the shown range to inspect the exact symbol body cheaply; "
+                    "use read_file only when full-file context is genuinely required."
+                ),
                 "file_path": str(p),
                 "view": "skeleton",
                 "skeleton_content": skeleton,

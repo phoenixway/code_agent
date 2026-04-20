@@ -10,6 +10,8 @@ from .stage_logging import OrchestrationStageLogger
 
 class IntentTransitionHandler:
     REMAINING_OPEN_CONTROL_TAG_RE = re.compile(r"<\s*(intent|action)\b", re.IGNORECASE)
+    REMAINING_ACTION_TAG_RE = re.compile(r"<\s*action\b", re.IGNORECASE)
+    THINK_TAG_RE = re.compile(r"<think(?:\s+[^>]*)?>.*?</think>", re.IGNORECASE | re.DOTALL)
 
     def __init__(self, agent, prompt_builder, recovery):
         self.agent = agent
@@ -28,7 +30,17 @@ class IntentTransitionHandler:
         text = str(response_text or "").strip()
         if not text:
             return False
-        return bool(self.REMAINING_OPEN_CONTROL_TAG_RE.search(text))
+        masked = self.THINK_TAG_RE.sub(" ", text)
+        return bool(self.REMAINING_OPEN_CONTROL_TAG_RE.search(masked))
+
+    def _remaining_has_action_only(self, response_text: str) -> bool:
+        text = str(response_text or "").strip()
+        if not text:
+            return False
+        masked = self.THINK_TAG_RE.sub(" ", text)
+        if "<intent" in masked.lower():
+            return False
+        return bool(self.REMAINING_ACTION_TAG_RE.search(masked))
 
     def _finalize_completed_intent(self) -> None:
         runtime = getattr(self.state, "intent_runtime", None)
@@ -283,6 +295,19 @@ class IntentTransitionHandler:
                 reason="intent_completed_with_plaintext_answer",
                 source="intent_runtime",
                 universe="no_active_contract",
+                transition=intent_decision.transition_info.get("transition", ""),
+                before_active_intent_id=intent_decision.transition_info.get("before_active_intent_id", ""),
+                after_active_intent_id=intent_decision.transition_info.get("after_active_intent_id", ""),
+            )
+            return IntentHandlingDecision(handled=False)
+
+        if self._remaining_has_action_only(response_text):
+            self.stage_logger.log(
+                "intent_transition",
+                "pass",
+                reason="intent_applied_with_followup_action",
+                source="intent_runtime",
+                universe="transition_in_progress",
                 transition=intent_decision.transition_info.get("transition", ""),
                 before_active_intent_id=intent_decision.transition_info.get("before_active_intent_id", ""),
                 after_active_intent_id=intent_decision.transition_info.get("after_active_intent_id", ""),

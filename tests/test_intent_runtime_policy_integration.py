@@ -139,6 +139,24 @@ class IntentRuntimePolicyIntegrationTests(unittest.TestCase):
         self.assertTrue(ok, msg)
         self.assertIn("extract_kotlin_function", self.runtime.active_intent.allowed_actions)
 
+    def test_extract_symbol_is_retained_as_known_allowed_action(self):
+        payload = {
+            "intent_id": "activity_tracker_extract_symbol",
+            "intent_type": "INVESTIGATE",
+            "goal": "Extract the exact Kotlin symbol implementation for EditRecordDialog",
+            "allowed_actions": ["extract_symbol", "search_content"],
+            "safe_steps_limit": 4,
+            "retry_limit": 2,
+            "mode": "replace",
+            "switch_reason": "current_intent_no_longer_fits",
+            "switch_explanation": "switch to exact symbol extraction",
+        }
+
+        ok, msg = self.runtime.apply_payload(payload)
+
+        self.assertTrue(ok, msg)
+        self.assertIn("extract_symbol", self.runtime.active_intent.allowed_actions)
+
     def test_modify_payload_with_read_only_run_shell_is_still_upgraded_for_editing(self):
         payload = {
             "intent_id": "activity_tracker_modify",

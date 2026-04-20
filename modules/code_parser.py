@@ -4,6 +4,7 @@ import platform
 import logging
 from tree_sitter import Language, Parser
 
+
 class CodeParser:
     def __init__(self):
         self.log = logging.getLogger("angelica.code_parser")
@@ -109,6 +110,24 @@ class CodeParser:
         tree = parser.parse(content_bytes)
         lines = []
 
+        def _line_range(node):
+            start_line = int(getattr(node, "start_point", (0, 0))[0]) + 1
+            end_line = int(getattr(node, "end_point", (0, 0))[0]) + 1
+            if end_line < start_line:
+                end_line = start_line
+            return start_line, end_line
+
+        def _format_line_range(node):
+            start_line, end_line = _line_range(node)
+            return f"[{start_line}-{end_line}]"
+
+        def _icon_for(node_type):
+            if node_type in {"class_declaration", "object_declaration", "interface_declaration", "type_declaration"}:
+                return "📦"
+            if node_type == "property_declaration":
+                return "•"
+            return "ƒ"
+
         def _get_sig(node):
             start, end = node.start_byte, node.end_byte
             has_body = False
@@ -128,15 +147,15 @@ class CodeParser:
                     sig += " : # ... implementation hidden ..."
                 else:
                     sig += " { /* ... implementation hidden ... */ }"
-                    
+
             return sig
 
         def _walk(node, depth=0):
             if node.type in conf["nodes"]:
                 sig = _get_sig(node)
                 indent = "    " * (depth - 1) + "└── " if depth > 0 else ""
-                icon = "📦" if "class" in node.type or "interface" in node.type else "ƒ"
-                lines.append(f"{indent}{icon} {sig}")
+                icon = _icon_for(node.type)
+                lines.append(f"{indent}{icon} {sig} {_format_line_range(node)}")
                 depth += 1
             for child in node.children:
                 _walk(child, depth)

@@ -265,6 +265,7 @@ class ActionDispatcher:
             "read_chunk",
             "read_file_skeleton",
             "extract_kotlin_function",
+            "extract_symbol",
             "search_content",
             "search_files",
             "list_directory",
@@ -385,7 +386,7 @@ class ActionDispatcher:
             estimate = int(size * self._SKELETON_FRACTION)
             return max(self._SKELETON_MIN_CHARS, min(estimate, self._SKELETON_MAX_CHARS))
 
-        if cmd_type == "extract_kotlin_function":
+        if cmd_type in {"extract_kotlin_function", "extract_symbol"}:
             path = command.get("path") if isinstance(command.get("path"), str) else ""
             size = self._estimate_file_chars(path)
             if size is None:
@@ -1494,7 +1495,7 @@ class ActionDispatcher:
                 )
                 return
 
-        if cmd_type == "extract_kotlin_function":
+        if cmd_type in {"extract_kotlin_function", "extract_symbol"}:
             source = (
                 result.get("file_content")
                 or result.get("content")
@@ -1502,13 +1503,16 @@ class ActionDispatcher:
             )
             if isinstance(source, str) and source:
                 payload = {
-                    "tool": "extract_kotlin_function",
+                    "tool": cmd_type,
                     "path": path,
                     "filename": path,
                     "output": source,
                     "file_content": source,
                     "status": status,
                     "function_name": result.get("function_name") or command.get("function_name"),
+                    "symbol_name": result.get("symbol_name") or command.get("symbol_name"),
+                    "symbol_kind": result.get("symbol_kind") or command.get("symbol_kind"),
+                    "container_name": result.get("container_name") or command.get("container_name"),
                     "class_name": result.get("class_name") or command.get("class_name"),
                     "signature": result.get("signature"),
                     "start_line": result.get("start_line"),

@@ -28,6 +28,9 @@ class PromptBuilderCurrentIntentRetryRecoveryTests(unittest.TestCase):
                 last_action_fingerprint='read_file_skeleton:{"path": "modules/activity_tracker.py"}',
                 last_action_status="success",
                 recent_problem_actions=[],
+                memory_tag_expected_next_step=False,
+                memory_tag_reason="",
+                memory_tag_expected_intent_id="",
             ),
             config=SimpleNamespace(),
             memory_board_store=board,
@@ -123,6 +126,8 @@ class PromptBuilderCurrentIntentRetryRecoveryTests(unittest.TestCase):
         self.assertIn("steps_remaining: 2", out)
         self.assertIn('last_action: read_file_skeleton("modules/activity_tracker.py") -> success', out)
         self.assertIn("current_best_answer:", out)
+        self.assertIn("Memory-board expectation for this contract:", out)
+        self.assertIn("emit exactly ONE concise memory tag", out)
 
     def test_build_system_message_injects_no_active_intent_contract_block(self):
         builder = self._builder(active_intent=None)
@@ -133,6 +138,47 @@ class PromptBuilderCurrentIntentRetryRecoveryTests(unittest.TestCase):
         self.assertIn("Status: NO ACTIVE INTENT CONTRACT", out)
         self.assertIn("Runtime mode: INTENTLESS_SHORT_MODE", out)
         self.assertIn("formal_intent_required_now: no", out)
+
+    def test_build_system_message_injects_memory_followup_when_previous_step_had_no_tag(self):
+        active_intent = SimpleNamespace(
+            intent_id="activity_tracker_edit",
+            intent_type="INVESTIGATE",
+            goal="Understand current implementation of activity tracker sorting and edit dialog to plan changes.",
+            allowed_actions=["read_chunk", "search_content"],
+            safe_steps_limit=4,
+            step_count=1,
+            retry_limit=2,
+            retry_count=0,
+            user_step_extension=0,
+        )
+        builder = self._builder(active_intent)
+        builder.state.memory_tag_expected_next_step = True
+        builder.state.memory_tag_reason = "meaningful_evidence_gain"
+        builder.state.memory_tag_expected_intent_id = "activity_tracker_edit"
+
+        out = builder.build_system_message("TOOLS", "CTX")
+
+        self.assertIn("Memory-board follow-up from the previous step:", out)
+        self.assertIn("Previous step produced meaningful evidence but no memory tag was emitted.", out)
+
+    def test_memory_board_protocol_distinguishes_fact_from_finding(self):
+        builder = self._builder(active_intent=None)
+
+        out = builder.build_memory_board_protocol_prompt()
+
+        self.assertIn("Use <fact> only for information that was directly verified", out)
+        self.assertIn("Do not use <fact> for interpretations", out)
+        self.assertIn("Use <finding> for conclusions, interpretations, suspected behavior", out)
+
+    def test_build_system_message_includes_skeleton_range_navigation_guidance(self):
+        builder = self._builder(active_intent=None)
+
+        out = builder.build_system_message("TOOLS", "CTX")
+
+        self.assertIn("`read_file_skeleton` to inspect structure cheaply and obtain symbol line ranges", out)
+        self.assertIn("prefer `extract_symbol` over repeated search + chunk hunting", out)
+        self.assertIn("once `read_file_skeleton` with ranges is available, prefer skeleton → targeted `read_chunk` for body inspection", out)
+        self.assertIn("Under MODIFY, investigation remains valid until edit-readiness is achieved", out)
 
     def test_intent_universe_resolver_reports_intentless_short_mode_without_contract(self):
         resolver = IntentUniverseResolver()

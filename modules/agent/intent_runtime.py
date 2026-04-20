@@ -28,6 +28,7 @@ KNOWN_TOOL_ACTIONS = {
     "read_chunk",
     "read_file_skeleton",
     "extract_kotlin_function",
+    "extract_symbol",
     "search_content",
     "search_files",
     "list_directory",
@@ -85,6 +86,7 @@ class IntentRuntime:
         "read_chunk",
         "read_file_skeleton",
         "extract_kotlin_function",
+        "extract_symbol",
         "search_content",
         "search_files",
         "read_file",
@@ -673,6 +675,7 @@ class IntentRuntime:
                 }
             else:
                 contract.lineage_id = contract.intent_id
+                contract.force_plaintext_completion = False
                 self.last_transition_info = {
                     "transition": "intent_activated",
                     "same_lineage": False,
@@ -792,6 +795,7 @@ class IntentRuntime:
             return False
         grant = max(1, int(getattr(self.config, "INTENT_USER_ONE_SHOT_STEPS", 2)))
         self.active_intent.user_step_extension += grant
+        self.active_intent.hard_limit_hit_count = 0
         self.active_intent.force_plaintext_completion = False
         return True
 
@@ -801,6 +805,7 @@ class IntentRuntime:
         if extra_steps is None:
             extra_steps = int(getattr(self.config, "INTENT_USER_ONE_SHOT_STEPS", 2))
         self.active_intent.user_step_extension += max(1, int(extra_steps))
+        self.active_intent.hard_limit_hit_count = 0
         self.active_intent.force_plaintext_completion = False
         return True
 
@@ -810,6 +815,7 @@ class IntentRuntime:
         if extra_steps is None:
             extra_steps = int(getattr(self.config, "INTENT_USER_EXTENSION_STEPS", 4))
         self.active_intent.user_step_extension += max(1, int(extra_steps))
+        self.active_intent.hard_limit_hit_count = 0
         self.active_intent.force_plaintext_completion = False
         return True
 
@@ -821,6 +827,7 @@ class IntentRuntime:
         # Kept only for backward compatibility. The preferred hard-limit flow is
         # explicit user approval of a small additional step budget.
         self.active_intent.user_unlimited_override = True
+        self.active_intent.hard_limit_hit_count = 0
         self.active_intent.force_plaintext_completion = False
         return True
 

@@ -225,7 +225,7 @@ class TuiUI:
                 return "never"
             return "later"
 
-        if action_type in {"run_shell", "search_content", "search_files", "list_directory", "read_file", "read_chunk", "read_file_skeleton", "extract_kotlin_function"}:
+        if action_type in {"run_shell", "search_content", "search_files", "list_directory", "read_file", "read_chunk", "read_file_skeleton", "extract_kotlin_function", "extract_symbol"}:
             prompt = (
                 "[bold yellow]⚠ Action confirmation[/]\n\n"
                 f"[bold]Type:[/] {action_type}\n"

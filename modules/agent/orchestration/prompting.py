@@ -56,6 +56,25 @@ class OrchestratorPromptBuilder:
         active_intent = self._current_active_intent()
         return str(getattr(active_intent, "intent_type", "") or "") if active_intent is not None else ""
 
+    def _memory_tag_followup_lines(self) -> list[str]:
+        if not bool(getattr(self.state, "memory_tag_expected_next_step", False)):
+            return []
+
+        reason = str(getattr(self.state, "memory_tag_reason", "") or "").strip() or "meaningful_evidence_gain"
+        expected_intent_id = str(getattr(self.state, "memory_tag_expected_intent_id", "") or "").strip()
+        active_intent_id = str(self._current_active_intent_id() or "").strip()
+
+        if expected_intent_id and active_intent_id and expected_intent_id != active_intent_id:
+            return []
+
+        return [
+            "",
+            "Memory-board follow-up from the previous step:",
+            f"- Previous step produced meaningful evidence but no memory tag was emitted. Reason: {reason}.",
+            "- In this reply, emit exactly ONE concise memory tag only if you introduce or rely on a durable finding, decision, or milestone from that step.",
+            "- Then continue with the next valid output.",
+        ]
+
     def _render_recovery_message(self, message_key: str, default: str, *, next_hint: str = "") -> str:
         rendered = render_intent_message(message_key, next_hint=next_hint, default="")
         return rendered or default
@@ -221,6 +240,14 @@ class OrchestratorPromptBuilder:
             f"last_action: {last_action}",
             f"current_best_answer: {current_best_answer}",
             "",
+            "Memory-board expectation for this contract:",
+            "- After each meaningful evidence gain, emit exactly ONE concise memory tag if the new fact, finding, decision, or milestone would matter after history compression.",
+            "- Prefer <finding scope=\"intent\"> for newly established conclusions and <progress scope=\"intent\"> for milestone-level continuation state.",
+            "- Do not emit a memory tag for routine tool usage with no durable insight.",
+        ]
+        lines.extend(self._memory_tag_followup_lines())
+        lines.extend([
+            "",
             "Next valid behaviors:",
             "- return exactly one allowed action to advance the current work",
             "- or return a plain-text answer if current evidence is already sufficient",
@@ -230,7 +257,7 @@ class OrchestratorPromptBuilder:
             "- emit a new <intent mode=\"activate\"> or <intent mode=\"replace\"> for the same goal",
             "- restart reconnaissance from the beginning",
             "- ignore already established current_best_answer and intent-scoped memory without new evidence",
-        ]
+        ])
         return "\n".join(lines)
 
     def build_no_active_intent_contract_prompt(self) -> str:
@@ -267,6 +294,7 @@ class OrchestratorPromptBuilder:
             "- if a formal intent is already required, do not return another bare <action> first",
             "- if current evidence is already sufficient, answer directly in plain text",
         ]
+        lines.extend(self._memory_tag_followup_lines())
         return "\n".join(lines)
 
     def build_system_message(self, tools_prompt: str, ctx_prompt: str) -> str:
@@ -340,6 +368,9 @@ class OrchestratorPromptBuilder:
             Rules:
             - Use memory tags only for high-value information that should survive history compression.
             - Do not log routine actions, tool calls, or noisy low-level observations.
+            - Use <fact> only for information that was directly verified by tool output, code, or runtime state already visible in history.
+            - Do not use <fact> for interpretations, inferred behavior, planned fixes, or claims that combine multiple clues into a conclusion.
+            - Use <finding> for conclusions, interpretations, suspected behavior, or any statement that is not directly quoted or directly observable from tool output.
             - Use scope="intent" for information useful for continuing the current line of work.
             - Use scope="session" for information useful later in the current session.
             - Use scope="project" only for durable project-wide facts, decisions, or preferences.

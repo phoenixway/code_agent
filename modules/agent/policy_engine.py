@@ -61,7 +61,7 @@ class LoopPolicyInput:
 
 class PolicyEngine:
     READ_ONLY_ACTIONS = {
-        "read_file", "read_chunk", "read_file_skeleton", "extract_kotlin_function", "search_content", "search_files",
+        "read_file", "read_chunk", "read_file_skeleton", "extract_kotlin_function", "extract_symbol", "search_content", "search_files",
         "list_directory", "find_files", "git_diff", "run_shell",
     }
 
