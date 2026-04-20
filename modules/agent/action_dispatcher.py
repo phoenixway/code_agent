@@ -1455,10 +1455,16 @@ class ActionDispatcher:
             if isinstance(content, str) and content:
                 version = None
                 add_file_version = getattr(history, "add_file_version", None)
-                if callable(add_file_version) and path:
+                get_latest_version = getattr(history, "get_latest_file_version", None)
+                if cmd_type == "read_file" and callable(add_file_version) and path:
                     try:
                         meta = add_file_version(path, content, return_metadata=True)
                         version = meta.get("version") if isinstance(meta, dict) else None
+                    except Exception:
+                        version = None
+                elif cmd_type == "read_chunk" and callable(get_latest_version) and path:
+                    try:
+                        version = get_latest_version(path)
                     except Exception:
                         version = None
 

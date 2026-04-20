@@ -383,6 +383,20 @@ class RecoveryCoordinator:
                     self.config.CRITICAL_ERROR_RETRY_BUDGET,
                 )
                 recovery_actions = stop_info.get("next_actions") or []
+                active_intent = getattr(self.state, "active_intent", None)
+                if (
+                    active_intent is not None
+                    and bool(stop_info.get("recoverable"))
+                    and str(stop_info.get("error_code") or "").strip().upper() == "VALIDATION_ERROR"
+                ):
+                    return StopHandlingDecision.continue_with(
+                        self.prompt_builder.build_current_intent_retry_recovery_query(
+                            recovery_actions,
+                            error_code=str(stop_info.get("error_code") or ""),
+                            error_details=stop_info.get("error_details") or {},
+                        ),
+                        clear_pending_stop=True,
+                    )
                 return StopHandlingDecision.continue_with(
                     self.prompt_builder.build_retry_recovery_query(recovery_actions),
                     clear_pending_stop=True,

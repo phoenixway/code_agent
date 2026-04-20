@@ -140,6 +140,25 @@ class IntentRuntime:
     def _goal_tokens(self, goal: str) -> list[str]:
         return [t for t in self._normalize_goal(goal).split() if t]
 
+    def _has_user_facing_outcome_shape(self, goal: str) -> bool:
+        normalized = self._normalize_goal(goal)
+        if not normalized:
+            return False
+        outcome_markers = {
+            "fix", "change", "update", "modify", "implement", "add", "allow", "support",
+            "plan", "resolve", "enable",
+            "виправити", "змінити", "оновити", "модифікувати", "реалізувати", "додати",
+            "дозволити", "підтримати", "спланувати", "вирішити", "увімкнути",
+        }
+        reasoning_markers = {
+            "understand", "determine", "why", "how", "behavior", "restriction", "implementation",
+            "goal", "dialog", "sorting", "editable",
+            "зрозуміти", "визначити", "чому", "як", "поведінку", "обмеження", "реалізацію",
+            "ціль", "діалог", "сортування", "редагований",
+        }
+        tokens = set(normalized.split())
+        return bool(tokens & outcome_markers) or (bool(tokens & reasoning_markers) and len(tokens) >= 8)
+
     def _looks_like_local_step_goal(self, goal: str) -> bool:
         normalized = self._normalize_goal(goal)
         if not normalized:
@@ -165,7 +184,7 @@ class IntentRuntime:
             return False
         if len(normalized) < 24:
             return False
-        if self._looks_like_local_step_goal(goal):
+        if self._looks_like_local_step_goal(goal) and not self._has_user_facing_outcome_shape(goal):
             return False
         return len(normalized.split()) >= 5
 

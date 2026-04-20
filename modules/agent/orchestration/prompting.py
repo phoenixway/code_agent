@@ -1013,12 +1013,54 @@ class OrchestratorPromptBuilder:
             return (
                 "SYSTEM: Retry with recovery strategy.\n"
                 f"Preferred actions: {', '.join(recovery_actions)}.\n"
+                "Return exactly one materially different next step.\n"
+                "Do not emit a new <intent> block unless runtime explicitly requires a real contract transition.\n"
                 "Do not repeat the previous action with the same arguments."
             )
         return (
             "SYSTEM: Retry with a different strategy and different arguments.\n"
+            "Return exactly one materially different next step.\n"
+            "Do not emit a new <intent> block unless runtime explicitly requires a real contract transition.\n"
             "Do not repeat the previous action call."
         )
+
+    def build_current_intent_retry_recovery_query(
+        self,
+        recovery_actions: list[str] | None = None,
+        *,
+        error_code: str = "",
+        error_details: dict | None = None,
+    ) -> str:
+        recovery_actions = [str(a) for a in (recovery_actions or []) if str(a or "").strip()]
+        allowed_line = (
+            f"Allowed actions under the CURRENT intent contract: {', '.join(recovery_actions)}.\n"
+            if recovery_actions
+            else ""
+        )
+        lines = [
+            "SYSTEM: Retry inside the SAME current intent contract.",
+            allowed_line.rstrip(),
+            "Do not emit a new <intent> block.",
+            "Do not reactivate, replace, relabel, or restart this work.",
+            "Return exactly one next valid <action>, or a plain-text answer if the goal is already achieved.",
+        ]
+
+        code = str(error_code or "").strip().upper()
+        details = error_details or {}
+        mismatch_type = str(details.get("mismatch_type") or "")
+        if code == "VALIDATION_ERROR":
+            lines.extend(
+                [
+                    "Use one deterministic recovery step, not renewed exploration.",
+                    "If the last edit failed because the anchor did not match exactly, retrieve the exact current target block from file content and then retry edit_file immediately.",
+                    "For edit_file, copy search_text verbatim from the most recent exact file-content tool result.",
+                    "Do not reconstruct the signature, indentation, or whitespace from memory.",
+                ]
+            )
+            if mismatch_type:
+                lines.append(f"Last recoverable failure detail: {mismatch_type}.")
+
+        return "\n".join(line for line in lines if line)
 
     def build_open_search_recovery_query(self, error_details: str) -> str:
         return (

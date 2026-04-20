@@ -2,8 +2,10 @@ import tempfile
 import unittest
 import shutil
 from pathlib import Path
+from types import SimpleNamespace
 
 from modules.history import HistoryManager
+from modules.agent.action_dispatcher import ActionDispatcher
 
 
 class MockChatProvider:
@@ -131,6 +133,51 @@ class TestHistoryContext(unittest.TestCase):
         self.assertFalse(added)
         transient_count = sum(1 for m in self.history.messages if m.get("type") == "transient_file_content")
         self.assertEqual(transient_count, 1)
+
+    def test_read_chunk_working_material_does_not_create_canonical_file_version(self):
+        dispatcher = ActionDispatcher.__new__(ActionDispatcher)
+        dispatcher.agent = SimpleNamespace(history=self.history)
+        state = SimpleNamespace(current_turn_id=1)
+
+        dispatcher._capture_turn_working_material(
+            {"type": "read_chunk", "path": "sample.kt", "start_line": 10, "end_line": 20},
+            {
+                "status": "success",
+                "file_content": "fun x() = 1",
+                "start_line": 10,
+                "end_line": 20,
+            },
+            state,
+        )
+
+        self.assertNotIn("sample.kt", self.history.files)
+        materials = [m for m in self.history.messages if m.get("turn_working_material")]
+        self.assertEqual(len(materials), 1)
+        payload = materials[0]["content"]
+        self.assertEqual(payload["tool"], "read_chunk")
+        self.assertIsNone(payload.get("version"))
+
+    def test_read_chunk_uses_existing_file_version_without_overwriting_canonical_state(self):
+        self.history.add_file_version("sample.kt", "class Before")
+        dispatcher = ActionDispatcher.__new__(ActionDispatcher)
+        dispatcher.agent = SimpleNamespace(history=self.history)
+        state = SimpleNamespace(current_turn_id=1)
+
+        dispatcher._capture_turn_working_material(
+            {"type": "read_chunk", "path": "sample.kt", "start_line": 10, "end_line": 20},
+            {
+                "status": "success",
+                "file_content": "fun x() = 1",
+                "start_line": 10,
+                "end_line": 20,
+            },
+            state,
+        )
+
+        self.assertEqual(self.history.get_latest_file_version("sample.kt"), 1)
+        self.assertEqual(self.history.get_file_version_content("sample.kt", 1), "class Before")
+        materials = [m for m in self.history.messages if m.get("turn_working_material")]
+        self.assertEqual(materials[0]["content"].get("version"), 1)
 
 
 if __name__ == "__main__":

@@ -323,9 +323,6 @@ class TestReadFileHistoryDedup(unittest.IsolatedAsyncioTestCase):
     async def test_read_chunk_history_uses_line_range_summary(self):
         file_path = Path(self.test_dir) / "chunked.txt"
         file_path.write_text("line1\nline2\nline3\nline4\n", encoding="utf-8")
-        self.history.add_file_version.side_effect = [
-            {"version": 2, "is_new_version": True, "blob_hash": "h2"},
-        ]
 
         result = await self.processor.process_single_action(
             {"type": "read_chunk", "path": str(file_path), "start_line": 2, "end_line": 3}
@@ -334,8 +331,9 @@ class TestReadFileHistoryDedup(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["status"], "success")
         self.assertEqual(
             result["output"],
-            f"Read chunks (2, 3) from {file_path} and added to history as v2.",
+            f"Read chunks (2, 3) from {file_path}.",
         )
+        self.history.add_file_version.assert_not_called()
 
 if __name__ == "__main__":
     unittest.main()

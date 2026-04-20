@@ -97,7 +97,7 @@ class ResponseProcessor:
                 self.history is not None
                 and hasattr(self.history, "add_file_version")
             )
-            should_track_full_file_version = action_type in {"read_file", "read_chunk"}
+            should_track_full_file_version = action_type == "read_file"
             if file_path and content and has_history_api and should_track_full_file_version:
                 meta = self.history.add_file_version(file_path, content, return_metadata=True)
                 if isinstance(meta, dict):
@@ -130,6 +130,16 @@ class ResponseProcessor:
                             result["output"] = (
                                 f"Read file '{file_path}' (unchanged, already in history as v{version})."
                             )
+            elif file_path and content and action_type == "read_chunk":
+                start_line = result.get("start_line", args.get("start_line"))
+                end_line = result.get("end_line", args.get("end_line"))
+                start_byte = result.get("start_byte", args.get("start_byte"))
+                end_byte = result.get("end_byte", args.get("end_byte"))
+
+                if start_line is not None and end_line is not None:
+                    result["output"] = f"Read chunks ({start_line}, {end_line}) from {file_path}."
+                else:
+                    result["output"] = f"Read chunks ({start_byte}, {end_byte}) from {file_path}."
             elif file_path and action_type in {"extract_kotlin_function", "extract_symbol"}:
                 symbol_name = (
                     result.get("symbol_name")

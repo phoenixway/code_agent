@@ -584,6 +584,13 @@ class HistoryManager:
                 return self._load_blob(v["blob_hash"])
         return None
 
+    def get_latest_file_version(self, filename):
+        versions = self.files.get(filename) or []
+        if not versions:
+            return None
+        latest = versions[-1]
+        return latest.get("version")
+
     def _current_turn_readfile_keys(self, turn_id=None) -> set[tuple[str, str]]:
         keys: set[tuple[str, str]] = set()
         for msg in self.messages:

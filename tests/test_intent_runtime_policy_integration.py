@@ -100,6 +100,25 @@ class IntentRuntimePolicyIntegrationTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertEqual("intent_goal_too_local_or_underspecified", msg)
 
+    def test_apply_payload_accepts_goal_that_starts_local_but_has_real_user_facing_outcome(self):
+        runtime = IntentRuntime(DummyConfig())
+        payload = {
+            "intent_id": "picker_past_values",
+            "intent_type": "INVESTIGATE",
+            "goal": "Locate the date-time picker dialog used in EditRecordDialog for activity tracker start time, understand its past-value restriction, and add an optional EnablePastValues flag.",
+            "allowed_actions": ["read_chunk", "read_file_skeleton", "extract_symbol", "search_content", "search_files", "list_directory", "run_shell"],
+            "safe_steps_limit": 6,
+            "retry_limit": 2,
+            "mode": "activate",
+            "switch_reason": "user_requested_new_task",
+            "switch_explanation": "Investigate picker restriction and enable past values flag.",
+        }
+
+        ok, msg = runtime.apply_payload(payload)
+
+        self.assertTrue(ok, msg)
+        self.assertEqual("picker_past_values", runtime.active_intent.intent_id)
+
     def test_modify_payload_with_read_only_allowed_actions_is_upgraded_for_editing(self):
         payload = {
             "intent_id": "activity_tracker_modify",
