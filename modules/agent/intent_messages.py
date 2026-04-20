@@ -118,23 +118,24 @@ INTENT_MESSAGES: dict[str, dict] = {
         "type": "limit",
         "template": (
             "The current intent contract reached its nominal step limit. "
-            "Prefer one final allowed action or conclude with current evidence. "
-            "Do not refresh or cosmetically relabel the same intent contract unless strategy materially changed."
+            "Priority now is to finish quickly from current evidence, not to reopen exploration. "
+            "Continue only from the strongest valid state already reached under this same intent. "
+            "If the goal is already answerable, complete the intent and answer now."
         ),
     },
     "intent_step_limit_exceeded": {
         "type": "limit",
         "template": (
             "The current intent contract exceeded its hard step limit. "
-            "Do not cosmetically relabel the same intent contract again. "
-            "Either conclude now, formally complete the current intent contract, or start a materially different retry/replace intent with a legitimate trigger."
+            "Priority now is clean completion from current evidence, not more searching by default. "
+            "Either answer now from the strongest evidence already gathered, or continue only from the last valid point if a concrete missing detail still blocks completion."
         ),
     },
     "intent_step_limit_exceeded_repeated": {
         "type": "limit",
         "template": (
             "The current intent contract exceeded its hard step limit repeatedly for the same lineage. "
-            "Hand off the decision to the user: approve more steps, or stop and answer from current evidence."
+            "Do not restart exploration. The default priority is to stop and finish from current evidence unless the user explicitly approves a small additional budget for this same work."
         ),
     },
     "planned_turn_working_material_too_large": {

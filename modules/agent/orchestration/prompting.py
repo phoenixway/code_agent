@@ -447,8 +447,10 @@ class OrchestratorPromptBuilder:
             "The current runtime contract remains active for this same user-facing goal.\n"
             "Do not reactivate, replace, relabel, or restart this work without a valid runtime reason.\n"
             "Do not repeat the blocked or low-value action pattern.\n"
-            "Continue from current evidence under the same contract.\n"
-            "Return the next valid output, or a plain-text answer if current evidence is already sufficient."
+            "Priority now is to finish this work quickly from the strongest current evidence.\n"
+            "Continue from the strongest valid state already reached under the same contract.\n"
+            "Do not reopen exploration just because continuation is allowed.\n"
+            "Return the next valid output, or complete the intent and answer now if current evidence is already sufficient."
         )
 
     def build_keep_current_intent_recovery_prompt(self, stop_info: dict | None) -> str:
@@ -495,8 +497,12 @@ class OrchestratorPromptBuilder:
             [
                 "The current intent contract remains valid and its goal remains the same.",
                 "Intent here means the formal runtime contract for the current user-facing goal and allowed actions, not a new local intention or next micro-step.",
-                "Continue from already gathered evidence under the same contract.",
-                "Do not restart the task from the beginning unless runtime explicitly changes the contract.",
+                "Priority now is to finish quickly from the strongest evidence already gathered.",
+                "Continue from the strongest valid state already reached under the same contract.",
+                "Do not restart the task from the beginning unless a concrete missing detail is identified or runtime explicitly changes the contract.",
+                "Do not repeat already completed investigation.",
+                "Do not reopen exploration just because continuation is allowed.",
+                "Do not keep the intent open if the goal is already answerable.",
                 "Do not repeat the action pattern that was just blocked or low-value.",
             ]
         )
@@ -506,6 +512,10 @@ class OrchestratorPromptBuilder:
                 [
                     "User approved additional budget for this same intent contract.",
                     "Continue from current evidence under the same contract.",
+                    "This approval does NOT mean search again by default.",
+                    "It means continue this same work from where you validly left off and finish as quickly as the evidence allows.",
+                    "If the goal is already ready to answer, use the approval to finish cleanly: complete the intent and answer now.",
+                    "Otherwise perform only the already-prepared next valid step under the same intent, with completion preferred over renewed exploration.",
                     "Return the next valid output.",
                 ]
             )
@@ -513,9 +523,10 @@ class OrchestratorPromptBuilder:
             base_lines.extend(
                 [
                     "First decide whether current evidence is already sufficient.",
-                    "If yes, return a final plain-text answer now.",
-                    "If not, return the next valid output under the same contract.",
-                    "Prefer exactly one next <action> only if tool use is still needed.",
+                    "If yes, complete the intent and return a final plain-text answer now.",
+                    "If not, continue only from the last valid point already reached under this same intent and prefer the shortest path to completion.",
+                    "Do not interpret this soft-limit continuation as default permission to keep searching.",
+                    "Prefer exactly one next <action> only if a concrete missing detail still requires tool use, and use it to finish rather than to reopen exploration.",
                 ]
             )
         elif reason == "intent_blocked_action_signature":
@@ -540,7 +551,10 @@ class OrchestratorPromptBuilder:
                 [
                     "Prefer a deterministic recovery step inside the SAME current intent contract.",
                     "Do not open a new intent contract unless the work truly changed.",
-                    "If the previous edit failed because the search block was not unique or whitespace did not match, first read the exact target block, then retry edit_file with exact text, or use write_file with full validated content.",
+                    "If the previous edit failed because the search block was not unique or whitespace did not match, first retrieve the exact target block from file content, then retry edit_file with verbatim exact text, or use write_file with full validated content.",
+                    "For edit_file, copy search_text verbatim from the most recent exact file-content tool result.",
+                    "If the same file was already modified earlier in this flow, treat pre-edit blocks from that file as stale and reread the current target block before another edit_file call.",
+                    "Do not reconstruct indentation or whitespace from memory.",
                     "Return the next valid output.",
                     "If tool use is needed, return exactly one valid <action>.",
                 ]
@@ -648,6 +662,9 @@ class OrchestratorPromptBuilder:
         return (
             "Поточний intent contract досяг жорсткого ліміту кроків. Далі агент не повинен продовжувати самовільно.\n"
             f"Причина: {reason}.\n"
+            "Пріоритет зараз: якнайшвидше чисто завершити роботу з уже наявного evidence.\n"
+            "Продовження НЕ означає: знову відкривати exploration або повторювати вже зроблене дослідження.\n"
+            "Продовження означає: або чисто завершити відповідь з уже досягнутого стану, або зробити рівно наступний валідний крок, якщо ще бракує конкретної деталі.\n"
             "Обери один із двох варіантів:\n"
             "- Approve more steps: дозволити ще невеликий бюджет кроків для ЦЬОГО самого intent contract.\n"
             "- Stop and answer from current evidence: зупинити tool use і отримати відповідь лише з уже зібраного."
@@ -908,7 +925,8 @@ class OrchestratorPromptBuilder:
                 "\nDo not repeat the blocked or low-value action pattern."
                 "\nDo not restart the task from the beginning. Continue from already gathered evidence under the same contract."
                 "\nReturn the next valid output under the current contract."
-                "\nPrefer one materially different read-only action only if tool use is still needed."
+                "\nReturn EXACTLY ONE materially different read-only action."
+                "\nUse it only if tool use is still needed."
                 "\nIf current evidence is already sufficient, return a plain-text answer instead."
             )
         if single_readonly_action_only:

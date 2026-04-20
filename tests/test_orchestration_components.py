@@ -1206,6 +1206,63 @@ class IntentTransitionHandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(decision.handled)
         self.assertEqual("", getattr(state, "pending_loop_stop_info", None) or "")
 
+    async def test_redundant_same_lineage_intent_with_followup_action_is_ignored_under_active_contract(self):
+        state = SimpleNamespace(
+            intent_required_until_activated=False,
+            active_intent=SimpleNamespace(
+                intent_id="datetimepicker_fix",
+                intent_type="MODIFY",
+                goal="Add allowPastValues to DateTimePickerDialog",
+                allowed_actions=["read_file", "read_chunk", "edit_file"],
+            ),
+            intent_runtime=SimpleNamespace(
+                last_apply_warning="",
+                last_transition_info={
+                    "transition": "policy_rejected",
+                    "reason": "unnecessary_intent_reactivation_or_replace",
+                    "before_active_intent_id": "datetimepicker_fix",
+                    "after_active_intent_id": "datetimepicker_fix",
+                },
+            ),
+            apply_intent_contract=MagicMock(return_value=(False, "unnecessary_intent_reactivation_or_replace")),
+            note_intent_only_response=MagicMock(),
+            active_intent_summary=MagicMock(return_value="datetimepicker_fix"),
+            last_defect_info={
+                "reason": "unnecessary_intent_reactivation_or_replace",
+                "recoverable": True,
+                "message_key": "unnecessary_intent_reactivation_or_replace",
+                "next_actions": ["read_file", "read_chunk", "edit_file"],
+            },
+            pending_loop_stop_info=None,
+        )
+        agent = SimpleNamespace(
+            ui=SimpleNamespace(),
+            state=state,
+            config=SimpleNamespace(),
+            log=None,
+        )
+        prompt_builder = OrchestratorPromptBuilder(
+            SimpleNamespace(
+                state=state,
+                config=SimpleNamespace(),
+                memory_board_store=None,
+                log=None,
+            )
+        )
+        recovery = SimpleNamespace(handle_defect_detector_stop=AsyncMock())
+        handler = IntentTransitionHandler(agent, prompt_builder, recovery)
+
+        decision = await handler.handle_model_step(
+            intent_payload={"intent_id": "datetimepicker_fix", "mode": "replace"},
+            intent_error=None,
+            response_text='<action>{"type":"read_file","path":"a.kt"}</action>',
+            state_machine=None,
+        )
+
+        self.assertFalse(decision.handled)
+        recovery.handle_defect_detector_stop.assert_not_awaited()
+        self.assertEqual("", getattr(state, "pending_loop_stop_info", None) or "")
+
     async def test_completed_intent_with_intent_mention_inside_think_is_not_transition_bundle_too_dense(self):
         state = SimpleNamespace(
             intent_required_until_activated=False,

@@ -559,7 +559,10 @@ class EditFileTool(BaseTool):
     description = (
         "Surgically edits an existing file by replacing a specific block of text. "
         "Params: 'path' (str), 'search_text' (str), 'replace_text' (str). "
-        "The 'search_text' must exactly match a part of the file."
+        "The 'search_text' must exactly match a part of the file. "
+        "Copy 'search_text' verbatim from exact file content returned by a recent read/search tool result; "
+        "do not reconstruct indentation or whitespace from memory. "
+        "After a successful edit to the same file, reread the current target block before another edit_file call unless you already have fresh post-edit exact content."
     )
 
     async def execute(self, path: str, search_text: str, replace_text: str):

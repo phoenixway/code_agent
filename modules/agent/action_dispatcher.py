@@ -856,6 +856,12 @@ class ActionDispatcher:
                         f"\n\n⚠️ SYSTEM WARNING: Syntax check failed for {path}:\n{lint_error}\n"
                         "Please fix this immediately."
                     )
+            if cmd_type == "edit_file":
+                output_text += (
+                    "\n[SYSTEM: This file was modified. For any further edit_file on the same path, "
+                    "treat earlier read chunks from before this edit as stale. "
+                    "Retrieve the current target block again before the next edit unless you already have fresh post-edit exact content.]"
+                )
 
         is_state_changing = cmd_type in self.config.STATE_CHANGING_OPS
         execution_failed = status in ["failed", "error"]
@@ -1023,8 +1029,10 @@ class ActionDispatcher:
             if cmd_type == "edit_file" and "Search block not found" in str(output_text):
                 output_text += (
                     "\n[SYSTEM: edit_file search block mismatch. "
-                    "Next step must be deterministic: read the file, copy the exact block, "
-                    "then retry edit_file with exact whitespace or use write_file with full updated content.]"
+                    "Next step must be deterministic: retrieve the exact target line or block from file content, copy it verbatim, "
+                    "then retry edit_file with exact whitespace. Do not reconstruct indentation from memory. "
+                    "If this file was edited earlier in the same flow, treat pre-edit chunks as stale and reread the current block first. "
+                    "If exact block replacement remains unreliable, use write_file with full updated content.]"
                 )
 
         elif is_state_changing:

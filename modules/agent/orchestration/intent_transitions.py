@@ -177,6 +177,23 @@ class IntentTransitionHandler:
             self.agent.log.debug("Intent.apply.transition_info=%s", intent_decision.transition_info)
 
         if not intent_decision.applied:
+            if (
+                intent_decision.message == "unnecessary_intent_reactivation_or_replace"
+                and getattr(self.state, "active_intent", None) is not None
+                and self._remaining_has_action_only(response_text)
+            ):
+                self.stage_logger.log(
+                    "intent_transition",
+                    "pass",
+                    reason="ignored_redundant_intent_reactivation_with_followup_action",
+                    source="intent_runtime",
+                    universe="active_contract",
+                    transition=intent_decision.transition_info.get("transition", ""),
+                    before_active_intent_id=intent_decision.transition_info.get("before_active_intent_id", ""),
+                    after_active_intent_id=intent_decision.transition_info.get("after_active_intent_id", ""),
+                )
+                return IntentHandlingDecision(handled=False)
+
             recovery_decision = await self.recovery.handle_defect_detector_stop(intent_decision.rejection_stop_info)
             if recovery_decision.handled:
                 self.stage_logger.log(

@@ -278,12 +278,16 @@ class RecoveryCoordinator:
                 self.state.add_confirmation(1)
                 note = (
                     "User approved additional budget for this same intent contract.\n"
-                    "Continue from current evidence under the same contract.\n"
-                    "Return the next valid output."
+                    "Priority now is to finish quickly from current evidence.\n"
+                    "Do not reopen exploration or repeat already completed investigation.\n"
+                    "Continue from the last valid point already reached under the same contract.\n"
+                    "If the goal is already answerable, complete the intent and answer now."
                     if granted
                     else "User approved additional budget for this same intent contract.\n"
-                    "Continue from current evidence under the same contract.\n"
-                    "Return the next valid output."
+                    "Priority now is to finish quickly from current evidence.\n"
+                    "Do not reopen exploration or repeat already completed investigation.\n"
+                    "Continue from the last valid point already reached under the same contract.\n"
+                    "If the goal is already answerable, complete the intent and answer now."
                 )
                 return RecoveryDecision.continue_with(
                     self.prompt_builder.build_keep_current_intent_recovery_prompt(
