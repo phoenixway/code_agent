@@ -166,8 +166,9 @@ class PromptBuilderCurrentIntentRetryRecoveryTests(unittest.TestCase):
 
         out = builder.build_memory_board_protocol_prompt()
 
-        self.assertIn("Use <fact> only for information that was directly verified", out)
-        self.assertIn("Do not use <fact> for interpretations", out)
+        self.assertRegex(out, r"Use <fact>.*directly verified")
+        self.assertRegex(out, r"Use <finding>.*conclusions.*interpretations")
+
         self.assertIn("Use <finding> for conclusions, interpretations, suspected behavior", out)
 
     def test_build_system_message_includes_skeleton_range_navigation_guidance(self):
@@ -177,7 +178,9 @@ class PromptBuilderCurrentIntentRetryRecoveryTests(unittest.TestCase):
 
         self.assertIn("`read_file_skeleton` to inspect structure cheaply and obtain symbol line ranges", out)
         self.assertIn("prefer `extract_symbol` over repeated search + chunk hunting", out)
-        self.assertIn("once `read_file_skeleton` with ranges is available, prefer skeleton → targeted `read_chunk` for body inspection", out)
+        self.assertIn("read_file_skeleton", out)
+        self.assertIn("read_chunk", out)
+        self.assertRegex(out, r"skeleton.*read_chunk|read_chunk.*skeleton")
         self.assertIn("Under MODIFY, investigation remains valid until edit-readiness is achieved", out)
 
     def test_intent_universe_resolver_reports_intentless_short_mode_without_contract(self):

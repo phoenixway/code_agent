@@ -15,9 +15,9 @@ CODE_EXTENSIONS = [
     ".md", ".txt",
 ]
 
-MAX_HISTORY_PREVIEW_LINES = 20
+MAX_HISTORY_PREVIEW_LINES = 10
 MAX_HISTORY_PREVIEW_CHARS = 4000
-MAX_FULL_RESULT_CHARS = 200000
+MAX_FULL_RESULT_CHARS = 12000
 
 
 def _normalize_bool(value, default=False):
@@ -71,29 +71,34 @@ def _build_preview(text: str, *, limit_lines: int) -> tuple[str, int]:
 
 
 def _compact_large_result(kind: str, text: str, *, limit: int, exit_code: int, stderr: str = "") -> dict:
-    preview, total = _build_preview(text, limit_lines=min(limit, MAX_HISTORY_PREVIEW_LINES))
+    preview_limit = min(limit, MAX_HISTORY_PREVIEW_LINES)
+    preview, total = _build_preview(text, limit_lines=preview_limit)
     label = "files" if kind == "files" else "matches"
-    output = f"Found {total} {label}. Showing first {min(limit, MAX_HISTORY_PREVIEW_LINES)}:\n{preview}\n\n...and {max(total - min(limit, MAX_HISTORY_PREVIEW_LINES), 0)} more."
-    full_text = text if len(text) <= MAX_FULL_RESULT_CHARS else text[:MAX_FULL_RESULT_CHARS]
-    result = {
+    output = (
+        f"Search query is too broad and uneconomical for the current context budget. "
+        f"Found {total} {label}; showing only the first {preview_limit}.\n"
+        f"{preview}\n\n"
+        "If these results are insufficient, narrow the search path/pattern or lower the requested result count."
+    )
+    # For oversized search results, never keep the full body in raw_output/history.
+    compact_text = preview[:MAX_FULL_RESULT_CHARS]
+    return {
         "status": "success",
         "output": output,
         "exit_code": exit_code,
-        # Preview fields for UI / compact history.
         "stdout": preview,
         "stderr": (stderr or "")[:1000],
         "truncated": True,
         "result_count": total,
         "history_compact": True,
-        # Full raw fields for short-lived working material / exact reasoning.
-        "raw_output": full_text,
-        "stdout_full": full_text,
+        "search_too_broad": True,
+        "suggested_fix": "Narrow the search path/pattern or lower the result limit before retrying.",
+        "raw_output": compact_text,
+        "stdout_full": compact_text,
+        "raw_output_truncated": True,
+        "raw_output_chars": len(compact_text),
+        "raw_output_total_chars": len(text),
     }
-    if len(text) > MAX_FULL_RESULT_CHARS:
-        result["raw_output_truncated"] = True
-        result["raw_output_chars"] = len(full_text)
-        result["raw_output_total_chars"] = len(text)
-    return result
 
 
 _HISTORY_SELF_REF_RE = re.compile(r"(^|/)(modules/)?history(?:_[a-z0-9_]+)?\.py$", re.IGNORECASE)

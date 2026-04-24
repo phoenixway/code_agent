@@ -86,10 +86,19 @@ class ModelResponsePipeline:
 
         memory_board_decision = await self.memory_board_stage.apply(ctx, raw_response)
         response = memory_board_decision.response_text
+        memory_checkpoint_only = bool(getattr(memory_board_decision, "memory_checkpoint_only", False))
+        memory_checkpoint_and_text = bool(getattr(memory_board_decision, "memory_checkpoint_and_text", False))
+        memory_checkpoint_and_action = bool(getattr(memory_board_decision, "memory_checkpoint_and_action", False))
+
+        # Only checkpoint-only responses should be consumed here.
+        # memory+text and memory+action are semantic model outputs with durable
+        # memory already applied; they must pass through to parsing/dispatch, not
+        # loop back with another prompt.
+        if memory_board_decision.handled and (memory_checkpoint_and_text or memory_checkpoint_and_action):
+            self.guards.set_nonproductive_thinking_state(False)
+            memory_board_decision.handled = False
+
         if memory_board_decision.handled:
-            memory_checkpoint_only = bool(getattr(memory_board_decision, "memory_checkpoint_only", False))
-            memory_checkpoint_and_text = bool(getattr(memory_board_decision, "memory_checkpoint_and_text", False))
-            memory_checkpoint_and_action = bool(getattr(memory_board_decision, "memory_checkpoint_and_action", False))
             if memory_checkpoint_only:
                 self.guards.set_reflection_repair_pending(False)
                 streak = self.guards.memory_checkpoint_streak()
@@ -142,8 +151,6 @@ class ModelResponsePipeline:
                             memory_checkpoint_and_text=memory_checkpoint_and_text,
                             memory_checkpoint_and_action=memory_checkpoint_and_action,
                         )
-            elif memory_checkpoint_and_text or memory_checkpoint_and_action:
-                self.guards.set_nonproductive_thinking_state(False)
             return ResponsePipelineOutcome.continue_with(
                 memory_board_decision.next_query,
                 response_text=response,
@@ -264,8 +271,8 @@ class ModelResponsePipeline:
             parsed_action_count,
             plaintext_answer_path=plaintext_answer_path,
             intent_transition_handled=False,
-            memory_checkpoint_and_action=False,
-            memory_checkpoint_and_text=False,
+            memory_checkpoint_and_action=memory_checkpoint_and_action,
+            memory_checkpoint_and_text=memory_checkpoint_and_text,
             reflection_only_repair=reflection_only_repair,
         ):
             nonproductive_streak = self.guards.set_nonproductive_thinking_state(
@@ -294,6 +301,32 @@ class ModelResponsePipeline:
                 )
         else:
             self.guards.set_nonproductive_thinking_state(False)
+
+        if (
+            memory_checkpoint_and_text
+            and parsed_action_count <= 0
+            and not bool(getattr(parsed_output, "has_action_segment", False))
+        ):
+            self.guards.set_reflection_repair_pending(False)
+            self.guards.set_nonproductive_thinking_state(False)
+            self.stage_logger.log(
+                "response_pipeline",
+                "dispatch",
+                reason="memory_checkpoint_and_text",
+                source="memory_board",
+                action_count=0,
+            )
+            return ResponsePipelineOutcome.dispatch_ready(
+                response_text=response,
+                segments=segments,
+                parsed_output=parsed_output,
+                parsed_action_count=0,
+                malformed_action_retries=0,
+                audit_marker_retries=0,
+                reason="dispatch_ready",
+                source="response_pipeline",
+                memory_checkpoint_and_text=True,
+            )
 
         recovery_decision = await self.output_recovery.decide(
             parsed_output,

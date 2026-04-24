@@ -6,6 +6,7 @@ import json
 import re
 
 from .decision_models import ParsedModelOutput
+from .visible_text import extract_visible_text_for_user
 
 
 class IntentResponseParser:
@@ -93,19 +94,7 @@ class IntentResponseParser:
         return clean_text, payload, None
 
     def extract_visible_non_action_text(self, response: str) -> str:
-        if not isinstance(response, str):
-            return ""
-        text = response
-        text = re.sub(r"<think>.*?</think>", " ", text, flags=re.DOTALL | re.IGNORECASE)
-        text = re.sub(r"<intent(?:\s+[^>]*)?>.*?</intent>", " ", text, flags=re.DOTALL | re.IGNORECASE)
-        text = re.sub(r'<action(?:\s+type="[^"]+")?>.*?</action>', " ", text, flags=re.DOTALL | re.IGNORECASE)
-        text = re.sub(self.TOOL_HISTORY_RE, " ", text)
-        text = re.sub(self.HISTORY_TOOL_ACTION_RE, " ", text)
-        text = re.sub(self.HISTORY_TOOL_TAG_RE, " ", text)
-        text = re.sub(r"(?im)^\s*system_tool_audit:.*?$", " ", text)
-        text = re.sub(r"<previously_performed_action[^>]*/>", " ", text, flags=re.IGNORECASE)
-        text = re.sub(r"\s+", " ", text).strip()
-        return text
+        return extract_visible_text_for_user(response)
 
     def is_tool_history_echo_without_action(self, response: str, segments) -> bool:
         if not isinstance(response, str):

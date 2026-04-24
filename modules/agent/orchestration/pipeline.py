@@ -135,6 +135,53 @@ class OrchestrationPipeline:
         if outcome.audit_marker_retries is not None:
             ctx.audit_marker_retries = outcome.audit_marker_retries
 
+        if bool(getattr(self.state, "terminal_plaintext_completion_pending", False)):
+            terminal_text = str(
+                getattr(self.state, "terminal_plaintext_completion_text", "")
+                or getattr(outcome, "response_text", "")
+                or step.response
+                or ""
+            ).strip()
+
+            # Keep the terminal text in state until core.py flushes it to the UI.
+            if terminal_text:
+                try:
+                    setattr(self.state, "terminal_plaintext_completion_text", terminal_text)
+                except Exception:
+                    pass
+                self.history.add_message("assistant", terminal_text)
+
+            # It is safe to reset per-turn readonly counters here, but do NOT clear
+            # terminal completion flags yet. core.py needs them to render the final reply.
+            try:
+                if hasattr(self.state, "readonly_steps_this_turn"):
+                    self.state.readonly_steps_this_turn = 0
+            except Exception:
+                pass
+
+            self.stage_logger.log(
+                "pre_dispatch_pipeline",
+                "stop",
+                reason="terminal_plaintext_completion",
+                source="response_pipeline",
+            )
+            return PipelineIterationDecision.stop(
+                reason="terminal_plaintext_completion",
+                source="response_pipeline",
+            )
+
+        if bool(getattr(outcome, "stop_loop", False)):
+            self.stage_logger.log(
+                "pre_dispatch_pipeline",
+                "stop",
+                reason=outcome.reason or "response_pipeline_stop",
+                source=outcome.source or "response_pipeline",
+            )
+            return PipelineIterationDecision.stop(
+                reason=outcome.reason or "response_pipeline_stop",
+                source=outcome.source or "response_pipeline",
+            )
+
         if outcome.continue_loop:
             if outcome.next_query:
                 ctx.current_query = outcome.next_query
@@ -152,6 +199,7 @@ class OrchestrationPipeline:
                 audit_marker_retries=outcome.audit_marker_retries,
             )
 
+        # Text-only ready path: allow downstream dispatch_outcome to finalize and stop cleanly.
         self.stage_logger.log(
             "pre_dispatch_pipeline",
             "dispatch_ready",

@@ -56,24 +56,72 @@ class OrchestratorPromptBuilder:
         active_intent = self._current_active_intent()
         return str(getattr(active_intent, "intent_type", "") or "") if active_intent is not None else ""
 
+
+    def _recent_resumable_intent_lines(self) -> list[str]:
+        intent_id = str(getattr(self.state, "last_resumable_intent_id", "") or "").strip()
+        if not intent_id:
+            return []
+        intent_type = str(getattr(self.state, "last_resumable_intent_type", "") or "").strip()
+        goal = str(getattr(self.state, "last_resumable_intent_goal", "") or "").strip()
+        reason = str(
+            getattr(self.state, "last_resumable_intent_completion_reason", "")
+            or getattr(self.state, "last_resumable_completion_reason", "")
+            or ""
+        ).strip()
+        allowed = list(getattr(self.state, "last_resumable_intent_allowed_actions", []) or [])
+        lines = [
+            "",
+            "## RECENTLY COMPLETED RESUMABLE INTENT",
+            f"recent_intent_id: {intent_id}",
+            f"recent_intent_type: {intent_type or '<none>'}",
+            f"recent_completion_reason: {reason or '<none>'}",
+            f"recent_goal: {goal or '<none>'}",
+            f"recent_allowed_actions: {', '.join(allowed) if allowed else 'none'}",
+            "The previous active contract was closed after a forced plain-text completion / hard-limit handoff.",
+            "Do NOT silently continue that exhausted contract.",
+            "If the new user message continues the SAME user-facing goal and the SAME type/direction of work, emit EXACTLY ONE <intent> JSON block with mode=\"reuse\" for this same intent_id to refresh budget for the same lineage.",
+            "If the new user message is actually a different task, activate a new intent normally.",
+        ]
+        return lines
+
+    def _active_intent_lineage_ids(self) -> list[str]:
+        active_intent = self._current_active_intent()
+        if active_intent is None:
+            return []
+        runtime = getattr(self.state, "intent_runtime", None)
+        getter = getattr(runtime, "get_active_intent_lineage_ids", None)
+        if callable(getter):
+            try:
+                values = getter() or []
+                cleaned = []
+                for value in values:
+                    text = str(value or "").strip()
+                    if text and text not in cleaned:
+                        cleaned.append(text)
+                if cleaned:
+                    return cleaned
+            except Exception:
+                pass
+        active_intent_id = str(getattr(active_intent, "intent_id", "") or "").strip()
+        return [active_intent_id] if active_intent_id else []
+
     def _memory_tag_followup_lines(self) -> list[str]:
-        if not bool(getattr(self.state, "memory_tag_expected_next_step", False)):
+        expected = bool(getattr(self.state, "memory_tag_expected_next_step", False))
+        if not expected:
             return []
-
-        reason = str(getattr(self.state, "memory_tag_reason", "") or "").strip() or "meaningful_evidence_gain"
-        expected_intent_id = str(getattr(self.state, "memory_tag_expected_intent_id", "") or "").strip()
-        active_intent_id = str(self._current_active_intent_id() or "").strip()
-
-        if expected_intent_id and active_intent_id and expected_intent_id != active_intent_id:
-            return []
-
-        return [
+        reason = str(getattr(self.state, "memory_tag_reason", "") or "").strip()
+        intent_id = str(getattr(self.state, "memory_tag_expected_intent_id", "") or "").strip()
+        lines = [
             "",
             "Memory-board follow-up from the previous step:",
-            f"- Previous step produced meaningful evidence but no memory tag was emitted. Reason: {reason}.",
-            "- In this reply, emit exactly ONE concise memory tag only if you introduce or rely on a durable finding, decision, or milestone from that step.",
-            "- Then continue with the next valid output.",
+            "- Previous step produced meaningful evidence but no memory tag was emitted.",
+            "- In the next response, if that information still matters for continuation, emit the missing concise memory tag before any action or final answer.",
         ]
+        if reason:
+            lines.append(f"- Reason: {reason}")
+        if intent_id:
+            lines.append(f"- Expected intent_id: {intent_id}")
+        return lines
 
     def _render_recovery_message(self, message_key: str, default: str, *, next_hint: str = "") -> str:
         rendered = render_intent_message(message_key, next_hint=next_hint, default="")
@@ -100,6 +148,18 @@ class OrchestratorPromptBuilder:
             0,
             self._effective_intent_step_limit(active_intent) - int(getattr(active_intent, "step_count", 0) or 0),
         )
+
+    def _effective_intent_hard_limit(self, active_intent) -> int:
+        if active_intent is None:
+            return 0
+        nominal = self._effective_intent_step_limit(active_intent)
+        allowance = int(getattr(self.config, "INTENT_COMPLETION_ALLOWANCE", 1) or 0)
+        return max(0, nominal + max(0, allowance))
+
+    def _intent_hard_steps_remaining(self, active_intent) -> int:
+        if active_intent is None:
+            return 0
+        return max(0, self._effective_intent_hard_limit(active_intent) - int(getattr(active_intent, "step_count", 0) or 0))
 
     def _summarize_last_action(self) -> str:
         state = getattr(self, "state", None)
@@ -151,17 +211,32 @@ class OrchestratorPromptBuilder:
         if memory_board is None or not hasattr(memory_board, "entries") or active_intent is None:
             return "none yet"
 
-        intent_id = getattr(active_intent, "intent_id", None)
-        if not intent_id:
+        lineage_intent_ids = self._active_intent_lineage_ids()
+        if not lineage_intent_ids:
+            intent_id = getattr(active_intent, "intent_id", None)
+            if intent_id:
+                lineage_intent_ids = [str(intent_id).strip()]
+        if not lineage_intent_ids:
             return "none yet"
 
         try:
-            entries = memory_board.entries(
-                status="active",
-                scope="intent",
-                intent_id=intent_id,
-                newest_first=True,
-            )
+            entries_for_lineage = getattr(memory_board, "entries_for_intent_lineage", None)
+            if callable(entries_for_lineage):
+                entries = entries_for_lineage(
+                    lineage_intent_ids,
+                    status="active",
+                    newest_first=True,
+                )
+            else:
+                entries = []
+                for intent_id in lineage_intent_ids:
+                    entries.extend(memory_board.entries(
+                        status="active",
+                        scope="intent",
+                        intent_id=intent_id,
+                        newest_first=False,
+                    ))
+                entries.reverse()
         except Exception:
             return "none yet"
 
@@ -202,6 +277,8 @@ class OrchestratorPromptBuilder:
         safe_steps_limit = int(getattr(active_intent, "safe_steps_limit", 0) or 0)
         steps_used = int(getattr(active_intent, "step_count", 0) or 0)
         steps_remaining = self._intent_steps_remaining(active_intent)
+        hard_steps_remaining = self._intent_hard_steps_remaining(active_intent)
+        effective_hard_limit = self._effective_intent_hard_limit(active_intent)
         retry_limit = int(getattr(active_intent, "retry_limit", 0) or 0)
         retry_count = int(getattr(active_intent, "retry_count", 0) or 0)
         last_action = self._summarize_last_action()
@@ -230,9 +307,12 @@ class OrchestratorPromptBuilder:
             f"goal: {goal}",
             f"allowed_actions: {', '.join(allowed_actions) if allowed_actions else 'none'}",
             f"safe_steps_limit: {safe_steps_limit}",
+            f"effective_nominal_step_limit: {self._effective_intent_step_limit(active_intent)}",
+            f"effective_hard_step_limit: {effective_hard_limit}",
             f"steps_used: {steps_used}",
-            f"steps_remaining: {steps_remaining}",
-            ("step_budget_status: nominal" if steps_remaining > 0 else "step_budget_status: nominal limit reached; do not assume this means the contract should be refreshed or relabeled automatically"),
+            f"nominal_steps_remaining: {steps_remaining}",
+            f"hard_steps_remaining: {hard_steps_remaining}",
+            ("step_budget_status: nominal" if steps_remaining > 0 else ("step_budget_status: nominal limit reached but hard-limit completion allowance remains" if hard_steps_remaining > 0 else "step_budget_status: hard limit reached")),
             f"retry_limit: {retry_limit}",
             f"retry_count: {retry_count}",
             f"mode: {mode}",
@@ -295,14 +375,19 @@ class OrchestratorPromptBuilder:
             "- if current evidence is already sufficient, answer directly in plain text",
         ]
         lines.extend(self._memory_tag_followup_lines())
+        lines.extend(self._recent_resumable_intent_lines())
         return "\n".join(lines)
 
     def build_system_message(self, tools_prompt: str, ctx_prompt: str) -> str:
         prompt = DEFAULT_SYSTEM_PROMPT.replace("__TOOLS_DESCRIPTION__", tools_prompt)
         blocks = [prompt, ctx_prompt]
+        blocks.append(
+            "Navigation guidance: prefer `read_file_skeleton` to inspect structure cheaply and obtain symbol line ranges before using broader or larger reads."
+        )
 
         memory_board = getattr(self.agent, "memory_board_store", None)
         active_intent_id = self._current_active_intent_id()
+        active_intent_lineage_ids = self._active_intent_lineage_ids()
 
         active_intent_prompt = self.build_active_intent_contract_prompt()
         if active_intent_prompt:
@@ -327,7 +412,10 @@ class OrchestratorPromptBuilder:
 
         if memory_board is not None and hasattr(memory_board, "to_system_prompt"):
             try:
-                memory_prompt = memory_board.to_system_prompt(active_intent_id=active_intent_id)
+                memory_prompt = memory_board.to_system_prompt(
+                    active_intent_id=active_intent_id,
+                    lineage_intent_ids=active_intent_lineage_ids,
+                )
                 blocks.append(memory_prompt)
                 if self.agent.log and isinstance(memory_prompt, str) and memory_prompt.strip():
                     self.agent.log.debug(
@@ -365,22 +453,64 @@ class OrchestratorPromptBuilder:
             - <preference scope="intent|session|project">...</preference>
             - <progress scope="intent">...</progress>
 
-            Rules:
-            - Use memory tags only for high-value information that should survive history compression.
-            - Do not log routine actions, tool calls, or noisy low-level observations.
-            - Use <fact> only for information that was directly verified by tool output, code, or runtime state already visible in history.
-            - Do not use <fact> for interpretations, inferred behavior, planned fixes, or claims that combine multiple clues into a conclusion.
+            THINK REFLECTION RULE:
+            - After every <think> containing 5 or more words, emit a formal reflection of that thinking using one or more memory tags.
+            - Put the tags immediately after </think> and before any <action> or plain-text continuation.
+            - This reflection is REQUIRED for substantial thinking.
+            - Capture ALL valuable results of the thinking, not just one.
+            - If the thinking produced multiple valuable outcomes, emit multiple tags.
+            - Long <think> + one tiny tag is usually incomplete.
+
+            Tag selection:
+            - Use <fact> for information directly verified by tool output, code, or runtime state already visible in history.
             - Use <finding> for conclusions, interpretations, suspected behavior, or any statement that is not directly quoted or directly observable from tool output.
+            - Use <decision> for chosen plans, strategy choices, or explicit working decisions.
+            - Use <progress> for milestone-level continuation state.
+            - Use <preference> only for durable preference-like guidance that actually matters later.
+
+            Scope rules:
             - Use scope="intent" for information useful for continuing the current line of work.
             - Use scope="session" for information useful later in the current session.
             - Use scope="project" only for durable project-wide facts, decisions, or preferences.
-            - After each meaningful evidence gain, emit one concise memory tag when the information is useful for the current intent, session, or project scope and is not already preserved.
-            - After a recovery redirect, preserve useful conclusions about the reason for the recovery, what it means operationally, or which rules and constraints now govern continuation.
-            - After planned_full_read_too_large or another blocking recovery, immediately preserve in intent-scoped memory which path or access pattern is blocked, what is already known from other sources about that target, and what the next viable tool or access path is.
-            - If the current best answer changed, record the updated best answer in memory tags.
             - Prefer the narrowest correct scope.
-            - Prefer 1-4 sentences, compact wording, and the conclusion, rule, fact, or decision rather than the whole reasoning chain.
+
+            What to preserve:
+            - all verified facts established during thinking
+            - all real conclusions reached during thinking
+            - all chosen decisions made during thinking
+            - milestone-level progress that would matter after compression
+            - recovery consequences that change the continuation rules
+            - current-best-answer updates when they materially changed
+
+            What NOT to do:
+            - Do not log routine actions, tool calls, or noisy low-level observations.
+            - Do not emit one arbitrary tag when the thinking produced several durable outcomes.
             - Do not silently contradict previously committed memory; if new evidence changes something important, emit a new explicit correcting tag.
+
+            Good examples:
+            <think>
+            The handler reads planIdFlow and mutates links through getPlanById(planId), so the current Today links behavior is still bound to a specific day plan. The clean direction is to remove the day-plan dependency at the handler boundary.
+            </think>
+            <finding scope="intent">DayPlanScopeLinksHandler is day-specific because it reads planIdFlow and mutates links through getPlanById(planId).</finding>
+            <decision scope="intent">Remove the day-plan dependency at the handler boundary instead of preserving planIdFlow semantics for Today links.</decision>
+
+            <think>
+            The sheet derives displayed links from DayPlanUiState.dayPlan linked IDs. That means the rendering layer is also day-specific, not only the mutation layer. We now know there are at least two binding points to replace.
+            </think>
+            <fact scope="intent">DayScopeLinksSheet derives displayed links from DayPlanUiState.dayPlan linked IDs.</fact>
+            <finding scope="intent">The current Today links flow is day-specific in both mutation logic and rendering logic.</finding>
+            <progress scope="intent">Identified the main per-day binding points that must be replaced.</progress>
+
+            <think>
+            The last file read failed because the path was wrong, but runtime provided a reliable parent directory. I should not retry the same missing path. I should inspect the suggested directory and locate the correct file from there.
+            </think>
+            <finding scope="intent">The previous file-read failure was caused by a wrong path, not by proof that the repository logic is absent.</finding>
+            <decision scope="intent">Do not retry the same missing-file read; inspect the suggested parent directory and locate the correct file from there.</decision>
+
+            Format:
+            - Prefer 1-4 sentences per tag.
+            - Use compact wording.
+            - Preserve the conclusion, rule, fact, decision, or milestone rather than the whole reasoning chain.
             """
         ).strip()
 
@@ -451,6 +581,52 @@ class OrchestratorPromptBuilder:
             "Continue from the strongest valid state already reached under the same contract.\n"
             "Do not reopen exploration just because continuation is allowed.\n"
             "Return the next valid output, or complete the intent and answer now if current evidence is already sufficient."
+        )
+
+    def build_limit_aware_reuse_prompt(
+        self,
+        reason: str,
+        allowed_actions: list[str] | None = None,
+        *,
+        goal: str | None = None,
+        requested_steps: int | None = None,
+    ) -> str:
+        active_intent = self._current_active_intent()
+        intent_id = str(getattr(active_intent, "intent_id", "") or "").strip() if active_intent is not None else ""
+        intent_type = str(getattr(active_intent, "intent_type", "") or "").strip().upper() if active_intent is not None else ""
+        if requested_steps is None:
+            requested_steps = int(getattr(self.config, "INTENT_REUSE_EXTENSION_STEPS", 4) or 4)
+        next_hint = f"\nAllowed actions under the CURRENT intent contract: {', '.join(allowed_actions)}." if allowed_actions else ""
+        goal_hint = f"\nCurrent contract goal remains the same: {goal.strip()}." if isinstance(goal, str) and goal.strip() else ""
+        return (
+            "SYSTEM: The current intent contract still matches the user's goal, but its step budget is exhausted or near exhaustion.\n"
+            f"Reason: {reason}.{next_hint}{goal_hint}\n"
+            "Do NOT silently continue under the exhausted budget.\n"
+            "Do NOT activate a fresh unrelated intent for the same goal.\n"
+            "Return EXACTLY ONE <intent> JSON block with mode=\"reuse\" for the SAME active intent_id to request refreshed steps for this same intent lineage.\n"
+            f"Use requested_steps={max(1, int(requested_steps))}.\n"
+            f"Keep intent_id={intent_id or '<active_intent_id>'} and intent_type={intent_type or '<active_intent_type>'}.\n"
+            "Use switch_reason=\"current_intent_exhausted\" unless runtime explicitly indicates a different legitimate continuation reason.\n"
+            "Do not emit an <action> in the same reply.\n"
+            "Do not change the goal text. Reuse is for same goal + same lineage + refreshed budget."
+        )
+
+    def build_repeated_thinking_without_valid_output_prompt(self, stop_info: dict | None = None) -> str:
+        reason = str((stop_info or {}).get("reason") or "repeated_thinking_without_valid_output").strip()
+        return (
+            "SYSTEM: Enough internal planning/thinking for now.\n"
+            f"Reason: {reason}.\n"
+            "Your recent replies contained substantial <think> content, but did not produce a valid executable or final output.\n"
+            "The NEXT reply must be immediately valid.\n"
+            "Valid outputs now are:\n"
+            "- one valid <action>\n"
+            "- one valid read-only batch of tool calls if batching is allowed\n"
+            "- one plain-text final answer\n"
+            "- one valid <intent> request/transition if runtime truly requires it\n"
+            "- or a valid combination of thinking plus memory tags plus one of the allowed outputs above\n"
+            "Do NOT return another planning/thinking-only reply.\n"
+            "Do NOT restate the next step without performing it.\n"
+            "Return a valid output now."
         )
 
     def build_keep_current_intent_recovery_prompt(self, stop_info: dict | None) -> str:
@@ -527,6 +703,8 @@ class OrchestratorPromptBuilder:
                     "If not, continue only from the last valid point already reached under this same intent and prefer the shortest path to completion.",
                     "Do not interpret this soft-limit continuation as default permission to keep searching.",
                     "Prefer exactly one next <action> only if a concrete missing detail still requires tool use, and use it to finish rather than to reopen exploration.",
+                    "If the user explicitly asks to continue this SAME line of work after a near-final answer and this contract budget is exhausted or about to be exhausted, do not silently keep stepping under the same budget.",
+                    "In that case, emit a formal <intent mode=\"reuse\"> request for the SAME active intent_id with requested_steps to refresh the budget for this same intent lineage.",
                 ]
             )
         elif reason == "intent_blocked_action_signature":
@@ -750,6 +928,28 @@ class OrchestratorPromptBuilder:
             "Do not output <think> without an action or final answer."
         )
 
+    def build_missing_think_reflection_prompt(self) -> str:
+        return (
+            "SYSTEM: Your last <think> block was substantial but did not end with formal reflection tags.\n"
+            "Return ONLY the reflection of that thinking now using supported memory tags.\n"
+            "This is a repair-only turn: do not return an <action>, a final answer, or a new <intent> block in the same reply.\n"
+            "Capture ALL valuable results of the thinking, not just one token tag.\n"
+            "Use these tags as needed: <fact>, <finding>, <decision>, <preference>, <progress>.\n"
+            "If the thinking produced multiple facts, findings, decisions, or milestones, emit multiple tags.\n"
+            "Place the tags immediately after </think>.\n"
+            "After runtime accepts the reflection repair, it will ask for the next valid output separately."
+        )
+
+    def build_reflection_repair_accepted_prompt(self) -> str:
+        return (
+            "SYSTEM: Think reflection accepted.\n"
+            "Continue directly from the already chosen next step.\n"
+            "Do not repeat the reflection tags.\n"
+            "Do not restate the same decision in prose.\n"
+            "If tool use is needed, return EXACTLY ONE valid <action>...</action> block.\n"
+            "If no tool is needed, return a plain-text answer."
+        )
+
     def build_missing_action_or_answer_prompt(self) -> str:
         return (
             "SYSTEM: Your last response did not include a valid next step or a final answer.\n"
@@ -758,6 +958,34 @@ class OrchestratorPromptBuilder:
             "If no tool is needed, return a plain-text answer.\n"
             "Do not output historical tool markers, SYSTEM_TOOL_AUDIT, or <previously_performed_action>.\n"
             "Do not output <think> without an action or final answer."
+        )
+
+
+    def build_internal_summary_instead_of_final_answer_prompt(self) -> str:
+        sm = getattr(self.state, "state_machine", None)
+        stop_info = {
+            "reason": "internal_summary_instead_of_final_answer",
+            "recoverable": True,
+            "error_code": "INTERNAL_SUMMARY_INSTEAD_OF_FINAL_ANSWER",
+            "next_actions": [],
+            "intent_allowed_actions": [],
+            "next_actions_source": "intent",
+        }
+        base = self.build_plain_text_completion_prompt(sm, stop_info)
+        return (
+            "SYSTEM: Your last response was an internal execution summary, not a user-facing final answer.\n"
+            "Do not summarize internal execution state, memory, plan, or snapshot fields.\n"
+            + base
+        )
+
+    def build_modify_completion_claim_without_proof_prompt(self) -> str:
+        return (
+            "SYSTEM: Your last response claimed that code changes were already applied, but this turn has no successful state-changing tool result proving that.\n"
+            "Do not claim completion or applied changes without proof.\n"
+            "Return the next valid output now.\n"
+            "If a change still needs to be applied, return EXACTLY ONE valid state-changing <action>...</action> block.\n"
+            "If no change was actually applied, return a plain-text explanation that no changes were applied yet.\n"
+            "Do not say \"done\", \"added\", \"fixed\", \"updated\", or equivalent unless a successful state-changing result in this turn proves it."
         )
 
     def build_tool_history_echo_without_action_prompt(self) -> str:
@@ -784,12 +1012,16 @@ class OrchestratorPromptBuilder:
         goal_hint = f"\nCurrent contract goal remains the same: {active_goal}." if active_goal else ""
         return (
             "SYSTEM: Intent accepted. The current contract is now active.\n"
-            "Return the next valid output under the SAME current contract now.\n"
-            "If tool use is needed, return exactly one valid <action>.\n"
+            "This phase boundary is normal: the contract change was accepted, and runtime is now waiting for the next valid output under that contract.\n"
+            "Return the next valid output now.\n"
+            "If tool use is needed, return EXACTLY ONE valid <action>...</action> block.\n"
             "If no tool is needed, return a plain-text answer.\n"
-            "Do not emit another <intent> block for this same ongoing work."
+            "If the goal is already achieved, you may complete the intent and answer in plain text.\n"
+            "Do not emit another <intent> block for this same ongoing work.\n"
+            "Do not treat the accepted transition itself as an error. Continue under the active contract."
             f"{goal_hint}"
         )
+
 
     def build_transition_bundle_too_dense_prompt(self) -> str:
         return (
@@ -936,10 +1168,35 @@ class OrchestratorPromptBuilder:
             )
         return prompt
 
+    def _plain_text_completion_kind(self, sm) -> str:
+        task_kind = getattr(sm, "task_kind", None)
+        task_kind_value = str(getattr(task_kind, "value", str(task_kind or "")) or "").strip().upper()
+
+        # HYBRID is a stronger display signal than an INVESTIGATE active intent:
+        # it means the stop came from a mixed inspect/modify state machine.
+        if task_kind_value == "HYBRID" or task_kind_value.endswith(".HYBRID") or "HYBRID" in task_kind_value:
+            return "HYBRID"
+
+        active_intent = self._current_active_intent()
+        if active_intent is not None:
+            active_type = str(getattr(active_intent, "intent_type", "") or "").strip().upper()
+            if active_type:
+                return active_type
+
+        last_completed_intent_type = str(getattr(self.state, "last_completed_intent_type", "") or "").strip().upper()
+        if last_completed_intent_type:
+            return last_completed_intent_type
+
+        # FIXME:
+        # task_kind is only a fallback display heuristic here. Plain-text
+        # completion should prefer the current accepted contract type whenever it
+        # exists, because task_kind can be noisier than the runtime contract.
+        task_kind = getattr(sm, "task_kind", None)
+        return getattr(task_kind, "value", str(task_kind or "UNKNOWN"))
+
     def build_plain_text_completion_prompt(self, sm, stop_info: dict | None) -> str:
         ctx = self._recovery_context(stop_info)
-        task_kind = getattr(sm, "task_kind", None)
-        kind = getattr(task_kind, "value", str(task_kind or "UNKNOWN"))
+        kind = self._plain_text_completion_kind(sm)
         reason = ctx.reason
         target = getattr(sm, "target_file", None) or "<unknown>"
         route_hint = ""
@@ -958,6 +1215,11 @@ class OrchestratorPromptBuilder:
             "Do not ask to inspect more files.",
             "Answer the user's question directly and, if relevant, give one concrete next step.",
         ]
+        resumable_intent_id = str(getattr(self.state, "last_resumable_intent_id", "") or "").strip()
+        if resumable_intent_id:
+            parts.append(
+                f"The current active contract will be closed after this final plain-text answer. If the user later asks to continue the SAME work, request <intent mode=\"reuse\"> for intent_id {resumable_intent_id} instead of silently continuing the exhausted contract."
+            )
         if route_hint:
             parts.append(route_hint)
         return "\n".join(parts)

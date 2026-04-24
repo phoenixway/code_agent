@@ -1,29 +1,8 @@
-"""Agent module - модульна архітектура головного агента."""
+"""
+Agent package.
 
-from .core import AngelicaAgent
-from .orchestration import Orchestrator
-from .state_manager import AgentState
-from .state_machine import AgentStateMachine
-from .policy_engine import PolicyEngine
-from .model_client import ModelClient
-from .action_dispatcher import ActionDispatcher
-from .config import AgentConfig
-from .planner import TaskBoardPlanner
-from .intent_runtime import IntentRuntime, IntentContract
-from .defect_detector import DefectDetector, DefectEvent
+Keep this package initializer lightweight.
+Import heavy runtime classes explicitly from their modules.
+"""
 
-__all__ = [
-    'AngelicaAgent',
-    'Orchestrator',
-    'AgentState',
-    'AgentStateMachine',
-    'PolicyEngine',
-    'ModelClient',
-    'ActionDispatcher',
-    'AgentConfig',
-    'TaskBoardPlanner',
-    'IntentRuntime',
-    'IntentContract',
-    'DefectDetector',
-    'DefectEvent',
-]
+__all__ = []

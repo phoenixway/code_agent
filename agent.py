@@ -43,7 +43,7 @@ class AngelicaAgent:
         
         # 3. Налаштування AI Провайдера
         model_name = self.settings.get("default_model", "ollama/qwen2.5-coder:7b")
-        self.chat = get_chat_provider(model_name)
+        self.chat = get_chat_provider(model_name, settings=self.settings)
         
         # 4. Управління історією та сесіями
         self.history = HistoryManager(
@@ -205,7 +205,11 @@ class AngelicaAgent:
                         processed_segments.append(segment)
                     
                     elif segment.type == 'text':
-                        await self.ui.print_message(segment.content, role="assistant")
+                        # Legacy loop must not render assistant text directly here.
+                        # In the orchestrated runtime, sanitized user-facing assistant
+                        # text is rendered later by the orchestration dispatch path.
+                        # Rendering raw segment.content here causes a duplicate message:
+                        # first raw, then sanitized.
                         processed_segments.append(segment)
                         
                     elif segment.type == 'action':
@@ -330,7 +334,7 @@ class AngelicaAgent:
             return
 
         await self.ui.print_system(f"Перемикаюсь на {model_name}...")
-        new_chat_provider = get_chat_provider(model_name)
+        new_chat_provider = get_chat_provider(model_name, settings=self.settings)        
         
         if new_chat_provider:
             self.chat = new_chat_provider

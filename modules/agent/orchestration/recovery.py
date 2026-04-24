@@ -37,6 +37,26 @@ class RecoveryCoordinator:
             active_intent=getattr(self.state, "active_intent", None),
         )
 
+    def _mark_pending_finalize_after_terminal_plaintext_completion(
+        self,
+        reason: str = "forced_plaintext_completion",
+        source: str = "recovery",
+    ) -> None:
+        """Mark that the active intent must be closed after terminal text is rendered.
+
+        Force-answer-and-stop flows return a recovery prompt first, then the model
+        produces final plain text. The outer orchestrator renders that terminal text
+        and then closes the active contract. All branches that force a final answer
+        must pass through this marker so exhausted contracts cannot remain active.
+        """
+        try:
+            setattr(self.state, "pending_finalize_after_terminal_plaintext_completion", True)
+            setattr(self.state, "pending_finalize_completion_reason", str(reason or "forced_plaintext_completion"))
+            setattr(self.state, "pending_finalize_completion_source", str(source or "recovery"))
+        except Exception:
+            pass
+
+
     def _intent_actions_from_stop_info(self, stop_info: dict | None, active_intent) -> list[str]:
         ctx = self._recovery_context(stop_info)
         resolved = ctx.resolved_action_policy()
@@ -228,6 +248,10 @@ class RecoveryCoordinator:
                     )
                 if decision == "stop_and_answer":
                     runtime = getattr(self.state, "intent_runtime", None)
+                    self._mark_pending_finalize_after_terminal_plaintext_completion(
+                        "user_stopped_after_suspect_goal_change",
+                        "defect_detector",
+                    )
                     if runtime is not None and hasattr(runtime, "force_current_intent_completion"):
                         runtime.force_current_intent_completion()
                     return RecoveryDecision.continue_with(
@@ -303,6 +327,10 @@ class RecoveryCoordinator:
                     source="defect_detector",
                 )
 
+            self._mark_pending_finalize_after_terminal_plaintext_completion(
+                "forced_plaintext_completion_after_hard_limit",
+                "defect_detector",
+            )
             if runtime is not None and hasattr(runtime, "force_current_intent_completion"):
                 runtime.force_current_intent_completion()
             return RecoveryDecision.continue_with(
@@ -450,6 +478,16 @@ class RecoveryCoordinator:
                 )
 
             if self.inspection_can_finish_with_text(sm, stop_info):
+                self._mark_pending_finalize_after_terminal_plaintext_completion(
+                    str(stop_info.get("reason") or "forced_plaintext_completion"),
+                    "dispatch_stop",
+                )
+                runtime = getattr(self.state, "intent_runtime", None)
+                if runtime is not None and hasattr(runtime, "force_current_intent_completion"):
+                    try:
+                        runtime.force_current_intent_completion()
+                    except Exception:
+                        pass
                 return StopHandlingDecision.continue_with(
                     self.prompt_builder.build_plain_text_completion_prompt(sm, stop_info),
                     clear_pending_stop=True,

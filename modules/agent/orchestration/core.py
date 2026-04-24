@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 
+from modules.agent.orchestration.recovery import RecoveryCoordinator
+
 from ..allowed_actions_resolver import AllowedActionsResolver
 from .action_policy import ActionPolicyHandler
 from .dispatch_pipeline import DispatchPipeline
@@ -19,7 +21,6 @@ from .policy import IntentGuard
 from .prompting import OrchestratorPromptBuilder
 from .pipeline import OrchestrationPipeline
 from .recovery_policy import RecoveryPolicyResolver
-from .recovery import RecoveryCoordinator
 from .response_pipeline import ModelResponsePipeline
 
 
@@ -110,6 +111,118 @@ class Orchestrator:
             session_started_at=loop.time(),
         )
 
+    async def _render_final_assistant_text(self, text: str) -> bool:
+        rendered = str(text or "").strip()
+        if not rendered:
+            return False
+
+        ui = self.ui
+
+        print_message = getattr(ui, "print_message", None)
+        if callable(print_message):
+            try:
+                await print_message(rendered, role="assistant")
+                return True
+            except Exception:
+                if self.agent.log:
+                    self.agent.log.warning("Failed to render terminal assistant text via print_message", exc_info=True)
+
+        candidate_calls = [
+            ("print_assistant", (rendered,), {}),
+            ("print_ai", (rendered,), {}),
+            ("add_chat_message", (), {"role": "assistant", "text": rendered}),
+            ("add_chat_message", ("assistant", rendered), {}),
+            ("print_markdown", (rendered,), {}),
+            ("print_system", (rendered,), {}),
+        ]
+        for method_name, args, kwargs in candidate_calls:
+            method = getattr(ui, method_name, None)
+            if not callable(method):
+                continue
+            try:
+                await method(*args, **kwargs)
+                return True
+            except TypeError:
+                continue
+            except Exception:
+                if self.agent.log:
+                    self.agent.log.warning(
+                        "Failed to render terminal assistant text via %s",
+                        method_name,
+                        exc_info=True,
+                    )
+                continue
+        return False
+
+    async def _flush_terminal_plaintext_completion_if_present(self) -> bool:
+        terminal_text = str(getattr(self.state, "terminal_plaintext_completion_text", "") or "").strip()
+        if not terminal_text:
+            return False
+
+        rendered = await self._render_final_assistant_text(terminal_text)
+        if not rendered and self.agent.log:
+            self.agent.log.warning("Terminal plaintext completion text was present but could not be rendered in UI.")
+
+        try:
+            setattr(self.state, "terminal_plaintext_completion_pending", False)
+            setattr(self.state, "terminal_plaintext_completion_text", "")
+        except Exception:
+            pass
+        return True
+
+
+    def _finalize_intent_after_terminal_plaintext_completion_if_needed(self) -> None:
+        if not bool(getattr(self.state, "pending_finalize_after_terminal_plaintext_completion", False)):
+            return
+
+        active = getattr(self.state, "active_intent", None)
+        if active is not None:
+            try:
+                setattr(self.state, "last_resumable_intent_id", str(getattr(active, "intent_id", "") or ""))
+                setattr(self.state, "last_resumable_intent_type", str(getattr(active, "intent_type", "") or ""))
+                setattr(self.state, "last_resumable_intent_goal", str(getattr(active, "goal", "") or ""))
+                setattr(self.state, "last_resumable_intent_allowed_actions", list(getattr(active, "allowed_actions", []) or []))
+                setattr(self.state, "last_resumable_intent_lineage_id", str(getattr(active, "lineage_id", "") or getattr(active, "intent_id", "") or ""))
+                setattr(self.state, "last_resumable_intent_safe_steps_limit", int(getattr(active, "safe_steps_limit", 0) or 0))
+                setattr(self.state, "last_resumable_intent_retry_limit", int(getattr(active, "retry_limit", 0) or 0))
+                setattr(self.state, "last_resumable_intent_completion_reason", str(getattr(self.state, "pending_finalize_completion_reason", "forced_plaintext_completion") or "forced_plaintext_completion"))
+                setattr(self.state, "last_completed_intent_type", str(getattr(active, "intent_type", "") or "").strip().upper())
+            except Exception:
+                pass
+
+        runtime = getattr(self.state, "intent_runtime", None)
+        finalized = False
+        for method_name in ("finalize_current_intent_completion", "close_current_intent", "clear_current_intent"):
+            method = getattr(runtime, method_name, None) if runtime is not None else None
+            if callable(method):
+                try:
+                    method()
+                    finalized = True
+                    break
+                except Exception:
+                    pass
+        if not finalized:
+            for method_name in ("complete_current_intent", "clear_active_intent"):
+                method = getattr(self.state, method_name, None)
+                if callable(method):
+                    try:
+                        method()
+                        finalized = True
+                        break
+                    except Exception:
+                        pass
+        if not finalized:
+            try:
+                self.state.active_intent = None
+            except Exception:
+                pass
+        try:
+            setattr(self.state, "pending_finalize_after_terminal_plaintext_completion", False)
+            setattr(self.state, "pending_finalize_completion_reason", "")
+            setattr(self.state, "pending_finalize_completion_source", "")
+        except Exception:
+            pass
+
     async def process(self, user_input):
         """Головний цикл: Think -> Act -> Loop."""
         if self.agent.log:
@@ -122,6 +235,8 @@ class Orchestrator:
             while ctx.active_loop:
                 iteration = await self.pipeline.run_iteration(ctx)
                 if iteration.stop_loop:
+                    await self._flush_terminal_plaintext_completion_if_present()
+                    self._finalize_intent_after_terminal_plaintext_completion_if_needed()
                     break
                 if iteration.continue_loop:
                     continue
@@ -130,6 +245,11 @@ class Orchestrator:
                     break
 
                 await self.dispatch_pipeline.run_iteration(ctx, iteration)
+
+                if not ctx.active_loop:
+                    await self._flush_terminal_plaintext_completion_if_present()
+                    self._finalize_intent_after_terminal_plaintext_completion_if_needed()
+                    break
 
             try:
                 await self.history.check_and_summarize(self.ui, self.state)

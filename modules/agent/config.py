@@ -192,6 +192,11 @@ class AgentConfig:
         self.PLANNER_ENABLED = bool(self.settings.get("planner_enabled", False))
         self.PLANNER_MODE = str(self.settings.get("planner_mode", "auto") or "auto")
 
+        # Provider / networking settings
+        self.ollama_base_url = str(
+            self.settings.get("ollama_base_url", "http://127.0.0.1:11434")
+        ).strip()
+
         # Operations that mutate repository / workspace state.
         # Required by action_dispatcher/state_machine compatibility layer.
         self.STATE_CHANGING_OPS = {

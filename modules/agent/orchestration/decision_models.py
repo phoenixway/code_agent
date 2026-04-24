@@ -165,6 +165,9 @@ class MemoryBoardDecision(PreDispatchDecision):
     response_text: str = ""
     next_query: str | None = None
     continue_loop: bool = False
+    memory_checkpoint_only: bool = False
+    memory_checkpoint_and_text: bool = False
+    memory_checkpoint_and_action: bool = False
 
 
 @dataclass
@@ -247,12 +250,44 @@ class PipelineIterationDecision:
 class ResponsePipelineOutcome(PreDispatchDecision):
     continue_loop: bool
     next_query: str | None = None
+    stop_loop: bool = False
     response_text: str = ""
     segments: list[Any] = field(default_factory=list)
     parsed_output: ParsedModelOutput | None = None
     parsed_action_count: int = 0
     malformed_action_retries: int | None = None
     audit_marker_retries: int | None = None
+    memory_checkpoint_only: bool = False
+    memory_checkpoint_and_text: bool = False
+    memory_checkpoint_and_action: bool = False
+
+    @classmethod
+    def stop(
+        cls,
+        *,
+        response_text: str = "",
+        reason: str = "",
+        source: str = "",
+        malformed_action_retries: int | None = None,
+        audit_marker_retries: int | None = None,
+        memory_checkpoint_only: bool = False,
+        memory_checkpoint_and_text: bool = False,
+        memory_checkpoint_and_action: bool = False,
+    ):
+        return cls(
+            handled=True,
+            continue_loop=False,
+            next_query=None,
+            stop_loop=True,
+            response_text=response_text,
+            malformed_action_retries=malformed_action_retries,
+            audit_marker_retries=audit_marker_retries,
+            memory_checkpoint_only=memory_checkpoint_only,
+            memory_checkpoint_and_text=memory_checkpoint_and_text,
+            memory_checkpoint_and_action=memory_checkpoint_and_action,
+            reason=reason,
+            source=source,
+        )
 
     @classmethod
     def dispatch_ready(
@@ -266,17 +301,22 @@ class ResponsePipelineOutcome(PreDispatchDecision):
         audit_marker_retries: int | None = None,
         reason: str = "",
         source: str = "",
+        memory_checkpoint_and_text: bool = False,
+        memory_checkpoint_and_action: bool = False,
     ):
         return cls(
             handled=True,
             continue_loop=False,
             next_query=None,
+            stop_loop=False,
             response_text=response_text,
             segments=segments,
             parsed_output=parsed_output,
             parsed_action_count=parsed_action_count,
             malformed_action_retries=malformed_action_retries,
             audit_marker_retries=audit_marker_retries,
+            memory_checkpoint_and_text=memory_checkpoint_and_text,
+            memory_checkpoint_and_action=memory_checkpoint_and_action,
             reason=reason,
             source=source,
         )

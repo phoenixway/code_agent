@@ -110,15 +110,85 @@ class AgentStateMachine:
         advisory = ("яким має бути наступний крок", "що робити далі", "what next", "next step", "порадь")
         if any(t in text for t in advisory):
             return TaskKind.INSPECTION
-        inspection = ("analy", "inspect", "investig", "review", "understand", "аналіз", "дослід", "перевір", "знайти")
-        modification = ("fix", "implement", "change", "modify", "edit", "write", "виправ", "реаліз", "зміни", "відредаг", "видалити")
+
+        implementation_lookup = (
+            "де реалізовано",
+            "де реалізована",
+            "де реалізований",
+            "де знаходиться реалізація",
+            "де цей файл",
+            "де ця кнопка",
+            "де цей екран",
+            "де відкривається",
+            "де викликається",
+            "в якому файлі",
+            "який файл",
+            "which file",
+            "what file",
+            "which screen",
+            "which composable",
+            "where is",
+            "where are",
+            "implemented in",
+            "find where",
+            "locate where",
+        )
+        if any(t in text for t in implementation_lookup):
+            return TaskKind.INSPECTION
+
+        inspection = (
+            "analy",
+            "inspect",
+            "investig",
+            "review",
+            "understand",
+            "analyze",
+            "locate",
+            "identify",
+            "where",
+            "which",
+            "аналіз",
+            "дослід",
+            "перевір",
+            "знайти",
+            "знайди",
+            "визнач",
+            "який файл",
+            "в якому файлі",
+            "де ",
+        )
+        modification = (
+            "fix",
+            "implement",
+            "change",
+            "modify",
+            "edit",
+            "write",
+            "виправ",
+            "зміни",
+            "відредаг",
+            "видалити",
+            "додай",
+            "додати",
+            "онови",
+            "оновити",
+            "перероби",
+            "переробити",
+            "реалізуй",
+            "реалізувати",
+        )
         has_i = any(t in text for t in inspection)
         has_m = any(t in text for t in modification)
         if has_i and has_m:
             return TaskKind.HYBRID
         if has_i:
             return TaskKind.INSPECTION
-        return TaskKind.MODIFICATION
+
+        # FIXME:
+        # task_kind is a bootstrap heuristic used before a formal contract fully
+        # governs the work. Defaulting to MODIFICATION created too many false
+        # positives and poisoned downstream recovery/completion logic.
+        return TaskKind.HYBRID
 
     def start_turn(self, user_input: str):
         self.task_kind = self._classify_task_kind(user_input)

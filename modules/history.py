@@ -1,14 +1,18 @@
+
 """
 modules/history.py
 
-History manager with short-lived working material protection.
+History manager with pressure-aware working material protection and unified
+artifact degradation for both protected working material and ordinary tool-heavy
+history.
 
 Key rules:
 - tool returns may be stored as generic working material
-- protection is short-lived (measured in agent hops), not whole turn/intent
-- older working material degrades in stages:
-  full -> skeleton/preview -> reread marker
-- only a small number of recent materials stay fully protected
+- protection is short-lived but pressure-aware, not hop-driven
+- heavy artifacts degrade in stages using unified material degradation helpers
+- the same degradation primitives are used for working material and ordinary
+  structured history under context pressure
+- simple plain-text messages are not pressure-compacted
 - get_history_for_api avoids duplicating the same read_file payload through both
   CURRENT FILE STATE and protected working material
 """
@@ -17,7 +21,9 @@ import hashlib
 import json
 import time
 from pathlib import Path
+
 from modules.code_parser import CodeParser
+from modules.history_materials import HistoryMaterialTools
 
 
 class HistoryManager:
@@ -73,14 +79,36 @@ class HistoryManager:
         self.current_turn_id = 0
         self.TURN_WORKING_MATERIAL_SAFE_RATIO = 0.72
 
-        # Short-lived working material policy.
+        # Pressure-aware working material policy.
         self.WM_DEFAULT_HOPS = 1
-        self.WM_MAX_PROTECTED_ITEMS = 2
+        self.WM_MAX_PROTECTED_ITEMS = 6
         self.WM_MAX_FULL_FILE_ITEMS = 1
+        self.WM_PROTECTED_RESERVE_RATIO = 0.12
+        self.WM_MIN_PROTECTED_TOKENS = 160
+        self.WM_MAX_PROTECTED_SHARE_RATIO = 0.34
+        self._wm_seq = 0
+
+        # Ordinary structured history pressure policy.
+        self.ORDINARY_PRESSURE_TRIGGER_RATIO = 0.74
+        self.ORDINARY_PRESSURE_TARGET_RATIO = 0.64
+        self.ORDINARY_MAX_DEGRADED_PER_PASS = 6
 
         # Canonical durable memory is kept outside history.messages and
         # injected only into summarization as a separate reference block.
         self.memory_board_store = None
+
+        self.material_tools = HistoryMaterialTools(
+            code_parser=self.code_parser,
+            max_structured_text_chars=self.MAX_STRUCTURED_TEXT_CHARS,
+            max_structured_stdout_chars=self.MAX_STRUCTURED_STDOUT_CHARS,
+            max_structured_stderr_chars=self.MAX_STRUCTURED_STDERR_CHARS,
+            max_structured_output_lines=self.MAX_STRUCTURED_OUTPUT_LINES,
+            large_result_count_hint=self.LARGE_RESULT_COUNT_HINT,
+        )
+
+    def _next_wm_seq(self) -> int:
+        self._wm_seq += 1
+        return self._wm_seq
 
     def _save_blob(self, content: str) -> str | None:
         if not content:
@@ -138,13 +166,21 @@ class HistoryManager:
             final_content = self._sanitize_action_blocks_for_history(final_content)
 
         if isinstance(final_content, (dict, list)) and not preserve_exact:
-            final_content = self._compact_structured_message_content(final_content)
+            final_content = self.material_tools.compact_structured_message_content(final_content)
 
         message = {"role": role, "content": final_content}
         if msg_type:
             message["type"] = msg_type
         message.update(meta)
+
+        if isinstance(final_content, dict):
+            message.setdefault("history_material_kind", self.material_tools.material_kind(final_content))
+            message.setdefault("history_degrade_stage", 0)
+            message.setdefault("history_added_seq", self._next_wm_seq())
         self.messages.append(message)
+
+        if not preserve_exact:
+            self._enforce_ordinary_history_pressure()
 
         if self.logger:
             preview = str(final_content)[:80].replace("\n", " ")
@@ -202,113 +238,21 @@ class HistoryManager:
         return re.sub(pattern, _replace, content)
 
     def _truncate_multiline_text(self, text: str, *, max_chars: int, max_lines: int) -> str:
-        if not isinstance(text, str):
-            text = str(text)
-        if not text:
-            return text
-        lines = text.splitlines()
-        out = "\n".join(lines[:max_lines])
-        if len(out) > max_chars:
-            out = out[:max_chars].rstrip() + "\n...[truncated]"
-        elif len(lines) > max_lines:
-            out += "\n...[truncated]"
-        return out
-
-    def _compact_structured_message_content(self, content):
-        try:
-            if isinstance(content, list):
-                return [self._compact_structured_message_content(item) for item in content]
-            if not isinstance(content, dict):
-                return content
-            compact = dict(content)
-            history_compact = bool(compact.get("history_compact", False))
-            truncated = bool(compact.get("truncated", False))
-            result_count = int(compact.get("result_count", 0) or 0)
-            if isinstance(compact.get("output"), str):
-                compact["output"] = self._truncate_multiline_text(
-                    compact["output"],
-                    max_chars=self.MAX_STRUCTURED_TEXT_CHARS,
-                    max_lines=self.MAX_STRUCTURED_OUTPUT_LINES,
-                )
-            if isinstance(compact.get("stdout"), str):
-                if history_compact or truncated or result_count >= self.LARGE_RESULT_COUNT_HINT:
-                    compact["stdout"] = self._truncate_multiline_text(
-                        compact["stdout"],
-                        max_chars=self.MAX_STRUCTURED_STDOUT_CHARS,
-                        max_lines=20,
-                    )
-                else:
-                    compact["stdout"] = self._truncate_multiline_text(
-                        compact["stdout"],
-                        max_chars=self.MAX_STRUCTURED_TEXT_CHARS,
-                        max_lines=self.MAX_STRUCTURED_OUTPUT_LINES,
-                    )
-            if isinstance(compact.get("stderr"), str):
-                compact["stderr"] = self._truncate_multiline_text(
-                    compact["stderr"],
-                    max_chars=self.MAX_STRUCTURED_STDERR_CHARS,
-                    max_lines=12,
-                )
-            return compact
-        except Exception:
-            return content
-
-    def start_turn(self, turn_id: int):
-        self.current_turn_id = max(0, int(turn_id or 0))
-        self.age_working_material()
-
-    def age_working_material(self):
-        updated = []
-        for msg in self.messages:
-            if not msg.get("turn_working_material"):
-                updated.append(msg)
-                continue
-
-            current = dict(msg)
-            hops = int(current.get("protection_hops_remaining", 0) or 0)
-            if hops > 0:
-                current["protection_hops_remaining"] = hops - 1
-                updated.append(current)
-                continue
-
-            updated.append(self._degrade_working_material_message(current))
-        self.messages = updated
-        self._enforce_working_material_caps()
+        return self.material_tools.truncate_multiline_text(text, max_chars=max_chars, max_lines=max_lines)
 
     def _working_material_identity(self, content) -> str:
-        try:
-            if isinstance(content, dict):
-                tool = str(content.get("tool") or "")
-                path = str(content.get("path") or content.get("file_path") or content.get("filename") or "")
-                version = str(content.get("version") or content.get("file_version") or "")
-                start = str(content.get("start_byte") or "")
-                end = str(content.get("end_byte") or "")
-                chunk_id = str(content.get("chunk_id") or "")
-                status = str(content.get("status") or "")
-                command = str(content.get("command") or "") if tool == "run_shell" else ""
-                core = self._preferred_working_material_text(content)
-                blob = hashlib.sha256(str(core).encode("utf-8")).hexdigest()[:16] if core else ""
-                return f"{tool}|{path}|{version}|{start}|{end}|{chunk_id}|{status}|{command}|{blob}"
-            raw = str(content)
-            return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:24]
-        except Exception:
-            return ""
+        return self.material_tools.working_material_identity(content)
 
     def _material_kind(self, content) -> str:
-        if not isinstance(content, dict):
-            return "generic"
-        tool = str(content.get("tool") or "")
-        if tool == "read_file":
-            return "full_file"
-        if tool == "read_chunk":
-            return "chunk"
-        if tool == "read_file_skeleton":
-            return "skeleton"
-        return "generic"
+        return self.material_tools.material_kind(content)
+
+    def _material_priority(self, msg: dict) -> int:
+        kind = str(msg.get("material_kind") or msg.get("history_material_kind") or "generic")
+        return self.material_tools.material_priority(kind)
 
     def _default_hops_for_content(self, content) -> int:
         kind = self._material_kind(content)
-        if kind in {"full_file", "chunk", "skeleton"}:
+        if kind in {"full_file", "chunk", "skeleton", "exact_symbol"}:
             return self.WM_DEFAULT_HOPS
         return 0
 
@@ -316,35 +260,190 @@ class HistoryManager:
         if not isinstance(content, dict):
             return False
         tool = str(content.get("tool") or "")
-        if tool not in {"read_file", "read_chunk"}:
+        if tool not in {"read_file", "read_chunk", "extract_symbol", "extract_kotlin_function"}:
             return False
         data = self._preferred_working_material_text(content)
         return not data or not str(data).strip()
 
-    def _enforce_working_material_caps(self):
-        protected_indices = []
-        full_file_indices = []
+    def _preferred_working_material_text(self, payload: dict) -> str:
+        return self.material_tools.preferred_text(payload)
+
+    def _working_material_token_estimate(self, msg: dict) -> int:
+        try:
+            return self.count_tokens([msg])
+        except Exception:
+            return 0
+
+    def _protected_working_material_budget_tokens(self) -> int:
+        ordinary = [m for m in self.messages if not m.get("turn_working_material")]
+        ordinary_tokens = self.count_tokens(ordinary) if ordinary else 0
+        reserve = max(self.WM_MIN_PROTECTED_TOKENS, int(self.max_tokens * self.WM_PROTECTED_RESERVE_RATIO))
+        share_cap = max(self.WM_MIN_PROTECTED_TOKENS, int(self.max_tokens * self.WM_MAX_PROTECTED_SHARE_RATIO))
+        free_capacity = max(0, self.max_tokens - ordinary_tokens - reserve)
+        return max(self.WM_MIN_PROTECTED_TOKENS, min(share_cap, free_capacity))
+
+    def _protected_working_indices(self) -> list[int]:
+        return [
+            idx for idx, msg in enumerate(self.messages)
+            if msg.get("turn_working_material") and int(msg.get("protection_hops_remaining", 0) or 0) > 0
+        ]
+
+    def _protected_working_material_tokens(self) -> int:
+        return sum(self._working_material_token_estimate(self.messages[idx]) for idx in self._protected_working_indices())
+
+    def _degradation_candidates(self) -> list[int]:
+        candidates = self._protected_working_indices()
+        candidates.sort(
+            key=lambda i: (
+                self._material_priority(self.messages[i]),
+                int(self.messages[i].get("wm_last_touch_seq", 0) or 0),
+                int(self.messages[i].get("wm_added_seq", 0) or 0),
+            )
+        )
+        return candidates
+
+    def _ordinary_structured_pressure_candidates(self) -> list[int]:
+        candidates = []
         for idx, msg in enumerate(self.messages):
-            if not msg.get("turn_working_material"):
+            if msg.get("turn_working_material"):
                 continue
-            hops = int(msg.get("protection_hops_remaining", 0) or 0)
-            if hops <= 0:
+            content = msg.get("content")
+            if not isinstance(content, dict):
                 continue
-            protected_indices.append(idx)
-            if msg.get("material_kind") == "full_file":
-                full_file_indices.append(idx)
+            kind = str(msg.get("history_material_kind") or self._material_kind(content))
+            if kind == "generic" and msg.get("role") != "system":
+                continue
+            stage = int(msg.get("history_degrade_stage", 0) or 0)
+            if stage >= 2:
+                continue
+            candidates.append(idx)
+        candidates.sort(
+            key=lambda i: (
+                self._material_priority(self.messages[i]),
+                int(self.messages[i].get("history_degrade_stage", 0) or 0),
+                int(self.messages[i].get("history_added_seq", 0) or 0),
+            )
+        )
+        return candidates
 
-        if len(protected_indices) > self.WM_MAX_PROTECTED_ITEMS:
-            for idx in protected_indices[:-self.WM_MAX_PROTECTED_ITEMS]:
-                msg = dict(self.messages[idx])
-                msg["protection_hops_remaining"] = 0
-                self.messages[idx] = self._degrade_working_material_message(msg, target_stage=1)
+    def _degrade_working_material_message(self, msg: dict, target_stage: int | None = None) -> dict:
+        out = dict(msg)
+        content = out.get("content") or {}
+        current_stage = int(out.get("degrade_stage", 0) or 0)
+        next_stage = target_stage if target_stage is not None else min(2, current_stage + 1)
 
-        if len(full_file_indices) > self.WM_MAX_FULL_FILE_ITEMS:
-            for idx in full_file_indices[:-self.WM_MAX_FULL_FILE_ITEMS]:
-                msg = dict(self.messages[idx])
-                msg["protection_hops_remaining"] = 0
-                self.messages[idx] = self._degrade_working_material_message(msg, target_stage=1)
+        out["protection_hops_remaining"] = 0
+        out["degrade_stage"] = next_stage
+        kind = str(out.get("material_kind") or self._material_kind(content))
+        out["content"] = self.material_tools.degrade_material(content, kind=kind, stage=next_stage, preserve_type="working material")
+
+        degraded_content = out.get("content")
+        if isinstance(degraded_content, str):
+            if next_stage <= 1:
+                out["type"] = "working_material_preview"
+            else:
+                out["type"] = "working_material_marker"
+        elif isinstance(degraded_content, dict):
+            out["type"] = "working_material_preview" if next_stage <= 1 else "working_material_marker"
+        else:
+            out["type"] = "working_material_marker"
+        return out
+
+    def _degrade_ordinary_message(self, msg: dict, target_stage: int | None = None) -> dict:
+        out = dict(msg)
+        content = out.get("content")
+        if not isinstance(content, dict):
+            return out
+        current_stage = int(out.get("history_degrade_stage", 0) or 0)
+        next_stage = target_stage if target_stage is not None else min(2, current_stage + 1)
+        kind = str(out.get("history_material_kind") or self._material_kind(content))
+        out["content"] = self.material_tools.degrade_material(content, kind=kind, stage=next_stage, preserve_type="history")
+        out["history_degrade_stage"] = next_stage
+        out["history_material_kind"] = kind
+        return out
+
+    def _enforce_working_material_caps(self):
+        protected_indices = self._protected_working_indices()
+        if not protected_indices:
+            return
+
+        protected_tokens = self._protected_working_material_tokens()
+        protected_budget = self._protected_working_material_budget_tokens()
+        full_file_indices = [idx for idx in protected_indices if self.messages[idx].get("material_kind") == "full_file"]
+
+        def needs_pressure_relief() -> bool:
+            return (
+                protected_tokens > protected_budget
+                or len(protected_indices) > self.WM_MAX_PROTECTED_ITEMS
+                or len(full_file_indices) > self.WM_MAX_FULL_FILE_ITEMS
+            )
+
+        if not needs_pressure_relief():
+            return
+
+        for idx in self._degradation_candidates():
+            if not needs_pressure_relief():
+                break
+            msg = dict(self.messages[idx])
+            self.messages[idx] = self._degrade_working_material_message(msg, target_stage=1)
+            protected_indices = self._protected_working_indices()
+            protected_tokens = self._protected_working_material_tokens()
+            full_file_indices = [j for j in protected_indices if self.messages[j].get("material_kind") == "full_file"]
+
+        if self.logger:
+            self.logger.info(
+                "WorkingMaterial.pressure protected_tokens=%s protected_budget=%s protected_items=%s full_files=%s",
+                protected_tokens,
+                protected_budget,
+                len(protected_indices),
+                len(full_file_indices),
+            )
+
+    def _ordinary_pressure_trigger_tokens(self) -> int:
+        return int(self.max_tokens * self.ORDINARY_PRESSURE_TRIGGER_RATIO)
+
+    def _ordinary_pressure_target_tokens(self) -> int:
+        return int(self.max_tokens * self.ORDINARY_PRESSURE_TARGET_RATIO)
+
+    def _ordinary_structured_history_tokens(self) -> int:
+        msgs = [
+            m for m in self.messages
+            if (not m.get("turn_working_material")) and isinstance(m.get("content"), dict)
+        ]
+        return self.count_tokens(msgs) if msgs else 0
+
+    def _enforce_ordinary_history_pressure(self):
+        if self.current_token_count < self._ordinary_pressure_trigger_tokens():
+            return
+
+        degraded = 0
+        while (
+            self.current_token_count > self._ordinary_pressure_target_tokens()
+            and degraded < self.ORDINARY_MAX_DEGRADED_PER_PASS
+        ):
+            candidates = self._ordinary_structured_pressure_candidates()
+            if not candidates:
+                break
+            idx = candidates[0]
+            msg = dict(self.messages[idx])
+            self.messages[idx] = self._degrade_ordinary_message(msg)
+            degraded += 1
+
+        if degraded and self.logger:
+            self.logger.info(
+                "OrdinaryHistory.pressure degraded=%s total_tokens=%s structured_tokens=%s",
+                degraded,
+                self.current_token_count,
+                self._ordinary_structured_history_tokens(),
+            )
+
+    def start_turn(self, turn_id: int):
+        self.current_turn_id = max(0, int(turn_id or 0))
+        self.age_working_material()
+        self._enforce_ordinary_history_pressure()
+
+    def age_working_material(self):
+        self._enforce_working_material_caps()
 
     def add_turn_working_material(self, content, *, msg_type="turn_working_material", turn_id=None, role="system"):
         tid = self.current_turn_id if turn_id is None else max(0, int(turn_id or 0))
@@ -352,7 +451,8 @@ class HistoryManager:
         is_empty = self._is_effectively_empty_material(content)
 
         if identity and not is_empty:
-            for msg in reversed(self.messages[-20:]):
+            for idx in range(len(self.messages) - 1, max(-1, len(self.messages) - 21), -1):
+                msg = self.messages[idx]
                 if not msg.get("turn_working_material"):
                     continue
                 if msg.get("working_material_id") != identity:
@@ -363,17 +463,23 @@ class HistoryManager:
                 if prev_empty:
                     continue
 
+                refreshed = dict(msg)
+                refreshed["wm_last_touch_seq"] = self._next_wm_seq()
+                refreshed["protection_hops_remaining"] = max(1, int(refreshed.get("protection_hops_remaining", 0) or 0))
+                self.messages[idx] = refreshed
                 if self.logger:
                     self.logger.info(
-                        "WorkingMaterial.skip_duplicate turn=%s type=%s id=%s",
+                        "WorkingMaterial.refresh turn=%s type=%s id=%s",
                         tid,
                         msg_type,
                         identity,
                     )
+                self._enforce_working_material_caps()
                 return False
 
         material_kind = self._material_kind(content)
         protection_hops = self._default_hops_for_content(content)
+        seq = self._next_wm_seq()
 
         self.add_message(
             role,
@@ -385,6 +491,8 @@ class HistoryManager:
             material_kind=material_kind,
             protection_hops_remaining=protection_hops,
             degrade_stage=0,
+            wm_added_seq=seq,
+            wm_last_touch_seq=seq,
         )
         self._enforce_working_material_caps()
         if self.logger:
@@ -426,136 +534,6 @@ class HistoryManager:
             if int(m.get("protection_hops_remaining", 0) or 0) > 0
         ]
         return self.count_tokens(msgs) if msgs else 0
-
-    def _degrade_working_material_message(self, msg: dict, target_stage: int | None = None) -> dict:
-        out = dict(msg)
-        content = out.get("content") or {}
-        current_stage = int(out.get("degrade_stage", 0) or 0)
-        next_stage = target_stage if target_stage is not None else min(2, current_stage + 1)
-
-        out["protection_hops_remaining"] = 0
-        out["degrade_stage"] = next_stage
-
-        if isinstance(content, dict):
-            tool = str(content.get("tool") or "tool")
-            path = str(content.get("path") or content.get("filename") or "")
-            version = content.get("version") or content.get("file_version")
-
-            if tool == "read_file":
-                full = content.get("file_content") or content.get("content") or content.get("output")
-                if next_stage <= 1:
-                    skeleton = None
-                    if isinstance(full, str) and full:
-                        try:
-                            skeleton = self.code_parser.get_skeleton(path, full)
-                        except Exception:
-                            skeleton = None
-                    if skeleton and skeleton.strip() and full and skeleton.strip() != str(full).strip():
-                        out["content"] = (
-                            f"Working material degraded: file `{path}` version `{version}` was read.\n"
-                            f"Skeleton:\n{skeleton}\n\n"
-                            "If exact content is needed again, reread via read_file."
-                        )
-                    else:
-                        preview = self._truncate_multiline_text(str(full or ""), max_chars=1200, max_lines=40)
-                        out["content"] = (
-                            f"Working material degraded: file `{path}` version `{version}` was read.\n"
-                            f"Preview:\n{preview}\n\n"
-                            "If exact content is needed again, reread via read_file."
-                        )
-                    out["type"] = "working_material_skeleton"
-                    return out
-
-                out["content"] = (
-                    f"Working material marker: file `{path}` version `{version}` was read earlier. "
-                    "If exact content is needed again, reread via read_file."
-                )
-                out["type"] = "working_material_marker"
-                return out
-
-            if tool == "read_chunk":
-                full = content.get("file_content") or content.get("content") or content.get("output")
-                start_byte = content.get("start_byte")
-                end_byte = content.get("end_byte")
-                if next_stage <= 1:
-                    preview = self._truncate_multiline_text(str(full or ""), max_chars=1000, max_lines=30)
-                    out["content"] = (
-                        f"Working material degraded: file chunk from `{path}` version `{version}` "
-                        f"bytes [{start_byte}, {end_byte}) was read.\n"
-                        f"Preview:\n{preview}\n\n"
-                        "If exact chunk content is needed again, reread via read_chunk."
-                    )
-                    out["type"] = "working_material_preview"
-                    return out
-
-                out["content"] = (
-                    f"Working material marker: file chunk from `{path}` version `{version}` "
-                    f"bytes [{start_byte}, {end_byte}) was read earlier. "
-                    "If exact chunk content is needed again, reread via read_chunk."
-                )
-                out["type"] = "working_material_marker"
-                return out
-
-            if tool == "read_file_skeleton":
-                if next_stage <= 1:
-                    preview = self._truncate_multiline_text(str(content.get("output") or ""), max_chars=1200, max_lines=40)
-                    out["content"] = (
-                        f"Working material degraded: skeleton for `{path}` was read.\n"
-                        f"{preview}\n\n"
-                        "If exact content is needed again, reread via read_file_skeleton or read_file."
-                    )
-                    out["type"] = "working_material_preview"
-                    return out
-
-                out["content"] = (
-                    f"Working material marker: skeleton for `{path}` was read earlier. "
-                    "If exact content is needed again, reread via read_file_skeleton or read_file."
-                )
-                out["type"] = "working_material_marker"
-                return out
-
-            preview = self._preferred_working_material_text(content)
-            if isinstance(preview, str):
-                preview = self._truncate_multiline_text(preview, max_chars=800, max_lines=20)
-            if next_stage <= 1:
-                out["content"] = {
-                    "tool": tool,
-                    "path": path,
-                    "note": "Working material degraded to compact preview.",
-                    "output_preview": preview,
-                }
-                out["type"] = "working_material_preview"
-                return out
-
-            out["content"] = {
-                "tool": tool,
-                "path": path,
-                "note": "Working material degraded to marker. Rerun the tool if exact content is needed.",
-            }
-            out["type"] = "working_material_marker"
-            return out
-
-        out["content"] = "Working material degraded. Rerun the tool if exact content is needed."
-        out["type"] = "working_material_marker"
-        return out
-
-    def _preferred_working_material_text(self, payload: dict) -> str:
-        if not isinstance(payload, dict):
-            return str(payload or "")
-        for key in (
-            "raw_output",
-            "stdout_full",
-            "stderr_full",
-            "file_content",
-            "content",
-            "output",
-            "stdout",
-            "stderr",
-        ):
-            value = payload.get(key)
-            if isinstance(value, str) and value:
-                return value
-        return ""
 
     def add_file_version(self, filename, content, return_metadata=False):
         if content is None:
@@ -610,6 +588,8 @@ class HistoryManager:
         return keys
 
     def get_history_for_api(self):
+        self._enforce_ordinary_history_pressure()
+
         api_history = []
         over_limit_pressure = self.current_token_count > self.max_tokens
         active_limit = self._effective_active_file_limit(over_limit_pressure)
@@ -676,15 +656,23 @@ class HistoryManager:
                         })
                     elif tool == "read_chunk":
                         f_content = payload.get("file_content") or payload.get("content") or payload.get("output") or ""
-                        start_byte = payload.get("start_byte")
-                        end_byte = payload.get("end_byte")
+                        start_line = payload.get("start_line")
+                        end_line = payload.get("end_line")
+                        if start_line is not None or end_line is not None:
+                            range_attrs = f" start_line='{start_line}' end_line='{end_line}'"
+                            tag_name = "file_chunk_lines"
+                        else:
+                            start_byte = payload.get("start_byte")
+                            end_byte = payload.get("end_byte")
+                            range_attrs = f" start_byte='{start_byte}' end_byte='{end_byte}'"
+                            tag_name = "file_chunk"
                         api_history.append({
                             "role": "system",
                             "content": (
                                 f"SYSTEM RESULT (read_chunk):\n"
-                                f"<file_chunk path='{path}' version='{version}' start_byte='{start_byte}' end_byte='{end_byte}'>\n"
+                                f"<{tag_name} path='{path}' version='{version}'{range_attrs}>\n"
                                 f"{f_content}\n"
-                                f"</file_chunk>"
+                                f"</{tag_name}>"
                             ),
                         })
                     else:
@@ -829,7 +817,10 @@ class HistoryManager:
             if name:
                 token = f"{name}@v{ver}"
                 if str(payload.get("tool") or "") == "read_chunk":
-                    token += f"[{payload.get('start_byte')},{payload.get('end_byte')})"
+                    if payload.get("start_line") is not None and payload.get("end_line") is not None:
+                        token += f"[{payload.get('start_line')},{payload.get('end_line')}]"
+                    else:
+                        token += f"[{payload.get('start_byte')},{payload.get('end_byte')})"
                 if token not in recent_files:
                     recent_files.append(token)
             if len(recent_files) >= 6:
@@ -851,6 +842,8 @@ class HistoryManager:
         return "\n".join(lines)
 
     async def check_and_summarize(self, ui=None, state=None):
+        self._enforce_ordinary_history_pressure()
+
         tokens = self.count_tokens()
         now = time.time()
         prompt_threshold = int(self.max_tokens * self.SUMMARY_PROMPT_RATIO)
@@ -864,7 +857,7 @@ class HistoryManager:
             return None
 
         if working_material_tokens > safe_working_material_budget:
-            self.age_working_material()
+            self._enforce_working_material_caps()
             if ui:
                 await ui.print_error("Protected working material is too large to preserve safely. Use chunked reads, skeletons, or narrower tool output.")
             return {
@@ -1000,7 +993,6 @@ class HistoryManager:
             prompt_parts.extend(["## MEMORY BOARD (CANONICAL)", memory_board_block, ""])
         prompt_parts.extend(["## HISTORY TO COMPRESS", history_text, ""])
         prompt = "\n".join(prompt_parts)
-        
 
         summary_out = ""
         tokens_before = self.count_tokens()

@@ -703,6 +703,168 @@ class ModelOutputRecoveryHandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(decision.handled)
         self.assertIn("bundled too many transition/control items together", decision.next_query)
 
+    async def test_modify_completion_claim_without_state_change_proof_returns_recovery(self):
+        ui = SimpleNamespace(print_error=AsyncMock())
+        state = SimpleNamespace(
+            set_malformed_grace=MagicMock(),
+            forbid_next_action_fingerprint=MagicMock(),
+            last_completed_fingerprint=None,
+            active_intent=SimpleNamespace(intent_type="MODIFY"),
+            state_machine=SimpleNamespace(task_kind="MODIFICATION"),
+            current_turn_state_change_count=0,
+        )
+        agent = SimpleNamespace(
+            ui=ui,
+            state=state,
+            config=SimpleNamespace(MALFORMED_ACTION_GRACE_STEPS=2),
+            log=None,
+        )
+        prompt_builder = OrchestratorPromptBuilder(
+            SimpleNamespace(
+                state=state,
+                config=SimpleNamespace(),
+                memory_board_store=None,
+                log=None,
+            )
+        )
+        handler = ModelOutputRecoveryHandler(agent, prompt_builder)
+
+        decision = await handler.decide(
+            ParsedModelOutput(
+                response="Готово. Я додав автоматичне виправлення.",
+                visible_text="Готово. Я додав автоматичне виправлення.",
+                has_action_segment=False,
+            ),
+            malformed_action_retries=0,
+            audit_marker_retries=0,
+        )
+
+        self.assertTrue(decision.handled)
+        self.assertFalse(decision.stop_loop)
+        self.assertEqual("modify_completion_claim_without_state_change_proof", decision.reason)
+        self.assertIn("claimed that code changes were already applied", decision.next_query)
+        self.assertIn("If a change still needs to be applied, return EXACTLY ONE valid state-changing <action>...</action> block.", decision.next_query)
+
+    async def test_modify_completion_claim_with_state_change_proof_passes_through(self):
+        ui = SimpleNamespace(print_error=AsyncMock())
+        state = SimpleNamespace(
+            set_malformed_grace=MagicMock(),
+            forbid_next_action_fingerprint=MagicMock(),
+            last_completed_fingerprint=None,
+            active_intent=SimpleNamespace(intent_type="MODIFY"),
+            state_machine=SimpleNamespace(task_kind="MODIFICATION"),
+            current_turn_state_change_count=1,
+            last_completed_intent_type="",
+        )
+        agent = SimpleNamespace(
+            ui=ui,
+            state=state,
+            config=SimpleNamespace(MALFORMED_ACTION_GRACE_STEPS=2),
+            log=None,
+        )
+        prompt_builder = OrchestratorPromptBuilder(
+            SimpleNamespace(
+                state=state,
+                config=SimpleNamespace(),
+                memory_board_store=None,
+                log=None,
+            )
+        )
+        handler = ModelOutputRecoveryHandler(agent, prompt_builder)
+
+        decision = await handler.decide(
+            ParsedModelOutput(
+                response="Готово. Я додав автоматичне виправлення.",
+                visible_text="Готово. Я додав автоматичне виправлення.",
+                has_action_segment=False,
+            ),
+            malformed_action_retries=0,
+            audit_marker_retries=0,
+        )
+
+        self.assertFalse(decision.handled)
+        self.assertEqual("no_invalid_kind", decision.reason)
+
+    async def test_investigate_answer_with_implemented_in_text_is_not_treated_as_modify_completion_claim(self):
+        ui = SimpleNamespace(print_error=AsyncMock())
+        state = SimpleNamespace(
+            set_malformed_grace=MagicMock(),
+            forbid_next_action_fingerprint=MagicMock(),
+            last_completed_fingerprint=None,
+            active_intent=SimpleNamespace(intent_type="INVESTIGATE"),
+            state_machine=SimpleNamespace(task_kind="INSPECTION"),
+            current_turn_state_change_count=0,
+            last_completed_intent_type="",
+        )
+        agent = SimpleNamespace(
+            ui=ui,
+            state=state,
+            config=SimpleNamespace(MALFORMED_ACTION_GRACE_STEPS=2),
+            log=None,
+        )
+        prompt_builder = OrchestratorPromptBuilder(
+            SimpleNamespace(
+                state=state,
+                config=SimpleNamespace(),
+                memory_board_store=None,
+                log=None,
+            )
+        )
+        handler = ModelOutputRecoveryHandler(agent, prompt_builder)
+
+        decision = await handler.decide(
+            ParsedModelOutput(
+                response="Today tab is implemented in modules/ui/today.py. Bottom panel is implemented in modules/ui/bottom_panel.py.",
+                visible_text="Today tab is implemented in modules/ui/today.py. Bottom panel is implemented in modules/ui/bottom_panel.py.",
+                has_action_segment=False,
+            ),
+            malformed_action_retries=0,
+            audit_marker_retries=0,
+        )
+
+        self.assertFalse(decision.handled)
+        self.assertEqual("no_invalid_kind", decision.reason)
+
+    async def test_last_completed_modify_intent_still_enforces_unproven_completion_claim(self):
+        ui = SimpleNamespace(print_error=AsyncMock())
+        state = SimpleNamespace(
+            set_malformed_grace=MagicMock(),
+            forbid_next_action_fingerprint=MagicMock(),
+            last_completed_fingerprint=None,
+            active_intent=None,
+            state_machine=SimpleNamespace(task_kind="INSPECTION"),
+            current_turn_state_change_count=0,
+            last_completed_intent_type="MODIFY",
+        )
+        agent = SimpleNamespace(
+            ui=ui,
+            state=state,
+            config=SimpleNamespace(MALFORMED_ACTION_GRACE_STEPS=2),
+            log=None,
+        )
+        prompt_builder = OrchestratorPromptBuilder(
+            SimpleNamespace(
+                state=state,
+                config=SimpleNamespace(),
+                memory_board_store=None,
+                log=None,
+            )
+        )
+        handler = ModelOutputRecoveryHandler(agent, prompt_builder)
+
+        decision = await handler.decide(
+            ParsedModelOutput(
+                response="Done. I fixed the dialog wiring.",
+                visible_text="Done. I fixed the dialog wiring.",
+                has_action_segment=False,
+            ),
+            malformed_action_retries=0,
+            audit_marker_retries=0,
+        )
+
+        self.assertTrue(decision.handled)
+        self.assertEqual("modify_completion_claim_without_state_change_proof", decision.reason)
+
 
 class ForcePlaintextCompletionStateTests(unittest.TestCase):
     def test_start_turn_clears_force_plaintext_completion_on_active_intent(self):

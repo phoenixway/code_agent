@@ -125,7 +125,10 @@ class ActionDispatcher:
                     processed_segments.append(segment)
 
                 elif segment.type == "text":
-                    await self.ui.print_message(segment.content, role="assistant")
+                    # Do not render assistant text here.
+                    # User-facing assistant text is rendered later by the orchestration
+                    # dispatch/text pipeline after canonical sanitization. Rendering here
+                    # causes a raw first message and then a normalized duplicate later.
                     processed_segments.append(segment)
 
                 elif segment.type == "action":

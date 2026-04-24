@@ -59,7 +59,7 @@ class AgentState:
         self.current_task = None
         self.is_awaiting_model_selection = False
 
-        self.intent_runtime = IntentRuntime(config) if config is not None else None
+        self.intent_runtime = IntentRuntime(config, state=self) if config is not None else None
         self.defect_detector = DefectDetector(config) if config is not None else None
         self.last_defect_info = None
         self._pending_loop_stop_info = None
@@ -78,6 +78,30 @@ class AgentState:
         self.memory_tag_expected_next_step = False
         self.memory_tag_reason = ""
         self.memory_tag_expected_intent_id = ""
+        self.current_turn_state_change_count = 0
+        self.current_turn_state_change_tools = []
+        self.consecutive_nonproductive_thinking_count = 0
+        self.last_nonproductive_thinking_reason = ""
+        # FIXME:
+        # This is a secondary/fallback signal only. When an active accepted
+        # intent exists, downstream policy must prefer the active contract type
+        # over last_completed_intent_type.
+        self.last_completed_intent_type = ""
+        self.terminal_plaintext_completion_pending = False
+        self.terminal_plaintext_completion_text = ""
+        self.pending_finalize_after_terminal_plaintext_completion = False
+        self.pending_finalize_completion_reason = ""
+        self.pending_finalize_completion_source = ""
+        self.last_resumable_intent_id = ""
+        self.last_resumable_intent_type = ""
+        self.last_resumable_intent_goal = ""
+        self.last_resumable_intent_allowed_actions = []
+        self.last_resumable_intent_lineage_id = ""
+        self.last_resumable_intent_safe_steps_limit = 0
+        self.last_resumable_intent_retry_limit = 0
+        self.last_resumable_intent_completion_reason = ""
+        self.consecutive_nonproductive_thinking_count = 0
+        self.last_nonproductive_thinking_reason = ""
 
         # Critical: this must advance across real user turns.
         # Working-material protection/degradation depends on it.
@@ -137,9 +161,18 @@ class AgentState:
         self.memory_tag_expected_next_step = False
         self.memory_tag_reason = ""
         self.memory_tag_expected_intent_id = ""
+        self.current_turn_state_change_count = 0
+        self.current_turn_state_change_tools = []
+        # FIXME:
+        # This is a secondary/fallback signal only. When an active accepted
+        # intent exists, downstream policy must prefer the active contract type
+        # over last_completed_intent_type.
+        self.last_completed_intent_type = ""
 
         # Forced plain-text completion is a recovery latch for the previous
-        # turn. A fresh user turn must not inherit "no more tools" state.
+        # turn. A fresh user turn must not inherit an exhausted contract that
+        # should already have been closed by the canonical forced-completion path.
+        self.finalize_pending_forced_plaintext_completion_if_needed()
         if self.intent_runtime is not None and self.intent_runtime.active_intent is not None:
             self.intent_runtime.active_intent.force_plaintext_completion = False
             # Hard-limit overrun escalation is also turn-local. A fresh user
@@ -154,6 +187,58 @@ class AgentState:
 
         if self.defect_detector:
             self.defect_detector.reset()
+
+    def mark_pending_forced_plaintext_completion_close(self, reason: str = "forced_plaintext_completion", source: str = "") -> None:
+        self.pending_finalize_after_terminal_plaintext_completion = True
+        self.pending_finalize_completion_reason = str(reason or "forced_plaintext_completion").strip()
+        self.pending_finalize_completion_source = str(source or "").strip()
+
+    def clear_pending_forced_plaintext_completion_close(self) -> None:
+        self.pending_finalize_after_terminal_plaintext_completion = False
+        self.pending_finalize_completion_reason = ""
+        self.pending_finalize_completion_source = ""
+
+    def _capture_recent_resumable_intent_from_active(self, active_intent, completion_reason: str = "forced_plaintext_completion") -> None:
+        if active_intent is None:
+            return
+        self.last_resumable_intent_id = str(getattr(active_intent, "intent_id", "") or "")
+        self.last_resumable_intent_type = str(getattr(active_intent, "intent_type", "") or "")
+        self.last_resumable_intent_goal = str(getattr(active_intent, "goal", "") or "")
+        self.last_resumable_intent_allowed_actions = list(getattr(active_intent, "allowed_actions", []) or [])
+        self.last_resumable_intent_lineage_id = str(getattr(active_intent, "lineage_id", "") or getattr(active_intent, "intent_id", "") or "")
+        self.last_resumable_intent_safe_steps_limit = int(getattr(active_intent, "safe_steps_limit", 0) or 0)
+        self.last_resumable_intent_retry_limit = int(getattr(active_intent, "retry_limit", 0) or 0)
+        self.last_resumable_intent_completion_reason = str(completion_reason or "forced_plaintext_completion")
+        self.last_completed_intent_type = str(getattr(active_intent, "intent_type", "") or "").strip().upper()
+
+    def finalize_pending_forced_plaintext_completion_if_needed(self) -> bool:
+        if not bool(getattr(self, "pending_finalize_after_terminal_plaintext_completion", False)):
+            return False
+
+        active_intent = self.active_intent
+        completion_reason = str(getattr(self, "pending_finalize_completion_reason", "forced_plaintext_completion") or "forced_plaintext_completion")
+        if active_intent is not None:
+            self._capture_recent_resumable_intent_from_active(active_intent, completion_reason)
+
+        finalized = False
+        runtime = self.intent_runtime
+        if runtime is not None:
+            finalizer = getattr(runtime, "finalize_current_intent_completion", None)
+            if callable(finalizer):
+                try:
+                    finalized = bool(finalizer())
+                except Exception:
+                    finalized = False
+            if not finalized:
+                try:
+                    runtime.active_intent = None
+                    runtime.clear_requirement()
+                    finalized = True
+                except Exception:
+                    finalized = False
+
+        self.clear_pending_forced_plaintext_completion_close()
+        return finalized
 
     def note_intent_only_response(self):
         self.intent_only_response_count += 1
@@ -207,7 +292,11 @@ class AgentState:
     def attach_config(self, config):
         self._config = config
         if self.intent_runtime is None:
-            self.intent_runtime = IntentRuntime(config)
+            self.intent_runtime = IntentRuntime(config, state=self)
+        else:
+            self.intent_runtime.config = config
+            self.intent_runtime.state = self
+        
         if self.defect_detector is None:
             self.defect_detector = DefectDetector(config)
 
@@ -254,6 +343,19 @@ class AgentState:
         checker = getattr(self.intent_runtime, "can_continue_current_intent_after_failure", None)
         if callable(checker):
             return bool(checker())
+        return False
+
+    def has_exhausted_active_intent(self) -> bool:
+        runtime = self.intent_runtime
+        active = runtime.active_intent if runtime is not None else None
+        if active is None or runtime is None:
+            return False
+        checker = getattr(runtime, "can_soft_continue_after_step_limit", None)
+        if callable(checker):
+            try:
+                return not bool(checker()) and int(getattr(active, "step_count", 0) or 0) >= int(getattr(active, "safe_steps_limit", 0) or 0)
+            except Exception:
+                return False
         return False
 
     def apply_intent_contract(self, payload: dict, config, *, bypass_suspicion: bool = False) -> tuple[bool, str]:
@@ -440,6 +542,38 @@ class AgentState:
             self.consecutive_same_action_count = 1
         self.last_completed_fingerprint = fingerprint
 
+    def _result_confirms_state_change(self, command: dict, result: dict) -> bool:
+        cmd_type = str(command.get("type") or command.get("action") or "").strip().lower()
+        status = str(result.get("status") or "").strip().lower()
+        if status != "success":
+            return False
+
+        if cmd_type in {"create_file", "write_file", "edit_file", "replace"}:
+            return True
+
+        if cmd_type != "run_shell":
+            return False
+
+        evidence = " ".join(
+            str(result.get(key) or "")
+            for key in ("output", "stdout", "stdout_full")
+        ).lower()
+        if not evidence.strip():
+            return False
+        positive_markers = (
+            "changes applied",
+            "changed ",
+            "updated ",
+            "modified ",
+            "created ",
+            "deleted ",
+            "renamed ",
+            "wrote ",
+            "patched ",
+            "applied ",
+        )
+        return any(marker in evidence for marker in positive_markers)
+
     def record_action_result(self, command: dict, result: dict, config=None):
         if config is not None:
             self.attach_config(config)
@@ -455,9 +589,13 @@ class AgentState:
 
         self.update_loop_tracker(command, status)
         self.update_action_repetition(command)
+        state_change_confirmed = self._result_confirms_state_change(command, result)
         is_readonly = cmd_type in READ_ONLY_RECOVERY_ACTIONS or (cmd_type == "run_shell" and "command" in command)
         if is_readonly:
             self.readonly_steps_this_turn += 1
+        if state_change_confirmed:
+            self.current_turn_state_change_count += 1
+            self.current_turn_state_change_tools.append(cmd_type)
 
         if status in {"failed", "error"}:
             self.last_turn_had_failure = True

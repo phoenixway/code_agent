@@ -245,6 +245,22 @@ class MemoryBoardEngine:
         text = " ".join(text.split())
         return text
 
+    def _has_concrete_anchor(self, text: str) -> bool:
+        if re.search(r"\bline\s+\d+\b", text):
+            return True
+        if re.search(r"\b(lines?|ряд(ок|ки|ків))\s+\d+", text):
+            return True
+        if ".kt" in text or ".py" in text or ".java" in text:
+            return True
+        if "`" in text:
+            return True
+        concrete_words = (
+            "located", "found", "identified", "implementation", "function", "method",
+            "class", "composable", "symbol", "path", "chunk", "skeleton",
+            "line ", "ряд", "знайден", "виявлен", "локаліз", "реалізаці", "метод", "функц", "кнопк",
+        )
+        return any(word in text for word in concrete_words)
+
     def _looks_low_value(self, tag: ParsedMemoryTag) -> bool:
         text = tag.text.lower().strip()
 
@@ -264,21 +280,43 @@ class MemoryBoardEngine:
             "made progress",
             "did analysis",
         )
-        if any(text.startswith(prefix) for prefix in routine_prefixes):
+
+        if tag.kind != "progress":
+            if any(text.startswith(prefix) for prefix in routine_prefixes):
+                return True
+            return False
+
+        if self._has_concrete_anchor(text):
+            return False
+
+        generic_progress_starts = (
+            "continuing investigation",
+            "continuing work",
+            "proceeding to",
+            "starting investigation",
+            "executing ",
+            "reading ",
+            "searching ",
+            "examining ",
+            "looking for ",
+            "checking ",
+            "working on ",
+            "moving to ",
+        )
+        if any(text.startswith(prefix) for prefix in generic_progress_starts):
             return True
 
-        if tag.kind == "progress":
-            bad_fragments = (
-                "read file",
-                "read chunk",
-                "ran command",
-                "used search",
-                "listed files",
-                "continued investigating",
-                "continued working",
-            )
-            if any(fragment in text for fragment in bad_fragments):
-                return True
+        bad_fragments = (
+            "read file",
+            "read chunk",
+            "ran command",
+            "used search",
+            "listed files",
+            "continued investigating",
+            "continued working",
+        )
+        if any(fragment in text for fragment in bad_fragments) and not self._has_concrete_anchor(text):
+            return True
 
         return False
 
@@ -292,9 +330,6 @@ class MemoryBoardEngine:
         text = tag.text.lower()
 
         if normalized_scope == "project":
-            # Conservative downgrade rules:
-            # - ephemeral conversational guidance is session-scoped, not project-scoped
-            # - progress is never project-scoped
             if tag.kind in {"preference", "progress"}:
                 return "session"
             local_markers = (
@@ -313,7 +348,6 @@ class MemoryBoardEngine:
             return "intent"
 
         if normalized_scope == "intent" and tag.kind in {"preference"}:
-            # Preferences are usually broader than one intent.
             if "user" in text or "користувач" in text:
                 return "session"
 

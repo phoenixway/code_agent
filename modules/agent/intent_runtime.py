@@ -91,21 +91,26 @@ class IntentRuntime:
         "search_files",
         "read_file",
     )
-    SUPPORTED_MODES = {"activate", "retry", "replace", "complete"}
+    SUPPORTED_MODES = {"activate", "retry", "replace", "reuse", "complete"}
 
-    def __init__(self, config):
+    def __init__(self, config, state=None):
         self.config = config
+        self.state = state
         self.policy_engine = IntentPolicyEngine(config)
         self.active_intent: IntentContract | None = None
         self.intent_required_until_activated = False
         self.intent_required_reason = ""
         self.last_transition_info = {}
         self.last_apply_warning = ""
+        self.intent_predecessor_map: dict[str, str] = {}
+        self.intent_lineage_members: dict[str, list[str]] = {}
 
     def reset(self):
         self.active_intent = None
         self.intent_required_until_activated = False
         self.intent_required_reason = ""
+        self.intent_predecessor_map = {}
+        self.intent_lineage_members = {}
 
     def require_intent(self, reason: str):
         self.intent_required_until_activated = True
@@ -114,6 +119,52 @@ class IntentRuntime:
     def clear_requirement(self):
         self.intent_required_until_activated = False
         self.intent_required_reason = ""
+
+    def _register_lineage_member(self, lineage_id: str | None, intent_id: str | None, *, predecessor_intent_id: str | None = None) -> None:
+        lineage = str(lineage_id or "").strip()
+        intent = str(intent_id or "").strip()
+        predecessor = str(predecessor_intent_id or "").strip()
+        if not lineage or not intent:
+            return
+        members = list(self.intent_lineage_members.get(lineage, []) or [])
+        if predecessor and predecessor in members and intent not in members:
+            insert_at = members.index(predecessor) + 1
+            members.insert(insert_at, intent)
+        elif intent not in members:
+            members.append(intent)
+        self.intent_lineage_members[lineage] = members
+        if predecessor and predecessor != intent:
+            self.intent_predecessor_map[intent] = predecessor
+
+    def get_lineage_intent_ids(self, intent_id: str | None = None) -> list[str]:
+        target_intent_id = str(intent_id or getattr(self.active_intent, "intent_id", "") or "").strip()
+        if not target_intent_id:
+            return []
+        active = self.active_intent
+        if active is not None and target_intent_id == getattr(active, "intent_id", ""):
+            lineage_id = str(getattr(active, "lineage_id", "") or target_intent_id).strip()
+            members = [str(v).strip() for v in self.intent_lineage_members.get(lineage_id, []) if str(v).strip()]
+            if target_intent_id not in members:
+                members.append(target_intent_id)
+            return members
+
+        predecessor_chain: list[str] = [target_intent_id]
+        seen = {target_intent_id}
+        cursor = target_intent_id
+        while True:
+            prev = str(self.intent_predecessor_map.get(cursor) or "").strip()
+            if not prev or prev in seen:
+                break
+            predecessor_chain.insert(0, prev)
+            seen.add(prev)
+            cursor = prev
+        return predecessor_chain
+
+    def get_active_intent_lineage_ids(self) -> list[str]:
+        active = self.active_intent
+        if active is None:
+            return []
+        return self.get_lineage_intent_ids(getattr(active, "intent_id", None))
 
     def _normalize_goal(self, goal: str) -> str:
         goal = str(goal or "").lower().strip()
@@ -146,18 +197,29 @@ class IntentRuntime:
             return False
         outcome_markers = {
             "fix", "change", "update", "modify", "implement", "add", "allow", "support",
-            "plan", "resolve", "enable",
+            "plan", "resolve", "enable", "preserve", "maintain", "avoid", "keep",
             "виправити", "змінити", "оновити", "модифікувати", "реалізувати", "додати",
             "дозволити", "підтримати", "спланувати", "вирішити", "увімкнути",
+            "зберегти", "підтримувати", "уникнути", "не", "ламати",
         }
         reasoning_markers = {
             "understand", "determine", "why", "how", "behavior", "restriction", "implementation",
-            "goal", "dialog", "sorting", "editable",
+            "goal", "dialog", "sorting", "editable", "where", "whether", "identify", "minimal",
             "зрозуміти", "визначити", "чому", "як", "поведінку", "обмеження", "реалізацію",
-            "ціль", "діалог", "сортування", "редагований",
+            "ціль", "діалог", "сортування", "редагований", "де", "чи", "визначити", "мінімальну",
+        }
+        deliverable_markers = {
+            "support", "fallback", "compatible", "compatibility", "logic", "ui", "model", "serialization",
+            "resolver", "resolution", "sync", "settings", "workflow", "flow",
+            "підтримку", "фолбек", "сумісність", "логіку", "ui", "модель", "серіалізацію",
+            "резолюцію", "синхронізацію", "налаштувань", "воркфлоу", "потік",
         }
         tokens = set(normalized.split())
-        return bool(tokens & outcome_markers) or (bool(tokens & reasoning_markers) and len(tokens) >= 8)
+        return (
+            bool(tokens & outcome_markers)
+            or bool(tokens & deliverable_markers)
+            or (bool(tokens & reasoning_markers) and len(tokens) >= 8)
+        )
 
     def _looks_like_local_step_goal(self, goal: str) -> bool:
         normalized = self._normalize_goal(goal)
@@ -170,23 +232,28 @@ class IntentRuntime:
         }
         tokens = set(normalized.split())
         has_local_marker = bool(tokens & local_markers)
-        if len(tokens) <= 5 and has_local_marker:
+        if len(tokens) <= 4 and has_local_marker:
             return True
         bad_prefixes = (
             "inspect ", "read ", "find ", "locate ", "analyze ", "examine ", "search ",
             "прочитати ", "знайти ", "проаналізувати ", "дослідити ", "переглянути ",
         )
-        return normalized.startswith(bad_prefixes)
+        if not normalized.startswith(bad_prefixes):
+            return False
+        return not self._has_user_facing_outcome_shape(goal) and len(tokens) <= 8
 
     def _goal_has_meaningful_shape(self, goal: str) -> bool:
         normalized = self._normalize_goal(goal)
         if not normalized:
             return False
-        if len(normalized) < 24:
+        tokens = normalized.split()
+        if len(normalized) < 18 and len(tokens) < 4:
             return False
-        if self._looks_like_local_step_goal(goal) and not self._has_user_facing_outcome_shape(goal):
+        if self._looks_like_local_step_goal(goal):
             return False
-        return len(normalized.split()) >= 5
+        if len(tokens) >= 6:
+            return True
+        return self._has_user_facing_outcome_shape(goal)
 
     def _goal_core_loss(self, old_goal: str, new_goal: str) -> bool:
         old_tokens = set(self._goal_tokens(old_goal))
@@ -195,6 +262,72 @@ class IntentRuntime:
             return False
         overlap = len(old_tokens & new_tokens) / max(1, len(old_tokens))
         return overlap < 0.45 or self._looks_like_local_step_goal(new_goal)
+
+    def _lineage_matches_active_or_recent(self, lineage_id: str) -> bool:
+        lineage = str(lineage_id or "").strip()
+        if not lineage:
+            return False
+        active = self.active_intent
+        if active is not None and str(getattr(active, "lineage_id", "") or getattr(active, "intent_id", "")).strip() == lineage:
+            return True
+        recent_meta = self._recent_resumable_intent_meta()
+        if recent_meta and str(recent_meta.get("lineage_id") or "").strip() == lineage:
+            return True
+        return False
+
+    def _reuse_goal_compatible(
+        self,
+        requested_goal: str,
+        base_goal: str,
+        *,
+        same_intent_id: bool = False,
+        same_lineage: bool = False,
+    ) -> bool:
+        requested = str(requested_goal or "").strip()
+        base = str(base_goal or "").strip()
+        if not requested or not base:
+            return False
+
+        requested_norm = self._normalize_goal(requested)
+        base_norm = self._normalize_goal(base)
+
+        if not requested_norm or not base_norm:
+            return False
+
+        if requested_norm == base_norm:
+            return True
+
+        if self._looks_like_local_step_goal(requested):
+            return False
+
+        requested_tokens = set(self._goal_tokens(requested))
+        base_tokens = set(self._goal_tokens(base))
+        overlap = requested_tokens & base_tokens
+        similarity = self._goal_similarity(requested, base)
+
+        reuse_threshold = float(
+            getattr(self.config, "INTENT_REUSE_GOAL_SIMILARITY_THRESHOLD", 0.55)
+        )
+        relabel_threshold = float(
+            getattr(self.config, "INTENT_RELABEL_GOAL_SIMILARITY_THRESHOLD", 0.6)
+        )
+
+        if similarity >= reuse_threshold and not self._goal_core_loss(base, requested):
+            return True
+
+        if same_intent_id:
+            # For the exact same intent, allow minor wording refinement much more easily.
+            # Still block obvious drift into a tiny local step.
+            if overlap:
+                return True
+            return False
+
+        if same_lineage:
+            if overlap and not self._goal_core_loss(base, requested):
+                return True
+
+        return similarity >= relabel_threshold
+
 
     def _allowed_actions_overlap(self, a: list[str], b: list[str]) -> float:
         sa = set(a or [])
@@ -276,6 +409,8 @@ class IntentRuntime:
         reason = self._normalize_transition_reason(contract.switch_reason)
         if contract.mode == "retry":
             return True
+        if contract.mode == "reuse":
+            return True
         if contract.mode == "complete":
             return self._is_legitimate_completion_reason(contract.completion_reason)
         if contract.intent_type != active.intent_type:
@@ -288,6 +423,8 @@ class IntentRuntime:
         if contract.mode == "complete":
             return True
         if contract.mode == "retry":
+            return True
+        if contract.mode == "reuse":
             return True
         active = self.active_intent
         same_lineage = bool((transition_info or {}).get("same_lineage")) if transition_info is not None else self._same_lineage(contract)
@@ -431,6 +568,63 @@ class IntentRuntime:
                 merged[key] = value
         return merged
 
+    def _recent_resumable_intent_meta(self) -> dict:
+        state = getattr(self, "state", None)
+        if state is None:
+            return {}
+
+        intent_id = str(getattr(state, "last_resumable_intent_id", "") or "").strip()
+        intent_type = str(getattr(state, "last_resumable_intent_type", "") or "").strip().upper()
+        goal = str(getattr(state, "last_resumable_intent_goal", "") or "").strip()
+        lineage_id = str(getattr(state, "last_resumable_intent_lineage_id", "") or "").strip()
+
+        completion_reason = str(
+            getattr(state, "last_resumable_intent_completion_reason", "")
+            or getattr(state, "last_resumable_completion_reason", "")
+            or ""
+        ).strip()
+
+        allowed_actions = list(getattr(state, "last_resumable_intent_allowed_actions", []) or [])
+        safe_steps_limit = int(getattr(state, "last_resumable_intent_safe_steps_limit", 0) or 0)
+        retry_limit = int(getattr(state, "last_resumable_intent_retry_limit", 0) or 0)
+
+        if not intent_id:
+            return {}
+
+        return {
+            "intent_id": intent_id,
+            "intent_type": intent_type,
+            "goal": goal,
+            "lineage_id": lineage_id,
+            "completion_reason": completion_reason,
+            "allowed_actions": allowed_actions,
+            "safe_steps_limit": safe_steps_limit,
+            "retry_limit": retry_limit,
+        }
+
+
+    def _can_reuse_recently_completed_intent(self) -> bool:
+        meta = self._recent_resumable_intent_meta()
+        if not meta:
+            return False
+
+        if not str(meta.get("intent_id") or "").strip():
+            return False
+        if not str(meta.get("intent_type") or "").strip():
+            return False
+        if not str(meta.get("goal") or "").strip():
+            return False
+
+        completion_reason = str(meta.get("completion_reason") or "").strip()
+        return completion_reason in {
+            "forced_plaintext_completion",
+            "forced_plaintext_completion_after_hard_limit",
+            "user_stopped_after_hard_limit_answer_from_current_evidence",
+            "strategy_exhausted_answer_from_current_evidence",
+            "repeating_no_progress_answer_from_current_evidence",
+            "defect_same_action_repeat_answer_from_current_evidence",
+        }
+
     def inspect_transition(self, payload: dict) -> tuple[IntentContract | None, dict | None, str | None]:
         contract, error = self.validate_payload(payload)
         if error:
@@ -497,7 +691,7 @@ class IntentRuntime:
                 intent_type=active.intent_type,
                 goal=active.goal,
                 allowed_actions=active.allowed_actions[:],
-                original_allowed_actions=active.original_allowed_actions[:] if active.original_allowed_actions else active.allowed_actions[:],
+                original_allowed_actions=(active.original_allowed_actions[:] if active.original_allowed_actions else active.allowed_actions[:]),
                 safe_steps_limit=active.safe_steps_limit,
                 retry_limit=active.retry_limit,
                 mode="complete",
@@ -517,6 +711,89 @@ class IntentRuntime:
                 blocked_action_reasons=dict(active.blocked_action_reasons or {}),
                 canonical_goal=active.canonical_goal or active.goal,
                 goal_frozen=active.goal_frozen,
+            ), None
+
+        if mode == "reuse":
+            recent_meta = self._recent_resumable_intent_meta() if active is None else {}
+            if active is None and not self._can_reuse_recently_completed_intent():
+                return None, "intent_reuse_without_active_intent"
+            if not intent_id:
+                intent_id = active.intent_id if active is not None else str(recent_meta.get("intent_id") or "")
+            expected_id = active.intent_id if active is not None else str(recent_meta.get("intent_id") or "")
+            if intent_id != expected_id:
+                return None, "intent_reuse_wrong_active_id"
+
+            requested_steps_raw = payload.get("requested_steps", payload.get("extra_steps"))
+            try:
+                requested_steps = int(requested_steps_raw if requested_steps_raw is not None else getattr(self.config, "INTENT_REUSE_EXTENSION_STEPS", 4))
+            except Exception:
+                return None, "intent_reuse_requested_steps_invalid"
+            requested_steps = max(1, min(requested_steps, int(getattr(self.config, "INTENT_MAX_SAFE_STEPS", 8))))
+
+            switch_reason = self._normalize_transition_reason(payload.get("switch_reason") or "current_intent_exhausted")
+            switch_explanation = str(payload.get("switch_explanation") or "").strip()
+            if switch_reason not in {"current_intent_exhausted", "current_intent_completed", "current_intent_no_longer_fits"}:
+                return None, "intent_reuse_switch_reason_invalid"
+
+            base_goal = active.goal if active is not None else str(recent_meta.get("goal") or "")
+            requested_goal = str(payload.get("goal") or base_goal).strip() or base_goal
+            active_lineage_id = str(getattr(active, "lineage_id", "") or getattr(active, "intent_id", "")).strip() if active is not None else str(recent_meta.get("lineage_id") or expected_id)
+            payload_lineage_id = str(payload.get("lineage_id") or "").strip()
+            same_lineage_hint = bool(active_lineage_id and payload_lineage_id and payload_lineage_id == active_lineage_id)
+            same_intent_id = bool(expected_id and intent_id == expected_id)
+            if not self._reuse_goal_compatible(
+                requested_goal,
+                base_goal,
+                same_intent_id=same_intent_id,
+                same_lineage=same_lineage_hint,
+            ):
+                return None, "intent_reuse_goal_mismatch"
+
+            base_type = active.intent_type if active is not None else str(recent_meta.get("intent_type") or "")
+            requested_type = str(payload.get("intent_type") or base_type).strip().upper() or base_type
+            if requested_type != base_type:
+                return None, "intent_reuse_type_mismatch"
+
+            requested_actions = payload.get("allowed_actions")
+            if requested_actions is None:
+                allowed_actions = active.allowed_actions[:] if active is not None else list(recent_meta.get("allowed_actions") or [])
+            else:
+                if not isinstance(requested_actions, list) or not requested_actions:
+                    return None, "intent_allowed_actions_required"
+                allowed_actions = []
+                for item in requested_actions:
+                    action = str(item or "").strip()
+                    if action in KNOWN_TOOL_ACTIONS and action not in allowed_actions:
+                        allowed_actions.append(action)
+                allowed_actions = self._normalize_allowed_actions_for_intent_type(requested_type, allowed_actions)
+                if not allowed_actions:
+                    return None, "intent_allowed_actions_empty"
+
+            return IntentContract(
+                intent_id=expected_id,
+                intent_type=base_type,
+                goal=requested_goal,
+                canonical_goal=(active.canonical_goal or active.goal) if active is not None else base_goal,
+                goal_frozen=True,
+                allowed_actions=allowed_actions[:],
+                original_allowed_actions=(active.original_allowed_actions[:] if active is not None and active.original_allowed_actions else (active.allowed_actions[:] if active is not None else list(recent_meta.get("allowed_actions") or []))),
+                safe_steps_limit=active.safe_steps_limit if active is not None else int(recent_meta.get("safe_steps_limit") or getattr(self.config, "INTENT_DEFAULT_SAFE_STEPS", 4)),
+                retry_limit=active.retry_limit if active is not None else int(recent_meta.get("retry_limit") or getattr(self.config, "INTENT_DEFAULT_RETRY_LIMIT", 2)),
+                mode="reuse",
+                switch_reason=switch_reason,
+                switch_explanation=switch_explanation[:240],
+                lineage_id=(active.lineage_id or active.intent_id) if active is not None else str(recent_meta.get("lineage_id") or expected_id),
+                user_visible_note=str(payload.get("user_visible_note") or (active.user_visible_note if active is not None else "") or "")[:240],
+                step_count=active.step_count if active is not None else 0,
+                retry_count=active.retry_count if active is not None else 0,
+                hard_limit_hit_count=active.hard_limit_hit_count if active is not None else 0,
+                user_step_extension=requested_steps,
+                user_one_shot_steps_remaining=active.user_one_shot_steps_remaining if active is not None else 0,
+                user_unlimited_override=active.user_unlimited_override if active is not None else False,
+                force_plaintext_completion=False,
+                action_constraints=dict(active.action_constraints or {}) if active is not None else {},
+                blocked_action_signatures=set(active.blocked_action_signatures or set()) if active is not None else set(),
+                blocked_action_reasons=dict(active.blocked_action_reasons or {}) if active is not None else {},
             ), None
 
         intent_type = str(payload.get("intent_type") or "").strip().upper()
@@ -605,6 +882,52 @@ class IntentRuntime:
         active = self.active_intent
         same_lineage = bool((info or {}).get("same_lineage"))
 
+        if contract.mode == "reuse":
+            grant = max(1, int(contract.user_step_extension or getattr(self.config, "INTENT_REUSE_EXTENSION_STEPS", 4)))
+            if active is None:
+                if not self._can_reuse_recently_completed_intent():
+                    return False, "intent_reuse_without_active_intent"
+                self.active_intent = contract
+                self.active_intent.user_step_extension = grant
+                self.active_intent.hard_limit_hit_count = 0
+                self.active_intent.force_plaintext_completion = False
+                self.clear_requirement()
+                try:
+                    if getattr(self, "state", None) is not None:
+                        setattr(self.state, "last_resumable_intent_completion_reason", "")
+                        setattr(self.state, "last_resumable_completion_reason", "")
+                except Exception:
+                    pass
+                self.last_transition_info = {
+                    "transition": "intent_reused_with_step_refresh",
+                    "same_lineage": True,
+                    "switch_reason": contract.switch_reason,
+                    "granted_steps": grant,
+                    "policy_message_key": decision.message_key,
+                    "lineage_id": contract.lineage_id or contract.intent_id,
+                }
+                return True, "intent_reused_with_step_refresh"
+            if contract.intent_id != active.intent_id:
+                return False, "intent_reuse_wrong_active_id"
+            active.user_step_extension += grant
+            active.hard_limit_hit_count = 0
+            active.force_plaintext_completion = False
+            active.switch_reason = contract.switch_reason
+            active.switch_explanation = contract.switch_explanation
+            active.user_visible_note = contract.user_visible_note or active.user_visible_note
+            active.allowed_actions = contract.allowed_actions[:] or active.allowed_actions[:]
+            active.original_allowed_actions = contract.original_allowed_actions[:] if contract.original_allowed_actions else (active.original_allowed_actions[:] if active.original_allowed_actions else active.allowed_actions[:])
+            self.clear_requirement()
+            self.last_transition_info = {
+                "transition": "intent_reused_with_step_refresh",
+                "same_lineage": True,
+                "switch_reason": contract.switch_reason,
+                "granted_steps": grant,
+                "policy_message_key": decision.message_key,
+                "lineage_id": active.lineage_id or active.intent_id,
+            }
+            return True, "intent_reused_with_step_refresh"
+
         if contract.mode == "complete":
             if active is None:
                 return False, "intent_complete_without_active_intent"
@@ -671,6 +994,7 @@ class IntentRuntime:
 
         if contract.mode == "replace" or active is None or contract.intent_id != getattr(active, "intent_id", ""):
             if active is not None and same_lineage:
+                predecessor_intent_id = active.intent_id
                 contract.lineage_id = active.lineage_id or active.intent_id
                 contract.retry_count = min(active.retry_count, contract.retry_limit)
                 contract.hard_limit_hit_count = active.hard_limit_hit_count
@@ -691,6 +1015,8 @@ class IntentRuntime:
                     "same_lineage": True,
                     "switch_reason": contract.switch_reason,
                     "policy_message_key": decision.message_key,
+                    "predecessor_intent_id": predecessor_intent_id,
+                    "lineage_id": contract.lineage_id,
                 }
             else:
                 contract.lineage_id = contract.intent_id
@@ -700,8 +1026,14 @@ class IntentRuntime:
                     "same_lineage": False,
                     "switch_reason": contract.switch_reason,
                     "policy_message_key": decision.message_key,
+                    "lineage_id": contract.lineage_id,
                 }
             self.active_intent = contract
+            self._register_lineage_member(
+                contract.lineage_id or contract.intent_id,
+                contract.intent_id,
+                predecessor_intent_id=self.last_transition_info.get("predecessor_intent_id", ""),
+            )
             self.clear_requirement()
             return True, self.last_transition_info["transition"]
 
@@ -730,7 +1062,9 @@ class IntentRuntime:
             "same_lineage": same_lineage,
             "switch_reason": contract.switch_reason,
             "policy_message_key": decision.message_key,
+            "lineage_id": contract.lineage_id,
         }
+        self._register_lineage_member(contract.lineage_id or contract.intent_id, contract.intent_id)
         return True, "intent_refreshed"
 
     def _apply_allowed_action_updates(self, normalized: dict) -> None:
@@ -848,6 +1182,14 @@ class IntentRuntime:
         self.active_intent.user_unlimited_override = True
         self.active_intent.hard_limit_hit_count = 0
         self.active_intent.force_plaintext_completion = False
+        return True
+
+    def finalize_current_intent_completion(self) -> bool:
+        if self.active_intent is None:
+            self.clear_requirement()
+            return False
+        self.active_intent = None
+        self.clear_requirement()
         return True
 
     def force_current_intent_completion(self) -> bool:
@@ -1071,8 +1413,9 @@ class IntentRuntime:
         if constraints.get("reuse_current_intent"):
             constraint_bits.append("reuse_current_intent=true")
         constraints_summary = (", constraints=" + ";".join(constraint_bits)) if constraint_bits else ""
+        effective_limit = int(i.safe_steps_limit) + max(0, int(i.user_step_extension or 0))
         return (
             f"intent_id={i.intent_id}, type={i.intent_type}, "
-            f"steps={i.step_count}/{i.safe_steps_limit}, retries={i.retry_count}/{i.retry_limit}, "
+            f"steps={i.step_count}/{effective_limit}, retries={i.retry_count}/{i.retry_limit}, "
             f"allowed={','.join(i.allowed_actions)}{constraints_summary}"
         )

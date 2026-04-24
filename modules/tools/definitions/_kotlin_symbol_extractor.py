@@ -16,6 +16,7 @@ class KotlinSymbolExtractor:
         "function",
         "composable",
         "class",
+        "enum",
         "object",
         "interface",
         "method",
@@ -23,6 +24,7 @@ class KotlinSymbolExtractor:
     }
     OWNER_NODE_TYPES = {
         "class_declaration",
+        "enum_class_declaration",
         "object_declaration",
         "interface_declaration",
     }
@@ -31,6 +33,14 @@ class KotlinSymbolExtractor:
         "function_body",
         "enum_class_body",
         "initializer",
+    }
+    SYMBOL_NODE_TYPES = {
+        "function_declaration",
+        "class_declaration",
+        "enum_class_declaration",
+        "object_declaration",
+        "interface_declaration",
+        "property_declaration",
     }
 
     def __init__(self):
@@ -268,6 +278,8 @@ class KotlinSymbolExtractor:
             "property_declaration": "property",
             "val": "property",
             "var": "property",
+            "enum_class": "enum",
+            "enumclass": "enum",
         }
         return aliases.get(value, value)
 
@@ -294,6 +306,8 @@ class KotlinSymbolExtractor:
             return info["node_type"] == "function_declaration"
         if requested_kind == "method":
             return info["node_type"] == "function_declaration" and bool(info["owner_name"])
+        if requested_kind == "enum":
+            return info["kind"] == "enum"
         return info["kind"] == requested_kind
 
     def _build_symbol_info(
@@ -304,13 +318,7 @@ class KotlinSymbolExtractor:
         include_body: bool,
         include_signature: bool,
     ) -> dict[str, Any] | None:
-        if node.type not in {
-            "function_declaration",
-            "class_declaration",
-            "object_declaration",
-            "interface_declaration",
-            "property_declaration",
-        }:
+        if node.type not in self.SYMBOL_NODE_TYPES:
             return None
 
         declaration_start = self._expanded_declaration_start_byte(node, content)
@@ -331,7 +339,8 @@ class KotlinSymbolExtractor:
         owner_chain = self._find_owner_chain(node, content_bytes)
         owner_name = owner_chain[0] if owner_chain else None
         has_composable = self._is_composable_signature(signature)
-        kind = self._resolved_symbol_kind(node.type, owner_name, has_composable)
+        is_enum = self._is_enum_declaration(node.type, signature)
+        kind = self._resolved_symbol_kind(node.type, owner_name, has_composable, is_enum)
 
         start_line, start_col = self._line_col_from_offset(content, declaration_start)
         end_line = node.end_point[0] + 1
@@ -352,6 +361,7 @@ class KotlinSymbolExtractor:
             "owner_name": owner_name,
             "owner_chain": owner_chain,
             "is_composable": has_composable,
+            "is_enum": is_enum,
             "signature": signature,
             "body": body,
             "selected_text": selected_text,
@@ -376,13 +386,21 @@ class KotlinSymbolExtractor:
             return body or full_source
         return signature
 
-    def _resolved_symbol_kind(self, node_type: str, owner_name: str | None, has_composable: bool) -> str:
+    def _resolved_symbol_kind(
+        self,
+        node_type: str,
+        owner_name: str | None,
+        has_composable: bool,
+        is_enum: bool,
+    ) -> str:
         if node_type == "function_declaration":
             if has_composable:
                 return "composable"
             if owner_name:
                 return "method"
             return "function"
+        if is_enum:
+            return "enum"
         if node_type == "class_declaration":
             return "class"
         if node_type == "object_declaration":
@@ -390,6 +408,12 @@ class KotlinSymbolExtractor:
         if node_type == "interface_declaration":
             return "interface"
         return "property"
+
+    def _is_enum_declaration(self, node_type: str, signature: str) -> bool:
+        if node_type == "enum_class_declaration":
+            return True
+        compact = " ".join(signature.split())
+        return bool(re.search(r"\benum\s+class\b", compact))
 
     def _expanded_declaration_start_byte(self, node, content: str) -> int:
         start_line = node.start_point[0]
@@ -540,17 +564,30 @@ class KotlinSymbolExtractor:
         compact = " ".join(source.split())
         patterns = {
             "class_declaration": r"\bclass\s+(`[^`]+`|[A-Za-z_][A-Za-z0-9_]*)",
+            "enum_class_declaration": r"\benum\s+class\s+(`[^`]+`|[A-Za-z_][A-Za-z0-9_]*)",
             "object_declaration": r"\bobject\s+(`[^`]+`|[A-Za-z_][A-Za-z0-9_]*)",
             "interface_declaration": r"\binterface\s+(`[^`]+`|[A-Za-z_][A-Za-z0-9_]*)",
         }
+
         pattern = patterns.get(node_type)
-        if not pattern:
-            return None
-        match = re.search(pattern, compact)
-        if not match:
-            return None
-        raw_name = match.group(1)
-        return raw_name[1:-1] if raw_name.startswith("`") and raw_name.endswith("`") else raw_name
+        if pattern:
+            match = re.search(pattern, compact)
+            if match:
+                raw_name = match.group(1)
+                return raw_name[1:-1] if raw_name.startswith("`") and raw_name.endswith("`") else raw_name
+
+        fallback_patterns = [
+            r"\benum\s+class\s+(`[^`]+`|[A-Za-z_][A-Za-z0-9_]*)",
+            r"\bclass\s+(`[^`]+`|[A-Za-z_][A-Za-z0-9_]*)",
+            r"\bobject\s+(`[^`]+`|[A-Za-z_][A-Za-z0-9_]*)",
+            r"\binterface\s+(`[^`]+`|[A-Za-z_][A-Za-z0-9_]*)",
+        ]
+        for fallback in fallback_patterns:
+            match = re.search(fallback, compact)
+            if match:
+                raw_name = match.group(1)
+                return raw_name[1:-1] if raw_name.startswith("`") and raw_name.endswith("`") else raw_name
+        return None
 
     def _is_composable_signature(self, signature: str) -> bool:
         compact = " ".join(signature.split())

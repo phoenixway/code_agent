@@ -9,9 +9,9 @@ from ._kotlin_symbol_extractor import KotlinSymbolExtractor
 class ExtractSymbolTool(BaseTool):
     name = "extract_symbol"
     description = (
-        "Extracts a Kotlin symbol using tree-sitter. Supports function, composable, class, object, "
+        "Extracts a Kotlin symbol using tree-sitter. Supports function, composable, class, enum, object, "
         "interface, method, and property. Params: 'path' (str), 'symbol_name' (str), optional "
-        "'symbol_kind' (str: auto|function|composable|class|object|interface|method|property), "
+        "'symbol_kind' (str: auto|function|composable|class|enum|object|interface|method|property), "
         "'container_name' (str), 'occurrence' (int, default 1), 'include_signature' (bool, default True), "
         "'include_body' (bool, default True), and 'include_line_range' (bool, default True). "
         "Returns symbol kind, signature, optional body, and precise line range."

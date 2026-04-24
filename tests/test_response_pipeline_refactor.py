@@ -252,12 +252,18 @@ class ResponsePipelineRefactorIntegrationTests(unittest.IsolatedAsyncioTestCase)
 
     async def test_memory_checkpoint_and_action_resets_nonproductive_thinking(self):
         state = self._state(consecutive_nonproductive_thinking_count=2)
-        pipeline, state, _ui = self._make_pipeline(state=state, memory_board_stage=MemoryCheckpointAndActionStage())
+        pipeline, state, _ui = self._make_pipeline(
+            state=state,
+            memory_board_stage=MemoryCheckpointAndActionStage(),
+        )
 
-        result = await pipeline.run_step(self._ctx(), self._step("<think>one two three four five</think><action>{}</action>"))
+        result = await pipeline.run_step(
+            self._ctx(),
+            self._step("<think>one two three four five</think><action>{}</action>"),
+        )
 
-        self.assertTrue(result.continue_loop)
-        self.assertEqual("memory_checkpoint_and_action", result.reason)
+        self.assertFalse(result.continue_loop)
+        self.assertEqual("dispatch_ready", result.reason)
         self.assertEqual(0, state.consecutive_nonproductive_thinking_count)
 
     async def test_repeated_thinking_without_valid_output_triggers_on_second_turn(self):

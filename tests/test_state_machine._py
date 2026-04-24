@@ -1,7 +1,7 @@
 import unittest
 from types import SimpleNamespace
 
-from modules.agent.state_machine import AgentStateMachine, DecisionType
+from modules.agent.state_machine import AgentStateMachine, DecisionType, TaskKind
 
 
 class TestStateMachine(unittest.TestCase):
@@ -42,6 +42,11 @@ class TestStateMachine(unittest.TestCase):
 
         decision = self.sm.decide()
         self.assertEqual(decision.decision, DecisionType.CONTINUE)
+
+    def test_where_implemented_question_is_classified_as_inspection(self):
+        self.sm.start_turn("де реалізовано today tab і bottom panel?")
+
+        self.assertEqual(self.sm.task_kind, TaskKind.INSPECTION)
 
     def test_new_path_resets_stagnation(self):
         self.sm.start_turn("fix UI bug")

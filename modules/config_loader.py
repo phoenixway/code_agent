@@ -8,10 +8,11 @@ CONFIG_FILE = CONFIG_DIR / "config.yaml"
 ENV_FILE = CONFIG_DIR / ".env"
 log = logging.getLogger(__name__)
 
+
 def load_settings():
     if not CONFIG_DIR.exists():
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    
+
     if not CONFIG_FILE.exists():
         default = {
             "default_model": "gemini-1.5-pro",
@@ -21,7 +22,8 @@ def load_settings():
                 "claude-3-opus-20240229",
                 "gpt-4"
             ],
-            "permission_policy": "ask", 
+            "ollama_base_url": "http://127.0.0.1:11434",
+            "permission_policy": "ask",
             "max_history_tokens": 4000,
             "history_size": "small",
             "autosummarize_requires_confirmation": False,
@@ -42,17 +44,18 @@ def load_settings():
             "planner_max_visible_steps": 4,
             "planner_always_missing_retry_limit": 2
         }
-        with open(CONFIG_FILE, 'w') as f:
-            yaml.dump(default, f)
-            
+        with open(CONFIG_FILE, "w") as f:
+            yaml.dump(default, f, default_flow_style=False)
+
     if ENV_FILE.exists():
         load_dotenv(ENV_FILE)
-        
-    with open(CONFIG_FILE, 'r') as f:
+
+    with open(CONFIG_FILE, "r") as f:
         settings = yaml.safe_load(f) or {}
-        
-    # Migration: rename context_size to history_size if it exists
+
     changed = False
+
+    # Migration: rename context_size -> history_size
     if "context_size" in settings and "history_size" not in settings:
         settings["history_size"] = settings.pop("context_size")
         changed = True
@@ -78,25 +81,47 @@ def load_settings():
         "planner_max_step_title_chars": 160,
         "planner_max_step_notes_chars": 240,
         "planner_always_missing_retry_limit": 2,
+        "ollama_base_url": "http://127.0.0.1:11434",
     }
+
     for key, value in runtime_defaults.items():
         if key not in settings:
             settings[key] = value
             changed = True
             log.info(f"Config migration: added missing '{key}' with default value.")
 
+    # Normalize ollama_base_url for backward compatibility:
+    # allow users to mistakenly store full endpoint ".../api/chat"
+    raw_ollama_url = str(settings.get("ollama_base_url", "http://127.0.0.1:11434")).strip()
+    normalized_ollama_url = raw_ollama_url.rstrip("/")
+    if normalized_ollama_url.endswith("/api/chat"):
+        normalized_ollama_url = normalized_ollama_url[:-9].rstrip("/")
+
+    if settings.get("ollama_base_url") != normalized_ollama_url:
+        settings["ollama_base_url"] = normalized_ollama_url
+        changed = True
+        log.info("Config migration: normalized 'ollama_base_url' to base host URL without '/api/chat'.")
+
     if changed:
-        with open(CONFIG_FILE, 'w') as f:
+        with open(CONFIG_FILE, "w") as f:
             yaml.dump(settings, f, default_flow_style=False)
-            
+
     return settings
+
 
 def update_settings(updates: dict):
     """Updates the config.yaml file with the provided dictionary."""
     current_settings = load_settings()
     current_settings.update(updates)
-    
-    with open(CONFIG_FILE, 'w') as f:
+
+    # Keep ollama_base_url normalized on update as well
+    if "ollama_base_url" in current_settings:
+        raw_ollama_url = str(current_settings["ollama_base_url"]).strip().rstrip("/")
+        if raw_ollama_url.endswith("/api/chat"):
+            raw_ollama_url = raw_ollama_url[:-9].rstrip("/")
+        current_settings["ollama_base_url"] = raw_ollama_url
+
+    with open(CONFIG_FILE, "w") as f:
         yaml.dump(current_settings, f, default_flow_style=False)
-    
+
     return current_settings

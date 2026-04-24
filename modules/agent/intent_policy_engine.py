@@ -32,12 +32,18 @@ class IntentPolicyEngine:
 
     def __init__(self, config: Any):
         self.config = config
-        from modules.logger import get_debug_logger
-        self.log = get_debug_logger()
+        try:
+            from modules.logger import get_debug_logger
+            self.log = get_debug_logger()
+        except Exception:
+            self.log = logging.getLogger("intent_policy")
+
     def _normalize_goal(self, goal: str) -> str:
         goal = str(goal or "").lower().strip()
+        goal = re.sub(r"([a-zа-яіїє0-9])['’]s\\b", r"\\1s", goal)
+        goal = re.sub(r"['’]", "", goal)
         goal = re.sub(r"[^a-zа-яіїє0-9]+", " ", goal)
-        return re.sub(r"\s+", " ", goal).strip()
+        return re.sub(r"\\s+", " ", goal).strip()
 
     def _goal_tokens(self, goal: str) -> list[str]:
         return [t for t in self._normalize_goal(goal).split() if t]
@@ -56,6 +62,21 @@ class IntentPolicyEngine:
             return 0.0
         return len(sa & sb) / max(1, len(sa | sb))
 
+    def _has_user_facing_outcome_shape(self, goal: str) -> bool:
+        normalized = self._normalize_goal(goal)
+        if not normalized:
+            return False
+        tokens = set(normalized.split())
+        markers = {
+            "fix", "change", "update", "modify", "implement", "add", "allow", "support",
+            "resolve", "enable", "preserve", "maintain", "fallback", "logic", "ui", "model", "serialization",
+            "understand", "determine", "why", "how", "behavior", "implementation", "where", "whether", "identify", "minimal",
+            "виправити", "змінити", "оновити", "модифікувати", "реалізувати", "додати",
+            "дозволити", "підтримати", "вирішити", "увімкнути", "зберегти", "фолбек", "логіку", "модель", "серіалізацію",
+            "зрозуміти", "визначити", "чому", "як", "поведінку", "реалізацію", "де", "чи",
+        }
+        return bool(tokens & markers) or len(tokens) >= 8
+
     def _looks_like_local_step_goal(self, goal: str) -> bool:
         normalized = self._normalize_goal(goal)
         if not normalized:
@@ -67,13 +88,15 @@ class IntentPolicyEngine:
         }
         tokens = set(normalized.split())
         has_local_marker = bool(tokens & local_markers)
-        if len(tokens) <= 5 and has_local_marker:
+        if len(tokens) <= 4 and has_local_marker:
             return True
         bad_prefixes = (
             "inspect ", "read ", "find ", "locate ", "analyze ", "examine ", "search ",
             "прочитати ", "знайти ", "проаналізувати ", "дослідити ", "переглянути ",
         )
-        return normalized.startswith(bad_prefixes)
+        if not normalized.startswith(bad_prefixes):
+            return False
+        return not self._has_user_facing_outcome_shape(goal) and len(tokens) <= 8
 
     def _goal_core_loss(self, old_goal: str, new_goal: str) -> bool:
         old_tokens = set(self._goal_tokens(old_goal))
@@ -106,7 +129,6 @@ class IntentPolicyEngine:
             goal_sim >= float(getattr(self.config, "INTENT_RELABEL_GOAL_SIMILARITY_THRESHOLD", 0.6))
             and actions_overlap >= float(getattr(self.config, "INTENT_RELABEL_ACTION_OVERLAP_THRESHOLD", 0.6))
         )
-
 
     def _decision_log_payload(
         self,
@@ -183,7 +205,69 @@ class IntentPolicyEngine:
 
         active_goal = getattr(active, "canonical_goal", "") or getattr(active, "goal", "")
         proposed_goal = getattr(proposed, "goal", "")
-        if self._normalize_goal(active_goal) == self._normalize_goal(proposed_goal):
+
+        active_id = str(getattr(active, "intent_id", "") or "").strip()
+        proposed_id = str(getattr(proposed, "intent_id", "") or "").strip()
+
+        active_actions = list(getattr(active, "allowed_actions", []) or [])
+        proposed_actions = list(getattr(proposed, "allowed_actions", []) or [])
+
+        normalized_same_goal = self._normalize_goal(active_goal) == self._normalize_goal(proposed_goal)
+        goal_similarity = self._goal_similarity(active_goal, proposed_goal)
+        actions_overlap = self._allowed_actions_overlap(active_actions, proposed_actions)
+
+        # Same ID + same/equivalent user-facing goal is not drift.
+        # This protects against punctuation/case/apostrophe/formatting noise:
+        # e.g. "today's" vs "todays", punctuation-only rewrites, or harmless
+        # normalization changes.
+        if active_id == proposed_id:
+            if normalized_same_goal:
+                return None
+
+            if (
+                goal_similarity >= float(getattr(self.config, "INTENT_RELABEL_GOAL_SIMILARITY_THRESHOLD", 0.6))
+                and actions_overlap >= float(getattr(self.config, "INTENT_RELABEL_ACTION_OVERLAP_THRESHOLD", 0.6))
+                and not self._looks_like_local_step_goal(proposed_goal)
+            ):
+                return None
+
+        if getattr(proposed, "mode", "") == "reuse":
+            if self._looks_like_local_step_goal(proposed_goal):
+                decision = IntentPolicyDecision(
+                    allowed=False,
+                    reason="intent_reuse_goal_became_local_step",
+                    error_code="INTENT_REUSE_GOAL_BECAME_LOCAL_STEP",
+                    message_key="intent_reuse_goal_became_local_step",
+                    keep_current_intent=True,
+                    preserve_goal=True,
+                    preserve_intent_id=True,
+                    next_actions=list(getattr(active, "allowed_actions", []) or []),
+                    metadata={"old_goal": active_goal, "new_goal": proposed_goal},
+                )
+                self._log_decision(stage="goal_change", decision=decision, ctx=ctx)
+                return decision
+
+            if self._goal_core_loss(active_goal, proposed_goal):
+                decision = IntentPolicyDecision(
+                    allowed=False,
+                    reason="suspect_intent_goal_drift",
+                    error_code="SUSPECT_INTENT_GOAL_DRIFT",
+                    message_key="suspect_intent_goal_drift",
+                    keep_current_intent=True,
+                    preserve_goal=True,
+                    preserve_intent_id=True,
+                    allow_user_handoff=True,
+                    allow_once_via_state_method="allow_pending_goal_drift_once",
+                    next_actions=list(getattr(active, "allowed_actions", []) or []),
+                    metadata={
+                        "old_goal": active_goal,
+                        "new_goal": proposed_goal,
+                        "goal_similarity": goal_similarity,
+                    },
+                )
+                self._log_decision(stage="goal_change", decision=decision, ctx=ctx)
+                return decision
+
             return None
 
         if getattr(proposed, "mode", "") == "retry":
@@ -216,7 +300,7 @@ class IntentPolicyEngine:
                 metadata={
                     "old_goal": active_goal,
                     "new_goal": proposed_goal,
-                    "goal_similarity": self._goal_similarity(active_goal, proposed_goal),
+                    "goal_similarity": goal_similarity,
                 },
             )
             self._log_decision(stage="goal_change", decision=decision, ctx=ctx)
@@ -262,16 +346,78 @@ class IntentPolicyEngine:
         if not same_lineage:
             return None
 
-        old_id = getattr(active, "intent_id", "")
-        new_id = getattr(proposed, "intent_id", "")
-        old_goal = getattr(active, "canonical_goal", "") or getattr(active, "goal", "")
-        new_goal = getattr(proposed, "goal", "")
-        overlap = self._allowed_actions_overlap(
+        old_id = str(getattr(active, "intent_id", "") or "").strip()
+        new_id = str(getattr(proposed, "intent_id", "") or "").strip()
+
+        old_goal = str(getattr(active, "canonical_goal", "") or getattr(active, "goal", "") or "")
+        new_goal = str(getattr(proposed, "goal", "") or "")
+
+        old_goal_stripped = old_goal.strip()
+        new_goal_stripped = new_goal.strip()
+
+        normalized_same_goal = self._normalize_goal(old_goal) == self._normalize_goal(new_goal)
+
+        computed_goal_similarity = self._goal_similarity(old_goal, new_goal)
+        computed_actions_overlap = self._allowed_actions_overlap(
             getattr(active, "allowed_actions", []) or [],
             getattr(proposed, "allowed_actions", []) or [],
         )
 
+        try:
+            metric_goal_similarity = float((ctx.transition_info or {}).get("goal_similarity", computed_goal_similarity))
+        except Exception:
+            metric_goal_similarity = computed_goal_similarity
+
+        try:
+            metric_actions_overlap = float((ctx.transition_info or {}).get("actions_overlap", computed_actions_overlap))
+        except Exception:
+            metric_actions_overlap = computed_actions_overlap
+
+        goal_similarity = max(computed_goal_similarity, metric_goal_similarity)
+        actions_overlap = max(computed_actions_overlap, metric_actions_overlap)
+
+        goal_threshold = float(getattr(self.config, "INTENT_RELABEL_GOAL_SIMILARITY_THRESHOLD", 0.6))
+        action_threshold = float(getattr(self.config, "INTENT_RELABEL_ACTION_OVERLAP_THRESHOLD", 0.6))
+
         if old_id == new_id:
+            # Exact same ID + exact same goal + activate/replace is just noisy
+            # reactivation of the current contract. Reject it.
+            if old_goal_stripped == new_goal_stripped:
+                decision = IntentPolicyDecision(
+                    allowed=False,
+                    reason="unnecessary_intent_reactivation_or_replace",
+                    error_code="UNNECESSARY_INTENT_REACTIVATION_OR_REPLACE",
+                    message_key="unnecessary_intent_reactivation_or_replace",
+                    keep_current_intent=True,
+                    preserve_goal=True,
+                    preserve_intent_id=True,
+                    next_actions=list(getattr(active, "allowed_actions", []) or []),
+                    metadata={
+                        "intent_id": old_id,
+                        "old_goal": old_goal,
+                        "new_goal": new_goal,
+                        "proposed_mode": getattr(proposed, "mode", ""),
+                        "goal_similarity": goal_similarity,
+                        "actions_overlap": actions_overlap,
+                    },
+                )
+                self._log_decision(stage="same_lineage_relabel", decision=decision, ctx=ctx)
+                return decision
+
+            # Same ID + equivalent normalized goal is harmless wording noise:
+            # punctuation, apostrophe, case, "today's" vs "todays", etc.
+            if normalized_same_goal:
+                return None
+
+            # Same ID + very similar goal + same actions is a minor refinement,
+            # unless it collapsed into a local probe step.
+            if (
+                goal_similarity >= goal_threshold
+                and actions_overlap >= action_threshold
+                and not self._looks_like_local_step_goal(new_goal)
+            ):
+                return None
+
             decision = IntentPolicyDecision(
                 allowed=False,
                 reason="unnecessary_intent_reactivation_or_replace",
@@ -286,13 +432,15 @@ class IntentPolicyEngine:
                     "old_goal": old_goal,
                     "new_goal": new_goal,
                     "proposed_mode": getattr(proposed, "mode", ""),
-                    "actions_overlap": overlap,
+                    "goal_similarity": goal_similarity,
+                    "actions_overlap": actions_overlap,
                 },
             )
             self._log_decision(stage="same_lineage_relabel", decision=decision, ctx=ctx)
             return decision
 
-        if old_id != new_id and self._normalize_goal(old_goal) == self._normalize_goal(new_goal):
+        # Different ID + same/equivalent goal is cosmetic relabel/restart.
+        if normalized_same_goal:
             decision = IntentPolicyDecision(
                 allowed=False,
                 reason="suspect_intent_relabel_repeat",
@@ -309,13 +457,15 @@ class IntentPolicyEngine:
                     "new_intent_id": new_id,
                     "old_goal": old_goal,
                     "new_goal": new_goal,
-                    "actions_overlap": overlap,
+                    "goal_similarity": goal_similarity,
+                    "actions_overlap": actions_overlap,
                 },
             )
             self._log_decision(stage="same_lineage_relabel", decision=decision, ctx=ctx)
             return decision
 
-        if old_id != new_id and overlap >= float(getattr(self.config, "INTENT_RELABEL_ACTION_OVERLAP_THRESHOLD", 0.6)):
+        # Different ID + high overlap in same lineage is also suspicious.
+        if actions_overlap >= action_threshold and goal_similarity >= goal_threshold:
             decision = IntentPolicyDecision(
                 allowed=False,
                 reason="suspect_intent_relabel_repeat",
@@ -331,7 +481,8 @@ class IntentPolicyEngine:
                     "new_intent_id": new_id,
                     "old_goal": old_goal,
                     "new_goal": new_goal,
-                    "actions_overlap": overlap,
+                    "goal_similarity": goal_similarity,
+                    "actions_overlap": actions_overlap,
                 },
             )
             self._log_decision(stage="same_lineage_relabel", decision=decision, ctx=ctx)
