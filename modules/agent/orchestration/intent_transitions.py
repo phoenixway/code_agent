@@ -29,6 +29,14 @@ class IntentTransitionHandler:
             return "active_contract"
         return "no_active_contract"
 
+    def _resumable_intent_meta(self) -> tuple[str, str, str]:
+        interruption = getattr(self.state, "last_technical_interruption", None)
+        interruption_id = str(getattr(interruption, "resumable_intent_id", "") or "").strip()
+        resumable_id = interruption_id or str(getattr(self.state, "last_resumable_intent_id", "") or "").strip()
+        resumable_type = str(getattr(self.state, "last_resumable_intent_type", "") or "").strip()
+        resumable_goal = str(getattr(self.state, "last_resumable_intent_goal", "") or "").strip()
+        return resumable_id, resumable_type, resumable_goal
+
     def _remaining_transition_bundle_too_dense(self, response_text: str) -> bool:
         text = str(response_text or "").strip()
         if not text:
@@ -231,21 +239,32 @@ class IntentTransitionHandler:
                     has_active_intent,
                     (response_text or "")[:500],
                 )
+            resumable_intent_id, resumable_intent_type, resumable_goal = self._resumable_intent_meta()
+            recovery_reason = "invalid_intent_resumable_available" if resumable_intent_id else "invalid_intent_json"
             if hasattr(self.state, "require_intent"):
-                self.state.require_intent("invalid_intent_json")
+                self.state.require_intent(recovery_reason)
             self.stage_logger.log(
                 "intent_transition",
                 "continue",
-                reason="intent_required_parse_error",
+                reason=recovery_reason,
                 source="intent_parser",
                 intent_error=intent_error,
                 intent_required_until_activated=intent_required_until_activated,
                 has_active_intent=has_active_intent,
             )
+            if resumable_intent_id:
+                next_query = self.prompt_builder.build_invalid_intent_resumable_available_prompt(
+                    intent_error,
+                    resumable_intent_id=resumable_intent_id,
+                    resumable_intent_type=resumable_intent_type,
+                    resumable_goal=resumable_goal,
+                )
+            else:
+                next_query = self.prompt_builder.build_invalid_intent_contract_prompt(intent_error)
             return IntentHandlingDecision(
                 handled=True,
-                next_query=self.prompt_builder.build_invalid_intent_contract_prompt(intent_error),
-                reason="intent_required_parse_error",
+                next_query=next_query,
+                reason=recovery_reason,
             )
 
         if intent_payload is not None:

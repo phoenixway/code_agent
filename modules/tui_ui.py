@@ -17,6 +17,7 @@ from modules.ui_components.generic_tool_call_card import (
     GenericToolCallCard,
     has_specialized_tool_call_renderer,
 )
+from modules.ui_components.technical_interruption_widget import TechnicalInterruptionWidget
 
 
 class MessageSeparator(Static):
@@ -283,6 +284,15 @@ class TuiUI:
             return "open_search"
         return "stop"
 
+    async def confirm_technical_interruption(self, prompt: str, *, allow_retry: bool = True) -> str:
+        self._count_confirmation()
+        options = ["Retry / Resume work", "Stop"] if allow_retry else ["OK"]
+        screen = SelectionScreen(prompt, options)
+        result = await self._push_screen_wait(screen)
+        if allow_retry and result == options[0]:
+            return "retry_resume"
+        return "stop"
+
 
     async def choose_intent_overrun_action(self, prompt: str) -> str:
         """User handoff for hard intent limit: exactly two choices."""
@@ -366,6 +376,11 @@ class TuiUI:
 
     async def print_error(self, text: str):
         await self._print_styled(text, "error")
+
+    @ui_task
+    async def print_technical_interruption(self, interruption):
+        widget = TechnicalInterruptionWidget(interruption)
+        return self._mount_widget(widget)
 
     async def print_thought(self, text: str):
         if text and text.strip():

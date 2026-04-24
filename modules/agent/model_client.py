@@ -4,6 +4,15 @@ import json
 
 from modules.chat import get_chat_provider
 from modules.history import HistoryManager
+from modules.providers.base import ProviderAPIError
+from .technical_interruptions import TechnicalInterruption as ModelTechnicalInterruption
+from .technical_interruptions import interruption_from_provider_error
+
+
+class ModelTechnicalInterruptionError(Exception):
+    def __init__(self, interruption: ModelTechnicalInterruption):
+        self.interruption = interruption
+        super().__init__(interruption.message)
 
 class ModelClient:
     """Відповідає за комунікацію з LLM та управління контекстом запиту."""
@@ -23,22 +32,43 @@ class ModelClient:
         ui=None,
         state=None,
         system_message: str | None = None,
+        injected_messages: list[dict[str, str]] | None = None,
     ):
         """Отримує відповідь від моделі частинами з підтримкою Smart Stop."""
         full_text = ""
         history_data = history_manager.get_history_for_api()
         if system_message and isinstance(system_message, str):
             history_data = [{"role": "system", "content": system_message}] + history_data
+        if injected_messages:
+            normalized_messages = []
+            for message in injected_messages:
+                if not isinstance(message, dict):
+                    continue
+                role = str(message.get("role", "") or "").strip()
+                content = message.get("content", "")
+                if role and isinstance(content, str) and content.strip():
+                    normalized_messages.append({"role": role, "content": content})
+            if normalized_messages:
+                history_data = history_data + normalized_messages
 
         if self.log:
             self.log.debug(
-                "Model.request query_chars=%s history_messages=%s system_message_chars=%s",
+                "Model.request query_chars=%s history_messages=%s system_message_chars=%s injected_messages=%s",
                 len(query or ""),
                 len(history_data),
                 len(system_message or "") if isinstance(system_message, str) else 0,
+                len(injected_messages or []),
             )
             if isinstance(system_message, str) and system_message.strip():
                 self.log.debug("Model.request.system_message\n%s", system_message)
+            if injected_messages:
+                try:
+                    self.log.debug(
+                        "Model.request.injected_messages\n%s",
+                        json.dumps(injected_messages, ensure_ascii=False, indent=2),
+                    )
+                except Exception as e:
+                    self.log.warning("Model.request injected message serialization failed: %s", e)
             try:
                 self.log.debug(
                     "Model.request.history_payload\n%s",
@@ -66,9 +96,23 @@ class ModelClient:
                     break
                 # ------------------------
 
+        except ProviderAPIError as e:
+            interruption = self._provider_error_to_interruption(e)
+            if self.log:
+                self.log.error("AI provider interruption: %s", interruption.message)
+            raise ModelTechnicalInterruptionError(interruption) from e
         except Exception as e:
-            if self.log: self.log.error(f"AI Error: {e}")
-            return f"Error: {e}"
+            interruption = ModelTechnicalInterruption(
+                provider=str(getattr(self.chat, "provider_name", "") or getattr(self.chat, "model_name", "") or "model"),
+                message=f"Model runtime error: {type(e).__name__}: {e}",
+                kind="model_runtime_error",
+                recoverable=True,
+                retryable=True,
+                details={"raw_error": repr(e)},
+            )
+            if self.log:
+                self.log.error("AI runtime interruption: %s", interruption.message)
+            raise ModelTechnicalInterruptionError(interruption) from e
         
         # 2. Логування вхідної відповіді (вже обрізаної)
         if self.comm_log:
@@ -86,6 +130,16 @@ class ModelClient:
             await self._update_token_stats(query, full_text, history_manager, ui, state)
             
         return full_text
+
+    def _provider_error_to_interruption(self, error: ProviderAPIError) -> ModelTechnicalInterruption:
+        return interruption_from_provider_error(
+            error,
+            provider_name=str(
+                getattr(self.chat, "provider_name", "")
+                or getattr(self.chat, "model_name", "")
+                or "provider"
+            ).strip(),
+        )
 
     def _format_comm_block(self, direction: str, payload: str) -> str:
         """

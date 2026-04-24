@@ -161,6 +161,18 @@ class OrchestratorPromptBuilder:
             return 0
         return max(0, self._effective_intent_hard_limit(active_intent) - int(getattr(active_intent, "step_count", 0) or 0))
 
+    def _active_intent_is_hard_exhausted(self, active_intent=None) -> bool:
+        active_intent = active_intent or self._current_active_intent()
+        if active_intent is None:
+            return False
+        checker = getattr(self.state, "has_hard_exhausted_active_intent", None)
+        if callable(checker):
+            try:
+                return bool(checker())
+            except Exception:
+                pass
+        return self._intent_hard_steps_remaining(active_intent) <= 0
+
     def _summarize_last_action(self) -> str:
         state = getattr(self, "state", None)
         if state is None:
@@ -282,9 +294,50 @@ class OrchestratorPromptBuilder:
         retry_limit = int(getattr(active_intent, "retry_limit", 0) or 0)
         retry_count = int(getattr(active_intent, "retry_count", 0) or 0)
         last_action = self._summarize_last_action()
-        current_best_answer = self._derive_current_best_answer(active_intent)
+        current_best_answer = "see injected memory board context" if self.memory_board_store is not None else "none yet"
         accepted = "yes"
         mode = "active"
+
+        if self._active_intent_is_hard_exhausted(active_intent):
+            return "\n".join(
+                [
+                    "## ACTIVE INTENT CONTRACT",
+                    "Status: ACTIVE BUT HARD-EXHAUSTED",
+                    f"Accepted by runtime: {accepted}",
+                    "The current intent contract still names the same work, but its hard step budget is exhausted.",
+                    "Normal <action> output is forbidden under this exhausted contract.",
+                    "Do NOT continue under the current contract with another normal tool step.",
+                    "",
+                    f"intent_id: {intent_id}",
+                    f"intent_type: {intent_type}",
+                    f"goal: {goal}",
+                    f"allowed_actions: {', '.join(allowed_actions) if allowed_actions else 'none'}",
+                    f"safe_steps_limit: {safe_steps_limit}",
+                    f"effective_nominal_step_limit: {self._effective_intent_step_limit(active_intent)}",
+                    f"effective_hard_step_limit: {effective_hard_limit}",
+                    f"steps_used: {steps_used}",
+                    f"nominal_steps_remaining: {steps_remaining}",
+                    f"hard_steps_remaining: {hard_steps_remaining}",
+                    "step_budget_status: hard limit reached",
+                    f"retry_limit: {retry_limit}",
+                    f"retry_count: {retry_count}",
+                    f"mode: {mode}",
+                    "",
+                    f"last_action: {last_action}",
+                    f"current_best_answer: {current_best_answer}",
+                    "",
+                    "Allowed next outputs now:",
+                    "1. Emit EXACTLY ONE <intent> JSON block with mode=\"reuse\" for this SAME intent_id and switch_reason=\"current_intent_exhausted\" to request refreshed budget for the same lineage.",
+                    "2. Emit <intent mode=\"complete\"> followed by a final plain-text answer if the goal is already achieved.",
+                    "3. Return a plain-text handoff/answer from current evidence if more work is needed but no refreshed budget is yet available.",
+                    "",
+                    "Forbidden now:",
+                    "- any normal <action> under this exhausted contract",
+                    "- silent budget refresh",
+                    "- reactivating or replacing the same intent instead of reuse",
+                    "- restarting reconnaissance from zero",
+                ]
+            )
 
         lines = [
             "## ACTIVE INTENT CONTRACT",
@@ -382,12 +435,12 @@ class OrchestratorPromptBuilder:
         prompt = DEFAULT_SYSTEM_PROMPT.replace("__TOOLS_DESCRIPTION__", tools_prompt)
         blocks = [prompt, ctx_prompt]
         blocks.append(
-            "Navigation guidance: prefer `read_file_skeleton` to inspect structure cheaply and obtain symbol line ranges before using broader or larger reads."
+            "Navigation guidance: prefer `read_file_skeleton` to inspect structure cheaply and obtain symbol line ranges before using broader or larger reads. "
+            "When you already know the symbol target, prefer `extract_symbol` over repeated search + chunk hunting, and use `read_chunk` only for exact line-ranged follow-up. "
+            "Under MODIFY, investigation remains valid until edit-readiness is achieved."
         )
 
-        memory_board = getattr(self.agent, "memory_board_store", None)
         active_intent_id = self._current_active_intent_id()
-        active_intent_lineage_ids = self._active_intent_lineage_ids()
 
         active_intent_prompt = self.build_active_intent_contract_prompt()
         if active_intent_prompt:
@@ -410,24 +463,6 @@ class OrchestratorPromptBuilder:
                         no_active_prompt,
                     )
 
-        if memory_board is not None and hasattr(memory_board, "to_system_prompt"):
-            try:
-                memory_prompt = memory_board.to_system_prompt(
-                    active_intent_id=active_intent_id,
-                    lineage_intent_ids=active_intent_lineage_ids,
-                )
-                blocks.append(memory_prompt)
-                if self.agent.log and isinstance(memory_prompt, str) and memory_prompt.strip():
-                    self.agent.log.debug(
-                        "PromptBuilder.memory_board_prompt active_intent_id=%s chars=%s\n%s",
-                        active_intent_id or "",
-                        len(memory_prompt),
-                        memory_prompt,
-                    )
-            except Exception as exc:
-                if self.agent.log:
-                    self.agent.log.warning(f"Memory board prompt build failed: {exc}")
-
         blocks.append(self.build_memory_board_protocol_prompt())
         system_message = "\n\n".join(block for block in blocks if isinstance(block, str) and block.strip())
         if self.agent.log:
@@ -440,6 +475,42 @@ class OrchestratorPromptBuilder:
             )
             self.agent.log.debug("PromptBuilder.system_message.full\n%s", system_message)
         return system_message
+
+    def build_memory_board_context_message(self) -> dict[str, str] | None:
+        memory_board = getattr(self.agent, "memory_board_store", None)
+        if memory_board is None or not hasattr(memory_board, "to_system_prompt"):
+            return None
+
+        active_intent_id = self._current_active_intent_id()
+        active_intent_lineage_ids = self._active_intent_lineage_ids()
+        try:
+            memory_prompt = memory_board.to_system_prompt(
+                active_intent_id=active_intent_id,
+                lineage_intent_ids=active_intent_lineage_ids,
+            )
+        except Exception as exc:
+            if self.agent.log:
+                self.agent.log.warning(f"Memory board prompt build failed: {exc}")
+            return None
+
+        if not isinstance(memory_prompt, str) or not memory_prompt.strip():
+            return None
+
+        if self.agent.log:
+            self.agent.log.debug(
+                "PromptBuilder.memory_board_context active_intent_id=%s chars=%s\n%s",
+                active_intent_id or "",
+                len(memory_prompt),
+                memory_prompt,
+            )
+
+        return {
+            "role": "user",
+            "content": (
+                "Reference context only. This memory board is durable working context from prior execution.\n\n"
+                f"{memory_prompt}"
+            ),
+        }
 
     def build_memory_board_protocol_prompt(self) -> str:
         return dedent(
@@ -518,6 +589,15 @@ class OrchestratorPromptBuilder:
         next_hint = ""
         if allowed_actions:
             next_hint = f"\nAllowed actions for the next intent contract: {', '.join(allowed_actions)}."
+        if reason == "invalid_intent_resumable_available":
+            resumable_intent_id = str(getattr(self.state, "last_resumable_intent_id", "") or "").strip()
+            if resumable_intent_id:
+                return self.build_invalid_intent_resumable_available_prompt(
+                    reason,
+                    resumable_intent_id=resumable_intent_id,
+                    resumable_intent_type=str(getattr(self.state, "last_resumable_intent_type", "") or "").strip(),
+                    resumable_goal=str(getattr(self.state, "last_resumable_intent_goal", "") or "").strip(),
+                )
         universe = self._intent_universe()
         active_intent = self._current_active_intent()
         if not universe.has_active_contract or active_intent is None:
@@ -538,6 +618,12 @@ class OrchestratorPromptBuilder:
                 "- mode\n"
                 "If you also need an action now, place the <intent> block before the action."
             )
+        if reason == "exhausted_intent_requires_reuse_or_completion":
+            return self.build_limit_aware_reuse_prompt(
+                reason,
+                self._current_intent_allowed_actions(),
+                goal=self._current_intent_goal(),
+            )
         return (
             "SYSTEM: A formal intent transition/update is required before further tool use.\n"
             f"Reason: {reason}.{next_hint}\n"
@@ -554,8 +640,52 @@ class OrchestratorPromptBuilder:
             f"Reason: {reason}.{next_hint}\n"
             "There is still NO active accepted intent contract unless runtime explicitly says otherwise.\n"
             "Continue from already gathered evidence. Do not restart from zero.\n"
+            "Canonical format is a JSON object inside the intent tag.\n"
+            "Do not put intent fields as XML attributes.\n"
+            "Do not use a self-closing intent tag.\n"
             "Return EXACTLY ONE corrected <intent> JSON block now.\n"
             "Do not return a bare <action> before the corrected <intent> is accepted."
+        )
+
+    def build_invalid_intent_resumable_available_prompt(
+        self,
+        reason: str,
+        *,
+        resumable_intent_id: str,
+        resumable_intent_type: str = "",
+        resumable_goal: str = "",
+    ) -> str:
+        requested_steps = int(getattr(self.config, "INTENT_REUSE_EXTENSION_STEPS", 4) or 4)
+        return (
+            "SYSTEM: The intent block was not accepted, but resumable work is still available.\n"
+            f"Reason: {reason}.\n"
+            "Do not restart from zero.\n"
+            f"Resumable intent_id: {resumable_intent_id}.\n"
+            f"Resumable intent_type: {resumable_intent_type or '<same as resumable work>'}.\n"
+            f"Resumable goal: {resumable_goal or '<same resumable goal>'}.\n"
+            "Return EXACTLY ONE corrected <intent mode=\"reuse\"> block now.\n"
+            "Canonical format is a JSON object inside the intent tag.\n"
+            "Do not put intent fields as XML attributes.\n"
+            "Do not use a self-closing intent tag.\n"
+            "Do not emit an <action> before reuse is accepted.\n"
+            "Return exactly:\n"
+            "<intent mode=\"reuse\">\n"
+            "{\n"
+            f'  "intent_id": "{resumable_intent_id}",\n'
+            f'  "intent_type": "{resumable_intent_type or "<intent_type>"}",\n'
+            f'  "goal": "{resumable_goal or "<same resumable goal>"}",\n'
+            f'  "requested_steps": {max(1, requested_steps)},\n'
+            '  "switch_reason": "current_intent_exhausted"\n'
+            "}\n"
+            "</intent>"
+        )
+
+    def build_plain_think_without_valid_output_prompt(self) -> str:
+        return (
+            "SYSTEM: Your last response used plain \"think\" instead of <think>...</think> and did not include a valid action or final answer.\n"
+            "Do not use plain think markers.\n"
+            "Return a valid response using the required tags.\n"
+            "Return exactly one valid <action>...</action>, one valid <intent>...</intent> if runtime requires it, or one normal final plain-text answer."
         )
 
     def build_reuse_current_intent_prompt(
@@ -599,11 +729,15 @@ class OrchestratorPromptBuilder:
         next_hint = f"\nAllowed actions under the CURRENT intent contract: {', '.join(allowed_actions)}." if allowed_actions else ""
         goal_hint = f"\nCurrent contract goal remains the same: {goal.strip()}." if isinstance(goal, str) and goal.strip() else ""
         return (
-            "SYSTEM: The current intent contract still matches the user's goal, but its step budget is exhausted or near exhaustion.\n"
+            "SYSTEM: Current intent step budget is exhausted.\n"
             f"Reason: {reason}.{next_hint}{goal_hint}\n"
+            "Normal actions are forbidden until the intent is completed or reused with refreshed budget.\n"
             "Do NOT silently continue under the exhausted budget.\n"
             "Do NOT activate a fresh unrelated intent for the same goal.\n"
-            "Return EXACTLY ONE <intent> JSON block with mode=\"reuse\" for the SAME active intent_id to request refreshed steps for this same intent lineage.\n"
+            "Allowed next outputs are ONLY:\n"
+            "- EXACTLY ONE <intent> JSON block with mode=\"reuse\" for the SAME active intent_id to request refreshed steps for this same intent lineage\n"
+            "- or <intent mode=\"complete\"> plus final answer if current evidence is already sufficient\n"
+            "- or a plain handoff/answer from current evidence if more work remains but no continuation approval exists\n"
             f"Use requested_steps={max(1, int(requested_steps))}.\n"
             f"Keep intent_id={intent_id or '<active_intent_id>'} and intent_type={intent_type or '<active_intent_type>'}.\n"
             "Use switch_reason=\"current_intent_exhausted\" unless runtime explicitly indicates a different legitimate continuation reason.\n"
@@ -643,7 +777,7 @@ class OrchestratorPromptBuilder:
             "intent_blocked_action_signature": "A specific action is blocked, but the current intent contract is still valid.",
             "action_not_allowed_in_phase": "The current intent contract remains valid, but a legacy recovery suggestion conflicted with it.",
             "retry_or_continuation_after_failure": "The previous step failed, but the current intent contract still remains valid.",
-            "unnecessary_intent_reactivation_or_replace": "The active intent contract is already present and remains active.",
+            "unnecessary_intent_reactivation_or_replace": "The active intent contract is already present and remains active by default until valid conditions from system prompt met.",
             "suspect_intent_relabel_repeat": "The current intent contract is still valid.",
         }
         message_keys = {
@@ -948,6 +1082,18 @@ class OrchestratorPromptBuilder:
             "Do not restate the same decision in prose.\n"
             "If tool use is needed, return EXACTLY ONE valid <action>...</action> block.\n"
             "If no tool is needed, return a plain-text answer."
+        )
+
+    def build_leaked_system_result_recovery_prompt(self) -> str:
+        return (
+            "SYSTEM: Your last response copied internal SYSTEM RESULT text into the assistant-visible answer.\n"
+            "SYSTEM RESULT blocks are internal tool-result transcript material, not assistant-visible output.\n"
+            "Do not quote, replay, summarize as a transcript, or emit SYSTEM RESULT blocks.\n"
+            "Return exactly one valid next output now:\n"
+            "- one valid <action> if tool use is still needed\n"
+            "- or one normal final plain-text answer without internal tool-result markers\n"
+            "- or one valid <intent> transition only if runtime truly requires it\n"
+            "Continue from the evidence already present in context. Do not repeat the leaked transcript text."
         )
 
     def build_missing_action_or_answer_prompt(self) -> str:

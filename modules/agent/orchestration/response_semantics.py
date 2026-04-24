@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 
+from .visible_text import strip_plain_think_prefix_artifacts
+
 
 class ResponseSemantics:
     THINK_BLOCK_RE = re.compile(
@@ -18,6 +20,14 @@ class ResponseSemantics:
         r"<(fact|finding|decision|preference|progress)\b[^>]*>.*?</\1>",
         re.IGNORECASE | re.DOTALL,
     )
+    LEAKED_SYSTEM_RESULT_RE = re.compile(
+        r"\bSYSTEM\s+RESULT\b(?:\s*\([^)]*\)|\s+for\b|\s*:)",
+        re.IGNORECASE,
+    )
+
+    def has_plain_think_prefix(self, raw_response: str) -> bool:
+        _cleaned, stripped = strip_plain_think_prefix_artifacts(str(raw_response or ""))
+        return stripped
 
     def reflection_tag_count(self, raw_response: str) -> int:
         text = str(raw_response or "")
@@ -89,11 +99,27 @@ class ResponseSemantics:
         final user-facing plain-text answer by itself.
         """
         cleaned = str(text or "")
+        cleaned, _ = strip_plain_think_prefix_artifacts(cleaned)
         cleaned = self.THINK_BLOCK_RE.sub(" ", cleaned)
         cleaned = self.MEMORY_TAG_BLOCK_RE.sub(" ", cleaned)
         cleaned = re.sub(r"<[^>]+>", " ", cleaned)
         cleaned = re.sub(r"\s+", " ", cleaned).strip()
         return cleaned
+
+
+    def looks_like_leaked_system_result(self, raw_response: str) -> bool:
+        """Return True when assistant-visible text appears to replay tool transcript.
+
+        SYSTEM RESULT blocks are internal tool/result transcript material. They may
+        be present in system/history context, but the model must not copy them
+        into a plain assistant answer. This detector intentionally looks for the
+        canonical transcript prefixes used by the runtime, not ordinary prose
+        such as "the system result was useful".
+        """
+        text = str(raw_response or "")
+        if not text:
+            return False
+        return bool(self.LEAKED_SYSTEM_RESULT_RE.search(text))
 
     def is_reflection_only_repair_turn(self, raw_response: str, parsed_output, parsed_action_count: int) -> bool:
         text = str(raw_response or "").strip()

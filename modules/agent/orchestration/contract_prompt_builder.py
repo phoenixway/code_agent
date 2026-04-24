@@ -27,7 +27,7 @@ class ContractPromptBuilder(PromptBuilderSharedMixin):
             retry_limit = int(getattr(active_intent, "retry_limit", 0) or 0)
             retry_count = int(getattr(active_intent, "retry_count", 0) or 0)
             last_action = self._summarize_last_action()
-            current_best_answer = self._derive_current_best_answer(active_intent)
+                current_best_answer = "see injected memory board context" if self.memory_board_store is not None else "none yet"
             accepted = "yes"
             mode = "active"
 
@@ -127,9 +127,7 @@ class ContractPromptBuilder(PromptBuilderSharedMixin):
             prompt = DEFAULT_SYSTEM_PROMPT.replace("__TOOLS_DESCRIPTION__", tools_prompt)
             blocks = [prompt, ctx_prompt]
 
-            memory_board = getattr(self.agent, "memory_board_store", None)
             active_intent_id = self._current_active_intent_id()
-            active_intent_lineage_ids = self._active_intent_lineage_ids()
 
             active_intent_prompt = self.build_active_intent_contract_prompt()
             if active_intent_prompt:
@@ -152,24 +150,6 @@ class ContractPromptBuilder(PromptBuilderSharedMixin):
                             no_active_prompt,
                         )
 
-            if memory_board is not None and hasattr(memory_board, "to_system_prompt"):
-                try:
-                    memory_prompt = memory_board.to_system_prompt(
-                        active_intent_id=active_intent_id,
-                        lineage_intent_ids=active_intent_lineage_ids,
-                    )
-                    blocks.append(memory_prompt)
-                    if self.agent.log and isinstance(memory_prompt, str) and memory_prompt.strip():
-                        self.agent.log.debug(
-                            "PromptBuilder.memory_board_prompt active_intent_id=%s chars=%s\n%s",
-                            active_intent_id or "",
-                            len(memory_prompt),
-                            memory_prompt,
-                        )
-                except Exception as exc:
-                    if self.agent.log:
-                        self.agent.log.warning(f"Memory board prompt build failed: {exc}")
-
             blocks.append(self.build_memory_board_protocol_prompt())
             system_message = "\n\n".join(block for block in blocks if isinstance(block, str) and block.strip())
             if self.agent.log:
@@ -182,6 +162,42 @@ class ContractPromptBuilder(PromptBuilderSharedMixin):
                 )
                 self.agent.log.debug("PromptBuilder.system_message.full\n%s", system_message)
             return system_message
+
+        def build_memory_board_context_message(self) -> dict[str, str] | None:
+            memory_board = getattr(self.agent, "memory_board_store", None)
+            if memory_board is None or not hasattr(memory_board, "to_system_prompt"):
+                return None
+
+            active_intent_id = self._current_active_intent_id()
+            active_intent_lineage_ids = self._active_intent_lineage_ids()
+            try:
+                memory_prompt = memory_board.to_system_prompt(
+                    active_intent_id=active_intent_id,
+                    lineage_intent_ids=active_intent_lineage_ids,
+                )
+            except Exception as exc:
+                if self.agent.log:
+                    self.agent.log.warning(f"Memory board prompt build failed: {exc}")
+                return None
+
+            if not isinstance(memory_prompt, str) or not memory_prompt.strip():
+                return None
+
+            if self.agent.log:
+                self.agent.log.debug(
+                    "PromptBuilder.memory_board_context active_intent_id=%s chars=%s\n%s",
+                    active_intent_id or "",
+                    len(memory_prompt),
+                    memory_prompt,
+                )
+
+            return {
+                "role": "user",
+                "content": (
+                    "Reference context only. This memory board is durable working context from prior execution.\n\n"
+                    f"{memory_prompt}"
+                ),
+            }
 
         def build_memory_board_protocol_prompt(self) -> str:
             return dedent(

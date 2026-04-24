@@ -2,7 +2,9 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from modules.agent.model_client import ModelClient
+from modules.agent.model_client import ModelClient, ModelTechnicalInterruptionError
+from modules.agent.technical_interruptions import detect_technical_interruption
+from modules.providers.base import ProviderAPIError
 
 
 class TestModelClientSmartStop(unittest.TestCase):
@@ -43,6 +45,103 @@ class TestModelClientSmartStop(unittest.TestCase):
         client = self._make_client()
         block = client._format_comm_block("OUTGOING", "\n\npayload\n\n")
         self.assertEqual(block, "--- OUTGOING ---\npayload")
+
+    def test_injected_messages_are_appended_after_system_message(self):
+        captured = {}
+
+        class DummyChat:
+            async def get_streaming_response(self, prompt, history):
+                captured["prompt"] = prompt
+                captured["history"] = history
+                if False:
+                    yield ""
+
+        cfg = SimpleNamespace(default_model="dummy")
+        with patch("modules.agent.model_client.get_chat_provider", return_value=DummyChat()):
+            client = ModelClient(cfg)
+
+        class DummyHistory:
+            def get_history_for_api(self):
+                return [{"role": "assistant", "content": "older"}]
+
+        async def _run():
+            return await client.get_streaming_response(
+                "user query",
+                DummyHistory(),
+                system_message="stable system",
+                injected_messages=[{"role": "user", "content": "memory board"}],
+            )
+
+        import asyncio
+
+        result = asyncio.run(_run())
+
+        self.assertEqual("", result)
+        self.assertEqual("user query", captured["prompt"])
+        self.assertEqual(
+            [
+                {"role": "system", "content": "stable system"},
+                {"role": "assistant", "content": "older"},
+                {"role": "user", "content": "memory board"},
+            ],
+            captured["history"],
+        )
+
+    def test_provider_error_raises_technical_interruption(self):
+        class DummyChat:
+            provider_name = "gemini"
+
+            async def get_streaming_response(self, prompt, history):
+                raise ProviderAPIError.unavailable(
+                    "Gemini API temporarily unavailable",
+                    provider_name="gemini",
+                    status_code=503,
+                )
+                if False:
+                    yield ""
+
+        cfg = SimpleNamespace(default_model="dummy")
+        with patch("modules.agent.model_client.get_chat_provider", return_value=DummyChat()):
+            client = ModelClient(cfg)
+
+        class DummyHistory:
+            def get_history_for_api(self):
+                return []
+
+        async def _run():
+            return await client.get_streaming_response("user query", DummyHistory())
+
+        import asyncio
+
+        with self.assertRaises(ModelTechnicalInterruptionError) as ctx:
+            asyncio.run(_run())
+
+        self.assertEqual("gemini", ctx.exception.interruption.provider)
+        self.assertEqual(503, ctx.exception.interruption.status_code)
+        self.assertTrue(ctx.exception.interruption.retryable)
+
+    def test_detect_technical_interruption_from_text_signatures(self):
+        samples = [
+            "Error: Gemini API Error 503",
+            "Gemini API Error 429",
+            "Gemini API Error 500",
+            "Gemini API Error 502",
+            "Gemini API Error 504",
+            "Service unavailable",
+            "Rate limit reached",
+            "Timeout while waiting for provider",
+            "Gemini returned valid JSON but no text parts",
+        ]
+
+        for sample in samples:
+            with self.subTest(sample=sample):
+                interruption = detect_technical_interruption(sample)
+                self.assertIsNotNone(interruption)
+                self.assertTrue(interruption.recoverable)
+                self.assertTrue(interruption.retryable)
+
+        self.assertEqual(503, detect_technical_interruption("Error: Gemini API Error 503").status_code)
+        self.assertEqual("gemini", detect_technical_interruption("Error: Gemini API Error 503").provider)
 
 
 if __name__ == "__main__":

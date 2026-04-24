@@ -328,6 +328,31 @@ class ModelResponsePipeline:
                 memory_checkpoint_and_text=True,
             )
 
+        if (
+            parsed_action_count <= 0
+            and not bool(getattr(parsed_output, "has_action_segment", False))
+            and self.semantics.looks_like_leaked_system_result(response)
+        ):
+            self.guards.set_reflection_repair_pending(False)
+            self.guards.set_nonproductive_thinking_state(False)
+            self.stage_logger.log(
+                "response_pipeline",
+                "continue",
+                reason="leaked_system_result_in_assistant_text",
+                source="output_recovery",
+            )
+            return ResponsePipelineOutcome.continue_with(
+                self.prompt_builder.build_leaked_system_result_recovery_prompt(),
+                response_text=response,
+                segments=segments,
+                parsed_output=parsed_output,
+                parsed_action_count=0,
+                malformed_action_retries=0,
+                audit_marker_retries=0,
+                reason="leaked_system_result_in_assistant_text",
+                source="output_recovery",
+            )
+
         recovery_decision = await self.output_recovery.decide(
             parsed_output,
             malformed_action_retries=ctx.malformed_action_retries,

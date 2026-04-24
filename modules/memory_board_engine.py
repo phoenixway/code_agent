@@ -9,10 +9,10 @@ from .memory_board_store import ALLOWED_KINDS, ALLOWED_SCOPES, MemoryBoardStore,
 
 TAG_NAMES = "|".join(ALLOWED_KINDS)
 TAG_RE = re.compile(
-    rf"<(?P<kind>{TAG_NAMES})(?P<attrs>[^>]*)>(?P<body>.*?)</(?P=kind)>",
+    rf"<(?P<kind>{TAG_NAMES})\b(?P<attrs>[^>]*?)(?:>(?P<body>.*?)</(?P=kind)>|/>)",
     re.IGNORECASE | re.DOTALL,
 )
-ATTR_RE = re.compile(r'([a-zA-Z_][\w\-]*)\s*=\s*"([^"]*)"')
+ATTR_RE = re.compile(r"""([a-zA-Z_][\w\-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')""")
 
 
 @dataclass(slots=True)
@@ -86,7 +86,16 @@ class MemoryBoardEngine:
         for match in matches[: self.max_tags_per_message]:
             kind = str(match.group("kind") or "").strip().lower()
             attrs = self._parse_attrs(match.group("attrs") or "")
-            body = self._normalize_text(match.group("body") or "")
+            body_raw = match.group("body")
+            body = self._normalize_text(body_raw or "")
+            if not body:
+                body = self._normalize_text(attrs.get("text") or "")
+                if body and self.log:
+                    self.log.debug(
+                        "memory_tag_parser_fallback=xml_attributes kind=%s scope=%s",
+                        kind,
+                        str(attrs.get("scope") or "").strip().lower(),
+                    )
             scope = str(attrs.get("scope") or "").strip().lower()
             tags.append(
                 ParsedMemoryTag(
@@ -233,8 +242,11 @@ class MemoryBoardEngine:
         attrs = {}
         if not isinstance(attrs_raw, str) or not attrs_raw.strip():
             return attrs
-        for key, value in ATTR_RE.findall(attrs_raw):
-            attrs[str(key).strip().lower()] = str(value).strip()
+        cleaned = attrs_raw.strip()
+        if cleaned.endswith("/"):
+            cleaned = cleaned[:-1].rstrip()
+        for key, v1, v2 in ATTR_RE.findall(cleaned):
+            attrs[str(key).strip().lower()] = str(v1 or v2 or "").strip()
         return attrs
 
     def _normalize_scope(self, value: str) -> str:

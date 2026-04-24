@@ -413,6 +413,36 @@ class MemoryBoardStore:
             self.save()
         return changed
 
+    def clear_scopes(self, *scopes: str) -> int:
+        wanted_scopes = {
+            self._normalize_scope(scope)
+            for scope in scopes
+            if self._normalize_scope(scope) in ALLOWED_SCOPES
+        }
+        if not wanted_scopes:
+            return 0
+
+        changed = 0
+        now = time.time()
+        for entry in self._entries:
+            if entry.status == "active" and entry.scope in wanted_scopes:
+                entry.status = "superseded"
+                entry.updated_at = now
+                changed += 1
+
+        if changed:
+            self._rebuild_indexes()
+            self.save()
+        return changed
+
+    def reset_for_new_session(self) -> int:
+        """
+        Preserve durable project memory across launches, but clear session and
+        intent scopes so a new agent session starts with no carried-over
+        session-local or intent-local memory.
+        """
+        return self.clear_scopes("session", "intent")
+
     def export_dict(self) -> dict:
         return {
             "version": 1,

@@ -16,6 +16,8 @@ from modules.theme import HACKER_THEME
 from modules.command_handler import CommandHandler
 from modules.ui_components.command_completer import CommandCompleter
 from modules.providers.base import ProviderAPIError
+from modules.agent.technical_interruptions import interruption_from_provider_error
+from modules.ui_components.technical_interruption_widget import TechnicalInterruptionWidget
 
 
 class TUI(App):
@@ -79,10 +81,29 @@ class TUI(App):
             self.agent.log.info("DEBUG: Agent prompt finished")
         except ProviderAPIError as e:
             self.agent.log.warning("ProviderAPIError during prompt processing: %s", e.to_dict())
-            await self.ui.print_error(self._provider_error_ui_message(e))
+            interruption = interruption_from_provider_error(e, provider_name=e.provider_name)
+            self.agent.state.note_technical_interruption(interruption, current_query=user_input)
+            await self.ui.print_technical_interruption(self.agent.state.last_technical_interruption)
         except Exception as e:
             self.agent.log.error(f"ERROR in prompt processing: {e}")
             await self.ui.print_error(f"Critical error: {e}")
+        finally:
+            if self.app._running:
+                self.query_one("#input").focus()
+
+    async def _run_resume_workflow(self) -> None:
+        try:
+            resumed = await self.agent.resume_interrupted_work()
+            if not resumed:
+                await self.ui.print_system("No resumable interrupted work is available.")
+        except ProviderAPIError as e:
+            self.agent.log.warning("ProviderAPIError during resume workflow: %s", e.to_dict())
+            interruption = interruption_from_provider_error(e, provider_name=e.provider_name)
+            self.agent.state.note_technical_interruption(interruption, current_query="")
+            await self.ui.print_technical_interruption(self.agent.state.last_technical_interruption)
+        except Exception as e:
+            self.agent.log.error(f"Resume workflow error: {e}")
+            await self.ui.print_error(f"Resume failed: {e}")
         finally:
             if self.app._running:
                 self.query_one("#input").focus()
@@ -181,6 +202,12 @@ class TUI(App):
 
     async def action_interrupt_agent(self) -> None:
         await self.agent.interrupt()
+
+    async def on_technical_interruption_widget_resume_requested(
+        self,
+        message: TechnicalInterruptionWidget.ResumeRequested,
+    ) -> None:
+        self.run_worker(self._run_resume_workflow(), exclusive=True)
 
     async def action_quit(self) -> None:
         self.agent.log.info("DEBUG: action_quit called. Saving session...")

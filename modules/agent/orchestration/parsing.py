@@ -6,16 +6,28 @@ import json
 import re
 
 from .decision_models import ParsedModelOutput
-from .visible_text import extract_visible_text_for_user
+from .visible_text import extract_visible_text_for_user, strip_plain_think_prefix_artifacts
 
 
 class IntentResponseParser:
-    INTENT_TAG_RE = re.compile(r"<intent(?:\s+[^>]*)?>(.*?)</intent>", re.IGNORECASE | re.DOTALL)
+    INTENT_TAG_RE = re.compile(
+        r"<intent\b(?P<attrs>[^>]*?)(?:>(?P<body>.*?)</intent>|(?P<selfclose>/\s*>))",
+        re.IGNORECASE | re.DOTALL,
+    )
     THINK_TAG_RE = re.compile(r"<think(?:\s+[^>]*)?>.*?</think>", re.IGNORECASE | re.DOTALL)
     ACTION_TAG_RE = re.compile(r"<action(?:\s+[^>]*)?>.*?</action>", re.IGNORECASE | re.DOTALL)
     TOOL_HISTORY_RE = re.compile(r"(?im)^\s*tool_history\s+\{.*?$")
     HISTORY_TOOL_ACTION_RE = re.compile(r'(?is)<action[^>]*\btype\s*=\s*"history_tool"[^>]*>.*?</action>')
     HISTORY_TOOL_TAG_RE = re.compile(r"(?is)<history_tool\b[^>]*>.*?</history_tool>")
+    ATTR_RE = re.compile(r"""([a-zA-Z_][\w\-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')""")
+    INT_FIELDS = {
+        "safe_steps_limit",
+        "retry_limit",
+        "requested_steps",
+    }
+    LIST_FIELDS = {
+        "allowed_actions",
+    }
 
     def __init__(self, logger=None):
         self.logger = logger
@@ -29,6 +41,85 @@ class IntentResponseParser:
             return " " * (match.end() - match.start())
 
         return self.THINK_TAG_RE.sub(_mask, response_text)
+
+    def _parse_attrs(self, attrs_raw: str) -> dict[str, str]:
+        attrs: dict[str, str] = {}
+        if not isinstance(attrs_raw, str) or not attrs_raw.strip():
+            return attrs
+        cleaned = attrs_raw.strip()
+        if cleaned.endswith("/"):
+            cleaned = cleaned[:-1].rstrip()
+        for key, v1, v2 in self.ATTR_RE.findall(cleaned):
+            attrs[str(key).strip().lower()] = str(v1 or v2 or "").strip()
+        return attrs
+
+    def _parse_allowed_actions(self, raw_value) -> list[str] | None:
+        if raw_value is None:
+            return None
+        if isinstance(raw_value, list):
+            raw_items = raw_value
+        else:
+            text = str(raw_value or "").strip()
+            if not text:
+                return []
+            try:
+                parsed = json.loads(text)
+            except Exception:
+                parsed = None
+            if isinstance(parsed, list):
+                raw_items = parsed
+            else:
+                text = text.strip()
+                if text.startswith("[") and text.endswith("]"):
+                    text = text[1:-1].strip()
+                raw_items = [item.strip() for item in text.split(",")]
+        actions: list[str] = []
+        for item in raw_items:
+            action = str(item or "").strip().strip('"').strip("'")
+            if action and action not in actions:
+                actions.append(action)
+        return actions
+
+    def _normalize_attr_payload(self, attrs: dict[str, str]) -> tuple[dict | None, str | None]:
+        if not attrs:
+            return None, None
+        payload: dict = {}
+        for key, value in attrs.items():
+            if key in {"mode", "intent_id", "intent_type", "goal", "switch_reason", "switch_explanation", "completion_reason", "completion_explanation"}:
+                if value:
+                    payload[key] = value
+                continue
+            if key in self.INT_FIELDS:
+                if value == "":
+                    continue
+                try:
+                    payload[key] = int(value)
+                except Exception:
+                    return None, f"invalid_intent_numeric_field_{key}"
+                continue
+            if key in self.LIST_FIELDS:
+                parsed = self._parse_allowed_actions(value)
+                if parsed is None:
+                    continue
+                payload[key] = parsed
+                continue
+
+        mode = str(payload.get("mode") or attrs.get("mode") or "").strip().lower()
+        if not mode:
+            return None, "intent_mode_required"
+        payload["mode"] = mode
+        return payload, None
+
+    def _intent_fallback_from_attributes(self, attrs_raw: str, *, self_closing: bool) -> tuple[dict | None, str | None]:
+        attrs = self._parse_attrs(attrs_raw)
+        payload, error = self._normalize_attr_payload(attrs)
+        if payload is not None:
+            self._debug(
+                "IntentParser.extract intent_parser_fallback=%s keys=%s",
+                "self_closing_xml_attributes" if self_closing else "xml_attributes",
+                sorted(payload.keys()),
+            )
+        return payload, error
 
     def extract_intent_update_and_strip(self, response_text: str) -> tuple[str, dict | None, str | None]:
         if not isinstance(response_text, str) or not response_text:
@@ -47,7 +138,9 @@ class IntentResponseParser:
 
         last_match = matches[-1]
         full_span = last_match.span(0)
-        raw_block = last_match.group(1)
+        raw_block = last_match.group("body") or ""
+        attrs_raw = last_match.group("attrs") or ""
+        self_closing = bool(last_match.group("selfclose"))
         last_block = raw_block.strip()
         clean_text = (response_text[: full_span[0]] + response_text[full_span[1] :]).strip()
 
@@ -63,8 +156,11 @@ class IntentResponseParser:
         self._debug("IntentParser.extract clean_text_preview=%r", clean_text[:400])
 
         if not last_block:
+            payload, fallback_error = self._intent_fallback_from_attributes(attrs_raw, self_closing=self_closing)
+            if payload is not None:
+                return clean_text, payload, None
             self._debug("IntentParser.extract empty_intent_block after_strip=True")
-            return clean_text, None, "empty_intent_block"
+            return clean_text, None, fallback_error or "empty_intent_block"
 
         try:
             payload = json.loads(last_block)
@@ -84,7 +180,10 @@ class IntentResponseParser:
                 end,
                 last_block[start:end],
             )
-            return clean_text, None, "invalid_intent_json"
+            payload, fallback_error = self._intent_fallback_from_attributes(attrs_raw, self_closing=self_closing)
+            if payload is not None:
+                return clean_text, payload, None
+            return clean_text, None, fallback_error or "invalid_intent_json"
 
         self._debug(
             "IntentParser.extract parsed_intent_payload type=%s keys=%s",
@@ -132,7 +231,12 @@ class IntentResponseParser:
             or "<intent" in response_lower
             or "tool_history" in response_lower
             or "history_tool" in response_lower
+            or self.has_plain_think_prefix(response)
         )
+
+    def has_plain_think_prefix(self, response: str) -> bool:
+        _cleaned, stripped = strip_plain_think_prefix_artifacts(str(response or ""))
+        return stripped
 
     def is_intent_only_response(self, response: str, segments) -> bool:
         if not isinstance(response, str):
@@ -164,6 +268,10 @@ class IntentResponseParser:
         has_intent_segment = any(seg.type == "intent" for seg in safe_segments)
         visible_text = self.extract_visible_non_action_text(safe_response)
         invalid_kind = ""
+        has_plain_think_prefix = self.has_plain_think_prefix(safe_response)
+
+        if has_plain_think_prefix and self.logger is not None and (has_action_segment or has_intent_segment or bool(visible_text)):
+            self.logger.warning("response_parser_fallback=plain_think_prefix_ignored")
 
         if has_action_tag and not has_action_segment:
             invalid_kind = "malformed_action"
@@ -171,6 +279,8 @@ class IntentResponseParser:
             invalid_kind = "transition_bundle_too_dense"
         elif self.is_tool_history_echo_without_action(safe_response, safe_segments):
             invalid_kind = "tool_history_echo"
+        elif has_plain_think_prefix and not has_action_segment and not has_intent_segment and not visible_text:
+            invalid_kind = "plain_think_without_valid_output"
         else:
             response_lower = safe_response.lower()
             contains_audit_marker = (

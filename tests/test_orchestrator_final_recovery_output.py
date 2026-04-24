@@ -147,6 +147,20 @@ class OrchestratorFinalRecoveryOutputTests(unittest.TestCase):
         self.assertIn("Do not restart the task from the beginning.", out)
         self.assertIn("Return EXACTLY ONE materially different read-only action.", out)
 
+    def test_hard_limit_reuse_prompt_forbids_continuing_under_current_contract(self):
+        out = self.prompt_builder.build_limit_aware_reuse_prompt(
+            "intent_step_limit_exceeded",
+            ["read_chunk", "search_content"],
+            goal=self.active_intent.goal,
+        )
+
+        self.assertIn("Current intent step budget is exhausted.", out)
+        self.assertIn("Normal actions are forbidden", out)
+        self.assertIn('mode="reuse"', out)
+        self.assertIn('mode="complete"', out)
+        self.assertIn("plain handoff/answer", out)
+        self.assertNotIn("Continue under the current intent contract.", out)
+
 
 if __name__ == "__main__":
     unittest.main()

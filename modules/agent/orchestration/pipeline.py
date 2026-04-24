@@ -6,6 +6,8 @@ import asyncio
 
 from .decision_models import ModelStepResult, PipelineIterationDecision
 from .stage_logging import OrchestrationStageLogger
+from ..model_client import ModelTechnicalInterruptionError
+from ..technical_interruptions import TechnicalInterruption
 
 
 class OrchestrationPipeline:
@@ -24,6 +26,43 @@ class OrchestrationPipeline:
     @property
     def ui(self):
         return self.agent.ui
+
+    def _close_active_intent_after_interruption(self, completion_reason: str) -> None:
+        closer = getattr(self.state, "close_active_intent_as_resumable", None)
+        if not callable(closer):
+            return
+        try:
+            closer(completion_reason)
+        except Exception:
+            pass
+
+    async def _handle_technical_interruption(self, ctx, interruption) -> bool:
+        note = getattr(self.state, "note_technical_interruption", None)
+        if callable(note):
+            note(interruption, current_query=ctx.current_query)
+
+        snapshot = getattr(self.state, "last_technical_interruption", None) or interruption
+        printer = getattr(self.ui, "print_technical_interruption", None)
+        if callable(printer):
+            await printer(snapshot)
+        else:
+            message = str(getattr(interruption, "message", "") or "Model provider interruption.").strip()
+            provider = str(getattr(interruption, "provider", "") or "provider").strip()
+            status_code = getattr(interruption, "status_code", None)
+            prefix = f"{provider}: "
+            if status_code is not None:
+                prefix = f"{provider} {status_code}: "
+            await self.ui.print_error(prefix + message)
+
+        self.stage_logger.log(
+            "model_step",
+            "stop",
+            reason="technical_interruption",
+            source="technical_interruption",
+        )
+        self._close_active_intent_after_interruption("technical_interruption")
+        ctx.active_loop = False
+        return False
 
     async def _run_model_step(self, ctx) -> ModelStepResult | None:
         if hasattr(self.prompt_builder, "_intent_universe"):
@@ -46,34 +85,53 @@ class OrchestrationPipeline:
             step=ctx.consecutive_calls,
         )
         system_msg = self.prompt_builder.build_system_message(ctx.tools_prompt, ctx.ctx_prompt)
+        memory_board_message = None
+        build_memory_board_context_message = getattr(self.prompt_builder, "build_memory_board_context_message", None)
+        if callable(build_memory_board_context_message):
+            memory_board_message = build_memory_board_context_message()
 
-        self.state.current_task = asyncio.create_task(
-            self.model.get_streaming_response(
-                ctx.current_query,
-                self.history,
-                self.ui,
-                self.state,
-                system_message=system_msg,
+        while True:
+            self.state.current_task = asyncio.create_task(
+                self.model.get_streaming_response(
+                    ctx.current_query,
+                    self.history,
+                    self.ui,
+                    self.state,
+                    system_message=system_msg,
+                    injected_messages=[memory_board_message] if memory_board_message else None,
+                )
             )
-        )
-        try:
-            response = await asyncio.wait_for(
-                self.state.current_task,
-                timeout=self.config.MAX_STEP_SECONDS,
-            )
-        except asyncio.TimeoutError:
-            self.state.current_task.cancel()
-            await self.ui.print_error(
-                f"Step timed out after {self.config.MAX_STEP_SECONDS}s."
-            )
-            ctx.active_loop = False
-            self.stage_logger.log(
-                "model_step",
-                "stop",
-                reason="step_timeout",
-                source="model_timeout",
-            )
-            return None
+            try:
+                response = await asyncio.wait_for(
+                    self.state.current_task,
+                    timeout=self.config.MAX_STEP_SECONDS,
+                )
+                clear = getattr(self.state, "clear_technical_interruption", None)
+                if callable(clear):
+                    clear()
+                break
+            except asyncio.TimeoutError:
+                self.state.current_task.cancel()
+                timeout_interruption = TechnicalInterruption(
+                    kind="timeout",
+                    provider=str(getattr(self.model.chat, "provider_name", "") or getattr(self.model.chat, "model_name", "") or "model").strip() or None,
+                    message=f"Step timed out after {self.config.MAX_STEP_SECONDS}s.",
+                    recoverable=True,
+                    retryable=True,
+                )
+                await self._handle_technical_interruption(ctx, timeout_interruption)
+                self.stage_logger.log(
+                    "model_step",
+                    "stop",
+                    reason="step_timeout",
+                    source="model_timeout",
+                )
+                return None
+            except ModelTechnicalInterruptionError as exc:
+                retry_now = await self._handle_technical_interruption(ctx, exc.interruption)
+                if retry_now:
+                    continue
+                return None
 
         response, intent_payload, intent_error = self.intent_response_parser.extract_intent_update_and_strip(response)
         if self.agent.log:

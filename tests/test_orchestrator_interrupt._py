@@ -3,6 +3,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
+from modules.agent.intent_runtime import IntentContract
 from modules.agent.orchestrator import Orchestrator
 from modules.agent.state_manager import AgentState
 from modules.parser import Segment
@@ -18,7 +19,26 @@ class TestOrchestratorInterrupt(unittest.IsolatedAsyncioTestCase):
             confirm_continue=AsyncMock(return_value=False),
             confirm_loop_recovery=AsyncMock(return_value="stop"),
         )
-        state = AgentState()
+        config = SimpleNamespace(
+            MAX_SESSION_SECONDS=120,
+            MAX_CONSECUTIVE_CALLS=10,
+            MAX_STEP_SECONDS=60,
+            LOOP_ERROR_REPEAT_THRESHOLD=2,
+            MALFORMED_ACTION_GRACE_STEPS=1,
+            RECOVERABLE_ERROR_RETRY_BUDGET=2,
+            CRITICAL_ERROR_RETRY_BUDGET=1,
+            INTENT_COMPLETION_ALLOWANCE=1,
+        )
+        state = AgentState(config)
+        state.intent_runtime.active_intent = IntentContract(
+            intent_id="interruptible_intent",
+            intent_type="MODIFY",
+            goal="Compile and verify",
+            allowed_actions=["run_shell"],
+            safe_steps_limit=4,
+            retry_limit=2,
+            lineage_id="interruptible_lineage",
+        )
 
         history = SimpleNamespace(
             add_message=MagicMock(),
@@ -49,16 +69,6 @@ class TestOrchestratorInterrupt(unittest.IsolatedAsyncioTestCase):
             reconstruct=MagicMock(return_value=""),
         )
 
-        config = SimpleNamespace(
-            MAX_SESSION_SECONDS=120,
-            MAX_CONSECUTIVE_CALLS=10,
-            MAX_STEP_SECONDS=60,
-            LOOP_ERROR_REPEAT_THRESHOLD=2,
-            MALFORMED_ACTION_GRACE_STEPS=1,
-            RECOVERABLE_ERROR_RETRY_BUDGET=2,
-            CRITICAL_ERROR_RETRY_BUDGET=1,
-        )
-
         agent = SimpleNamespace(
             ui=ui,
             state=state,
@@ -83,6 +93,9 @@ class TestOrchestratorInterrupt(unittest.IsolatedAsyncioTestCase):
         await asyncio.wait_for(main_task, timeout=2)
 
         self.assertTrue(dispatcher_cancelled.is_set())
+        self.assertIsNone(state.active_intent)
+        self.assertEqual("interruptible_intent", state.last_resumable_intent_id)
+        self.assertEqual("user_requested_stop", state.last_resumable_intent_completion_reason)
         ui.stop_loading.assert_awaited()
 
 

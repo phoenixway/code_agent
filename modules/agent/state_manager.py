@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+from dataclasses import asdict, is_dataclass
 
 from .defect_detector import DefectDetector
 from .intent_runtime import IntentRuntime
+from .technical_interruptions import TechnicalInterruption, detect_technical_interruption
 
 READ_ONLY_RECOVERY_ACTIONS = {
     "read_file",
@@ -100,6 +102,8 @@ class AgentState:
         self.last_resumable_intent_safe_steps_limit = 0
         self.last_resumable_intent_retry_limit = 0
         self.last_resumable_intent_completion_reason = ""
+        self.last_technical_interruption = None
+        self.pending_resume_query = ""
         self.consecutive_nonproductive_thinking_count = 0
         self.last_nonproductive_thinking_reason = ""
 
@@ -211,14 +215,19 @@ class AgentState:
         self.last_resumable_intent_completion_reason = str(completion_reason or "forced_plaintext_completion")
         self.last_completed_intent_type = str(getattr(active_intent, "intent_type", "") or "").strip().upper()
 
-    def finalize_pending_forced_plaintext_completion_if_needed(self) -> bool:
-        if not bool(getattr(self, "pending_finalize_after_terminal_plaintext_completion", False)):
+    def close_active_intent_as_resumable(
+        self,
+        completion_reason: str = "interrupted_resumable",
+        *,
+        clear_pending_stop: bool = True,
+    ) -> bool:
+        active_intent = self.active_intent
+        if active_intent is None:
+            if clear_pending_stop:
+                self.pending_loop_stop_info = None
             return False
 
-        active_intent = self.active_intent
-        completion_reason = str(getattr(self, "pending_finalize_completion_reason", "forced_plaintext_completion") or "forced_plaintext_completion")
-        if active_intent is not None:
-            self._capture_recent_resumable_intent_from_active(active_intent, completion_reason)
+        self._capture_recent_resumable_intent_from_active(active_intent, completion_reason)
 
         finalized = False
         runtime = self.intent_runtime
@@ -237,11 +246,75 @@ class AgentState:
                 except Exception:
                     finalized = False
 
+        if clear_pending_stop:
+            self.pending_loop_stop_info = None
+        return finalized
+
+    def finalize_pending_forced_plaintext_completion_if_needed(self) -> bool:
+        if not bool(getattr(self, "pending_finalize_after_terminal_plaintext_completion", False)):
+            return False
+
+        completion_reason = str(getattr(self, "pending_finalize_completion_reason", "forced_plaintext_completion") or "forced_plaintext_completion")
+        finalized = self.close_active_intent_as_resumable(
+            completion_reason,
+            clear_pending_stop=True,
+        )
+
         self.clear_pending_forced_plaintext_completion_close()
         return finalized
 
     def note_intent_only_response(self):
         self.intent_only_response_count += 1
+
+    def note_technical_interruption(self, interruption: TechnicalInterruption | dict | str | None, current_query: str = "") -> None:
+        detected = detect_technical_interruption(interruption)
+        raw = interruption
+        if detected is None and isinstance(raw, dict):
+            payload = dict(raw)
+            detected = TechnicalInterruption(
+                kind=str(payload.get("kind") or "technical_interruption"),
+                provider=str(payload.get("provider") or "").strip() or None,
+                status_code=payload.get("status_code"),
+                message=str(payload.get("message") or "Technical interruption").strip(),
+                recoverable=bool(payload.get("recoverable", True)),
+                retryable=bool(payload.get("retryable", True)),
+                retry_after_seconds=payload.get("retry_after_seconds"),
+                details=payload.get("details"),
+            )
+        if detected is None:
+            text = str(interruption or "").strip()
+            if not text:
+                self.last_technical_interruption = None
+                self.pending_resume_query = str(current_query or "")
+                return
+            detected = TechnicalInterruption(
+                kind="technical_interruption",
+                message=text,
+            )
+
+        active_intent = self.active_intent
+        last_resumable_intent_id = str(getattr(self, "last_resumable_intent_id", "") or "").strip() or None
+        active_intent_id = str(getattr(active_intent, "intent_id", "") or "").strip() or None
+        detected.active_intent_id = active_intent_id
+        detected.resumable_intent_id = active_intent_id or last_resumable_intent_id
+        detected.resumable = bool(detected.resumable_intent_id)
+
+        self.last_technical_interruption = detected
+        self.pending_resume_query = str(current_query or "")
+
+    def clear_technical_interruption(self) -> None:
+        self.last_technical_interruption = None
+        self.pending_resume_query = ""
+
+    def technical_interruption_snapshot(self) -> dict:
+        interruption = getattr(self, "last_technical_interruption", None)
+        if interruption is None:
+            return {}
+        if is_dataclass(interruption):
+            return asdict(interruption)
+        if isinstance(interruption, dict):
+            return dict(interruption)
+        return {"message": str(interruption)}
 
     def _trim_recent_problem_actions(self):
         window = int(getattr(self._config, "INTENT_RELABEL_PROBLEM_WINDOW", 5) if self._config is not None else 5)
@@ -346,6 +419,22 @@ class AgentState:
         return False
 
     def has_exhausted_active_intent(self) -> bool:
+        return self.has_hard_exhausted_active_intent()
+
+    def active_intent_hard_steps_remaining(self) -> int:
+        runtime = self.intent_runtime
+        active = runtime.active_intent if runtime is not None else None
+        if active is None or runtime is None:
+            return 0
+        getter = getattr(runtime, "_effective_hard_limit", None)
+        if callable(getter):
+            try:
+                return max(0, int(getter()) - int(getattr(active, "step_count", 0) or 0))
+            except Exception:
+                return 0
+        return 0
+
+    def has_hard_exhausted_active_intent(self) -> bool:
         runtime = self.intent_runtime
         active = runtime.active_intent if runtime is not None else None
         if active is None or runtime is None:
@@ -353,7 +442,7 @@ class AgentState:
         checker = getattr(runtime, "can_soft_continue_after_step_limit", None)
         if callable(checker):
             try:
-                return not bool(checker()) and int(getattr(active, "step_count", 0) or 0) >= int(getattr(active, "safe_steps_limit", 0) or 0)
+                return not bool(checker()) and self.active_intent_hard_steps_remaining() <= 0
             except Exception:
                 return False
         return False

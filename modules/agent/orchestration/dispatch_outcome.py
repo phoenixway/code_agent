@@ -7,6 +7,7 @@ import re
 from .decision_models import DispatchHandlingDecision
 from .stage_logging import OrchestrationStageLogger
 from .visible_text import contains_control_markup, extract_visible_text_for_user
+from ..technical_interruptions import detect_technical_interruption
 
 
 class DispatchOutcomeHandler:
@@ -20,7 +21,12 @@ class DispatchOutcomeHandler:
     PREVIOUSLY_PERFORMED_ACTION_RE = re.compile(r"<previously_performed_action[^>]*/>", re.IGNORECASE)
     SYSTEM_AUDIT_LINE_RE = re.compile(r"(?im)^\s*system_tool_audit:.*?$")
     TOOL_HISTORY_LINE_RE = re.compile(r"(?im)^\s*tool_history\s+\{.*?$")
-
+    SYSTEM_RESULT_LINE_RE = re.compile(
+        r"(?im)^\s*SYSTEM\s+RESULT(?:\s*\([^)]*\))?(?:\s+for\s+`?[^`:\n]+`?)?\s*:\s*.*$"
+    )
+    SYSTEM_RESULT_BLOCK_RE = re.compile(
+        r"(?is)SYSTEM\s+RESULT(?:\s*\([^)]*\))?(?:\s+for\s+`?[^`:\n]+`?)?\s*:\s*.*?(?=(?:\n\s*SYSTEM\s+RESULT|\Z))"
+    )
     def __init__(self, agent, parser, recovery):
         self.agent = agent
         self.state = agent.state
@@ -89,6 +95,9 @@ class DispatchOutcomeHandler:
                 continue
         return False
 
+    def _looks_like_technical_text(self, text: str) -> bool:
+        return detect_technical_interruption(text) is not None
+
     def _clear_terminal_plaintext_completion(self) -> None:
         try:
             setattr(self.state, "terminal_plaintext_completion_pending", False)
@@ -96,10 +105,58 @@ class DispatchOutcomeHandler:
         except Exception:
             pass
 
+    def _close_active_intent_if_terminal_stop(self, completion_reason: str) -> bool:
+        closer = getattr(self.state, "close_active_intent_as_resumable", None)
+        if not callable(closer):
+            return False
+        try:
+            return bool(closer(completion_reason))
+        except Exception:
+            return False
+
+    def _maybe_close_active_intent_for_text_only_stop(self) -> None:
+        active_intent = getattr(self.state, "active_intent", None)
+        if active_intent is None:
+            return
+
+        stop_info = getattr(self.state, "pending_loop_stop_info", None) or {}
+        stop_reason = str(stop_info.get("reason") or "").strip()
+        force_plaintext = bool(getattr(active_intent, "force_plaintext_completion", False))
+        exhausted = False
+        exhausted_checker = getattr(self.state, "has_exhausted_active_intent", None)
+        if callable(exhausted_checker):
+            try:
+                exhausted = bool(exhausted_checker())
+            except Exception:
+                exhausted = False
+
+        if force_plaintext:
+            completion_reason = (
+                str(getattr(self.state, "pending_finalize_completion_reason", "") or "").strip()
+                or stop_reason
+                or "forced_plaintext_completion"
+            )
+            self._close_active_intent_if_terminal_stop(completion_reason)
+            return
+
+        if exhausted:
+            self._close_active_intent_if_terminal_stop(stop_reason or "exhausted_resumable")
+
+
+    def _strip_leaked_system_results_from_ui_text(self, text: str) -> tuple[str, bool]:
+        value = str(text or "")
+        if not value:
+            return "", False
+
+        before = value
+        value = self.SYSTEM_RESULT_LINE_RE.sub("", value)
+        if re.search(r"\bSYSTEM\s+RESULT\b", value, re.IGNORECASE):
+            value = self.SYSTEM_RESULT_BLOCK_RE.sub("", value)
+        value = re.sub(r"\n{3,}", "\n\n", value).strip()
+        return value, value != before
+
     async def handle(self, ctx, processed_segs, sys_results, should_stop: bool) -> DispatchHandlingDecision:
         recon_msg = self.parser.reconstruct(processed_segs)
-        if recon_msg:
-            self.history.add_message("assistant", recon_msg)
 
         self.stage_logger.log(
             "dispatch_outcome",
@@ -112,7 +169,33 @@ class DispatchOutcomeHandler:
             visible_text = self._extract_visible_text(recon_msg)
             if recon_msg and contains_control_markup(recon_msg) and self.agent.log:
                 self.agent.log.info("DispatchOutcome.ui_text_sanitized control_markup_removed=True")
+            visible_text, leaked_system_result_removed = self._strip_leaked_system_results_from_ui_text(visible_text)
+            if leaked_system_result_removed:
+                self.stage_logger.log(
+                    "dispatch_outcome",
+                    "sanitize",
+                    reason="leaked_system_result_removed_from_ui_text",
+                    source="dispatch",
+                )
+            technical_interruption = detect_technical_interruption(visible_text or recon_msg)
+            if technical_interruption is not None:
+                note = getattr(self.state, "note_technical_interruption", None)
+                if callable(note):
+                    note(technical_interruption, current_query=ctx.current_query)
+                printer = getattr(self.ui, "print_technical_interruption", None)
+                if callable(printer):
+                    await printer(getattr(self.state, "last_technical_interruption", None) or technical_interruption)
+                else:
+                    await self.ui.print_error(str(visible_text or recon_msg).strip())
+                self._close_active_intent_if_terminal_stop("technical_interruption")
+                self._clear_terminal_plaintext_completion()
+                ctx.active_loop = False
+                return DispatchHandlingDecision.stop(
+                    reason="technical_text_suppressed_from_chat_history",
+                    source="dispatch",
+                )
             if visible_text:
+                self.history.add_message("assistant", visible_text)
                 rendered = await self._render_text_reply(visible_text)
                 if not rendered and self.agent.log:
                     self.agent.log.warning("Text-only response was reconstructed but could not be rendered in UI.")
@@ -120,6 +203,7 @@ class DispatchOutcomeHandler:
                 # This reply has already been rendered to the user-facing UI.
                 # Clear any pending terminal plaintext completion so the outer
                 # orchestrator loop does not flush the same assistant text again.
+                self._maybe_close_active_intent_for_text_only_stop()
                 self._clear_terminal_plaintext_completion()
                 ctx.active_loop = False
                 return DispatchHandlingDecision.stop(
@@ -134,6 +218,9 @@ class DispatchOutcomeHandler:
                 reason="invalid_zero_action_dispatch_path",
                 source="dispatch",
             )
+
+        if recon_msg:
+            self.history.add_message("assistant", recon_msg)
 
         for res in sys_results:
             self.history.add_message("system", res)

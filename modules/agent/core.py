@@ -58,6 +58,9 @@ class AngelicaAgent:
             autosummarize_requires_confirmation=self.config.autosummarize_requires_confirmation,
         )
         self.memory_board_store = MemoryBoardStore(storage_path=".angelica/memory_board.json")
+        reset_memory_board = getattr(self.memory_board_store, "reset_for_new_session", None)
+        if callable(reset_memory_board):
+            reset_memory_board()
         self.memory_board_engine = MemoryBoardEngine(
             self.memory_board_store,
             logger=self.log,
@@ -122,6 +125,62 @@ class AngelicaAgent:
             self.orchestrator.ui = self._ui
 
         return await self.orchestrator.process(user_input)
+
+    def _build_resume_control_query(self) -> str:
+        interruption = getattr(self.state, "last_technical_interruption", None)
+        if interruption is None:
+            return ""
+
+        recent_intent_id = str(
+            getattr(interruption, "resumable_intent_id", None)
+            or getattr(self.state, "last_resumable_intent_id", "")
+            or ""
+        ).strip()
+        completion_reason = str(
+            getattr(self.state, "last_resumable_intent_completion_reason", "")
+            or getattr(self.state, "last_resumable_completion_reason", "")
+            or ""
+        ).strip()
+        pending_query = str(getattr(self.state, "pending_resume_query", "") or "").strip()
+        interruption_message = str(getattr(interruption, "message", "") or "Technical interruption").strip()
+
+        lines = [
+            "SYSTEM: Resume the interrupted work from the last safe state.",
+            "This interruption was technical, not a successful completion.",
+            "Do NOT restart from zero.",
+        ]
+        if recent_intent_id:
+            lines.extend([
+                f"Most recent resumable intent_id: {recent_intent_id}",
+                "Reuse the same intent lineage if the work is the same.",
+            ])
+            if completion_reason in {"technical_interruption", "step_timeout", "exhausted_resumable"}:
+                lines.append(
+                    f"If no active contract exists, emit EXACTLY ONE <intent> JSON block with mode=\"reuse\" for intent_id {recent_intent_id} before any further action."
+                )
+        if interruption_message:
+            lines.append(f"Technical interruption: {interruption_message}")
+        if pending_query:
+            lines.append("Resume target:")
+            lines.append(pending_query)
+        return "\n".join(lines)
+
+    async def resume_interrupted_work(self) -> bool:
+        if self.orchestrator.ui is None and self._ui is not None:
+            self.orchestrator.ui = self._ui
+
+        resume_query = self._build_resume_control_query()
+        if not resume_query:
+            if self.ui:
+                await self.ui.print_system("No resumable interrupted work is available.")
+            return False
+
+        await self.orchestrator.process(
+            resume_query,
+            add_user_history=False,
+            user_history_meta={"type": "control_resume"},
+        )
+        return True
 
     async def interrupt(self):
         """Переривання задач."""

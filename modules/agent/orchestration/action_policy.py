@@ -33,6 +33,37 @@ class ActionPolicyHandler:
                 parsed_action_count=parsed_action_count,
             )
 
+        hard_exhausted_checker = getattr(self.state, "has_hard_exhausted_active_intent", None)
+        hard_exhausted = False
+        if callable(hard_exhausted_checker):
+            try:
+                hard_exhausted = bool(hard_exhausted_checker())
+            except Exception:
+                hard_exhausted = False
+
+        if hard_exhausted:
+            require_intent = getattr(self.state, "require_intent", None)
+            if callable(require_intent):
+                require_intent("exhausted_intent_requires_reuse_or_completion")
+            next_query = self.prompt_builder.build_limit_aware_reuse_prompt(
+                "exhausted_intent_requires_reuse_or_completion",
+                getattr(getattr(self.state, "active_intent", None), "allowed_actions", None) or [],
+                goal=getattr(getattr(self.state, "active_intent", None), "goal", ""),
+            )
+            self.stage_logger.log(
+                "action_policy",
+                "continue",
+                reason="exhausted_intent_normal_action_blocked",
+                source="action_policy",
+                action_count=parsed_action_count,
+            )
+            return ActionPolicyDecision.continue_with(
+                next_query,
+                reason="exhausted_intent_normal_action_blocked",
+                source="action_policy",
+                parsed_action_count=parsed_action_count,
+            )
+
         for seg in action_segments:
             required, reason = self.intent_guard.action_requires_intent(
                 seg.content,

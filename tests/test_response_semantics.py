@@ -56,6 +56,11 @@ class ResponseSemanticsTests(unittest.TestCase):
         self.assertFalse(self.s.is_plaintext_answer_path(only_think_and_tag, parsed, 0))
         self.assertTrue(self.s.is_plaintext_answer_path(only_think_and_tag + "Final answer.", parsed, 0))
 
+    def test_has_plain_think_prefix_detects_noncanonical_plain_think(self):
+        self.assertTrue(self.s.has_plain_think_prefix("think\n! inspect\n→ read block\n<action>{}</action>"))
+        self.assertTrue(self.s.has_plain_think_prefix("Thinking:\nNeed next step"))
+        self.assertFalse(self.s.has_plain_think_prefix("<think>Need next step</think>"))
+
 
 if __name__ == "__main__":
     unittest.main()

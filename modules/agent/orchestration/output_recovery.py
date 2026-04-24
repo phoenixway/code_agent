@@ -306,6 +306,21 @@ class ModelOutputRecoveryHandler:
                 audit_marker_retries=0,
             )
 
+        if invalid_kind == "plain_think_without_valid_output":
+            self.stage_logger.log(
+                "output_recovery",
+                "continue",
+                reason=invalid_kind,
+                universe=self._intent_universe_label(),
+            )
+            return OutputRecoveryDecision.continue_with(
+                self.prompt_builder.build_plain_think_without_valid_output_prompt(),
+                reason=invalid_kind,
+                source="output_recovery",
+                malformed_action_retries=0,
+                audit_marker_retries=0,
+            )
+
         if invalid_kind == "internal_summary_instead_of_final_answer":
             self.stage_logger.log("output_recovery", "continue", reason=invalid_kind, universe=self._intent_universe_label())
             return OutputRecoveryDecision.continue_with(

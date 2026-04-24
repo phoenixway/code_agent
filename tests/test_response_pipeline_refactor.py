@@ -35,6 +35,23 @@ class TextAnswerIntentResponseParser(DummyIntentResponseParser):
         )
 
 
+class PlainThinkIntentResponseParser(DummyIntentResponseParser):
+    def classify(self, response, segments):
+        text = str(response or "")
+        has_action = "<action" in text.lower()
+        if has_action:
+            return DummyParsedOutput(
+                has_action_segment=True,
+                invalid_kind="",
+                visible_text="",
+            )
+        return DummyParsedOutput(
+            has_action_segment=False,
+            invalid_kind="plain_think_without_valid_output",
+            visible_text="",
+        )
+
+
 class DummyIntentTransitions:
     async def handle_model_step(self, **kwargs):
         return SimpleNamespace(handled=False, next_query="", reason="", source="")
@@ -57,6 +74,24 @@ class DummyOutputRecovery:
             next_query="",
             reason="",
             source="",
+            malformed_action_retries=malformed_action_retries,
+            audit_marker_retries=audit_marker_retries,
+        )
+
+
+class PlainThinkOutputRecovery(DummyOutputRecovery):
+    async def decide(self, parsed_output, malformed_action_retries=0, audit_marker_retries=0):
+        if getattr(parsed_output, "invalid_kind", "") == "plain_think_without_valid_output":
+            return SimpleNamespace(
+                handled=True,
+                next_query="PLAIN_THINK_INVALID_OUTPUT",
+                reason="plain_think_without_valid_output",
+                source="output_recovery",
+                malformed_action_retries=malformed_action_retries,
+                audit_marker_retries=audit_marker_retries,
+            )
+        return await super().decide(
+            parsed_output,
             malformed_action_retries=malformed_action_retries,
             audit_marker_retries=audit_marker_retries,
         )
@@ -132,6 +167,9 @@ class DummyPromptBuilder:
     def build_intent_required_prompt(self, reason):
         return f"INTENT_REQUIRED::{reason}"
 
+    def build_limit_aware_reuse_prompt(self, reason, allowed_actions=None, *, goal=None, requested_steps=None):
+        return f"LIMIT_AWARE_REUSE::{reason}"
+
     def build_plain_text_completion_prompt(self, sm, stop_info):
         return "PLAIN_TEXT_COMPLETION_PROMPT"
 
@@ -143,6 +181,9 @@ class DummyPromptBuilder:
 
     def build_missing_action_or_answer_prompt(self):
         return "MISSING_ACTION_OR_ANSWER"
+
+    def build_plain_think_without_valid_output_prompt(self):
+        return 'PLAIN_THINK_INVALID_OUTPUT'
 
 
 class DummyUI:
@@ -237,6 +278,73 @@ class ResponsePipelineRefactorIntegrationTests(unittest.IsolatedAsyncioTestCase)
         self.assertEqual("intent_required_for_multistep", result.reason)
         self.assertEqual("intent_requirement_gate", result.source)
         self.assertEqual("INTENT_REQUIRED::intent_required_for_multistep", result.next_query)
+
+    async def test_hard_exhausted_intent_blocks_normal_action_before_dispatch(self):
+        state = self._state(
+            intent_required_until_activated=True,
+            intent_required_reason="exhausted_intent_requires_reuse_or_completion",
+            active_intent=SimpleNamespace(
+                intent_id="intent_1",
+                goal="Continue same work",
+                allowed_actions=["read_chunk", "search_content"],
+            ),
+        )
+        pipeline, _state, _ui = self._make_pipeline(state=state)
+
+        result = await pipeline.run_step(self._ctx(), self._step('<action>{"type":"read_chunk"}</action>'))
+
+        self.assertTrue(result.continue_loop)
+        self.assertEqual("exhausted_intent_requires_reuse_or_completion", result.reason)
+        self.assertEqual("intent_requirement_gate", result.source)
+        self.assertEqual("INTENT_REQUIRED::exhausted_intent_requires_reuse_or_completion", result.next_query)
+
+    async def test_plain_think_prefix_with_valid_action_is_ignored_not_forwarded_as_text(self):
+        state = self._state()
+        pipeline, _state, _ui = self._make_pipeline(state=state, intent_response_parser=PlainThinkIntentResponseParser())
+
+        result = await pipeline.run_step(
+            self._ctx(),
+            self._step('think\n! inspect file\n→ read target block\n<action>{"type":"read_chunk"}</action>'),
+        )
+
+        self.assertFalse(result.continue_loop)
+        self.assertTrue(any("<action" in str(seg).lower() for seg in result.segments))
+        self.assertEqual("", getattr(result.parsed_output, "visible_text", ""))
+
+    async def test_plain_think_only_triggers_specific_recovery(self):
+        state = self._state()
+        pipeline, _state, _ui = self._make_pipeline(
+            state=state,
+            intent_response_parser=PlainThinkIntentResponseParser(),
+            output_recovery=PlainThinkOutputRecovery(),
+        )
+
+        result = await pipeline.run_step(
+            self._ctx(),
+            self._step("think\n! inspect file\n→ read target block"),
+        )
+
+        self.assertTrue(result.continue_loop)
+        self.assertEqual("plain_think_without_valid_output", result.reason)
+        self.assertEqual("PLAIN_THINK_INVALID_OUTPUT", result.next_query)
+
+    async def test_bare_action_blocked_when_corrected_resumable_intent_required(self):
+        state = self._state(
+            intent_required_until_activated=True,
+            intent_required_reason="invalid_intent_resumable_available",
+            last_resumable_intent_id="per_link_vault_e2e",
+            last_resumable_intent_type="MODIFY",
+            last_resumable_intent_goal="Continue interrupted work",
+            active_intent=None,
+        )
+        pipeline, _state, _ui = self._make_pipeline(state=state)
+
+        result = await pipeline.run_step(self._ctx(), self._step('<action>{"type":"read_chunk"}</action>'))
+
+        self.assertTrue(result.continue_loop)
+        self.assertEqual("invalid_intent_resumable_available", result.reason)
+        self.assertEqual("intent_requirement_gate", result.source)
+        self.assertEqual("INTENT_REQUIRED::invalid_intent_resumable_available", result.next_query)
 
     async def test_memory_checkpoint_only_hard_stop(self):
         state = self._state(consecutive_memory_checkpoint_only_count=4)

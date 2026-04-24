@@ -129,6 +129,28 @@ class PromptBuilderCurrentIntentRetryRecoveryTests(unittest.TestCase):
         self.assertIn("Memory-board expectation for this contract:", out)
         self.assertIn("emit exactly ONE concise memory tag", out)
 
+    def test_build_system_message_uses_exhausted_gate_prompt_when_hard_limit_reached(self):
+        active_intent = SimpleNamespace(
+            intent_id="activity_tracker_edit",
+            intent_type="INVESTIGATE",
+            goal="Understand current implementation of activity tracker sorting and edit dialog to plan changes.",
+            allowed_actions=["read_chunk", "search_content", "run_shell"],
+            safe_steps_limit=4,
+            step_count=5,
+            retry_limit=2,
+            retry_count=1,
+            user_step_extension=0,
+        )
+        builder = self._builder(active_intent)
+        builder.state.has_hard_exhausted_active_intent = lambda: True
+
+        out = builder.build_system_message("TOOLS", "CTX")
+
+        self.assertIn("Status: ACTIVE BUT HARD-EXHAUSTED", out)
+        self.assertIn("Normal <action> output is forbidden", out)
+        self.assertIn('mode="reuse"', out)
+        self.assertNotIn("Continue under this contract unless runtime explicitly requires a legitimate transition.", out)
+
     def test_build_system_message_injects_no_active_intent_contract_block(self):
         builder = self._builder(active_intent=None)
 
@@ -160,6 +182,47 @@ class PromptBuilderCurrentIntentRetryRecoveryTests(unittest.TestCase):
 
         self.assertIn("Memory-board follow-up from the previous step:", out)
         self.assertIn("Previous step produced meaningful evidence but no memory tag was emitted.", out)
+
+    def test_build_system_message_does_not_embed_memory_board_entries(self):
+        active_intent = SimpleNamespace(
+            intent_id="activity_tracker_edit",
+            intent_type="INVESTIGATE",
+            goal="Understand current implementation of activity tracker sorting and edit dialog to plan changes.",
+            allowed_actions=["read_chunk", "search_content"],
+            safe_steps_limit=4,
+            step_count=1,
+            retry_limit=2,
+            retry_count=0,
+            user_step_extension=0,
+        )
+        builder = self._builder(active_intent)
+
+        out = builder.build_system_message("TOOLS", "CTX")
+
+        self.assertNotIn("[CURRENT INTENT MEMORY]", out)
+        self.assertNotIn("ActivityCard renders start_time as read-only.", out)
+        self.assertNotIn("Sorting currently falls back to created_at in repository query path.", out)
+
+    def test_build_memory_board_context_message_contains_memory_board_entries(self):
+        active_intent = SimpleNamespace(
+            intent_id="activity_tracker_edit",
+            intent_type="INVESTIGATE",
+            goal="Understand current implementation of activity tracker sorting and edit dialog to plan changes.",
+            allowed_actions=["read_chunk", "search_content"],
+            safe_steps_limit=4,
+            step_count=1,
+            retry_limit=2,
+            retry_count=0,
+            user_step_extension=0,
+        )
+        builder = self._builder(active_intent)
+
+        out = builder.build_memory_board_context_message()
+
+        self.assertIsNotNone(out)
+        self.assertEqual("user", out["role"])
+        self.assertIn("## MEMORY BOARD", out["content"])
+        self.assertIn("ActivityCard renders start_time as read-only.", out["content"])
 
     def test_memory_board_protocol_distinguishes_fact_from_finding(self):
         builder = self._builder(active_intent=None)

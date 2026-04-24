@@ -305,3 +305,14 @@ UI і ViewModel для створення Obsidian link зараз не пере
  ▎  continuation with intent per_link_vault_e2e and I'll locate the display layer files and apply the remaining       
  ▎  changes.                                                                                                          
  ▎           
+
+ Поточний стан: LinkHelpers.kt вже змінено: handleRelatedLinkClick тепер має параметр globalObsidianVaultName і fallback `link.vault ?: globalObsidianVaultName`.
+
+Не починай задачу з нуля.
+
+Зроби тільки це:
+1. Знайди всі call sites `handleRelatedLinkClick`.
+2. Онови їх під нову сигнатуру, передаючи global obsidian vault із наявного state/settings, не вигадуй нову архітектуру.
+3. Якщо потрібного значення немає в scope, прочитай найближчий state/model chunk і знайди правильне поле.
+4. Потім дай `git diff --stat` і diff по змінених файлах.
+5. Не оголошуй end-to-end complete, поки call sites не оновлені і UI display не перевірений.

@@ -1,7 +1,12 @@
+import asyncio
 import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
+from modules.agent.model_client import ModelTechnicalInterruption, ModelTechnicalInterruptionError
+from modules.agent.core import AngelicaAgent
+from modules.agent.intent_runtime import IntentContract
+from modules.agent.technical_interruptions import TechnicalInterruption
 from modules.agent.orchestration.action_policy import ActionPolicyHandler
 from modules.agent.orchestration.decision_models import DispatchHandlingDecision, MemoryBoardDecision, ModelStepResult, OrchestrationTraceEntry, ParsedModelOutput, RecoveryDecision
 from modules.agent.orchestration.loop_gate import LoopGateHandler
@@ -22,6 +27,7 @@ from modules.agent.orchestration.trace_export import OrchestrationTraceExporter
 from modules.command_handler import CommandHandler
 from modules.memory_board_engine import MemoryBoardEngine
 from modules.memory_board_store import MemoryBoardStore
+from modules.agent.state_manager import AgentState
 
 
 class _Segment:
@@ -114,6 +120,60 @@ class IntentResponseParserTests(unittest.TestCase):
         self.assertEqual('<action>{"type":"read_file","path":"a.py"}</action>', clean_text)
         self.assertEqual("inspect", payload["goal"])
         self.assertIsNone(error)
+
+    def test_extract_intent_update_and_strip_falls_back_to_xml_attributes_for_reuse(self):
+        clean_text, payload, error = self.parser.extract_intent_update_and_strip(
+            '<intent mode="reuse" intent_id="per_link_vault_e2e" requested_steps="5" switch_reason="current_intent_exhausted"></intent>\n'
+            '<action>{"type":"read_chunk","path":"a.py","start_line":1,"end_line":20}</action>'
+        )
+
+        self.assertEqual('<action>{"type":"read_chunk","path":"a.py","start_line":1,"end_line":20}</action>', clean_text)
+        self.assertEqual("reuse", payload["mode"])
+        self.assertEqual("per_link_vault_e2e", payload["intent_id"])
+        self.assertEqual(5, payload["requested_steps"])
+        self.assertEqual("current_intent_exhausted", payload["switch_reason"])
+        self.assertIsNone(error)
+
+    def test_extract_intent_update_and_strip_supports_self_closing_xml_attribute_intent(self):
+        clean_text, payload, error = self.parser.extract_intent_update_and_strip(
+            '<intent mode="reuse" intent_id="per_link_vault_e2e" requested_steps="5" switch_reason="current_intent_exhausted" />'
+        )
+
+        self.assertEqual("", clean_text)
+        self.assertEqual("reuse", payload["mode"])
+        self.assertEqual("per_link_vault_e2e", payload["intent_id"])
+        self.assertEqual(5, payload["requested_steps"])
+        self.assertIsNone(error)
+
+    def test_extract_intent_update_and_strip_parses_allowed_actions_attribute_variants(self):
+        _clean_text, payload, error = self.parser.extract_intent_update_and_strip(
+            '<intent mode="activate" intent_id="inspect_activity" intent_type="INVESTIGATE" goal="Inspect code path" '
+            'allowed_actions="read_file, read_chunk, edit_file"></intent>'
+        )
+        self.assertEqual(["read_file", "read_chunk", "edit_file"], payload["allowed_actions"])
+        self.assertIsNone(error)
+
+        _clean_text, payload, error = self.parser.extract_intent_update_and_strip(
+            "<intent mode='activate' intent_id='inspect_activity' intent_type='INVESTIGATE' goal='Inspect code path' "
+            "allowed_actions='[\"read_file\", \"read_chunk\", \"edit_file\"]'></intent>"
+        )
+        self.assertEqual(["read_file", "read_chunk", "edit_file"], payload["allowed_actions"])
+        self.assertIsNone(error)
+
+        _clean_text, payload, error = self.parser.extract_intent_update_and_strip(
+            '<intent mode="activate" intent_id="inspect_activity" intent_type="INVESTIGATE" goal="Inspect code path" '
+            'allowed_actions="[read_file, read_chunk, edit_file]"></intent>'
+        )
+        self.assertEqual(["read_file", "read_chunk", "edit_file"], payload["allowed_actions"])
+        self.assertIsNone(error)
+
+    def test_extract_intent_update_and_strip_reports_invalid_numeric_attribute_value(self):
+        _clean_text, payload, error = self.parser.extract_intent_update_and_strip(
+            '<intent mode="reuse" intent_id="per_link_vault_e2e" requested_steps="five" switch_reason="current_intent_exhausted"></intent>'
+        )
+
+        self.assertIsNone(payload)
+        self.assertEqual("invalid_intent_numeric_field_requested_steps", error)
 
     def test_extract_intent_update_and_strip_ignores_intent_markup_inside_think_block(self):
         response = (
@@ -209,6 +269,16 @@ class IntentResponseParserTests(unittest.TestCase):
         )
 
         self.assertEqual("transition_bundle_too_dense", parsed.invalid_kind)
+
+    def test_classify_model_output_ignores_plain_think_prefix_before_valid_intent(self):
+        parsed = self.parser.classify(
+            'think\n! Need to reuse.\n<intent mode="reuse">{"intent_id":"abc","requested_steps":3}</intent>',
+            [_Segment("intent", {"intent_id": "abc", "requested_steps": 3})],
+        )
+
+        self.assertEqual("", parsed.visible_text)
+        self.assertTrue(parsed.has_intent_segment)
+        self.assertEqual("intent_only_without_next_step", parsed.invalid_kind)
 
 
 class TurnLifecycleTests(unittest.TestCase):
@@ -406,6 +476,44 @@ class ActionPolicyHandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("formal intent contract is required", decision.next_query.lower())
         self.assertEqual(["multi_step_without_intent_contract"], required_reasons)
 
+    async def test_blocks_normal_action_when_active_intent_is_hard_exhausted(self):
+        required_reasons = []
+        state = SimpleNamespace(
+            active_intent=SimpleNamespace(
+                intent_id="intent_1",
+                goal="Continue same work",
+                allowed_actions=["read_chunk", "search_content"],
+            ),
+            readonly_steps_this_turn=0,
+            intent_required_until_activated=False,
+            has_retry_context=lambda: False,
+            can_continue_current_intent_after_failure=lambda: True,
+            has_hard_exhausted_active_intent=lambda: True,
+            require_intent=lambda reason: required_reasons.append(reason),
+        )
+        agent = SimpleNamespace(
+            state=state,
+            log=None,
+        )
+        prompt_builder = OrchestratorPromptBuilder(
+            SimpleNamespace(
+                state=state,
+                config=SimpleNamespace(),
+                memory_board_store=None,
+                log=None,
+            )
+        )
+        handler = ActionPolicyHandler(agent, IntentGuard(), prompt_builder)
+        ctx = SimpleNamespace(user_input="Continue same work")
+        segments = [_Segment("action", {"type": "read_chunk", "path": "a.py"})]
+
+        decision = await handler.decide(ctx, segments, intent_payload=None)
+
+        self.assertTrue(decision.handled)
+        self.assertEqual("exhausted_intent_normal_action_blocked", decision.reason)
+        self.assertIn('mode="reuse"', decision.next_query)
+        self.assertEqual(["exhausted_intent_requires_reuse_or_completion"], required_reasons)
+
 
 class ResponsePipelineForcePlaintextGateTests(unittest.IsolatedAsyncioTestCase):
     async def test_force_plaintext_completion_blocks_actions_before_dispatch(self):
@@ -515,6 +623,45 @@ class LoopGateHandlerTests(unittest.IsolatedAsyncioTestCase):
         ui.print_error.assert_awaited_once()
         ui.start_thinking.assert_not_awaited()
 
+    async def test_marks_exhausted_active_intent_as_reuse_required_before_model_step(self):
+        ui = SimpleNamespace(
+            print_error=AsyncMock(),
+            stop_loading=AsyncMock(),
+            confirm_continue=AsyncMock(),
+            start_thinking=AsyncMock(),
+        )
+        history = SimpleNamespace(
+            check_and_summarize=AsyncMock(),
+            current_token_count=0,
+            max_tokens=4096,
+        )
+        required_reasons = []
+        cleared = []
+        state = SimpleNamespace(
+            consecutive_same_error_count=0,
+            suppress_step_limit_warning=False,
+            has_hard_exhausted_active_intent=lambda: True,
+            require_intent=lambda reason: required_reasons.append(reason),
+            clear_intent_requirement=lambda: cleared.append(True),
+            intent_required_reason="",
+        )
+        agent = SimpleNamespace(
+            ui=ui,
+            state=state,
+            history=history,
+            config=SimpleNamespace(MAX_SESSION_SECONDS=100, MAX_CONSECUTIVE_CALLS=10, LOOP_ERROR_REPEAT_THRESHOLD=2),
+            log=None,
+        )
+        handler = LoopGateHandler(agent)
+        ctx = SimpleNamespace(active_loop=True, consecutive_calls=0, session_started_at=asyncio.get_running_loop().time())
+
+        decision = await handler.run(ctx)
+
+        self.assertTrue(decision.proceed)
+        self.assertEqual("exhausted_intent_requires_reuse_or_completion", decision.reason)
+        self.assertEqual(["exhausted_intent_requires_reuse_or_completion"], required_reasons)
+        self.assertEqual([], cleared)
+
 
 class MemoryBoardStageHandlerTests(unittest.IsolatedAsyncioTestCase):
     async def test_consumed_memory_board_response_requests_next_query(self):
@@ -592,6 +739,35 @@ class MemoryBoardStageHandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(state.memory_tag_expected_next_step)
         self.assertEqual("", state.memory_tag_reason)
         self.assertEqual("", state.memory_tag_expected_intent_id)
+
+    async def test_memory_tag_xml_attribute_fallback_is_committed_and_cleaned(self):
+        store = MemoryBoardStore(storage_path=None)
+        board_engine = MemoryBoardEngine(store, logger=None)
+        clean_text, tags = board_engine.parse_tags(
+            '<progress scope="intent" text="Checked LinkHelpers.kt fallback logic." />\nVisible text.'
+        )
+
+        self.assertEqual("Visible text.", clean_text)
+        self.assertEqual(1, len(tags))
+        self.assertEqual("progress", tags[0].kind)
+        self.assertEqual("intent", tags[0].scope)
+        self.assertEqual("Checked LinkHelpers.kt fallback logic.", tags[0].text)
+
+    async def test_memory_tag_xml_attribute_fallback_rejects_empty_text_cleanly(self):
+        store = MemoryBoardStore(storage_path=None)
+        board_engine = MemoryBoardEngine(store, logger=None)
+
+        result = board_engine.apply_response_text(
+            '<progress scope="intent" text="" />',
+            active_intent_id="intent_1",
+            current_user_input="Continue",
+            source="model",
+        )
+
+        self.assertEqual(1, result.parsed_count)
+        self.assertEqual(0, result.accepted_count)
+        self.assertEqual(1, result.rejected_count)
+        self.assertEqual("empty_text", result.commits[0].reason)
 
 
 class ModelOutputRecoveryHandlerTests(unittest.IsolatedAsyncioTestCase):
@@ -1021,6 +1197,297 @@ class DispatchOutcomeHandlerTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertFalse(state.memory_tag_expected_next_step)
 
+    async def test_suppresses_technical_text_from_assistant_history(self):
+        history = SimpleNamespace(add_message=MagicMock())
+        state = AgentState(SimpleNamespace(INTENT_COMPLETION_ALLOWANCE=1))
+        state.pending_loop_stop_info = None
+        state.last_memory_board_parsed_count = 0
+        state.memory_tag_expected_next_step = False
+        state.memory_tag_reason = ""
+        state.memory_tag_expected_intent_id = ""
+        state.terminal_plaintext_completion_pending = False
+        state.terminal_plaintext_completion_text = ""
+        agent = SimpleNamespace(
+            ui=SimpleNamespace(
+                print_system=AsyncMock(),
+                confirm_loop_recovery=AsyncMock(),
+                print_error=AsyncMock(),
+                print_message=AsyncMock(),
+                print_technical_interruption=AsyncMock(),
+            ),
+            state=state,
+            history=history,
+            log=None,
+        )
+        parser = SimpleNamespace(reconstruct=MagicMock(return_value="Error: Gemini API Error 503"))
+        recovery = SimpleNamespace(handle_dispatch_stop=AsyncMock())
+        handler = DispatchOutcomeHandler(agent, parser, recovery)
+        ctx = SimpleNamespace(active_loop=True, current_query="", state_machine=None)
+
+        decision = await handler.handle(
+            ctx,
+            processed_segs=[],
+            sys_results=[],
+            should_stop=False,
+        )
+
+        self.assertEqual("technical_text_suppressed_from_chat_history", decision.reason)
+        history.add_message.assert_not_called()
+        agent.ui.print_technical_interruption.assert_awaited_once()
+        self.assertEqual("gemini", getattr(state.last_technical_interruption, "provider", None))
+
+    async def test_text_only_reply_closes_exhausted_active_intent_as_resumable(self):
+        history = SimpleNamespace(add_message=MagicMock())
+        config = SimpleNamespace(INTENT_COMPLETION_ALLOWANCE=1)
+        state = AgentState(config)
+        state.intent_runtime.active_intent = IntentContract(
+            intent_id="intent_1",
+            intent_type="MODIFY",
+            goal="Finish fix",
+            allowed_actions=["read_chunk", "edit_file"],
+            safe_steps_limit=2,
+            retry_limit=2,
+            step_count=3,
+            lineage_id="lineage_1",
+        )
+        state.pending_loop_stop_info = {"reason": "intent_step_limit_exceeded"}
+        agent = SimpleNamespace(
+            ui=SimpleNamespace(
+                print_system=AsyncMock(),
+                confirm_loop_recovery=AsyncMock(),
+                print_error=AsyncMock(),
+                print_message=AsyncMock(),
+            ),
+            state=state,
+            history=history,
+            log=None,
+        )
+        parser = SimpleNamespace(reconstruct=MagicMock(return_value="Final answer from current evidence."))
+        recovery = SimpleNamespace(handle_dispatch_stop=AsyncMock())
+        handler = DispatchOutcomeHandler(agent, parser, recovery)
+        ctx = SimpleNamespace(active_loop=True, current_query="", state_machine=None)
+
+        decision = await handler.handle(
+            ctx,
+            processed_segs=[],
+            sys_results=[],
+            should_stop=False,
+        )
+
+        self.assertEqual("text_only_response_forwarded", decision.reason)
+        self.assertIsNone(state.active_intent)
+        self.assertEqual("intent_1", state.last_resumable_intent_id)
+        self.assertEqual("intent_step_limit_exceeded", state.last_resumable_intent_completion_reason)
+        history.add_message.assert_called_once_with("assistant", "Final answer from current evidence.")
+
+
+class OrchestrationPipelineTechnicalInterruptionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_model_provider_interruption_stops_without_dispatch(self):
+        loop_gate = SimpleNamespace(
+            run=AsyncMock(return_value=SimpleNamespace(proceed=True, reason="step_ready", source="loop_gate"))
+        )
+        response_pipeline = SimpleNamespace(run_step=AsyncMock())
+        state = SimpleNamespace(
+            current_task=None,
+            orchestration_trace=[],
+            orchestration_trace_sequence=0,
+            note_technical_interruption=MagicMock(),
+            clear_technical_interruption=MagicMock(),
+        )
+        ui = SimpleNamespace(
+            print_error=AsyncMock(),
+            print_technical_interruption=AsyncMock(),
+        )
+
+        class FailingModel:
+            async def get_streaming_response(self, *args, **kwargs):
+                raise ModelTechnicalInterruptionError(
+                    ModelTechnicalInterruption(
+                        provider="gemini",
+                        message="Gemini API temporarily unavailable",
+                        status_code=503,
+                        recoverable=True,
+                        retryable=True,
+                    )
+                )
+
+        agent = SimpleNamespace(
+            ui=ui,
+            state=state,
+            history=SimpleNamespace(),
+            model_client=FailingModel(),
+            config=SimpleNamespace(MAX_STEP_SECONDS=30),
+            log=None,
+        )
+        prompt_builder = SimpleNamespace(
+            build_system_message=MagicMock(return_value="SYSTEM"),
+            build_memory_board_context_message=MagicMock(return_value=None),
+            _intent_universe=MagicMock(return_value=SimpleNamespace(
+                kind="intentless_short_mode",
+                has_active_contract=False,
+                intent_required_now=False,
+                active_intent_type="",
+                intentless_steps_used=0,
+            )),
+        )
+        pipeline = OrchestrationPipeline(
+            agent,
+            prompt_builder=prompt_builder,
+            intent_response_parser=SimpleNamespace(),
+            loop_gate=loop_gate,
+            response_pipeline=response_pipeline,
+        )
+        ctx = SimpleNamespace(
+            current_query="continue work",
+            malformed_action_retries=0,
+            audit_marker_retries=0,
+            consecutive_calls=1,
+            active_loop=True,
+            tools_prompt="TOOLS",
+            ctx_prompt="CTX",
+        )
+
+        decision = await pipeline.run_iteration(ctx)
+
+        self.assertTrue(decision.stop_loop)
+        self.assertEqual("model_step_unavailable", decision.reason)
+        ui.print_technical_interruption.assert_awaited_once()
+        state.note_technical_interruption.assert_called_once()
+        response_pipeline.run_step.assert_not_called()
+
+    async def test_model_provider_interruption_closes_active_intent_as_resumable(self):
+        loop_gate = SimpleNamespace(
+            run=AsyncMock(return_value=SimpleNamespace(proceed=True, reason="step_ready", source="loop_gate"))
+        )
+        response_pipeline = SimpleNamespace(run_step=AsyncMock())
+        config = SimpleNamespace(MAX_STEP_SECONDS=30, INTENT_COMPLETION_ALLOWANCE=1)
+        state = AgentState(config)
+        state.intent_runtime.active_intent = IntentContract(
+            intent_id="intent_resume",
+            intent_type="MODIFY",
+            goal="Continue work",
+            allowed_actions=["read_chunk", "edit_file"],
+            safe_steps_limit=3,
+            retry_limit=2,
+            lineage_id="lineage_resume",
+        )
+        state.clear_technical_interruption = MagicMock()
+        ui = SimpleNamespace(
+            print_error=AsyncMock(),
+            print_technical_interruption=AsyncMock(),
+        )
+
+        class FailingModel:
+            async def get_streaming_response(self, *args, **kwargs):
+                raise ModelTechnicalInterruptionError(
+                    ModelTechnicalInterruption(
+                        provider="gemini",
+                        message="Gemini API temporarily unavailable",
+                        status_code=503,
+                        recoverable=True,
+                        retryable=True,
+                    )
+                )
+
+        agent = SimpleNamespace(
+            ui=ui,
+            state=state,
+            history=SimpleNamespace(),
+            model_client=FailingModel(),
+            config=config,
+            log=None,
+        )
+        prompt_builder = SimpleNamespace(
+            build_system_message=MagicMock(return_value="SYSTEM"),
+            build_memory_board_context_message=MagicMock(return_value=None),
+            _intent_universe=MagicMock(return_value=SimpleNamespace(
+                kind="active_contract",
+                has_active_contract=True,
+                intent_required_now=False,
+                active_intent_type="MODIFY",
+                intentless_steps_used=0,
+            )),
+        )
+        pipeline = OrchestrationPipeline(
+            agent,
+            prompt_builder=prompt_builder,
+            intent_response_parser=SimpleNamespace(),
+            loop_gate=loop_gate,
+            response_pipeline=response_pipeline,
+        )
+        ctx = SimpleNamespace(
+            current_query="continue work",
+            malformed_action_retries=0,
+            audit_marker_retries=0,
+            consecutive_calls=1,
+            active_loop=True,
+            tools_prompt="TOOLS",
+            ctx_prompt="CTX",
+        )
+
+        decision = await pipeline.run_iteration(ctx)
+
+        self.assertTrue(decision.stop_loop)
+        self.assertIsNone(state.active_intent)
+        self.assertEqual("intent_resume", state.last_resumable_intent_id)
+        self.assertEqual("technical_interruption", state.last_resumable_intent_completion_reason)
+        self.assertTrue(getattr(state.last_technical_interruption, "resumable", False))
+        response_pipeline.run_step.assert_not_called()
+
+
+class TechnicalInterruptionResumeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_resume_interrupted_work_uses_control_path_without_user_history(self):
+        agent = AngelicaAgent.__new__(AngelicaAgent)
+        agent._ui = SimpleNamespace(print_system=AsyncMock())
+        agent.state = SimpleNamespace(
+            last_technical_interruption=TechnicalInterruption(
+                kind="provider_error",
+                provider="gemini",
+                status_code=503,
+                message="Gemini API temporarily unavailable",
+                resumable=True,
+                resumable_intent_id="intent_resume",
+            ),
+            last_resumable_intent_id="intent_resume",
+            last_resumable_intent_completion_reason="technical_interruption",
+            last_resumable_completion_reason="technical_interruption",
+            pending_resume_query="Continue implementing the fix",
+        )
+        agent.orchestrator = SimpleNamespace(
+            ui=None,
+            process=AsyncMock(return_value=None),
+        )
+
+        resumed = await AngelicaAgent.resume_interrupted_work(agent)
+
+        self.assertTrue(resumed)
+        agent.orchestrator.process.assert_awaited_once()
+        args, kwargs = agent.orchestrator.process.await_args
+        self.assertIn("Resume the interrupted work from the last safe state", args[0])
+        self.assertIn('mode="reuse"', args[0])
+        self.assertFalse(kwargs["add_user_history"])
+
+    async def test_resume_interrupted_work_reports_missing_resume_state(self):
+        agent = AngelicaAgent.__new__(AngelicaAgent)
+        agent._ui = SimpleNamespace(print_system=AsyncMock())
+        agent.state = SimpleNamespace(
+            last_technical_interruption=None,
+            last_resumable_intent_id="",
+            last_resumable_intent_completion_reason="",
+            last_resumable_completion_reason="",
+            pending_resume_query="",
+        )
+        agent.orchestrator = SimpleNamespace(
+            ui=None,
+            process=AsyncMock(return_value=None),
+        )
+
+        resumed = await AngelicaAgent.resume_interrupted_work(agent)
+
+        self.assertFalse(resumed)
+        agent.orchestrator.process.assert_not_awaited()
+        agent._ui.print_system.assert_awaited_once()
+
 
 class ModelOutputRecoveryHandlerTests(unittest.IsolatedAsyncioTestCase):
     async def test_tool_history_echo_returns_recovery_prompt(self):
@@ -1125,6 +1592,47 @@ class IntentTransitionHandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(decision.handled)
         self.assertIn("syntactically invalid", decision.next_query)
         state.require_intent.assert_called_once_with("invalid_intent_json")
+
+    async def test_invalid_intent_with_resumable_state_requests_corrected_reuse(self):
+        state = SimpleNamespace(
+            intent_required_until_activated=True,
+            active_intent=None,
+            last_resumable_intent_id="per_link_vault_e2e",
+            last_resumable_intent_type="MODIFY",
+            last_resumable_intent_goal="Continue the same task",
+            last_technical_interruption=None,
+            require_intent=MagicMock(),
+        )
+        agent = SimpleNamespace(
+            ui=SimpleNamespace(),
+            state=state,
+            config=SimpleNamespace(INTENT_REUSE_EXTENSION_STEPS=4),
+            log=None,
+        )
+        prompt_builder = OrchestratorPromptBuilder(
+            SimpleNamespace(
+                state=state,
+                config=agent.config,
+                memory_board_store=None,
+                log=None,
+            )
+        )
+        recovery = SimpleNamespace(handle_defect_detector_stop=AsyncMock())
+        handler = IntentTransitionHandler(agent, prompt_builder, recovery)
+
+        decision = await handler.handle_model_step(
+            intent_payload=None,
+            intent_error="invalid_intent_json",
+            response_text="",
+            state_machine=None,
+        )
+
+        self.assertTrue(decision.handled)
+        self.assertEqual("invalid_intent_resumable_available", decision.reason)
+        self.assertIn("Resumable intent_id: per_link_vault_e2e", decision.next_query)
+        self.assertIn('<intent mode="reuse">', decision.next_query)
+        self.assertIn("Do not emit an <action> before reuse is accepted.", decision.next_query)
+        state.require_intent.assert_called_once_with("invalid_intent_resumable_available")
 
     async def test_accepted_intent_without_followup_requests_next_step_under_same_contract(self):
         active_intent = SimpleNamespace(

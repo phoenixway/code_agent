@@ -9,6 +9,10 @@ class DummyConfig:
     INTENT_RELABEL_GOAL_SIMILARITY_THRESHOLD = 0.6
     INTENT_RELABEL_ACTION_OVERLAP_THRESHOLD = 0.6
     INTENT_RELABEL_PRESERVE_STEPS_ON_REFRESH = True
+    INTENT_REUSE_EXTENSION_STEPS = 4
+    INTENT_MAX_SAFE_STEPS = 8
+    INTENT_DEFAULT_SAFE_STEPS = 4
+    INTENT_DEFAULT_RETRY_LIMIT = 2
 
 
 class IntentRuntimePolicyIntegrationTests(unittest.TestCase):
@@ -205,6 +209,26 @@ class IntentRuntimePolicyIntegrationTests(unittest.TestCase):
         self.assertIn("write_file", self.runtime.active_intent.allowed_actions)
         self.assertIn("create_file", self.runtime.active_intent.allowed_actions)
         self.assertIn("run_shell", self.runtime.active_intent.allowed_actions)
+
+    def test_reuse_after_current_intent_exhausted_refreshes_budget_and_clears_requirement(self):
+        self.runtime.active_intent.step_count = self.runtime.active_intent.safe_steps_limit + 1
+        self.runtime.require_intent("exhausted_intent_requires_reuse_or_completion")
+
+        payload = {
+            "intent_id": "activity_tracker_edit",
+            "mode": "reuse",
+            "requested_steps": 4,
+            "switch_reason": "current_intent_exhausted",
+            "goal": "Determine how to move today's record to yesterday via edit dialog",
+        }
+
+        ok, msg = self.runtime.apply_payload(payload)
+
+        self.assertTrue(ok, msg)
+        self.assertEqual("intent_reused_with_step_refresh", msg)
+        self.assertFalse(self.runtime.intent_required_until_activated)
+        self.assertEqual("intent_reused_with_step_refresh", self.runtime.last_transition_info.get("transition"))
+        self.assertGreater(self.runtime.active_intent.user_step_extension, 0)
 
 
 if __name__ == "__main__":

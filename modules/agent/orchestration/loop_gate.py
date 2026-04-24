@@ -27,6 +27,24 @@ class LoopGateHandler:
             if self.agent.log:
                 self.agent.log.warning(f"Pre-step summarization check failed: {exc}")
 
+        exhausted_checker = getattr(self.state, "has_hard_exhausted_active_intent", None)
+        hard_exhausted = False
+        if callable(exhausted_checker):
+            try:
+                hard_exhausted = bool(exhausted_checker())
+            except Exception:
+                hard_exhausted = False
+
+        if hard_exhausted:
+            require_intent = getattr(self.state, "require_intent", None)
+            if callable(require_intent):
+                require_intent("exhausted_intent_requires_reuse_or_completion")
+        else:
+            clear_requirement = getattr(self.state, "clear_intent_requirement", None)
+            reason = str(getattr(self.state, "intent_required_reason", "") or "").strip()
+            if callable(clear_requirement) and reason == "exhausted_intent_requires_reuse_or_completion":
+                clear_requirement()
+
         if self.agent.log:
             self.agent.log.debug(
                 f"Loop iteration={ctx.consecutive_calls + 1} "
@@ -87,9 +105,10 @@ class LoopGateHandler:
             "proceed",
             step=ctx.consecutive_calls,
             source="loop_gate",
+            hard_exhausted=hard_exhausted,
         )
         return LoopGateDecision(
             proceed=True,
-            reason="step_ready",
+            reason="exhausted_intent_requires_reuse_or_completion" if hard_exhausted else "step_ready",
             source="loop_gate",
         )

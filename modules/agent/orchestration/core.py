@@ -93,16 +93,24 @@ class Orchestrator:
     def ui(self):
         return self.agent.ui
 
-    def _start_turn(self, user_input: str):
-        return self.turn_lifecycle.start_turn(user_input)
+    def _start_turn(self, user_input: str, *, add_user_history: bool = True, user_history_meta: dict | None = None):
+        return self.turn_lifecycle.start_turn(
+            user_input,
+            add_user_history=add_user_history,
+            user_history_meta=user_history_meta,
+        )
 
-    def _create_loop_context(self, user_input: str) -> LoopContext:
+    def _create_loop_context(self, user_input: str, *, add_user_history: bool = True, user_history_meta: dict | None = None) -> LoopContext:
         loop = asyncio.get_running_loop()
         return LoopContext(
             user_input=user_input,
             tools_prompt=self.agent.tool_manager.get_tools_prompt(),
             ctx_prompt=self.agent.context_manager.get_context_prompt(),
-            state_machine=self._start_turn(user_input),
+            state_machine=self._start_turn(
+                user_input,
+                add_user_history=add_user_history,
+                user_history_meta=user_history_meta,
+            ),
             current_query=user_input,
             consecutive_calls=0,
             malformed_action_retries=0,
@@ -175,45 +183,13 @@ class Orchestrator:
         if not bool(getattr(self.state, "pending_finalize_after_terminal_plaintext_completion", False)):
             return
 
-        active = getattr(self.state, "active_intent", None)
-        if active is not None:
+        closer = getattr(self.state, "close_active_intent_as_resumable", None)
+        if callable(closer):
             try:
-                setattr(self.state, "last_resumable_intent_id", str(getattr(active, "intent_id", "") or ""))
-                setattr(self.state, "last_resumable_intent_type", str(getattr(active, "intent_type", "") or ""))
-                setattr(self.state, "last_resumable_intent_goal", str(getattr(active, "goal", "") or ""))
-                setattr(self.state, "last_resumable_intent_allowed_actions", list(getattr(active, "allowed_actions", []) or []))
-                setattr(self.state, "last_resumable_intent_lineage_id", str(getattr(active, "lineage_id", "") or getattr(active, "intent_id", "") or ""))
-                setattr(self.state, "last_resumable_intent_safe_steps_limit", int(getattr(active, "safe_steps_limit", 0) or 0))
-                setattr(self.state, "last_resumable_intent_retry_limit", int(getattr(active, "retry_limit", 0) or 0))
-                setattr(self.state, "last_resumable_intent_completion_reason", str(getattr(self.state, "pending_finalize_completion_reason", "forced_plaintext_completion") or "forced_plaintext_completion"))
-                setattr(self.state, "last_completed_intent_type", str(getattr(active, "intent_type", "") or "").strip().upper())
-            except Exception:
-                pass
-
-        runtime = getattr(self.state, "intent_runtime", None)
-        finalized = False
-        for method_name in ("finalize_current_intent_completion", "close_current_intent", "clear_current_intent"):
-            method = getattr(runtime, method_name, None) if runtime is not None else None
-            if callable(method):
-                try:
-                    method()
-                    finalized = True
-                    break
-                except Exception:
-                    pass
-        if not finalized:
-            for method_name in ("complete_current_intent", "clear_active_intent"):
-                method = getattr(self.state, method_name, None)
-                if callable(method):
-                    try:
-                        method()
-                        finalized = True
-                        break
-                    except Exception:
-                        pass
-        if not finalized:
-            try:
-                self.state.active_intent = None
+                closer(
+                    str(getattr(self.state, "pending_finalize_completion_reason", "forced_plaintext_completion") or "forced_plaintext_completion"),
+                    clear_pending_stop=True,
+                )
             except Exception:
                 pass
         try:
@@ -223,13 +199,20 @@ class Orchestrator:
         except Exception:
             pass
 
-    async def process(self, user_input):
+    async def process(self, user_input, *, add_user_history: bool = True, user_history_meta: dict | None = None):
         """Головний цикл: Think -> Act -> Loop."""
         if self.agent.log:
             self.agent.log.info("Orchestrator.start")
             self.agent.log.debug(f"User input: {user_input[:300]}")
 
-        ctx = self._create_loop_context(user_input)
+        try:
+            ctx = self._create_loop_context(
+                user_input,
+                add_user_history=add_user_history,
+                user_history_meta=user_history_meta,
+            )
+        except TypeError:
+            ctx = self._create_loop_context(user_input)
 
         try:
             while ctx.active_loop:
@@ -259,6 +242,12 @@ class Orchestrator:
         except asyncio.CancelledError:
             if self.agent.log:
                 self.agent.log.info("Orchestrator interrupted by user.")
+            closer = getattr(self.state, "close_active_intent_as_resumable", None)
+            if callable(closer):
+                try:
+                    closer("user_requested_stop", clear_pending_stop=True)
+                except Exception:
+                    pass
         finally:
             if self.agent.log:
                 total_elapsed = asyncio.get_running_loop().time() - ctx.session_started_at

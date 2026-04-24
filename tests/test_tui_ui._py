@@ -1,6 +1,11 @@
 import unittest
 
 from modules.tui_ui import TuiUI
+from modules.agent.technical_interruptions import TechnicalInterruption
+from modules.ui_components.technical_interruption_widget import (
+    TechnicalInterruptionWidget,
+    build_technical_interruption_view_model,
+)
 
 
 class TestTuiUiSanitizer(unittest.TestCase):
@@ -26,7 +31,38 @@ class TestTuiUiSanitizer(unittest.TestCase):
         safe = TuiUI.sanitize_tool_call_for_display(command, preview_limit=100)
         self.assertEqual(safe["content"], "short")
 
+    def test_technical_interruption_view_model_is_resumable(self):
+        interruption = TechnicalInterruption(
+            kind="provider_error",
+            provider="gemini",
+            status_code=503,
+            message="Gemini API temporarily unavailable",
+            resumable=True,
+            resumable_intent_id="intent_123",
+        )
+
+        view_model = build_technical_interruption_view_model(interruption)
+
+        self.assertEqual("Відновити роботу", view_model["action_label"])
+        self.assertEqual("resume", view_model["action_kind"])
+        self.assertTrue(view_model["action_enabled"])
+
+    def test_technical_interruption_widget_uses_retry_for_non_resumable_state(self):
+        interruption = TechnicalInterruption(
+            kind="provider_error",
+            provider="gemini",
+            status_code=503,
+            message="Gemini API temporarily unavailable",
+            resumable=False,
+            retryable=True,
+        )
+
+        widget = TechnicalInterruptionWidget(interruption)
+
+        self.assertEqual("Retry", widget.view_model["action_label"])
+        self.assertEqual("retry", widget.view_model["action_kind"])
+        self.assertTrue(widget.view_model["action_enabled"])
+
 
 if __name__ == "__main__":
     unittest.main()
-

@@ -9,8 +9,9 @@ class TurnLifecycle:
         self.state = agent.state
         self.history = agent.history
 
-    def start_turn(self, user_input: str):
-        self.history.add_message("user", user_input)
+    def start_turn(self, user_input: str, *, add_user_history: bool = True, user_history_meta: dict | None = None):
+        if add_user_history:
+            self.history.add_message("user", user_input, **dict(user_history_meta or {}))
         sm = getattr(self.state, "state_machine", None)
         if sm is not None:
             sm.start_turn(user_input)

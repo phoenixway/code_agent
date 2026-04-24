@@ -22,6 +22,36 @@ CONTROL_MARKUP_RE = re.compile(
     r"<\s*(think|intent|action|fact|finding|decision|preference|progress|history_tool|previously_performed_action)\b",
     re.IGNORECASE,
 )
+PLAIN_THINK_PREFIX_RE = re.compile(r"^\s*(think|thinking)\s*:?\s*(?:\n+|$)", re.IGNORECASE)
+
+
+def strip_plain_think_prefix_artifacts(response: str) -> tuple[str, bool]:
+    if not isinstance(response, str):
+        return "", False
+
+    text = response
+    match = PLAIN_THINK_PREFIX_RE.match(text)
+    if not match:
+        return text, False
+
+    remainder = text[match.end():]
+    control_positions = [
+        pos
+        for pos in [
+            remainder.lower().find("<intent"),
+            remainder.lower().find("<action"),
+            remainder.lower().find("<think"),
+        ]
+        if pos >= 0
+    ]
+    if control_positions:
+        return remainder[min(control_positions):].lstrip(), True
+
+    block_split = re.split(r"\n\s*\n", remainder, maxsplit=1)
+    if len(block_split) == 2:
+        return block_split[1].lstrip(), True
+
+    return "", True
 
 
 def extract_visible_text_for_user(response: str) -> str:
@@ -31,6 +61,7 @@ def extract_visible_text_for_user(response: str) -> str:
     if not text.strip():
         return ""
 
+    text, _ = strip_plain_think_prefix_artifacts(text)
     text = THINK_TAG_RE.sub(" ", text)
     text = INTENT_TAG_RE.sub(" ", text)
     text = ACTION_TAG_RE.sub(" ", text)
