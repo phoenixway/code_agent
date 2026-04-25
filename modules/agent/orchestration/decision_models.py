@@ -17,6 +17,12 @@ class ParsedModelOutput:
     has_intent_segment: bool = False
     visible_text: str = ""
     invalid_kind: str = ""
+    model_stop_reason: str = ""
+    operational_checkpoint_satisfied: bool = False
+    operational_checkpoint_has_think: bool = False
+    operational_checkpoint_has_marker: bool = False
+    operational_checkpoint_has_board_commit: bool = False
+    operational_checkpoint_has_tags: bool = False
 
 
 @dataclass
@@ -24,6 +30,7 @@ class ModelStepResult:
     response: str
     intent_payload: dict | None
     intent_error: str | None
+    model_stop_reason: str = ""
 
 
 @dataclass
@@ -168,6 +175,16 @@ class MemoryBoardDecision(PreDispatchDecision):
     memory_checkpoint_only: bool = False
     memory_checkpoint_and_text: bool = False
     memory_checkpoint_and_action: bool = False
+
+
+@dataclass
+class PlanBoardDecision(PreDispatchDecision):
+    response_text: str = ""
+    next_query: str | None = None
+    continue_loop: bool = False
+    plan_checkpoint_only: bool = False
+    plan_checkpoint_and_text: bool = False
+    plan_checkpoint_and_action: bool = False
 
 
 @dataclass

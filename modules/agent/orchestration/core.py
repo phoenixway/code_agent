@@ -17,6 +17,7 @@ from .loop_gate import LoopGateHandler
 from .memory_board_stage import MemoryBoardStageHandler
 from .output_recovery import ModelOutputRecoveryHandler
 from .parsing import IntentResponseParser
+from .plan_board_stage import PlanBoardStageHandler
 from .policy import IntentGuard
 from .prompting import OrchestratorPromptBuilder
 from .pipeline import OrchestrationPipeline
@@ -64,6 +65,7 @@ class Orchestrator:
         self.intent_transitions = IntentTransitionHandler(agent, self.prompt_builder, self.recovery)
         self.action_policy = ActionPolicyHandler(agent, self.intent_guard, self.prompt_builder)
         self.loop_gate = LoopGateHandler(agent)
+        self.plan_board_stage = PlanBoardStageHandler(agent, self.prompt_builder)
         self.memory_board_stage = MemoryBoardStageHandler(agent, self.prompt_builder)
         self.dispatch_outcome = DispatchOutcomeHandler(agent, self.parser, self.recovery)
         self.response_pipeline = ModelResponsePipeline(
@@ -74,6 +76,7 @@ class Orchestrator:
             self.intent_transitions,
             self.output_recovery,
             self.action_policy,
+            self.plan_board_stage,
             self.memory_board_stage,
         )
         self.pipeline = OrchestrationPipeline(

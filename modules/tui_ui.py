@@ -1,6 +1,7 @@
 import threading
 import asyncio
 import functools
+import re
 from typing import Any, Optional
 
 from textual.widgets import Static
@@ -135,6 +136,35 @@ class TuiUI:
         return text[:limit], hidden
 
     @staticmethod
+    def _assistant_text_should_use_markdown(text: str) -> bool:
+        if not isinstance(text, str):
+            return False
+        stripped = text.strip()
+        if not stripped:
+            return False
+        if "\n" in stripped:
+            lines = [line.strip() for line in stripped.splitlines() if line.strip()]
+            has_heading = any(line.startswith(("# ", "## ", "### ")) for line in lines)
+            has_fence = "```" in stripped
+            has_blockquote = any(line.startswith("> ") for line in lines)
+            has_table = any(line.startswith("|") and line.endswith("|") for line in lines)
+            has_bullet = any(line.startswith(("- ", "* ")) for line in lines)
+            has_ordered = any(re.match(r"^\d+\.\s", line) for line in lines)
+            if has_fence or has_heading or has_blockquote or has_table:
+                return True
+            if has_bullet or has_ordered:
+                return (
+                    "\n\n" in stripped
+                    or stripped.startswith(("- ", "* "))
+                    or bool(re.match(r"^\d+\.\s", stripped))
+                )
+            return False
+        markdown_markers = ("```", "# ", "## ", "### ", "> ", "|", "[")
+        if any(marker in stripped for marker in markdown_markers):
+            return True
+        return True
+
+    @staticmethod
     def sanitize_tool_call_for_display(command: dict, preview_limit: int = 1200) -> dict:
         """Returns a UI-safe copy of tool call payload without mutating original command."""
         if not isinstance(command, dict):
@@ -143,10 +173,11 @@ class TuiUI:
         safe = command.copy()
         tool_name = safe.get("type") or safe.get("action", "unknown")
 
-        if tool_name == "write_file":
-            content = safe.get("content")
+        if tool_name in {"write_file", "write_file_block", "append_file_block"}:
+            field_name = "content" if isinstance(safe.get("content"), str) else "file_content"
+            content = safe.get(field_name)
             if isinstance(content, str) and len(content) > preview_limit:
-                safe["content"] = (
+                safe[field_name] = (
                     f"[content omitted in UI: {len(content)} chars; preview: {content[:120].replace(chr(10), '\\n')}]"
                 )
 
@@ -226,7 +257,17 @@ class TuiUI:
                 return "never"
             return "later"
 
-        if action_type in {"run_shell", "search_content", "search_files", "list_directory", "read_file", "read_chunk", "read_file_skeleton", "extract_kotlin_function", "extract_symbol"}:
+        if action_type == "run_shell":
+            prompt = (
+                "[bold yellow]⚠ Action confirmation[/]\n\n"
+                f"[bold]Type:[/] {action_type}\n"
+                f"[bold]Details:[/] {details}"
+            )
+            screen = SelectionScreen(prompt, ["Allow", "Deny"])
+            result = await self._push_screen_wait(screen)
+            return result == "Allow"
+
+        if action_type in {"search_content", "search_files", "list_directory", "read_file", "read_chunk", "read_file_skeleton", "extract_kotlin_function", "extract_symbol"}:
             prompt = (
                 "[bold yellow]⚠ Action confirmation[/]\n\n"
                 f"[bold]Type:[/] {action_type}\n"
@@ -406,8 +447,13 @@ class TuiUI:
         self.history.mount(self._make_role_label(label_text))
 
         if role == "assistant":
+            content = text.strip()
+            if self._assistant_text_should_use_markdown(content):
+                renderable = RichMarkdown(content)
+            else:
+                renderable = Text(content)
             widget = Static(
-                RichMarkdown(text.strip()),
+                renderable,
                 classes="chat-message assistant-message",
                 expand=False,
             )

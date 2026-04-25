@@ -1,6 +1,7 @@
 """Клієнт для роботи з AI моделями."""
 
 import json
+import re
 
 from modules.chat import get_chat_provider
 from modules.history import HistoryManager
@@ -16,12 +17,16 @@ class ModelTechnicalInterruptionError(Exception):
 
 class ModelClient:
     """Відповідає за комунікацію з LLM та управління контекстом запиту."""
+    ACTION_BLOCK_RE = re.compile(r"<action(?:\s+[^>]*)?>(.*?)</action>", re.IGNORECASE | re.DOTALL)
+    FILE_CONTENT_OPEN_RE = re.compile(r"<file_content(?:\s+[^>]*)?>", re.IGNORECASE)
+    FILE_CONTENT_FULL_RE = re.compile(r"<file_content(?:\s+[^>]*)?>.*?</file_content>", re.IGNORECASE | re.DOTALL)
+    FILE_BLOCK_ACTION_TYPES = {"write_file_block", "append_file_block"}
     
     def __init__(self, config, logger=None, comm_logger=None):
         self.config = config
         self.log = logger
         self.comm_log = comm_logger # Відновлено логер комунікації
-        self.chat = get_chat_provider(config.default_model)
+        self.chat = get_chat_provider(config.default_model, settings=getattr(config, "settings", None))
         self._tokenizer_warning_logged = False
         self._smart_stop_trailing_text_limit = 200
         
@@ -36,6 +41,11 @@ class ModelClient:
     ):
         """Отримує відповідь від моделі частинами з підтримкою Smart Stop."""
         full_text = ""
+        if state is not None:
+            try:
+                setattr(state, "last_model_response_stop_reason", "")
+            except Exception:
+                pass
         history_data = history_manager.get_history_for_api()
         if system_message and isinstance(system_message, str):
             history_data = [{"role": "system", "content": system_message}] + history_data
@@ -90,6 +100,11 @@ class ModelClient:
                 # і модель продовжує "балакати" поза ними.
                 # Це не ріже multi-action батчі (кілька <action>...</action> підряд).
                 if self._should_smart_stop(full_text):
+                    if state is not None:
+                        try:
+                            setattr(state, "last_model_response_stop_reason", "smart_stop_trailing_non_action")
+                        except Exception:
+                            pass
                     if self.comm_log:
                         self.comm_log.info("--- SMART STOP TRIGGERED (trailing non-action text detected) ---")
                     # Примусово обриваємо генерацію
@@ -167,11 +182,51 @@ class ModelClient:
         trailing_stripped = trailing.lstrip()
         if not trailing_stripped:
             return False
+        if self._trailing_valid_file_content_package(full_text, trailing_stripped):
+            return False
         # Якщо далі одразу стартує наступний action-блок — це валідний батч.
         if trailing_stripped.lower().startswith("<action"):
             return False
         # Дозволяємо короткі пробіли/службовий шум; блокуємо довгий "хвіст" поза action.
         return len(trailing_stripped) >= self._smart_stop_trailing_text_limit
+
+    def _last_completed_action_type(self, full_text: str) -> str:
+        matches = list(self.ACTION_BLOCK_RE.finditer(str(full_text or "")))
+        if not matches:
+            return ""
+        body = (matches[-1].group(1) or "").strip()
+        try:
+            payload = json.loads(body)
+        except Exception:
+            start = body.find("{")
+            end = body.rfind("}")
+            if start < 0 or end < 0 or start >= end:
+                return ""
+            try:
+                payload = json.loads(body[start : end + 1])
+            except Exception:
+                return ""
+        if not isinstance(payload, dict):
+            return ""
+        return str(payload.get("type") or payload.get("action") or "").strip().lower()
+
+    def _trailing_valid_file_content_package(self, full_text: str, trailing_stripped: str) -> bool:
+        if not isinstance(trailing_stripped, str) or not trailing_stripped.lower().startswith("<file_content"):
+            return False
+        if self._last_completed_action_type(full_text) not in self.FILE_BLOCK_ACTION_TYPES:
+            return False
+        if not self.FILE_CONTENT_OPEN_RE.match(trailing_stripped):
+            return False
+        full_match = self.FILE_CONTENT_FULL_RE.match(trailing_stripped)
+        if full_match is None:
+            # The model is still streaming the raw file body; do not smart-stop yet.
+            return True
+        trailing_after_block = trailing_stripped[full_match.end():].lstrip()
+        if not trailing_after_block:
+            return True
+        if trailing_after_block.lower().startswith("<action"):
+            return True
+        return False
     
     async def _update_token_stats(self, query, response, history_manager, ui, state):
         """Підраховує токени та оновлює UI."""
@@ -225,7 +280,7 @@ class ModelClient:
 
         if ui: await ui.print_system(f"Перемикаюсь на {model_name}...")
         
-        new_provider = get_chat_provider(model_name)
+        new_provider = get_chat_provider(model_name, settings=getattr(self.config, "settings", None))
         if new_provider:
             self.chat = new_provider
             if ui:

@@ -42,7 +42,13 @@ def load_settings():
             "planner_mode": "auto",
             "planner_max_steps": 12,
             "planner_max_visible_steps": 4,
-            "planner_always_missing_retry_limit": 2
+            "planner_always_missing_retry_limit": 2,
+            "vertexai": {
+                "project_id": "",
+                "location": "us-central1",
+                "publisher": "google",
+                "use_adc": True,
+            },
         }
         with open(CONFIG_FILE, "w") as f:
             yaml.dump(default, f, default_flow_style=False)
@@ -82,6 +88,12 @@ def load_settings():
         "planner_max_step_notes_chars": 240,
         "planner_always_missing_retry_limit": 2,
         "ollama_base_url": "http://127.0.0.1:11434",
+        "vertexai": {
+            "project_id": "",
+            "location": "us-central1",
+            "publisher": "google",
+            "use_adc": True,
+        },
     }
 
     for key, value in runtime_defaults.items():
@@ -89,6 +101,19 @@ def load_settings():
             settings[key] = value
             changed = True
             log.info(f"Config migration: added missing '{key}' with default value.")
+
+    vertex_defaults = runtime_defaults["vertexai"]
+    vertex_settings = settings.get("vertexai")
+    if not isinstance(vertex_settings, dict):
+        settings["vertexai"] = dict(vertex_defaults)
+        changed = True
+        log.info("Config migration: normalized 'vertexai' settings block.")
+    else:
+        for key, value in vertex_defaults.items():
+            if key not in vertex_settings:
+                vertex_settings[key] = value
+                changed = True
+                log.info(f"Config migration: added missing 'vertexai.{key}' with default value.")
 
     # Normalize ollama_base_url for backward compatibility:
     # allow users to mistakenly store full endpoint ".../api/chat"

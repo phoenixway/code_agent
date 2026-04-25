@@ -8,3 +8,4 @@ textual
 bump-my-version
 pyperclip
 tree_sitter
+google-auth==2.49.2

@@ -9,7 +9,7 @@ from modules.parser import ResponseParser
 
 
 class TestOrchestratorPlanner(unittest.IsolatedAsyncioTestCase):
-    async def test_injects_taskboard_snapshot_into_next_query(self):
+    async def test_injects_plan_board_snapshot_into_next_model_step(self):
         ui = SimpleNamespace(
             print_error=AsyncMock(),
             print_system=AsyncMock(),
@@ -50,43 +50,57 @@ class TestOrchestratorPlanner(unittest.IsolatedAsyncioTestCase):
             max_tokens=4096,
         )
 
-        responses = [
-            (
-                '<taskboard>{"version":1,"goal":"Fix bug","planner_enabled":true,'
-                '"active_step_id":"s1","steps":[{"id":"s1","title":"Read file","status":"in_progress"},'
-                '{"id":"s2","title":"Edit file","status":"todo"}]}</taskboard>'
-                '<action type="read_file">{"path":"a.txt"}</action>'
-            ),
-            "done",
-        ]
-        model_client = SimpleNamespace(get_streaming_response=AsyncMock(side_effect=responses))
-        parser = ResponseParser()
+        async def next_response(*args, **kwargs):
+            return "Final answer."
 
-        async def dispatch_segments(segments, _state):
-            return segments, ["SYSTEM RESULT for `read_file`: ok"], False
+        model_client = SimpleNamespace(get_streaming_response=AsyncMock(side_effect=next_response))
+        parser = ResponseParser()
 
         agent = SimpleNamespace(
             ui=ui,
             state=state,
             history=history,
             model_client=model_client,
-            action_dispatcher=SimpleNamespace(dispatch_segments=dispatch_segments),
+            action_dispatcher=SimpleNamespace(dispatch_segments=AsyncMock()),
             parser=parser,
             config=config,
             tool_manager=SimpleNamespace(get_tools_prompt=MagicMock(return_value="")),
             context_manager=SimpleNamespace(get_context_prompt=MagicMock(return_value="")),
             planner=TaskBoardPlanner(config),
+            memory_board_store=None,
+            memory_board_engine=None,
             log=None,
         )
 
         orchestrator = Orchestrator(agent)
-        await orchestrator.process("fix this issue")
+        state.intent_runtime = SimpleNamespace(active_intent=SimpleNamespace(goal="Fix bug", intent_id="intent_1"))
+        agent.planner.apply_update(
+            state,
+            [
+                {"op": "create", "step_id": "sg_1", "status": "in_progress", "title": "Inspect the target file"},
+                {"op": "create", "step_id": "sg_2", "status": "todo", "title": "Edit the implementation"},
+            ],
+        )
+        ctx = SimpleNamespace(
+            current_query="fix this issue",
+            malformed_action_retries=0,
+            audit_marker_retries=0,
+            consecutive_calls=0,
+            active_loop=True,
+            tools_prompt="",
+            ctx_prompt="",
+        )
 
-        queries = [call.args[0] for call in model_client.get_streaming_response.await_args_list]
-        self.assertEqual(len(queries), 2)
-        self.assertIn("SYSTEM TASKBOARD SNAPSHOT", queries[1])
+        await orchestrator.pipeline._run_model_step(ctx)
 
-    async def test_always_mode_retries_when_taskboard_missing(self):
+        calls = model_client.get_streaming_response.await_args_list
+        self.assertEqual(len(calls), 1)
+        injected_messages = calls[0].kwargs.get("injected_messages") or ()
+        injected_text = "\n".join(str(msg.get("content", "")) for msg in injected_messages if isinstance(msg, dict))
+        self.assertIn("CURRENT PLAN BOARD", injected_text)
+        self.assertIn("sg_1 [in_progress]", injected_text)
+
+    async def test_plan_only_checkpoint_prompts_for_substantive_continuation(self):
         ui = SimpleNamespace(
             print_error=AsyncMock(),
             print_system=AsyncMock(),
@@ -127,41 +141,43 @@ class TestOrchestratorPlanner(unittest.IsolatedAsyncioTestCase):
             max_tokens=4096,
         )
 
-        responses = [
-            '<action type="read_file">{"path":"a.txt"}</action>',
-            (
-                '<taskboard>{"version":1,"goal":"Fix bug","planner_enabled":true,'
-                '"active_step_id":"s1","steps":[{"id":"s1","title":"Read file","status":"in_progress"}]}</taskboard>'
-                '<action type="read_file">{"path":"a.txt"}</action>'
-            ),
-            "done",
-        ]
-        model_client = SimpleNamespace(get_streaming_response=AsyncMock(side_effect=responses))
+        model_client = SimpleNamespace(get_streaming_response=AsyncMock(return_value="Final answer."))
         parser = ResponseParser()
-
-        async def dispatch_segments(segments, _state):
-            return segments, ["SYSTEM RESULT for `read_file`: ok"], False
 
         agent = SimpleNamespace(
             ui=ui,
             state=state,
             history=history,
             model_client=model_client,
-            action_dispatcher=SimpleNamespace(dispatch_segments=dispatch_segments),
+            action_dispatcher=SimpleNamespace(dispatch_segments=AsyncMock()),
             parser=parser,
             config=config,
             tool_manager=SimpleNamespace(get_tools_prompt=MagicMock(return_value="")),
             context_manager=SimpleNamespace(get_context_prompt=MagicMock(return_value="")),
             planner=TaskBoardPlanner(config),
+            memory_board_store=None,
+            memory_board_engine=None,
             log=None,
         )
 
         orchestrator = Orchestrator(agent)
-        await orchestrator.process("fix this issue")
+        ctx = SimpleNamespace(
+            state_machine=None,
+            malformed_action_retries=0,
+            audit_marker_retries=0,
+            user_input="fix this issue",
+        )
+        step = SimpleNamespace(
+            response='<subgoal action="create" id="sg_1" status="in_progress">Inspect the target file</subgoal>',
+            intent_payload=None,
+            intent_error=None,
+        )
 
-        queries = [call.args[0] for call in model_client.get_streaming_response.await_args_list]
-        self.assertGreaterEqual(len(queries), 2)
-        self.assertIn("planner_mode=always is enforced", queries[1])
+        outcome = await orchestrator.response_pipeline.run_step(ctx, step)
+
+        self.assertTrue(outcome.continue_loop)
+        self.assertIn("Plan updates were recorded", outcome.next_query)
+        ui.print_plan.assert_awaited()
 
     async def test_intent_activation_and_nested_tool_action_continue_within_same_process(self):
         ui = SimpleNamespace(
@@ -260,7 +276,7 @@ class TestOrchestratorPlanner(unittest.IsolatedAsyncioTestCase):
         queries = [call.args[0] for call in model_client.get_streaming_response.await_args_list]
         self.assertEqual(len(queries), 2)
         self.assertIn("inspect the activity tracker flow", queries[0])
-        self.assertIn("Intent accepted and now remains active", queries[1])
+        self.assertIn("Intent accepted. The current contract is now active", queries[1])
         self.assertIn(
             "Current contract goal remains the same: Understand current implementation of activity tracker sorting and edit dialog to plan changes for editable startTime and sorting by startTime.",
             queries[1],

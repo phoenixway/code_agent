@@ -1,19 +1,34 @@
-"""Planner protocol for optional task-board driven orchestration."""
+"""Subgoal-board XML protocol for current active intent orchestration."""
 
 from __future__ import annotations
 
-import json
 import re
 from copy import deepcopy
 
 
 ALLOWED_STEP_STATUSES = {"todo", "in_progress", "done", "blocked"}
+ALLOWED_SUBGOAL_ACTIONS = {
+    "create",
+    "modify",
+    "mark_done",
+    "mark_blocked",
+    "mark_todo",
+    "mark_in_progress",
+    "remove",
+    "reorder",
+    "clear_all",
+}
 
 
 class TaskBoardPlanner:
-    """Parses and validates task-board updates produced by the model."""
+    """Parses, validates, and applies flat XML subgoal mutations."""
 
-    _TAG_RE = re.compile(r"<taskboard>(.*?)</taskboard>", re.IGNORECASE | re.DOTALL)
+    SUBGOAL_TAG_RE = re.compile(
+        r"<subgoal\b(?P<attrs>[^>]*?)(?:>(?P<body>.*?)</subgoal>|(?P<selfclose>/\s*>))",
+        re.IGNORECASE | re.DOTALL,
+    )
+    THINK_TAG_RE = re.compile(r"<think(?:\s+[^>]*)?>.*?</think>", re.IGNORECASE | re.DOTALL)
+    ATTR_RE = re.compile(r"""([a-zA-Z_][\w\-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')""")
 
     def __init__(self, config, logger=None):
         self.config = config
@@ -31,141 +46,317 @@ class TaskBoardPlanner:
         return mode
 
     def build_protocol_instructions(self) -> str:
-        """Protocol block appended to system prompt when planner is enabled."""
-        if self.mode == "always":
-            mode_rules = (
-                "Planner mode is ALWAYS.\n"
-                "You MUST include exactly one <taskboard> JSON block in every response.\n"
-                "If you return an <action>, return <taskboard> before it.\n"
-            )
-        else:
-            mode_rules = (
-                "Planner mode is AUTO.\n"
-                "If the task is complex, you MAY include exactly one <taskboard> JSON block.\n"
-                "For simple tasks, do not include <taskboard>.\n"
-            )
         return (
-            "## OPTIONAL TASKBOARD PROTOCOL\n"
-            f"{mode_rules}"
-            "Use strict JSON only.\n"
-            "For simple requests, keep the taskboard minimal: 1 short step, empty notes, no extra detail.\n"
-            "Do not bloat taskboard text for trivial read-only tasks.\n"
-            "Schema:\n"
-            "{\n"
-            '  "version": 1,\n'
-            '  "goal": "short goal",\n'
-            '  "planner_enabled": true,\n'
-            '  "active_step_id": "s1" or null,\n'
-            '  "steps": [\n'
-            '    {"id":"s1","title":"...","status":"todo|in_progress|done|blocked","notes":"optional short text"}\n'
-            "  ]\n"
-            "}\n"
-            "Keep steps concise and bounded. Do not output markdown inside JSON."
+            "## SUBGOAL BOARD XML PROTOCOL\n"
+            "The subgoal board belongs to the CURRENT ACTIVE INTENT. Do not repeat intent_id in subgoal tags.\n"
+            "Emit flat top-level <subgoal ...> XML tags. Do not wrap them inside a container tag.\n"
+            "Each subgoal tag is an independent mutation applied to the current active intent subgoal board.\n"
+            "Subgoal tags are optional for trivial one-step work, but required when decomposition is useful.\n"
+            "Canonical syntax:\n"
+            "- <subgoal action=\"create\" id=\"sg_1\" status=\"todo|in_progress|done|blocked\">Meaningful subgoal</subgoal>\n"
+            "- <subgoal action=\"modify\" id=\"sg_1\" status=\"todo|in_progress|done|blocked\">Updated title</subgoal>\n"
+            "- <subgoal action=\"mark_done\" id=\"sg_1\" evidence=\"tool:read_file path.py lines 10-20\" />\n"
+            "- <subgoal action=\"mark_todo\" id=\"sg_1\" />\n"
+            "- <subgoal action=\"mark_in_progress\" id=\"sg_1\" />\n"
+            "- <subgoal action=\"mark_blocked\" id=\"sg_1\" reason=\"Short blocking reason\" />\n"
+            "- <subgoal action=\"remove\" id=\"sg_1\" reason=\"Why this is no longer needed\" />\n"
+            "- <subgoal action=\"reorder\" id=\"sg_3\" after=\"sg_1\" />\n"
+            "- <subgoal action=\"clear_all\" />\n"
+            "Rules:\n"
+            "- Each id must be stable.\n"
+            "- Each subgoal must be a meaningful subproblem, not a trivial tool click.\n"
+            "- Prefer a few strong subgoals over many micro-steps.\n"
+            "- Use memory tags to explain WHY the subgoal board changed; use subgoal tags to change the board state.\n"
         )
 
-    def extract_update_and_strip(self, response_text: str) -> tuple[str, dict | None, str | None]:
-        """
-        Extracts the last <taskboard> block from response and removes all taskboard blocks.
-        Returns: (clean_response_text, validated_update_or_none, error_or_none)
-        """
+    def _mask_think_blocks(self, response_text: str) -> str:
+        def _mask(match: re.Match) -> str:
+            return " " * (match.end() - match.start())
+
+        return self.THINK_TAG_RE.sub(_mask, response_text)
+
+    def _parse_attrs(self, attrs_raw: str) -> dict[str, str]:
+        attrs: dict[str, str] = {}
+        if not isinstance(attrs_raw, str) or not attrs_raw.strip():
+            return attrs
+        cleaned = attrs_raw.strip()
+        if cleaned.endswith("/"):
+            cleaned = cleaned[:-1].rstrip()
+        for key, v1, v2 in self.ATTR_RE.findall(cleaned):
+            attrs[str(key).strip().lower()] = str(v1 or v2 or "").strip()
+        return attrs
+
+    def _normalize_text(self, value: str) -> str:
+        return " ".join(str(value or "").strip().split())
+
+    def _normalize_status(self, value: str | None, *, default: str | None = None) -> str | None:
+        raw = str(value or default or "").strip().lower()
+        if not raw:
+            return default
+        return raw if raw in ALLOWED_STEP_STATUSES else None
+
+    def extract_update_and_strip(self, response_text: str) -> tuple[str, list[dict] | None, str | None]:
+        """Extract plan mutations from response and strip plan tags from text."""
         if not isinstance(response_text, str) or not response_text:
             return response_text, None, None
 
-        matches = list(self._TAG_RE.finditer(response_text))
+        masked = self._mask_think_blocks(response_text)
+        matches = list(self.SUBGOAL_TAG_RE.finditer(masked))
         if not matches:
             return response_text, None, None
 
-        last_block = matches[-1].group(1).strip()
-        clean_text = self._TAG_RE.sub("", response_text).strip()
-        if not last_block:
-            return clean_text, None, "empty_taskboard_block"
+        ops: list[dict] = []
+        spans: list[tuple[int, int]] = []
+        for match in matches:
+            original = response_text[match.start() : match.end()]
+            op, error = self._parse_operation(original)
+            if error:
+                clean_text = self._strip_spans(response_text, spans + [match.span()])
+                return clean_text, None, error
+            if op is not None:
+                ops.append(op)
+                spans.append(match.span())
 
-        try:
-            payload = json.loads(last_block)
-        except json.JSONDecodeError:
-            return clean_text, None, "invalid_taskboard_json"
+        clean_text = self._strip_spans(response_text, spans)
+        return clean_text, ops, None
 
-        valid, error = self._validate_payload(payload)
-        if not valid:
-            return clean_text, None, error
-        return clean_text, payload, None
+    def _strip_spans(self, text: str, spans: list[tuple[int, int]]) -> str:
+        if not spans:
+            return text
+        out = []
+        cursor = 0
+        for start, end in spans:
+            out.append(text[cursor:start])
+            cursor = end
+        out.append(text[cursor:])
+        cleaned = "".join(out)
+        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+        return cleaned
 
-    def _validate_payload(self, payload: dict) -> tuple[bool, str | None]:
-        if not isinstance(payload, dict):
-            return False, "taskboard_payload_must_be_object"
-        if payload.get("version") != 1:
-            return False, "unsupported_taskboard_version"
+    def _parse_operation(self, tag_text: str) -> tuple[dict | None, str | None]:
+        match = self.SUBGOAL_TAG_RE.fullmatch(tag_text.strip())
+        if not match:
+            return None, "invalid_subgoal_tag_syntax"
 
-        goal = payload.get("goal")
-        if not isinstance(goal, str) or not goal.strip():
-            return False, "taskboard_goal_required"
-        if len(goal) > int(getattr(self.config, "PLANNER_MAX_GOAL_CHARS", 240)):
-            return False, "taskboard_goal_too_long"
+        attrs = self._parse_attrs(match.group("attrs") or "")
+        body = self._normalize_text(match.group("body") or "")
+        action = str(attrs.get("action") or "").strip().lower()
+        step_id = str(attrs.get("id") or "").strip()
 
-        planner_enabled = payload.get("planner_enabled", True)
-        if not isinstance(planner_enabled, bool):
-            return False, "taskboard_planner_enabled_must_be_bool"
+        if action not in ALLOWED_SUBGOAL_ACTIONS:
+            return None, "subgoal_action_invalid"
 
-        steps = payload.get("steps")
+        if action != "clear_all" and not step_id:
+            return None, f"subgoal_{action}_id_required"
+
+        if action == "create":
+            status = self._normalize_status(attrs.get("status"), default="todo")
+            if status is None:
+                return None, "subgoal_create_bad_status"
+            if not body:
+                return None, "subgoal_create_title_required"
+            return {
+                "op": action,
+                "step_id": step_id,
+                "status": status,
+                "title": body,
+            }, None
+
+        if action == "modify":
+            status = self._normalize_status(attrs.get("status"))
+            if attrs.get("status") is not None and status is None:
+                return None, "subgoal_modify_bad_status"
+            if not body and status is None:
+                return None, "subgoal_modify_empty"
+            op = {"op": action, "step_id": step_id}
+            if body:
+                op["title"] = body
+            if status is not None:
+                op["status"] = status
+            return op, None
+
+        if action == "mark_done":
+            evidence = self._normalize_text(attrs.get("evidence") or "")
+            if not evidence:
+                return None, "subgoal_mark_done_evidence_required"
+            return {
+                "op": action,
+                "step_id": step_id,
+                "status": "done",
+                "evidence": evidence,
+            }, None
+
+        if action == "mark_blocked":
+            reason = self._normalize_text(attrs.get("reason") or body or "")
+            if not reason:
+                return None, "subgoal_mark_blocked_reason_required"
+            return {
+                "op": action,
+                "step_id": step_id,
+                "status": "blocked",
+                "reason": reason,
+            }, None
+
+        if action in {"mark_todo", "mark_in_progress"}:
+            status = action.replace("mark_", "")
+            return {"op": action, "step_id": step_id, "status": status}, None
+
+        if action == "remove":
+            reason = self._normalize_text(attrs.get("reason") or "")
+            if not reason:
+                return None, "subgoal_remove_reason_required"
+            return {"op": action, "step_id": step_id, "reason": reason}, None
+
+        if action == "reorder":
+            after_step_id = str(attrs.get("after") or "").strip()
+            if not after_step_id:
+                return None, "subgoal_reorder_after_required"
+            return {"op": action, "step_id": step_id, "after_step_id": after_step_id}, None
+
+        if action == "clear_all":
+            return {"op": action}, None
+
+        return None, "unsupported_subgoal_action"
+
+    def _default_goal(self, state) -> str:
+        active_intent = getattr(state, "active_intent", None)
+        goal = str(getattr(active_intent, "goal", "") or "").strip()
+        if goal:
+            return goal[: int(getattr(self.config, "PLANNER_MAX_GOAL_CHARS", 240))]
+        board = getattr(state, "task_board", None)
+        if isinstance(board, dict):
+            return str(board.get("goal", "") or "").strip()
+        return ""
+
+    def _new_board(self, state) -> dict:
+        return {
+            "version": 2,
+            "goal": self._default_goal(state),
+            "active_step_id": None,
+            "steps": [],
+        }
+
+    def _steps(self, board: dict) -> list[dict]:
+        steps = board.get("steps")
         if not isinstance(steps, list):
-            return False, "taskboard_steps_must_be_list"
-        if not steps:
-            return False, "taskboard_steps_empty"
-        if len(steps) > int(getattr(self.config, "PLANNER_MAX_STEPS", 12)):
-            return False, "taskboard_too_many_steps"
+            board["steps"] = []
+        return board["steps"]
 
-        ids = set()
-        max_title = int(getattr(self.config, "PLANNER_MAX_STEP_TITLE_CHARS", 160))
-        max_notes = int(getattr(self.config, "PLANNER_MAX_STEP_NOTES_CHARS", 240))
+    def _index_of_step(self, steps: list[dict], step_id: str) -> int:
         for idx, step in enumerate(steps):
-            if not isinstance(step, dict):
-                return False, f"taskboard_step_{idx}_must_be_object"
-            sid = step.get("id")
-            title = step.get("title")
-            status = step.get("status")
-            notes = step.get("notes", "")
+            if str(step.get("id") or "").strip() == step_id:
+                return idx
+        return -1
 
-            if not isinstance(sid, str) or not sid.strip():
-                return False, f"taskboard_step_{idx}_id_required"
-            if sid in ids:
-                return False, f"taskboard_duplicate_step_id:{sid}"
-            ids.add(sid)
+    def _ensure_active_step(self, board: dict) -> None:
+        steps = self._steps(board)
+        valid_ids = {str(step.get("id") or "").strip() for step in steps}
+        active_step_id = str(board.get("active_step_id") or "").strip()
+        if active_step_id and active_step_id in valid_ids:
+            return
 
-            if not isinstance(title, str) or not title.strip():
-                return False, f"taskboard_step_{sid}_title_required"
-            if len(title) > max_title:
-                return False, f"taskboard_step_{sid}_title_too_long"
+        for preferred_status in ("in_progress", "todo", "blocked"):
+            for step in steps:
+                if step.get("status") == preferred_status:
+                    board["active_step_id"] = step.get("id")
+                    return
+        board["active_step_id"] = None
 
-            if status not in ALLOWED_STEP_STATUSES:
-                return False, f"taskboard_step_{sid}_bad_status"
+    def _enforce_step_limit(self, board: dict) -> None:
+        steps = self._steps(board)
+        max_steps = max(1, int(getattr(self.config, "PLANNER_MAX_STEPS", 12) or 12))
+        if len(steps) <= max_steps:
+            return
+        del steps[max_steps:]
 
-            if notes is not None and not isinstance(notes, str):
-                return False, f"taskboard_step_{sid}_notes_must_be_string"
-            if isinstance(notes, str) and len(notes) > max_notes:
-                return False, f"taskboard_step_{sid}_notes_too_long"
+    def apply_update(self, state, update_ops: list[dict]) -> tuple[bool, str]:
+        """Applies validated plan mutations to runtime state."""
+        if not isinstance(update_ops, list) or not update_ops:
+            return False, "No plan changes."
 
-        active_id = payload.get("active_step_id")
-        if active_id is not None and active_id not in ids:
-            return False, "taskboard_active_step_not_found"
-        return True, None
-
-    def should_activate_board(self, update_payload: dict) -> bool:
-        if self.mode == "always":
-            return True
-        return bool(update_payload.get("planner_enabled", True))
-
-    def apply_update(self, state, update_payload: dict) -> tuple[bool, str]:
-        """Applies validated planner payload to runtime state."""
         previous = deepcopy(getattr(state, "task_board", None))
-        if not self.should_activate_board(update_payload):
-            state.task_board = None
-            state.task_board_enabled = False
-            return True, "Планувальник вимкнено для цього завдання."
+        board = deepcopy(previous) if isinstance(previous, dict) else self._new_board(state)
+        board["version"] = 2
+        board["goal"] = self._default_goal(state)
+        steps = self._steps(board)
 
-        state.task_board = deepcopy(update_payload)
-        state.task_board_enabled = True
-        summary = self.render_human_summary(state.task_board)
-        delta = self.render_update_delta(previous, state.task_board)
+        for op in update_ops:
+            name = str(op.get("op") or "").strip().lower()
+            step_id = str(op.get("step_id") or "").strip()
+
+            if name == "clear_all":
+                board["steps"] = []
+                board["active_step_id"] = None
+                steps = board["steps"]
+                continue
+
+            if name == "create":
+                idx = self._index_of_step(steps, step_id)
+                step = {
+                    "id": step_id,
+                    "title": str(op.get("title") or "").strip()[: int(getattr(self.config, "PLANNER_MAX_STEP_TITLE_CHARS", 160))],
+                    "status": op.get("status") or "todo",
+                }
+                if idx >= 0:
+                    steps[idx].update(step)
+                else:
+                    steps.append(step)
+                if step["status"] == "in_progress":
+                    board["active_step_id"] = step_id
+                continue
+
+            if name == "modify":
+                idx = self._index_of_step(steps, step_id)
+                if idx < 0:
+                    continue
+                if "title" in op:
+                    steps[idx]["title"] = str(op.get("title") or "").strip()[: int(getattr(self.config, "PLANNER_MAX_STEP_TITLE_CHARS", 160))]
+                if "status" in op:
+                    steps[idx]["status"] = op["status"]
+                    if op["status"] == "in_progress":
+                        board["active_step_id"] = step_id
+                continue
+
+            if name in {"mark_done", "mark_todo", "mark_in_progress", "mark_blocked"}:
+                idx = self._index_of_step(steps, step_id)
+                if idx < 0:
+                    continue
+                steps[idx]["status"] = op["status"]
+                if name == "mark_done" and op.get("evidence"):
+                    steps[idx]["notes"] = str(op.get("evidence") or "").strip()[: int(getattr(self.config, "PLANNER_MAX_STEP_NOTES_CHARS", 240))]
+                if name == "mark_blocked" and op.get("reason"):
+                    steps[idx]["notes"] = str(op.get("reason") or "").strip()[: int(getattr(self.config, "PLANNER_MAX_STEP_NOTES_CHARS", 240))]
+                if op["status"] == "in_progress":
+                    board["active_step_id"] = step_id
+                elif str(board.get("active_step_id") or "").strip() == step_id and op["status"] != "in_progress":
+                    board["active_step_id"] = None
+                continue
+
+            if name == "remove":
+                idx = self._index_of_step(steps, step_id)
+                if idx < 0:
+                    continue
+                steps.pop(idx)
+                if str(board.get("active_step_id") or "").strip() == step_id:
+                    board["active_step_id"] = None
+                continue
+
+            if name == "reorder":
+                idx = self._index_of_step(steps, step_id)
+                after_idx = self._index_of_step(steps, str(op.get("after_step_id") or "").strip())
+                if idx < 0 or after_idx < 0 or idx == after_idx:
+                    continue
+                step = steps.pop(idx)
+                if idx < after_idx:
+                    after_idx -= 1
+                steps.insert(after_idx + 1, step)
+
+        self._enforce_step_limit(board)
+        self._ensure_active_step(board)
+        state.task_board = board
+        state.task_board_enabled = bool(board.get("steps"))
+        summary = self.render_human_summary(board)
+        delta = self.render_update_delta(previous, board)
         return True, f"{summary}\n{delta}"
 
     def render_compact_summary(self, board: dict) -> str:
@@ -177,8 +368,8 @@ class TaskBoardPlanner:
         return f"goal='{board.get('goal', '')[:80]}', done={done}/{total}, blocked={blocked}, active={active or '-'}"
 
     def render_runtime_snapshot(self, board: dict) -> str:
-        """Returns compact control text for the next model step."""
-        if not isinstance(board, dict):
+        """Returns compact canonical board projection for the next model step."""
+        if not isinstance(board, dict) or not board.get("steps"):
             return ""
         goal = str(board.get("goal", "")).strip()
         steps = board.get("steps") or []
@@ -191,7 +382,6 @@ class TaskBoardPlanner:
             status = step.get("status", "todo")
             return f"- {sid} [{status}] {title[:140]}"
 
-        # Show active first, then next non-done items.
         ordered = []
         if active:
             active_step = next((s for s in steps if s.get("id") == active), None)
@@ -206,15 +396,17 @@ class TaskBoardPlanner:
                 break
 
         done = sum(1 for s in steps if s.get("status") == "done")
-        lines = [f"SYSTEM TASKBOARD SNAPSHOT: goal={goal[:180]}"]
-        lines.append(f"SYSTEM TASKBOARD PROGRESS: done={done}/{len(steps)} active={active or '-'}")
+        lines = ["## CURRENT PLAN BOARD"]
+        lines.append("This board is canonical runtime state for decomposition of the current active intent.")
+        lines.append(f"goal: {goal[:180] or '<none>'}")
+        lines.append(f"progress: done={done}/{len(steps)} active={active or '-'}")
         for step in ordered[:max_visible]:
             lines.append(_line(step))
         return "\n".join(lines)
 
     def render_board_for_chat(self, board: dict) -> str:
         """Human-friendly compact board for visible chat messages."""
-        if not isinstance(board, dict):
+        if not isinstance(board, dict) or not board.get("steps"):
             return "План зараз порожній."
         goal = str(board.get("goal", "")).strip()
         active = board.get("active_step_id")
@@ -257,27 +449,36 @@ class TaskBoardPlanner:
 
     def render_update_delta(self, previous: dict | None, current: dict) -> str:
         """Short update summary for chat/history."""
-        if not isinstance(previous, dict):
+        if not isinstance(previous, dict) or not previous.get("steps"):
             return "План створено."
         prev_steps = {str(s.get("id")): s for s in (previous.get("steps") or []) if isinstance(s, dict)}
         curr_steps = {str(s.get("id")): s for s in (current.get("steps") or []) if isinstance(s, dict)}
 
         added = [sid for sid in curr_steps.keys() if sid not in prev_steps]
+        removed = [sid for sid in prev_steps.keys() if sid not in curr_steps]
         changed = []
         for sid, step in curr_steps.items():
             prev = prev_steps.get(sid)
             if not prev:
                 continue
-            if prev.get("status") != step.get("status"):
-                changed.append(f"{sid}:{prev.get('status')}->{step.get('status')}")
+            prev_status = prev.get("status")
+            curr_status = step.get("status")
+            prev_title = str(prev.get("title", "")).strip()
+            curr_title = str(step.get("title", "")).strip()
+            if prev_status != curr_status:
+                changed.append(f"{sid}:{prev_status}->{curr_status}")
+            elif prev_title != curr_title:
+                changed.append(f"{sid}:title")
 
         active_prev = previous.get("active_step_id")
         active_curr = current.get("active_step_id")
         parts = []
         if added:
             parts.append(f"додано кроків: {len(added)}")
+        if removed:
+            parts.append(f"прибрано кроків: {len(removed)}")
         if changed:
-            parts.append("змінено статуси: " + ", ".join(changed[:4]))
+            parts.append("змінено: " + ", ".join(changed[:4]))
         if active_prev != active_curr:
             curr = curr_steps.get(str(active_curr), {})
             parts.append(f"поточний крок: {str(curr.get('title', '')).strip()[:90] or '-'}")

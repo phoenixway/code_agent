@@ -85,10 +85,23 @@ class OrchestrationPipeline:
             step=ctx.consecutive_calls,
         )
         system_msg = self.prompt_builder.build_system_message(ctx.tools_prompt, ctx.ctx_prompt)
+        injected_messages: list[dict[str, str]] = []
+        build_intent_runtime_context_message = getattr(self.prompt_builder, "build_intent_runtime_context_message", None)
+        if callable(build_intent_runtime_context_message):
+            intent_runtime_message = build_intent_runtime_context_message()
+            if intent_runtime_message:
+                injected_messages.append(intent_runtime_message)
+        build_plan_board_context_message = getattr(self.prompt_builder, "build_plan_board_context_message", None)
+        if callable(build_plan_board_context_message):
+            plan_board_message = build_plan_board_context_message()
+            if plan_board_message:
+                injected_messages.append(plan_board_message)
         memory_board_message = None
         build_memory_board_context_message = getattr(self.prompt_builder, "build_memory_board_context_message", None)
         if callable(build_memory_board_context_message):
             memory_board_message = build_memory_board_context_message()
+            if memory_board_message:
+                injected_messages.append(memory_board_message)
 
         while True:
             self.state.current_task = asyncio.create_task(
@@ -98,7 +111,7 @@ class OrchestrationPipeline:
                     self.ui,
                     self.state,
                     system_message=system_msg,
-                    injected_messages=[memory_board_message] if memory_board_message else None,
+                    injected_messages=injected_messages or None,
                 )
             )
             try:
@@ -134,12 +147,18 @@ class OrchestrationPipeline:
                 return None
 
         response, intent_payload, intent_error = self.intent_response_parser.extract_intent_update_and_strip(response)
+        model_stop_reason = str(getattr(self.state, "last_model_response_stop_reason", "") or "").strip()
+        try:
+            setattr(self.state, "last_model_response_stop_reason", "")
+        except Exception:
+            pass
         if self.agent.log:
             self.agent.log.debug(
-                "Orchestrator.step.response_received raw_chars=%s has_intent_payload=%s intent_error=%s",
+                "Orchestrator.step.response_received raw_chars=%s has_intent_payload=%s intent_error=%s model_stop_reason=%s",
                 len(response or ""),
                 intent_payload is not None,
                 intent_error or "",
+                model_stop_reason,
             )
             self.agent.log.debug("Orchestrator.step.response.after_initial_extract\n%s", response)
         self.stage_logger.log(
@@ -148,11 +167,13 @@ class OrchestrationPipeline:
             raw_chars=len(response or ""),
             has_intent_payload=intent_payload is not None,
             intent_error=intent_error or "",
+            model_stop_reason=model_stop_reason,
         )
         return ModelStepResult(
             response=response,
             intent_payload=intent_payload,
             intent_error=intent_error,
+            model_stop_reason=model_stop_reason,
         )
 
     async def run_iteration(self, ctx) -> PipelineIterationDecision:

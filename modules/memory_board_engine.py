@@ -273,10 +273,69 @@ class MemoryBoardEngine:
         )
         return any(word in text for word in concrete_words)
 
+    def _looks_like_path_content(self, text: str) -> bool:
+        value = str(text or "").strip()
+        if not value:
+            return False
+        if "/" in value or "\\" in value:
+            return True
+        if re.search(r"\.[a-zA-Z0-9]{1,8}(?::\d+)?\b", value):
+            return True
+        return False
+
+    def _looks_like_plan_content(self, text: str) -> bool:
+        lowered = str(text or "").lower().strip()
+        if not lowered:
+            return False
+
+        plan_prefixes = (
+            "plan to ",
+            "next i will ",
+            "next step ",
+            "next steps ",
+            "remaining steps ",
+            "todo: ",
+            "to do: ",
+            "subgoal ",
+            "subgoals ",
+            "create subgoal ",
+            "mark subgoal ",
+            "need to ",
+            "should now ",
+            "i should now ",
+        )
+        if any(lowered.startswith(prefix) for prefix in plan_prefixes):
+            return True
+
+        plan_fragments = (
+            "<subgoal",
+            "action=\"create\"",
+            "action=\"modify\"",
+            "action=\"mark_done\"",
+            "action=\"mark_blocked\"",
+            "action=\"remove\"",
+            "action=\"reorder\"",
+            "todo list",
+            "remaining tasks",
+            "plan board",
+            "subgoal board",
+            "next action",
+            "next actions",
+            "next step is",
+            "steps left",
+        )
+        return any(fragment in lowered for fragment in plan_fragments)
+
     def _looks_low_value(self, tag: ParsedMemoryTag) -> bool:
         text = tag.text.lower().strip()
 
         if len(text) < 12:
+            return True
+
+        if tag.kind == "path":
+            return not self._looks_like_path_content(tag.text)
+
+        if self._looks_like_plan_content(text):
             return True
 
         routine_prefixes = (

@@ -554,6 +554,47 @@ class WriteFileTool(BaseTool):
         return ChangeProposal(file_path=path, original_content=original, new_content=content)
 
 
+class WriteFileBlockTool(BaseTool):
+    name = "write_file_block"
+    description = (
+        "Writes a whole file from raw <file_content> block text. "
+        "Params: 'path' (str), 'file_content' (str), optional 'overwrite' (bool, default true)."
+    )
+
+    async def execute(self, path: str, file_content: str, overwrite: bool = True):
+        p = Path(path)
+        original = p.read_text(encoding="utf-8") if p.exists() else ""
+        if p.exists() and not overwrite:
+            return {
+                "status": "error",
+                "error_code": "VALIDATION_ERROR",
+                "recoverable": True,
+                "next_actions": ["read_file", "edit_file", "write_file_block"],
+                "output": f"File {path} already exists and overwrite=false. Use edit_file, append_file_block, or retry with overwrite=true.",
+            }
+        marker_error = _validate_no_compact_markers(path, file_content, previous_content=original)
+        if marker_error:
+            return marker_error
+        return ChangeProposal(file_path=path, original_content=original, new_content=file_content)
+
+
+class AppendFileBlockTool(BaseTool):
+    name = "append_file_block"
+    description = (
+        "Appends raw <file_content> block text to a file. "
+        "Params: 'path' (str), 'file_content' (str)."
+    )
+
+    async def execute(self, path: str, file_content: str):
+        p = Path(path)
+        original = p.read_text(encoding="utf-8") if p.exists() else ""
+        new_content = original + file_content
+        marker_error = _validate_no_compact_markers(path, new_content, previous_content=original)
+        if marker_error:
+            return marker_error
+        return ChangeProposal(file_path=path, original_content=original, new_content=new_content)
+
+
 class EditFileTool(BaseTool):
     name = "edit_file"
     description = (

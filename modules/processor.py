@@ -3,6 +3,8 @@ import json
 
 
 class ResponseProcessor:
+    JSON_FILE_ACTION_CONTENT_LIMIT = 4000
+
     def __init__(self, ui, tool_manager, chat, policy, history=None):
         self.ui = ui
         self.tools = tool_manager
@@ -16,7 +18,14 @@ class ResponseProcessor:
         "[content omitted:",
         "[content omitted in ui:",
     )
-    FILE_TOOLS = {"create_file", "write_file", "edit_file", "replace"}
+    FILE_TOOLS = {
+        "create_file",
+        "write_file",
+        "write_file_block",
+        "append_file_block",
+        "edit_file",
+        "replace",
+    }
 
     def _truncate_output(self, text: str, threshold: int = None) -> str:
         if not isinstance(text, str):
@@ -293,12 +302,14 @@ class ResponseProcessor:
         return None
 
     def _reject_sanitized_payload(self, action_type: str, args: dict) -> dict | None:
-        if action_type not in {"create_file", "write_file", "edit_file", "replace"}:
+        if action_type not in {"create_file", "write_file", "write_file_block", "append_file_block", "edit_file", "replace"}:
             return None
 
         candidate_fields = []
         if action_type in {"create_file", "write_file"}:
             candidate_fields.append(("content", args.get("content")))
+        if action_type in {"write_file_block", "append_file_block"}:
+            candidate_fields.append(("file_content", args.get("file_content")))
         if action_type in {"edit_file", "replace"}:
             candidate_fields.append(("replace_text", args.get("replace_text")))
             candidate_fields.append(("content", args.get("content")))
@@ -353,6 +364,39 @@ class ResponseProcessor:
                     "recoverable": True,
                     "output": f"{action_type} requires 'content' (string) with full file text.",
                     "next_actions": ["read_file", "write_file"],
+                }
+            if len(args.get("content", "")) > self.JSON_FILE_ACTION_CONTENT_LIMIT:
+                return {
+                    "status": "failed",
+                    "error_code": "CONTENT_TOO_LARGE_FOR_JSON_FILE_ACTION",
+                    "recoverable": True,
+                    "output": (
+                        f"{action_type} content is too large for inline JSON ({len(args['content'])} chars). "
+                        "Use write_file_block with a raw <file_content> block instead:\n"
+                        '<action>{"type":"write_file_block","path":"...","overwrite":true}</action>\n'
+                        "<file_content>\n...\n</file_content>\n"
+                        "If the file body is too large for one response, split it into append_file_block chunks after the initial write."
+                    ),
+                    "next_actions": ["write_file_block"],
+                }
+            return None
+
+        if action_type in {"write_file_block", "append_file_block"}:
+            if not isinstance(args.get("path"), str) or not args.get("path"):
+                return {
+                    "status": "failed",
+                    "error_code": "VALIDATION_ERROR",
+                    "recoverable": True,
+                    "output": f"{action_type} requires 'path' (string).",
+                    "next_actions": ["list_directory", "search_files"],
+                }
+            if not isinstance(args.get("file_content"), str):
+                return {
+                    "status": "failed",
+                    "error_code": "MISSING_FILE_CONTENT_BLOCK",
+                    "recoverable": True,
+                    "output": f"{action_type} requires a complete <file_content>...</file_content> block immediately after </action>.",
+                    "next_actions": [action_type],
                 }
             return None
 
@@ -415,7 +459,7 @@ class ResponseProcessor:
                 "next_actions": ["read_file", "create_file", "write_file", "edit_file"],
             }
 
-        for key in ("path", "content", "search_text", "replace_text"):
+        for key in ("path", "content", "file_content", "search_text", "replace_text", "overwrite"):
             if key not in args and key in payload:
                 args[key] = payload[key]
 

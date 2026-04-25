@@ -77,6 +77,17 @@ class DummyMemoryBoardStage:
         )
 
 
+class DummyPlanBoardStage:
+    async def apply(self, ctx, raw_response):
+        return SimpleNamespace(
+            handled=False,
+            response_text=raw_response,
+            reason="",
+            source="plan_board",
+            next_query="",
+        )
+
+
 class DummyPromptBuilder:
     def build_repeated_thinking_without_valid_output_prompt(self, stop_info=None):
         return "ENOUGH_THINKING_GIVE_VALID_OUTPUT"
@@ -124,6 +135,7 @@ class ResponsePipelineRepeatedThinkingTests(unittest.IsolatedAsyncioTestCase):
             intent_transitions=DummyIntentTransitions(),
             output_recovery=DummyOutputRecovery(),
             action_policy=DummyActionPolicy(),
+            plan_board_stage=DummyPlanBoardStage(),
             memory_board_stage=DummyMemoryBoardStage(),
         )
         return pipeline, state
@@ -204,6 +216,7 @@ class ResponsePipelineRepeatedThinkingTests(unittest.IsolatedAsyncioTestCase):
             intent_transitions=DummyIntentTransitions(),
             output_recovery=DummyOutputRecovery(),
             action_policy=ActionPolicy(),
+            plan_board_stage=DummyPlanBoardStage(),
             memory_board_stage=DummyMemoryBoardStage(),
         )
         ctx = SimpleNamespace(

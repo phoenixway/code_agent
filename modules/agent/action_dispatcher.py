@@ -25,6 +25,9 @@ class ActionDispatcher:
             "read_chunk": self._handle_read_chunk,
             "edit_file": self._handle_edit_file,
             "create_file": self._handle_create_file,
+            "write_file": self._handle_file_write,
+            "write_file_block": self._handle_file_write,
+            "append_file_block": self._handle_file_write,
         }
 
         # Евристики для preflight-оцінки working material
@@ -959,6 +962,7 @@ class ActionDispatcher:
             output_text += (
                 "\n[SYSTEM: Action failed. Analyze the error in <think> and retry.]"
             )
+            error_details = result.get("error_details") or {}
             same_error_repeats = state_metrics.get("same_error_repeats", 0)
             loop_threshold = max(
                 2, int(getattr(self.config, "LOOP_ERROR_REPEAT_THRESHOLD", 2))
@@ -969,8 +973,30 @@ class ActionDispatcher:
                 and error_code == "VALIDATION_ERROR"
                 and "Search block not found" in str(result.get("output", ""))
             )
+            is_missing_executable = error_code == "MISSING_EXECUTABLE"
 
-            if threshold_reached:
+            if is_missing_executable:
+                should_stop = True
+                missing_executable = str(error_details.get("missing_executable") or result.get("missing_executable") or "").strip()
+                output_text += (
+                    "\n[SYSTEM: Required executable is unavailable. Do not retry the same shell command.]"
+                )
+                state.pending_loop_stop_info = self._recovery_payload(
+                    reason="missing_executable",
+                    recoverable=recoverable,
+                    error_code=error_code,
+                    next_actions=next_actions,
+                    command=command.copy(),
+                    policy_allowed_actions=next_actions,
+                    policy_recommended_actions=next_actions,
+                    policy_authoritative_source="recommended" if next_actions else "",
+                    error_details={
+                        **dict(error_details or {}),
+                        "missing_executable": missing_executable,
+                    },
+                )
+
+            if not should_stop and threshold_reached:
                 if is_repeated_edit_search_mismatch:
                     should_stop = True
                     output_text += (
@@ -983,6 +1009,7 @@ class ActionDispatcher:
                         error_code=error_code,
                         next_actions=next_actions,
                         command=command.copy(),
+                        error_details=dict(error_details or {}),
                         policy_allowed_actions=next_actions,
                         policy_recommended_actions=next_actions,
                         policy_authoritative_source="recommended" if next_actions else "",
@@ -1005,6 +1032,7 @@ class ActionDispatcher:
                             error_code=error_code,
                             next_actions=next_actions,
                             command=command.copy(),
+                            error_details=dict(error_details or {}),
                             policy_allowed_actions=next_actions,
                             policy_recommended_actions=next_actions,
                             policy_authoritative_source="recommended" if next_actions else "",
@@ -1389,15 +1417,31 @@ class ActionDispatcher:
         return result
 
     async def _handle_create_file(self, command):
-        widget = await self.ui.print_tool_call(self._sanitize_create_file_payload(command))
+        widget = await self.ui.print_tool_call(self._sanitize_file_write_payload(command))
         await self.ui.start_action(f"Creating {command.get('path')}...")
         result = await self.processor.process_single_action(command)
-        await self.ui.update_tool_call(widget, self._sanitize_create_file_payload(command), result)
+        await self.ui.update_tool_call(widget, self._sanitize_file_write_payload(command), result)
         return result
 
-    def _sanitize_create_file_payload(self, command: dict) -> dict:
+    async def _handle_file_write(self, command):
+        safe_command = self._sanitize_file_write_payload(command)
+        widget = await self.ui.print_tool_call(safe_command)
+        verb = "Appending"
+        if (command.get("type") or command.get("action")) in {"write_file", "write_file_block"}:
+            verb = "Writing"
+        await self.ui.start_action(f"{verb} {command.get('path')}...")
+        result = await self.processor.process_single_action(command)
+        await self.ui.update_tool_call(widget, safe_command, result)
+        return result
+
+    def _sanitize_file_write_payload(self, command: dict) -> dict:
         safe = command.copy()
         content = safe.get("content")
+        if not isinstance(content, str):
+            content = safe.get("file_content")
+            field_name = "file_content"
+        else:
+            field_name = "content"
         if not isinstance(content, str):
             return safe
         if len(content) <= 200:
@@ -1415,15 +1459,16 @@ class ActionDispatcher:
             blob_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
 
         safe.pop("content", None)
-        safe["content_redacted"] = True
-        safe["content_size"] = len(content)
-        safe["content_blob_hash"] = blob_hash
+        safe.pop("file_content", None)
+        safe[f"{field_name}_redacted"] = True
+        safe[f"{field_name}_size"] = len(content)
+        safe[f"{field_name}_blob_hash"] = blob_hash
         return safe
 
     def _sanitize_command_for_history(self, command: dict) -> dict:
         cmd_type = command.get("type") or command.get("action", "unknown")
-        if cmd_type in {"create_file", "write_file", "edit_file", "replace"}:
-            return self._sanitize_create_file_payload(command)
+        if cmd_type in {"create_file", "write_file", "write_file_block", "append_file_block", "edit_file", "replace"}:
+            return self._sanitize_file_write_payload(command)
         return command.copy()
 
     async def _handle_default(self, command):

@@ -4,6 +4,10 @@ from __future__ import annotations
 
 
 class IntentGuard:
+    ACTION_ALIASES = {
+        "write_file_block": {"write_file"},
+        "append_file_block": {"write_file"},
+    }
     READ_ONLY_TOOLS = {
         "read_file",
         "read_chunk",
@@ -107,7 +111,12 @@ class IntentGuard:
         if active_intent is None:
             return False
         allowed = set(getattr(active_intent, "allowed_actions", []) or [])
-        return cmd_type in allowed
+        if cmd_type in allowed:
+            return True
+        for alias in self.ACTION_ALIASES.get(cmd_type, set()):
+            if alias in allowed:
+                return True
+        return False
 
     def _current_intent_allows_readonly_continuation(self, command: dict, state) -> bool:
         """
@@ -200,6 +209,9 @@ class IntentGuard:
             if current_intent_allows and self._should_require_new_intent_after_failure(command, state):
                 return True, "retry_or_continuation_after_failure"
             return False, ""
+
+        if has_active_contract:
+            return True, "intent_action_not_allowed"
 
         if not has_active_contract and cmd_type in self.READ_ONLY_TOOLS:
             if getattr(state, "readonly_steps_this_turn", 0) >= self._intentless_short_mode_limit(state):

@@ -31,6 +31,18 @@ class TestTuiUiSanitizer(unittest.TestCase):
         safe = TuiUI.sanitize_tool_call_for_display(command, preview_limit=100)
         self.assertEqual(safe["content"], "short")
 
+    def test_assistant_multiline_plain_text_does_not_use_markdown(self):
+        text = "Filesystem\n/dev/sda1 90%\n/dev/sdb1 80%"
+        self.assertFalse(TuiUI._assistant_text_should_use_markdown(text))
+
+    def test_assistant_markdown_text_still_uses_markdown(self):
+        text = "## Summary\n- item one\n- item two"
+        self.assertTrue(TuiUI._assistant_text_should_use_markdown(text))
+
+    def test_assistant_prose_plus_star_list_stays_plain_text(self):
+        text = "Ось розмір кожної підпапки:\n* 3.6G app\n* 28M core-data-models\n* 20M sync"
+        self.assertFalse(TuiUI._assistant_text_should_use_markdown(text))
+
     def test_technical_interruption_view_model_is_resumable(self):
         interruption = TechnicalInterruption(
             kind="provider_error",

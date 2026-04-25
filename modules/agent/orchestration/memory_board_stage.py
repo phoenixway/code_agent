@@ -11,9 +11,12 @@ from .stage_logging import OrchestrationStageLogger
 class MemoryBoardStageHandler:
     THINK_BLOCK_RE = re.compile(r"<think(?:\s+[^>]*)?>.*?</think>", re.IGNORECASE | re.DOTALL)
     MEMORY_BLOCK_RE = re.compile(
-        r"<(fact|finding|decision|preference|progress)\b[^>]*>.*?</\1>",
+        r"<(fact|finding|decision|preference|progress|path)\b[^>]*>.*?</\1>",
         re.IGNORECASE | re.DOTALL,
     )
+    MEMORY_REVIEW_RE = re.compile(r"<memory_review\b[^>]*/>", re.IGNORECASE)
+    SUBGOAL_BLOCK_RE = re.compile(r"<subgoal\b[^>]*(?:>.*?</subgoal>|/>)", re.IGNORECASE | re.DOTALL)
+    MEMORY_UPDATE_DONE_RE = re.compile(r"<memory_update_done\s*/>", re.IGNORECASE)
     ACTION_BLOCK_RE = re.compile(r"<action(?:\s+[^>]*)?>.*?</action>", re.IGNORECASE | re.DOTALL)
     ACTION_TAG_RE = re.compile(r"<action\b", re.IGNORECASE)
     GENERIC_TAG_RE = re.compile(r"</?[^>]+>", re.IGNORECASE)
@@ -36,6 +39,13 @@ class MemoryBoardStageHandler:
             return getattr(obj, name, default)
         except Exception:
             return default
+
+    def _strip_memory_update_done(self, text: str) -> str:
+        value = str(text or "")
+        value = self.MEMORY_REVIEW_RE.sub(" ", value)
+        value = self.MEMORY_UPDATE_DONE_RE.sub(" ", value)
+        value = re.sub(r"\n{3,}", "\n\n", value)
+        return value.strip()
 
     def _set_memory_checkpoint_state(self, value: bool) -> int:
         current = int(getattr(self.state, "consecutive_memory_checkpoint_only_count", 0) or 0)
@@ -60,6 +70,9 @@ class MemoryBoardStageHandler:
         value = self.THINK_BLOCK_RE.sub(" ", value)
         value = self.ACTION_BLOCK_RE.sub(" ", value)
         value = self.MEMORY_BLOCK_RE.sub(" ", value)
+        value = self.MEMORY_REVIEW_RE.sub(" ", value)
+        value = self.SUBGOAL_BLOCK_RE.sub(" ", value)
+        value = self.MEMORY_UPDATE_DONE_RE.sub(" ", value)
         value = self.GENERIC_TAG_RE.sub(" ", value)
         value = re.sub(r"\s+", " ", value).strip()
         return value
@@ -108,6 +121,7 @@ class MemoryBoardStageHandler:
         self._safe_setattr("last_memory_board_parsed_count", 0)
         self._safe_setattr("last_memory_board_accepted_count", 0)
         self._safe_setattr("last_memory_board_rejected_count", 0)
+        self._safe_setattr("last_memory_update_done", False)
         self._set_memory_checkpoint_state(False)
 
         if self.memory_board_engine is not None:
@@ -134,6 +148,11 @@ class MemoryBoardStageHandler:
                 if self.agent.log:
                     self.agent.log.warning(f"Memory board apply failed: {exc}")
 
+        update_done_present = bool(self.MEMORY_UPDATE_DONE_RE.search(str(response or "")))
+        if update_done_present:
+            self._safe_setattr("last_memory_update_done", True)
+        clean_response = self._strip_memory_update_done(clean_response)
+
         if board_result is not None:
             self._safe_setattr(
                 "last_memory_board_parsed_count",
@@ -153,7 +172,7 @@ class MemoryBoardStageHandler:
         rejected_count = int(self._safe_getattr(board_result, "rejected_count", 0) or 0) if board_result is not None else 0
 
 
-        if board_result is not None and accepted_count > 0:
+        if (board_result is not None and accepted_count > 0) or update_done_present:
             raw_has_action = self._response_has_action(response)
             clean_has_action = self._response_has_action(clean_response)
 

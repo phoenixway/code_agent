@@ -28,6 +28,8 @@ class PermissionPolicy:
             "run_shell",
             "create_file",
             "write_file",
+            "write_file_block",
+            "append_file_block",
             "edit_file",
             "replace",
             "delete_file",
@@ -88,7 +90,7 @@ class PermissionPolicy:
         details = ""
         if action_type == "run_command":
             details = action.get("command")
-        elif action_type in ["write_file", "create_file", "edit_file"]:
+        elif action_type in ["write_file", "write_file_block", "append_file_block", "create_file", "edit_file"]:
             details = action.get("path") or action.get("file_path")
         
         if hasattr(self.ui, 'confirm_action') and inspect.iscoroutinefunction(self.ui.confirm_action):

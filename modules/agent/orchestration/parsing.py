@@ -6,7 +6,7 @@ import json
 import re
 
 from .decision_models import ParsedModelOutput
-from .visible_text import extract_visible_text_for_user, strip_plain_think_prefix_artifacts
+from .visible_text import detect_incomplete_control_markup, extract_visible_text_for_user, strip_plain_think_prefix_artifacts
 
 
 class IntentResponseParser:
@@ -121,6 +121,23 @@ class IntentResponseParser:
             )
         return payload, error
 
+    def _merge_mode_from_intent_attrs(self, payload: dict, attrs_raw: str) -> tuple[dict, str | None]:
+        attrs = self._parse_attrs(attrs_raw)
+        tag_mode = str(attrs.get("mode") or "").strip().lower()
+        if not tag_mode:
+            return payload, None
+
+        body_mode = str(payload.get("mode") or "").strip().lower()
+        if not body_mode:
+            payload["mode"] = tag_mode
+            return payload, None
+
+        if body_mode != tag_mode:
+            return payload, "conflicting_intent_mode"
+
+        payload["mode"] = body_mode
+        return payload, None
+
     def extract_intent_update_and_strip(self, response_text: str) -> tuple[str, dict | None, str | None]:
         if not isinstance(response_text, str) or not response_text:
             self._debug("IntentParser.extract skipped: empty_or_non_string response=%r", response_text)
@@ -190,6 +207,10 @@ class IntentResponseParser:
             type(payload).__name__,
             sorted(payload.keys()) if isinstance(payload, dict) else "<non-dict>",
         )
+        if isinstance(payload, dict):
+            payload, merge_error = self._merge_mode_from_intent_attrs(payload, attrs_raw)
+            if merge_error:
+                return clean_text, None, merge_error
         return clean_text, payload, None
 
     def extract_visible_non_action_text(self, response: str) -> str:
@@ -248,17 +269,13 @@ class IntentResponseParser:
         visible_text = self.extract_visible_non_action_text(response)
         return not bool(visible_text)
 
-    def is_transition_bundle_too_dense(self, response: str, segments) -> bool:
-        if not isinstance(response, str):
-            return False
-        intent_count = sum(1 for seg in segments if seg.type == "intent")
-        has_action_segment = any(seg.type == "action" for seg in segments)
-        if intent_count >= 2 and has_action_segment:
-            return True
-        if intent_count >= 2:
-            return True
-        response_lower = response.lower()
-        return response_lower.count("<intent") >= 2 and "<action" in response_lower
+    def has_conflicting_intent_transitions(self, segments) -> bool:
+        intent_count = sum(1 for seg in segments if getattr(seg, "type", "") == "intent")
+        return intent_count >= 2
+
+    def has_multiple_actions(self, segments) -> bool:
+        action_count = sum(1 for seg in segments if getattr(seg, "type", "") == "action")
+        return action_count >= 2
 
     def classify(self, response: str, segments) -> ParsedModelOutput:
         safe_response = response if isinstance(response, str) else ""
@@ -269,14 +286,19 @@ class IntentResponseParser:
         visible_text = self.extract_visible_non_action_text(safe_response)
         invalid_kind = ""
         has_plain_think_prefix = self.has_plain_think_prefix(safe_response)
+        incomplete_control_kind = detect_incomplete_control_markup(safe_response)
 
         if has_plain_think_prefix and self.logger is not None and (has_action_segment or has_intent_segment or bool(visible_text)):
             self.logger.warning("response_parser_fallback=plain_think_prefix_ignored")
 
-        if has_action_tag and not has_action_segment:
+        if incomplete_control_kind:
+            invalid_kind = incomplete_control_kind
+        elif has_action_tag and not has_action_segment:
             invalid_kind = "malformed_action"
-        elif self.is_transition_bundle_too_dense(safe_response, safe_segments):
-            invalid_kind = "transition_bundle_too_dense"
+        elif self.has_conflicting_intent_transitions(safe_segments):
+            invalid_kind = "conflicting_intent_transitions"
+        elif self.has_multiple_actions(safe_segments):
+            invalid_kind = "multiple_actions"
         elif self.is_tool_history_echo_without_action(safe_response, safe_segments):
             invalid_kind = "tool_history_echo"
         elif has_plain_think_prefix and not has_action_segment and not has_intent_segment and not visible_text:
@@ -303,4 +325,5 @@ class IntentResponseParser:
             has_intent_segment=has_intent_segment,
             visible_text=visible_text,
             invalid_kind=invalid_kind,
+            model_stop_reason="",
         )

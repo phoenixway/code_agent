@@ -1,6 +1,7 @@
 # modules/tools/definitions/shell.py
 import asyncio
 import os
+import re
 import signal
 from modules.tools.base import BaseTool
 from modules.config_loader import load_settings
@@ -17,6 +18,30 @@ class ShellTool(BaseTool):
 
     MAX_PREVIEW_CHARS = 4000
     MAX_PREVIEW_LINES = 40
+    MISSING_EXECUTABLE_RE_LIST = (
+        re.compile(r"(?im)^\s*/bin/sh:\s*line\s*\d+:\s*([^:\s]+):\s*command not found\b"),
+        re.compile(r"(?im)^\s*(?:sh|bash|zsh):\s*([^:\s]+):\s*(?:command not found|not found)\b"),
+        re.compile(r"(?im)^\s*([^:\s]+):\s*command not found\b"),
+    )
+
+    def _extract_missing_executable(self, stderr: str, command: str) -> str:
+        text = str(stderr or "")
+        for regex in self.MISSING_EXECUTABLE_RE_LIST:
+            match = regex.search(text)
+            if match:
+                return str(match.group(1) or "").strip()
+        lowered = text.lower()
+        if "command not found" in lowered or "not found" in lowered:
+            stripped_command = str(command or "").strip()
+            if stripped_command:
+                return stripped_command.split()[-1].strip()
+        return ""
+
+    def _normalize_executable_name(self, executable: str) -> str:
+        value = str(executable or "").strip()
+        if value.startswith("./"):
+            value = value[2:]
+        return value
 
     async def _terminate_process(self, process) -> None:
         """Stops shell process and, where possible, its whole process group."""
@@ -127,9 +152,15 @@ class ShellTool(BaseTool):
             else:
                 output = (stderr_preview or stdout_preview or f"Command exited with code {exit_code}.").strip()
 
+            missing_executable = ""
+            if exit_code == 127 or "command not found" in stderr.lower():
+                missing_executable = self._normalize_executable_name(
+                    self._extract_missing_executable(stderr, command)
+                )
+
             result = {
                 "status": "success" if exit_code == 0 else "error",
-                "error_code": None if exit_code == 0 else "INTERNAL",
+                "error_code": None if exit_code == 0 else ("MISSING_EXECUTABLE" if missing_executable else "INTERNAL"),
                 "recoverable": bool(exit_code != 0),
                 # Preview fields for UI / compact history
                 "output": output,
@@ -141,6 +172,18 @@ class ShellTool(BaseTool):
                 "stderr_full": stderr,
                 "exit_code": exit_code,
             }
+
+            if missing_executable:
+                result["missing_executable"] = missing_executable
+                result["error_details"] = {
+                    "missing_executable": missing_executable,
+                    "exit_code": exit_code,
+                    "stderr": stderr_preview,
+                }
+                result["next_actions"] = ["search_files", "read_file_skeleton", "read_chunk", "run_shell"]
+                if missing_executable in {"gradle", "gradlew"}:
+                    result["verification_blocked"] = True
+                    result["verification_blocked_reason"] = "missing_gradle"
 
             if stdout_truncated or stderr_truncated:
                 result["truncated"] = True

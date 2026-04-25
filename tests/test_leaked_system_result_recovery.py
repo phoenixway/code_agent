@@ -85,6 +85,17 @@ class DummyMemoryBoardStage:
         )
 
 
+class DummyPlanBoardStage:
+    async def apply(self, ctx, raw_response):
+        return SimpleNamespace(
+            handled=False,
+            response_text=raw_response,
+            next_query="",
+            reason="plan_board_pass",
+            source="plan_board",
+        )
+
+
 class DummyPromptBuilder:
     def build_intent_required_prompt(self, reason):
         return f"INTENT_REQUIRED::{reason}"
@@ -145,6 +156,7 @@ class LeakedSystemResultPipelineTests(unittest.IsolatedAsyncioTestCase):
             intent_transitions=DummyIntentTransitions(),
             output_recovery=DummyOutputRecovery(),
             action_policy=DummyActionPolicy(),
+            plan_board_stage=DummyPlanBoardStage(),
             memory_board_stage=DummyMemoryBoardStage(),
         )
 

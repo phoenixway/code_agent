@@ -12,3 +12,21 @@
 - не зберігати інтент в системному промпті. тільки в дошці пам'яті
 - видимість дошки пам'яті і дошки активного інтенту, і дошки планування
 - рушій планування використовувати. довгий інтент - треба планування
+
+не видаляти теги шляхів довше
+можливо рішення приймаит в блоках думання шодо тегів також
+
+Тобто lifecycle clean, але evidence governance ще недостатнє.
+
+***
+
+P1. malformed_action recovery має бути strategy-aware
+
+Поточний recovery каже “дай валідний JSON”. Для великого create_file треба:
+
+Your action JSON failed to parse, likely because the content string is too large or contains unescaped nested code.
+Do not repeat the same huge create_file JSON.
+Use a smaller file, chunked write, or run_shell heredoc. << дай запит агенту кодування
+
+***
+

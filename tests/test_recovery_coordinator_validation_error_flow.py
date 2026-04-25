@@ -133,3 +133,29 @@ class RecoveryCoordinatorValidationErrorFlowTests(unittest.IsolatedAsyncioTestCa
         self.assertIn("Do NOT output read_chunk again", decision.next_query)
         self.assertIn("search_content", decision.next_query)
         self.assertNotIn("Return EXACTLY ONE valid read_chunk action now.", decision.next_query)
+
+    async def test_missing_executable_uses_typed_recovery_prompt(self):
+        agent = self._make_agent()
+        prompt_builder = OrchestratorPromptBuilder(agent)
+        recovery = RecoveryCoordinator(agent, prompt_builder)
+
+        stop_info = {
+            "reason": "missing_executable",
+            "recoverable": True,
+            "error_code": "MISSING_EXECUTABLE",
+            "command": {"type": "run_shell", "command": "cd LocalBookmarks && gradle wrapper --gradle-version 8.7"},
+            "error_details": {
+                "missing_executable": "gradle",
+                "exit_code": 127,
+            },
+            "next_actions": ["search_files", "read_file_skeleton", "read_chunk", "run_shell"],
+        }
+
+        decision = await recovery.handle_dispatch_stop(stop_info, sm=None)
+
+        self.assertTrue(decision.handled)
+        self.assertTrue(decision.clear_pending_stop)
+        self.assertIn("executable `gradle` is not installed or not in PATH", decision.next_query)
+        self.assertIn("Do not retry the same command", decision.next_query)
+        self.assertIn("build/tests were not run because Gradle is unavailable", decision.next_query)
+        self.assertNotIn("gradle wrapper --gradle-version 8.7", decision.next_query)

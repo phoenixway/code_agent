@@ -145,6 +145,24 @@ class TestPermissionPolicy(unittest.IsolatedAsyncioTestCase):
         result = await policy.check(action)
         self.assertEqual(result, "allow_truncated")
 
+    @patch(
+        "modules.policy.load_settings",
+        return_value={
+            "allow_side_effect_tools": True,
+            "auto_allow_read_only_actions": False,
+            "auto_allow_safe_shell_read_only": False,
+        },
+    )
+    async def test_ask_mode_run_shell_uses_boolean_confirm_not_output_policy(self, _mock_settings):
+        self.ui.confirm_action = AsyncMock(return_value=True)
+        policy = PermissionPolicy(self.ui, mode="ask")
+        action = {"type": "run_shell", "command": "rg -n TODO ."}
+
+        result = await policy.check(action)
+
+        self.assertTrue(result)
+        self.ui.confirm_action.assert_called_once_with(action)
+
     @patch("modules.policy.load_settings", return_value={"allow_side_effect_tools": False})
     async def test_global_side_effect_kill_switch(self, _mock_settings):
         self.ui.print_error = AsyncMock()

@@ -9,6 +9,11 @@ import httpx
 from modules.defaults import DEFAULT_SYSTEM_PROMPT
 from .base import BaseChatProvider, ProviderAPIError
 
+AI_STUDIO_PREPAY_DEPLETED_MARKERS = (
+    "prepayment credits are depleted",
+    "prepay credits are depleted",
+)
+
 
 def _parse_retry_after_seconds(response: httpx.Response) -> float | None:
     header = response.headers.get("retry-after")
@@ -34,6 +39,131 @@ def _looks_like_quota_error(text: str) -> bool:
     )
 
 
+def _looks_like_ai_studio_prepay_exhausted(text: str) -> bool:
+    lowered = str(text or "").lower()
+    return any(marker in lowered for marker in AI_STUDIO_PREPAY_DEPLETED_MARKERS)
+
+
+def build_gemini_generate_content_payload(
+    prompt: str,
+    history: list,
+    *,
+    system_prompt: str = DEFAULT_SYSTEM_PROMPT,
+    system_key: str = "system_instruction",
+) -> dict[str, Any]:
+    payload = {
+        "contents": prepare_gemini_contents(prompt, history),
+    }
+    if str(system_prompt or "").strip():
+        payload[system_key] = {"parts": [{"text": str(system_prompt).strip()}]}
+    return payload
+
+
+def prepare_gemini_contents(prompt, history):
+    contents = []
+
+    for m in history:
+        role = m.get("role")
+        content = (m.get("content") or "").strip()
+        if not content:
+            continue
+
+        gemini_role = "user" if role == "user" else "model"
+        contents.append({"role": gemini_role, "parts": [{"text": content}]})
+
+    if prompt and str(prompt).strip():
+        contents.append({"role": "user", "parts": [{"text": str(prompt).strip()}]})
+
+    return contents
+
+
+def extract_gemini_texts_from_response(data: Any) -> list[str]:
+    if isinstance(data, dict):
+        data = [data]
+
+    if not isinstance(data, list):
+        return []
+
+    texts: list[str] = []
+
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+
+        candidates = item.get("candidates") or []
+        for candidate in candidates:
+            content = candidate.get("content") or {}
+            parts = content.get("parts") or []
+            for part in parts:
+                text = part.get("text")
+                if text:
+                    texts.append(text)
+
+    return texts
+
+
+def classify_gemini_error_response(
+    response: httpx.Response,
+    raw_text: str,
+    *,
+    provider_name: str,
+    model_name: str,
+    url: str,
+) -> ProviderAPIError:
+    retry_after = _parse_retry_after_seconds(response)
+    details = {"url": url, "model_name": model_name}
+    if response.status_code == 429:
+        if _looks_like_ai_studio_prepay_exhausted(raw_text):
+            return ProviderAPIError(
+                f"{provider_name} AI Studio prepay credits are depleted ({response.status_code}).",
+                kind="billing_exhausted_ai_studio_prepay",
+                status_code=response.status_code,
+                retry_after_seconds=retry_after,
+                provider_name=provider_name,
+                raw_error=raw_text,
+                user_message=(
+                    "Gemini AI Studio prepay credits are depleted. "
+                    "Google Cloud trial credits do not cover this API path. "
+                    "Add AI Studio credits or switch to vertexai/modelname."
+                ),
+                details={**details, "error_code": "BILLING_EXHAUSTED_AI_STUDIO_PREPAY"},
+            )
+        if _looks_like_quota_error(raw_text):
+            return ProviderAPIError.quota_exceeded(
+                f"{provider_name} quota exceeded ({response.status_code}).",
+                status_code=response.status_code,
+                retry_after_seconds=retry_after,
+                provider_name=provider_name,
+                raw_error=raw_text,
+                details=details,
+            )
+        return ProviderAPIError.rate_limit(
+            f"{provider_name} rate limit error ({response.status_code}).",
+            status_code=response.status_code,
+            retry_after_seconds=retry_after,
+            provider_name=provider_name,
+            raw_error=raw_text,
+            details=details,
+        )
+    if response.status_code in {401, 403}:
+        return ProviderAPIError.auth(
+            f"{provider_name} authentication/permission error ({response.status_code}).",
+            status_code=response.status_code,
+            provider_name=provider_name,
+            raw_error=raw_text,
+            details=details,
+        )
+    return ProviderAPIError(
+        f"{provider_name} API Error {response.status_code}",
+        kind="provider_error",
+        status_code=response.status_code,
+        provider_name=provider_name,
+        raw_error=raw_text,
+        user_message=f"{provider_name} provider error.",
+        details=details,
+    )
+
+
 class GeminiProvider(BaseChatProvider):
     provider_name = "gemini"
 
@@ -56,51 +186,13 @@ class GeminiProvider(BaseChatProvider):
         )
 
     def _prepare_contents(self, prompt, history):
-        contents = []
-
-        for m in history:
-            role = m.get("role")
-            content = (m.get("content") or "").strip()
-            if not content:
-                continue
-
-            gemini_role = "user" if role == "user" else "model"
-            contents.append({"role": gemini_role, "parts": [{"text": content}]})
-
-        if prompt and str(prompt).strip():
-            contents.append({"role": "user", "parts": [{"text": str(prompt).strip()}]})
-
-        return contents
+        return prepare_gemini_contents(prompt, history)
 
     def _extract_texts_from_response(self, data: Any) -> list[str]:
-        if isinstance(data, dict):
-            data = [data]
-
-        if not isinstance(data, list):
-            return []
-
-        texts: list[str] = []
-
-        for item in data:
-            if not isinstance(item, dict):
-                continue
-
-            candidates = item.get("candidates") or []
-            for candidate in candidates:
-                content = candidate.get("content") or {}
-                parts = content.get("parts") or []
-                for part in parts:
-                    text = part.get("text")
-                    if text:
-                        texts.append(text)
-
-        return texts
+        return extract_gemini_texts_from_response(data)
 
     async def get_streaming_response(self, prompt, history):
-        payload = {
-            "contents": self._prepare_contents(prompt, history),
-            "system_instruction": {"parts": [{"text": DEFAULT_SYSTEM_PROMPT}]},
-        }
+        payload = build_gemini_generate_content_payload(prompt, history)
 
         try:
             async with httpx.AsyncClient(timeout=300, trust_env=False) as client:
@@ -108,42 +200,12 @@ class GeminiProvider(BaseChatProvider):
 
                 if response.status_code != 200:
                     raw_text = response.text
-                    retry_after = _parse_retry_after_seconds(response)
-                    details = {"url": self.url, "model_name": self.model_name}
-                    if response.status_code == 429:
-                        if _looks_like_quota_error(raw_text):
-                            raise ProviderAPIError.quota_exceeded(
-                                f"Gemini quota exceeded ({response.status_code}).",
-                                status_code=response.status_code,
-                                retry_after_seconds=retry_after,
-                                provider_name=self.provider_name,
-                                raw_error=raw_text,
-                                details=details,
-                            )
-                        raise ProviderAPIError.rate_limit(
-                            f"Gemini rate limit error ({response.status_code}).",
-                            status_code=response.status_code,
-                            retry_after_seconds=retry_after,
-                            provider_name=self.provider_name,
-                            raw_error=raw_text,
-                            details=details,
-                        )
-                    if response.status_code in {401, 403}:
-                        raise ProviderAPIError.auth(
-                            f"Gemini authentication/permission error ({response.status_code}).",
-                            status_code=response.status_code,
-                            provider_name=self.provider_name,
-                            raw_error=raw_text,
-                            details=details,
-                        )
-                    raise ProviderAPIError(
-                        f"Gemini API Error {response.status_code}",
-                        kind="provider_error",
-                        status_code=response.status_code,
+                    raise classify_gemini_error_response(
+                        response,
+                        raw_text,
                         provider_name=self.provider_name,
-                        raw_error=raw_text,
-                        user_message="Gemini provider error.",
-                        details=details,
+                        model_name=self.model_name,
+                        url=self.url,
                     )
 
                 raw_text = response.text.strip()

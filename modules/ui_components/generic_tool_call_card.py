@@ -55,6 +55,8 @@ def _tool_icon(tool_name: str) -> str:
         "read_file_skeleton": "R",
         "create_file": "+",
         "write_file": "W",
+        "write_file_block": "W",
+        "append_file_block": "A",
         "replace": "W",
         "git_diff": "G",
     }.get(tool_name, "*")
@@ -183,7 +185,7 @@ def _narrated_summary(command: dict[str, Any], result: dict[str, Any] | None) ->
         return "List directory contents"
     if tool_name == "create_file":
         return "Create file"
-    if tool_name in {"write_file", "replace"}:
+    if tool_name in {"write_file", "write_file_block", "append_file_block", "replace"}:
         return "Write file"
     if tool_name == "read_file_skeleton":
         return "Inspect file structure"

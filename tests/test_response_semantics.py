@@ -29,9 +29,40 @@ class ResponseSemanticsTests(unittest.TestCase):
         text = "<think>one two three four five six</think><intent>{}</intent><finding scope=\"intent\">Late</finding>"
         self.assertTrue(self.s.substantial_think_without_reflection(text))
 
+    def test_has_checkpoint_tags_and_memory_update_done(self):
+        text = "<path scope=\"intent\">modules/x.py</path><subgoal action=\"mark_in_progress\" id=\"sg_1\" /><memory_update_done />"
+        self.assertTrue(self.s.has_checkpoint_tags(text))
+        self.assertTrue(self.s.has_memory_update_done(text))
+
+    def test_valid_state_changing_review_before_action_accepts_subgoal_and_progress_bundle(self):
+        text = (
+            "<think>Verified generator path and planned the next command.</think>"
+            "<subgoal action=\"mark_done\" id=\"sg_1\" reason=\"Path verified\" />"
+            "<progress scope=\"intent\">Ready to execute the generator.</progress>"
+            "<memory_update_done />"
+            "<action>{\"type\":\"run_shell\",\"command\":\"python generate_bookmarks_app.py\"}</action>"
+        )
+        self.assertTrue(self.s.has_valid_state_changing_review_before_action(text))
+
+    def test_valid_state_changing_review_before_action_requires_complete_think(self):
+        text = (
+            "<memory_review status=\"no_change\" scope=\"intent\" />"
+            "<memory_update_done />"
+            "<action>{\"type\":\"edit_file\",\"path\":\"a.py\"}</action>"
+        )
+        self.assertFalse(self.s.has_valid_state_changing_review_before_action(text))
+
+    def test_valid_state_changing_review_before_action_requires_memory_update_done(self):
+        text = (
+            "<think>Verified edit target and reviewed current state.</think>"
+            "<memory_review status=\"no_change\" scope=\"intent\" />"
+            "<action>{\"type\":\"edit_file\",\"path\":\"a.py\"}</action>"
+        )
+        self.assertFalse(self.s.has_valid_state_changing_review_before_action(text))
+
     def test_is_reflection_only_repair_turn_accepts_tags_only(self):
         parsed = SimpleNamespace(has_action_segment=False, invalid_kind="missing_action_or_answer", visible_text="")
-        text = "<finding scope=\"intent\">Found X</finding><decision scope=\"intent\">Do Y</decision>"
+        text = "<finding scope=\"intent\">Found X</finding><decision scope=\"intent\">Do Y</decision><memory_update_done />"
         self.assertTrue(self.s.is_reflection_only_repair_turn(text, parsed, 0))
 
     def test_is_reflection_only_repair_turn_rejects_action_or_visible_prose(self):
@@ -39,6 +70,17 @@ class ResponseSemanticsTests(unittest.TestCase):
         self.assertFalse(self.s.is_reflection_only_repair_turn("<finding scope=\"intent\">X</finding> prose", parsed, 0))
         parsed_action = SimpleNamespace(has_action_segment=True, invalid_kind="", visible_text="")
         self.assertFalse(self.s.is_reflection_only_repair_turn("<finding scope=\"intent\">X</finding><action>{}</action>", parsed_action, 1))
+
+    def test_is_durable_state_repair_turn_accepts_marker_only_for_missing_memory_update_done(self):
+        parsed = SimpleNamespace(has_action_segment=False, invalid_kind="missing_action_or_answer", visible_text="")
+        self.assertTrue(
+            self.s.is_durable_state_repair_turn(
+                "<memory_update_done />",
+                parsed,
+                0,
+                required_kind="missing_memory_update_done",
+            )
+        )
 
     def test_is_plaintext_answer_path_accepts_visible_text(self):
         parsed = SimpleNamespace(has_action_segment=False, invalid_kind="missing_action_or_answer", visible_text="Answer")

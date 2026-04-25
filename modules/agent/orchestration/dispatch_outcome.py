@@ -6,7 +6,7 @@ import re
 
 from .decision_models import DispatchHandlingDecision
 from .stage_logging import OrchestrationStageLogger
-from .visible_text import contains_control_markup, extract_visible_text_for_user
+from .visible_text import contains_control_markup, detect_incomplete_control_markup, extract_visible_text_for_user
 from ..technical_interruptions import detect_technical_interruption
 
 
@@ -166,6 +166,25 @@ class DispatchOutcomeHandler:
         )
 
         if not sys_results:
+            incomplete_control_kind = detect_incomplete_control_markup(recon_msg)
+            if incomplete_control_kind:
+                try:
+                    await self.ui.print_error("Execution stopped: truncated internal model response was suppressed.")
+                except Exception:
+                    pass
+                self.stage_logger.log(
+                    "dispatch_outcome",
+                    "stop",
+                    reason=incomplete_control_kind,
+                    source="dispatch",
+                )
+                self._clear_terminal_plaintext_completion()
+                ctx.active_loop = False
+                return DispatchHandlingDecision.stop(
+                    reason="truncated_internal_response_suppressed",
+                    source="dispatch",
+                )
+
             visible_text = self._extract_visible_text(recon_msg)
             if recon_msg and contains_control_markup(recon_msg) and self.agent.log:
                 self.agent.log.info("DispatchOutcome.ui_text_sanitized control_markup_removed=True")
@@ -220,7 +239,19 @@ class DispatchOutcomeHandler:
             )
 
         if recon_msg:
-            self.history.add_message("assistant", recon_msg)
+            visible_recon_msg = self._extract_visible_text(recon_msg)
+            visible_recon_msg, leaked_system_result_removed = self._strip_leaked_system_results_from_ui_text(
+                visible_recon_msg
+            )
+            if leaked_system_result_removed:
+                self.stage_logger.log(
+                    "dispatch_outcome",
+                    "sanitize",
+                    reason="leaked_system_result_removed_from_assistant_history",
+                    source="dispatch",
+                )
+            if visible_recon_msg:
+                self.history.add_message("assistant", visible_recon_msg)
 
         for res in sys_results:
             self.history.add_message("system", res)

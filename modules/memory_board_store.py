@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Iterable
 from pathlib import Path
 
-ALLOWED_KINDS = ("fact", "finding", "decision", "preference", "progress")
+ALLOWED_KINDS = ("fact", "finding", "decision", "preference", "progress", "path")
 ALLOWED_SCOPES = ("intent", "session", "project")
 ACTIVE_STATUSES = ("active", "superseded", "rejected")
 
@@ -505,15 +505,17 @@ class MemoryBoardStore:
             intent_entries = []
         session_entries = self.entries(status="active", scope="session")
         project_entries = self.entries(status="active", scope="project")
+        stale_intent_memory = bool(intent_entries) and not normalized_active_intent_id and bool(ordered_lineage_ids)
 
         intent_progress = [e for e in intent_entries if e.kind == "progress"]
         intent_core = [e for e in intent_entries if e.kind != "progress"]
 
         lines = [
-            "## MEMORY BOARD",
+            "## MEMORY BOARD" + (" (STALE INTENT CONTEXT)" if stale_intent_memory else ""),
             "Committed durable memory extracted from prior execution.",
             "Treat these entries as higher priority than compressed narrative history.",
             "Do not silently contradict them; explicitly correct them only with new evidence.",
+            "If this board is marked stale, review intent-scoped entries before relying on them for the next step.",
             "",
         ]
 
@@ -535,7 +537,7 @@ class MemoryBoardStore:
         lines.append("")
         lines.extend(
             self._render_scope_block(
-                "CURRENT INTENT MEMORY",
+                "STALE INTENT MEMORY TO REVIEW" if stale_intent_memory else "CURRENT INTENT MEMORY",
                 intent_core[-self.max_prompt_entries_per_scope :],
                 max_items=self.max_prompt_entries_per_scope,
             )
@@ -543,7 +545,7 @@ class MemoryBoardStore:
         lines.append("")
         lines.extend(
             self._render_scope_block(
-                "CURRENT INTENT PROGRESS LOG",
+                "STALE INTENT PROGRESS LOG TO REVIEW" if stale_intent_memory else "CURRENT INTENT PROGRESS LOG",
                 intent_progress[-self.max_prompt_progress_entries :],
                 max_items=self.max_prompt_progress_entries,
             )

@@ -10,6 +10,12 @@ class OrchestrationStageLogger:
         self.logger = logger
         self.state = state
 
+    def log_architecture_defect(self, defect_kind: str, decision: str, **fields) -> None:
+        payload = dict(fields or {})
+        payload["defect_kind"] = str(defect_kind or "").strip()
+        payload.setdefault("trace_class", "architecture_defect")
+        self.log("architecture_defect", decision, **payload)
+
     def log(self, stage: str, decision: str, **fields) -> None:
         payload = {
             "stage": str(stage or "").strip(),

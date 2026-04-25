@@ -138,14 +138,73 @@ class HistoryManager:
     def set_memory_board_store(self, store) -> None:
         self.memory_board_store = store
 
+    def _build_active_intent_summary_block(self, state=None) -> str:
+        active_intent = getattr(state, "active_intent", None) if state is not None else None
+        if active_intent is None:
+            return ""
+        lines = [
+            "## ACTIVE INTENT BOARD",
+            "Canonical runtime state. Do not summarize, rewrite, or absorb this board into narrative history.",
+            f"intent_id: {str(getattr(active_intent, 'intent_id', '') or '').strip() or '<none>'}",
+            f"intent_type: {str(getattr(active_intent, 'intent_type', '') or '').strip() or '<none>'}",
+            f"goal: {str(getattr(active_intent, 'goal', '') or '').strip() or '<none>'}",
+            f"safe_steps_limit: {int(getattr(active_intent, 'safe_steps_limit', 0) or 0)}",
+            f"steps_used: {int(getattr(active_intent, 'step_count', 0) or 0)}",
+            f"retry_limit: {int(getattr(active_intent, 'retry_limit', 0) or 0)}",
+            f"retry_count: {int(getattr(active_intent, 'retry_count', 0) or 0)}",
+        ]
+        return "\n".join(lines)
+
+    def _build_plan_board_summary_block(self, state=None) -> str:
+        board = getattr(state, "task_board", None) if state is not None else None
+        if not isinstance(board, dict) or not board.get("steps"):
+            return ""
+        lines = [
+            "## CURRENT PLAN BOARD (CANONICAL)",
+            "Canonical runtime state. Do not summarize, rewrite, or absorb this board into narrative history.",
+            f"goal: {str(board.get('goal', '') or '').strip() or '<none>'}",
+            f"active_step_id: {str(board.get('active_step_id', '') or '').strip() or '-'}",
+        ]
+        for step in (board.get("steps") or []):
+            if not isinstance(step, dict):
+                continue
+            sid = str(step.get("id", "") or "").strip() or "?"
+            status = str(step.get("status", "") or "todo").strip() or "todo"
+            title = str(step.get("title", "") or "").strip()
+            lines.append(f"- {sid} [{status}] {title[:160]}")
+        return "\n".join(lines)
+
     def _build_memory_board_summary_block(self, state=None) -> str:
         board = self.memory_board_store
         if board is None or not hasattr(board, "to_system_prompt"):
             return ""
         active_intent = getattr(state, "active_intent", None) if state is not None else None
         active_intent_id = getattr(active_intent, "intent_id", None) if active_intent is not None else None
+        lineage_intent_ids: list[str] = []
+        runtime = getattr(state, "intent_runtime", None) if state is not None else None
+        getter = getattr(runtime, "get_active_intent_lineage_ids", None)
+        if callable(getter):
+            try:
+                for value in getter() or []:
+                    text = str(value or "").strip()
+                    if text and text not in lineage_intent_ids:
+                        lineage_intent_ids.append(text)
+            except Exception:
+                pass
+        if not lineage_intent_ids:
+            for value in (
+                active_intent_id,
+                getattr(state, "last_resumable_intent_id", None) if state is not None else None,
+                getattr(state, "last_resumable_intent_lineage_id", None) if state is not None else None,
+            ):
+                text = str(value or "").strip()
+                if text and text not in lineage_intent_ids:
+                    lineage_intent_ids.append(text)
         try:
-            text = board.to_system_prompt(active_intent_id=active_intent_id)
+            text = board.to_system_prompt(
+                active_intent_id=active_intent_id,
+                lineage_intent_ids=lineage_intent_ids,
+            )
             return text.strip() if isinstance(text, str) else ""
         except Exception as e:
             if self.logger:
@@ -196,17 +255,22 @@ class HistoryManager:
 
     def _compress_assistant_tool_call(self, content: str) -> str:
         try:
-            if content.strip().startswith('{') and '"content"' in content:
+            if content.strip().startswith('{') and ('"content"' in content or '"file_content"' in content):
                 data = json.loads(content)
                 action = data.get("type") or data.get("action")
-                if action in ["create_file", "write_file", "edit_file", "replace"] and "content" in data:
-                    body = data["content"]
+                body = data.get("content")
+                field_name = "content"
+                if not isinstance(body, str):
+                    body = data.get("file_content")
+                    field_name = "file_content"
+                if action in ["create_file", "write_file", "write_file_block", "append_file_block", "edit_file", "replace"] and isinstance(body, str):
                     if isinstance(body, str) and len(body) > 200:
                         blob_hash = self._save_blob(body)
                         data.pop("content", None)
-                        data["content_redacted"] = True
-                        data["content_size"] = len(body)
-                        data["content_blob_hash"] = blob_hash
+                        data.pop("file_content", None)
+                        data[f"{field_name}_redacted"] = True
+                        data[f"{field_name}_size"] = len(body)
+                        data[f"{field_name}_blob_hash"] = blob_hash
                         return json.dumps(data, ensure_ascii=False)
         except Exception:
             pass
@@ -224,19 +288,35 @@ class HistoryManager:
                 data = json.loads(body)
             except Exception:
                 return match.group(0)
-            if action_type in {"create_file", "write_file", "edit_file", "replace"} and isinstance(data, dict):
+            if action_type in {"create_file", "write_file", "write_file_block", "append_file_block", "edit_file", "replace"} and isinstance(data, dict):
                 payload = data.get("content")
+                field_name = "content"
+                if not isinstance(payload, str):
+                    payload = data.get("file_content")
+                    field_name = "file_content"
                 if isinstance(payload, str) and len(payload) > 200:
                     blob_hash = self._save_blob(payload)
                     data.pop("content", None)
-                    data["content_redacted"] = True
-                    data["content_size"] = len(payload)
-                    data["content_blob_hash"] = blob_hash
+                    data.pop("file_content", None)
+                    data[f"{field_name}_redacted"] = True
+                    data[f"{field_name}_size"] = len(payload)
+                    data[f"{field_name}_blob_hash"] = blob_hash
                     return f'<action type="{action_type}">\n{json.dumps(data, ensure_ascii=False, indent=2)}\n</action>'
             return match.group(0)
 
         pattern = re.compile(r'<action(?:\s+type="([^"]+)")?>(.*?)</action>', re.DOTALL | re.IGNORECASE)
-        return re.sub(pattern, _replace, content)
+        sanitized = re.sub(pattern, _replace, content)
+
+        def _replace_file_content(match):
+            body = match.group(1) or ""
+            if len(body) <= 200:
+                return match.group(0)
+            blob_hash = self._save_blob(body)
+            marker = f"[file_content omitted: {len(body)} chars, sha256:{blob_hash[:12]}]"
+            return f"<file_content>{marker}</file_content>"
+
+        file_content_pattern = re.compile(r"<file_content(?:\s+[^>]*)?>(.*?)</file_content>", re.DOTALL | re.IGNORECASE)
+        return re.sub(file_content_pattern, _replace_file_content, sanitized)
 
     def _truncate_multiline_text(self, text: str, *, max_chars: int, max_lines: int) -> str:
         return self.material_tools.truncate_multiline_text(text, max_chars=max_chars, max_lines=max_lines)
@@ -966,12 +1046,14 @@ class HistoryManager:
             return
 
         history_text = "\n".join(f"{m['role']}: {str(m['content'])[:200]}..." for m in to_summarize)
+        active_intent_block = self._build_active_intent_summary_block(state)
+        plan_board_block = self._build_plan_board_summary_block(state)
         memory_board_block = self._build_memory_board_summary_block(state)
 
         prompt_parts = [
             "Summarize conversation history into compact background working memory for continuing the same coding task.",
             "Be aggressively compact, factual, and continuation-oriented.",
-            "Preserve only the operational state needed for correct next steps that is NOT already captured in the canonical memory board.",
+            "Preserve only the operational state needed for correct next steps that is NOT already captured in the canonical intent/plan/memory boards.",
             "",
             "This summary is INTERNAL MEMORY, not a user-facing handoff.",
             "Do NOT treat it as a new task.",
@@ -979,10 +1061,12 @@ class HistoryManager:
             "Do NOT simulate another agent.",
             "",
             "IMPORTANT:",
+            "- The ACTIVE INTENT BOARD, CURRENT PLAN BOARD, and MEMORY BOARD blocks below are canonical runtime state.",
+            "- Do not summarize, rewrite, compress, absorb, or replace those canonical boards.",
+            "- If compressed history conflicts with a canonical board, trust the canonical board.",
             "- The MEMORY BOARD block below is canonical durable memory.",
-            "- If compressed history conflicts with the MEMORY BOARD, trust the MEMORY BOARD.",
-            "- Do not duplicate the full MEMORY BOARD verbatim unless a tiny amount is needed for continuity.",
-            "- Preserve only tactical or transitional state that is still needed and is not already covered by the MEMORY BOARD.",
+            "- Do not duplicate the full canonical boards verbatim unless a tiny amount is needed for continuity.",
+            "- Preserve only tactical or transitional state that is still needed and is not already covered by the canonical boards.",
             "",
             "Preserve only high-value state. Keep:",
             "- ACTIVE GOAL: the current user-facing goal of the active session",
@@ -1022,11 +1106,13 @@ class HistoryManager:
             "- ...",
             "IMPORTANT ERRORS / POLICY EVENTS:",
             "- ...",
-            "NEXT BEST STEP:",
-            "- ...",
             "Do NOT return JSON. Do NOT use code fences. This is background memory, not a response format.",
             "",
         ]
+        if active_intent_block:
+            prompt_parts.extend([active_intent_block, ""])
+        if plan_board_block:
+            prompt_parts.extend([plan_board_block, ""])
         if memory_board_block:
             prompt_parts.extend(["## MEMORY BOARD (CANONICAL)", memory_board_block, ""])
         prompt_parts.extend(["## HISTORY TO COMPRESS", history_text, ""])

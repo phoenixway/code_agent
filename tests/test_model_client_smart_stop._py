@@ -28,11 +28,36 @@ class TestModelClientSmartStop(unittest.TestCase):
         )
         self.assertFalse(client._should_smart_stop(text))
 
+    def test_does_not_stop_for_valid_write_file_block_package(self):
+        client = self._make_client()
+        text = (
+            '<action>{"type":"write_file_block","path":"generate_bookmarks_app.py","overwrite":true}</action>\n'
+            "<file_content>#!/usr/bin/env python3\nprint(\"ok\")\n</file_content>"
+        )
+        self.assertFalse(client._should_smart_stop(text))
+
+    def test_does_not_stop_while_file_content_block_is_still_streaming(self):
+        client = self._make_client()
+        text = (
+            '<action>{"type":"write_file_block","path":"generate_bookmarks_app.py","overwrite":true}</action>\n'
+            "<file_content>#!/usr/bin/env python3\nprint("
+        )
+        self.assertFalse(client._should_smart_stop(text))
+
     def test_stops_on_long_non_action_trailing_text(self):
         client = self._make_client()
         text = (
             '<action type="read_file">{"path":"a.txt"}</action>\n'
             "Пояснюю далі дуже довго поза action блоком."
+        )
+        self.assertTrue(client._should_smart_stop(text))
+
+    def test_stops_on_random_prose_after_complete_file_block_package(self):
+        client = self._make_client()
+        text = (
+            '<action>{"type":"write_file_block","path":"generate_bookmarks_app.py","overwrite":true}</action>\n'
+            "<file_content>body</file_content>\n"
+            "А тепер ще зайва проза після повного пакета."
         )
         self.assertTrue(client._should_smart_stop(text))
 

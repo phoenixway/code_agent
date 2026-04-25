@@ -26,7 +26,7 @@ class TechnicalInterruption:
 
 
 _STATUS_CODE_RE = re.compile(r"\b(?:api\s+error|http|status)\s*(?:code\s*)?(429|500|502|503|504|408)\b", re.IGNORECASE)
-_PROVIDER_RE = re.compile(r"\b(gemini|openai|ollama|deepseek)\b", re.IGNORECASE)
+_PROVIDER_RE = re.compile(r"\b(gemini|vertexai|openai|ollama|deepseek)\b", re.IGNORECASE)
 _PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\bgemini returned valid json but no text parts\b", re.IGNORECASE), "invalid_provider_payload"),
     (re.compile(r"\bno text parts\b", re.IGNORECASE), "invalid_provider_payload"),
@@ -70,11 +70,29 @@ def _kind_from_text(text: str) -> str | None:
 def interruption_from_provider_error(error: ProviderAPIError, *, provider_name: str | None = None) -> TechnicalInterruption:
     provider = str(provider_name or error.provider_name or "").strip() or None
     kind = str(error.kind or "provider_error").strip() or "provider_error"
-    retryable = kind not in {"auth_error", "provider_init_error"}
-    recoverable = kind not in {"auth_error"}
+    retryable = kind not in {
+        "auth_error",
+        "provider_init_error",
+        "vertexai_auth_error",
+        "vertexai_model_or_location_not_found",
+        "billing_exhausted_ai_studio_prepay",
+    }
+    recoverable = kind not in {
+        "auth_error",
+        "vertexai_auth_error",
+        "vertexai_model_or_location_not_found",
+        "billing_exhausted_ai_studio_prepay",
+    }
     if error.status_code in {408, 429, 500, 502, 503, 504}:
         retryable = True
         recoverable = True
+    if kind in {
+        "vertexai_auth_error",
+        "vertexai_model_or_location_not_found",
+        "billing_exhausted_ai_studio_prepay",
+    }:
+        retryable = False
+        recoverable = False
     message = str(error.user_message or error.message or "Provider error").strip()
     if error.status_code in {500, 502, 503, 504} and kind == "provider_error":
         message = f"{(provider or 'Provider').capitalize()} API temporarily unavailable"

@@ -102,7 +102,7 @@ class PromptBuilderCurrentIntentRetryRecoveryTests(unittest.TestCase):
         self.assertIn("These are recovery hints, not proof that contract-scoped tool use is already allowed.", out)
         self.assertIn("Until activation succeeds, do not assume contract-scoped permissions or allowed_actions.", out)
 
-    def test_build_system_message_injects_active_intent_contract_block(self):
+    def test_build_system_message_does_not_embed_active_intent_contract_block(self):
         active_intent = SimpleNamespace(
             intent_id="activity_tracker_edit",
             intent_type="INVESTIGATE",
@@ -118,18 +118,41 @@ class PromptBuilderCurrentIntentRetryRecoveryTests(unittest.TestCase):
 
         out = builder.build_system_message("TOOLS", "CTX")
 
-        self.assertIn("## ACTIVE INTENT CONTRACT", out)
-        self.assertIn("intent_id: activity_tracker_edit", out)
-        self.assertIn("intent_type: INVESTIGATE", out)
-        self.assertIn("allowed_actions: read_chunk, search_content, run_shell, read_file_skeleton, search_files", out)
-        self.assertIn("steps_used: 2", out)
-        self.assertIn("steps_remaining: 2", out)
-        self.assertIn('last_action: read_file_skeleton("modules/activity_tracker.py") -> success', out)
-        self.assertIn("current_best_answer:", out)
-        self.assertIn("Memory-board expectation for this contract:", out)
-        self.assertIn("emit exactly ONE concise memory tag", out)
+        self.assertNotIn("intent_id: activity_tracker_edit", out)
+        self.assertNotIn("steps_used: 2", out)
+        self.assertNotIn("nominal_steps_remaining: 2", out)
+        self.assertNotIn("Memory-board expectation for this contract:", out)
 
-    def test_build_system_message_uses_exhausted_gate_prompt_when_hard_limit_reached(self):
+    def test_build_intent_runtime_context_message_contains_active_intent_contract_block(self):
+        active_intent = SimpleNamespace(
+            intent_id="activity_tracker_edit",
+            intent_type="INVESTIGATE",
+            goal="Understand current implementation of activity tracker sorting and edit dialog to plan changes.",
+            allowed_actions=["read_chunk", "search_content", "run_shell", "read_file_skeleton", "search_files"],
+            safe_steps_limit=4,
+            step_count=2,
+            retry_limit=2,
+            retry_count=1,
+            user_step_extension=0,
+        )
+        builder = self._builder(active_intent)
+
+        out = builder.build_intent_runtime_context_message()
+
+        self.assertIsNotNone(out)
+        self.assertEqual("user", out["role"])
+        self.assertIn("## ACTIVE INTENT CONTRACT", out["content"])
+        self.assertIn("intent_id: activity_tracker_edit", out["content"])
+        self.assertIn("intent_type: INVESTIGATE", out["content"])
+        self.assertIn("allowed_actions: read_chunk, search_content, run_shell, read_file_skeleton, search_files", out["content"])
+        self.assertIn("steps_used: 2", out["content"])
+        self.assertIn("nominal_steps_remaining: 2", out["content"])
+        self.assertIn('last_action: read_file_skeleton("modules/activity_tracker.py") -> success', out["content"])
+        self.assertIn("current_best_answer:", out["content"])
+        self.assertIn("Memory-board expectation for this contract:", out["content"])
+        self.assertIn("emit exactly ONE concise memory tag", out["content"])
+
+    def test_build_intent_runtime_context_message_uses_exhausted_gate_prompt_when_hard_limit_reached(self):
         active_intent = SimpleNamespace(
             intent_id="activity_tracker_edit",
             intent_type="INVESTIGATE",
@@ -144,22 +167,21 @@ class PromptBuilderCurrentIntentRetryRecoveryTests(unittest.TestCase):
         builder = self._builder(active_intent)
         builder.state.has_hard_exhausted_active_intent = lambda: True
 
-        out = builder.build_system_message("TOOLS", "CTX")
+        out = builder.build_intent_runtime_context_message()
 
-        self.assertIn("Status: ACTIVE BUT HARD-EXHAUSTED", out)
-        self.assertIn("Normal <action> output is forbidden", out)
-        self.assertIn('mode="reuse"', out)
-        self.assertNotIn("Continue under this contract unless runtime explicitly requires a legitimate transition.", out)
+        self.assertIsNotNone(out)
+        self.assertIn("Status: ACTIVE BUT HARD-EXHAUSTED", out["content"])
+        self.assertIn("Normal <action> output is forbidden", out["content"])
+        self.assertIn('mode="reuse"', out["content"])
+        self.assertNotIn("Continue under this contract unless runtime explicitly requires a legitimate transition.", out["content"])
 
-    def test_build_system_message_injects_no_active_intent_contract_block(self):
+    def test_build_system_message_does_not_embed_no_active_intent_contract_block(self):
         builder = self._builder(active_intent=None)
 
         out = builder.build_system_message("TOOLS", "CTX")
 
-        self.assertIn("## INTENT MODE STATUS", out)
-        self.assertIn("Status: NO ACTIVE INTENT CONTRACT", out)
-        self.assertIn("Runtime mode: INTENTLESS_SHORT_MODE", out)
-        self.assertIn("formal_intent_required_now: no", out)
+        self.assertNotIn("Runtime mode: INTENTLESS_SHORT_MODE", out)
+        self.assertNotIn("formal_intent_required_now: no", out)
 
     def test_build_system_message_injects_memory_followup_when_previous_step_had_no_tag(self):
         active_intent = SimpleNamespace(
@@ -178,10 +200,11 @@ class PromptBuilderCurrentIntentRetryRecoveryTests(unittest.TestCase):
         builder.state.memory_tag_reason = "meaningful_evidence_gain"
         builder.state.memory_tag_expected_intent_id = "activity_tracker_edit"
 
-        out = builder.build_system_message("TOOLS", "CTX")
+        out = builder.build_intent_runtime_context_message()
 
-        self.assertIn("Memory-board follow-up from the previous step:", out)
-        self.assertIn("Previous step produced meaningful evidence but no memory tag was emitted.", out)
+        self.assertIsNotNone(out)
+        self.assertIn("Memory-board follow-up from the previous step:", out["content"])
+        self.assertIn("Previous step produced meaningful evidence but no memory tag was emitted.", out["content"])
 
     def test_build_system_message_does_not_embed_memory_board_entries(self):
         active_intent = SimpleNamespace(
@@ -224,6 +247,51 @@ class PromptBuilderCurrentIntentRetryRecoveryTests(unittest.TestCase):
         self.assertIn("## MEMORY BOARD", out["content"])
         self.assertIn("ActivityCard renders start_time as read-only.", out["content"])
 
+    def test_build_memory_board_context_message_marks_previous_intent_memory_as_stale(self):
+        board = MemoryBoardStore(storage_path=None)
+        board.add_entry(
+            kind="finding",
+            text="Old dialog path was modules/activity_tracker/ui/legacy_dialog.py.",
+            scope="intent",
+            intent_id="old_intent_1",
+        )
+        agent = SimpleNamespace(
+            state=SimpleNamespace(
+                active_intent=None,
+                last_resumable_intent_id="old_intent_1",
+                last_resumable_intent_lineage_id="old_intent_1",
+                last_action_fingerprint=None,
+                last_action_status=None,
+                recent_problem_actions=[],
+                memory_tag_expected_next_step=False,
+                memory_tag_reason="",
+                memory_tag_expected_intent_id="",
+            ),
+            config=SimpleNamespace(),
+            memory_board_store=board,
+            log=None,
+        )
+        builder = OrchestratorPromptBuilder(agent)
+
+        out = builder.build_memory_board_context_message()
+
+        self.assertIsNotNone(out)
+        self.assertIn("## MEMORY BOARD (STALE INTENT CONTEXT)", out["content"])
+        self.assertIn("[STALE INTENT MEMORY TO REVIEW]", out["content"])
+        self.assertIn("Old dialog path was modules/activity_tracker/ui/legacy_dialog.py.", out["content"])
+
+    def test_build_intent_runtime_context_message_contains_no_active_intent_block(self):
+        builder = self._builder(active_intent=None)
+
+        out = builder.build_intent_runtime_context_message()
+
+        self.assertIsNotNone(out)
+        self.assertEqual("user", out["role"])
+        self.assertIn("## INTENT MODE STATUS", out["content"])
+        self.assertIn("Status: NO ACTIVE INTENT CONTRACT", out["content"])
+        self.assertIn("Runtime mode: INTENTLESS_SHORT_MODE", out["content"])
+        self.assertIn("formal_intent_required_now: no", out["content"])
+
     def test_memory_board_protocol_distinguishes_fact_from_finding(self):
         builder = self._builder(active_intent=None)
 
@@ -233,6 +301,8 @@ class PromptBuilderCurrentIntentRetryRecoveryTests(unittest.TestCase):
         self.assertRegex(out, r"Use <finding>.*conclusions.*interpretations")
 
         self.assertIn("Use <finding> for conclusions, interpretations, suspected behavior", out)
+        self.assertIn("<memory_update_done />", out)
+        self.assertIn("Sufficiency Check -> State Review -> Memory/Subgoal Update -> Action or Answer", out)
 
     def test_build_system_message_includes_skeleton_range_navigation_guidance(self):
         builder = self._builder(active_intent=None)

@@ -13,8 +13,12 @@ class IntentTransitionHandler:
     REMAINING_ACTION_TAG_RE = re.compile(r"<\s*action\b", re.IGNORECASE)
     INTENT_TAG_RE = re.compile(r"<intent(?:\s+[^>]*)?>.*?</intent>", re.IGNORECASE | re.DOTALL)
     THINK_TAG_RE = re.compile(r"<think(?:\s+[^>]*)?>.*?</think>", re.IGNORECASE | re.DOTALL)
-    MEMORY_BLOCK_RE = re.compile(r"<(fact|finding|decision|preference|progress)\b[^>]*>.*?</\1>", re.IGNORECASE | re.DOTALL)
-    MEMORY_TAG_RE = re.compile(r"</?(fact|finding|decision|preference|progress)\b[^>]*>", re.IGNORECASE)
+    FILE_CONTENT_TAG_RE = re.compile(r"<file_content(?:\s+[^>]*)?>.*?</file_content>", re.IGNORECASE | re.DOTALL)
+    MEMORY_BLOCK_RE = re.compile(r"<(fact|finding|decision|preference|progress|path)\b[^>]*>.*?</\1>", re.IGNORECASE | re.DOTALL)
+    MEMORY_TAG_RE = re.compile(r"</?(fact|finding|decision|preference|progress|path)\b[^>]*>", re.IGNORECASE)
+    MEMORY_REVIEW_RE = re.compile(r"<memory_review\b[^>]*/>", re.IGNORECASE)
+    SUBGOAL_TAG_RE = re.compile(r"<subgoal\b[^>]*(?:>.*?</subgoal>|/>)", re.IGNORECASE | re.DOTALL)
+    MEMORY_UPDATE_DONE_RE = re.compile(r"<memory_update_done\s*/>", re.IGNORECASE)
 
     def __init__(self, agent, prompt_builder, recovery):
         self.agent = agent
@@ -37,41 +41,56 @@ class IntentTransitionHandler:
         resumable_goal = str(getattr(self.state, "last_resumable_intent_goal", "") or "").strip()
         return resumable_id, resumable_type, resumable_goal
 
-    def _remaining_transition_bundle_too_dense(self, response_text: str) -> bool:
+    def _mask_file_content_blocks(self, text: str) -> str:
+        def _mask(match: re.Match) -> str:
+            return " " * (match.end() - match.start())
+
+        return self.FILE_CONTENT_TAG_RE.sub(_mask, text)
+
+    def _mask_for_followup_analysis(self, response_text: str, *, strip_intent: bool = False) -> str:
         text = str(response_text or "").strip()
         if not text:
-            return False
+            return ""
         masked = self.THINK_TAG_RE.sub(" ", text)
-        return bool(self.REMAINING_OPEN_CONTROL_TAG_RE.search(masked))
+        masked = self._mask_file_content_blocks(masked)
+        if strip_intent:
+            masked = self.INTENT_TAG_RE.sub(" ", masked)
+        return masked
+
+    def _remaining_transition_bundle_too_dense(self, response_text: str) -> bool:
+        masked = self._mask_for_followup_analysis(response_text)
+        if not masked:
+            return False
+        intent_count = len(self.INTENT_TAG_RE.findall(masked))
+        action_count = len(self.REMAINING_ACTION_TAG_RE.findall(masked))
+        if intent_count >= 1:
+            return True
+        return action_count >= 2
 
     def _remaining_has_action_only(self, response_text: str) -> bool:
-        text = str(response_text or "").strip()
-        if not text:
+        masked = self._mask_for_followup_analysis(response_text)
+        if not masked:
             return False
-        masked = self.THINK_TAG_RE.sub(" ", text)
         if "<intent" in masked.lower():
             return False
         return bool(self.REMAINING_ACTION_TAG_RE.search(masked))
 
 
     def _remaining_has_plaintext_answer_only(self, response_text: str) -> bool:
-        text = str(response_text or "").strip()
-        if not text:
+        masked = self._mask_for_followup_analysis(response_text)
+        if not masked:
             return False
-        masked = self.THINK_TAG_RE.sub(" ", text)
         if re.search(r"<\s*(intent|action)\b", masked, re.IGNORECASE):
             return False
         masked = self.MEMORY_BLOCK_RE.sub(" ", masked)
         masked = self.MEMORY_TAG_RE.sub(" ", masked)
+        masked = self.MEMORY_REVIEW_RE.sub(" ", masked)
+        masked = self.SUBGOAL_TAG_RE.sub(" ", masked)
+        masked = self.MEMORY_UPDATE_DONE_RE.sub(" ", masked)
         return bool(re.sub(r"<[^>]+>", " ", masked).strip())
 
     def _response_without_think_and_intent(self, response_text: str) -> str:
-        text = str(response_text or "").strip()
-        if not text:
-            return ""
-        masked = self.THINK_TAG_RE.sub(" ", text)
-        masked = self.INTENT_TAG_RE.sub(" ", masked)
-        return masked.strip()
+        return self._mask_for_followup_analysis(response_text, strip_intent=True).strip()
 
     def _reuse_has_inline_single_action(self, intent_payload: dict | None, response_text: str) -> bool:
         payload_mode = str((intent_payload or {}).get("mode") or "").strip().lower()
@@ -96,7 +115,26 @@ class IntentTransitionHandler:
             return False
         masked = self.MEMORY_BLOCK_RE.sub(" ", masked)
         masked = self.MEMORY_TAG_RE.sub(" ", masked)
+        masked = self.MEMORY_REVIEW_RE.sub(" ", masked)
+        masked = self.SUBGOAL_TAG_RE.sub(" ", masked)
+        masked = self.MEMORY_UPDATE_DONE_RE.sub(" ", masked)
         return bool(re.sub(r"<[^>]+>", " ", masked).strip())
+
+    def _remaining_has_any_action(self, response_text: str) -> bool:
+        masked = self._mask_for_followup_analysis(response_text)
+        if not masked:
+            return False
+        return bool(self.REMAINING_ACTION_TAG_RE.search(masked))
+
+    def _remaining_followup_conflict_reason(self, response_text: str) -> str:
+        masked = self._mask_for_followup_analysis(response_text)
+        if not masked:
+            return ""
+        if len(self.INTENT_TAG_RE.findall(masked)) >= 1:
+            return "conflicting_intent_transitions"
+        if len(self.REMAINING_ACTION_TAG_RE.findall(masked)) >= 2:
+            return "multiple_actions"
+        return ""
 
 
     def _inherit_memory_to_successor(self, intent_decision: IntentDecision) -> None:
@@ -426,11 +464,11 @@ class IntentTransitionHandler:
             )
 
         if intent_decision.completion_requested:
-            if self._remaining_transition_bundle_too_dense(response_text):
+            if self._remaining_has_any_action(response_text):
                 self.stage_logger.log(
                     "intent_transition",
                     "continue",
-                    reason="transition_bundle_too_dense",
+                    reason="intent_complete_with_action_not_allowed",
                     source="intent_runtime",
                     universe="transition_in_progress",
                     transition=intent_decision.transition_info.get("transition", ""),
@@ -439,9 +477,28 @@ class IntentTransitionHandler:
                 )
                 return IntentHandlingDecision(
                     handled=True,
-                    next_query=self.prompt_builder.build_transition_bundle_too_dense_prompt(),
+                    next_query=self.prompt_builder.build_completion_with_action_not_allowed_prompt(),
                     clear_pending_stop=True,
-                    reason="transition_bundle_too_dense",
+                    reason="intent_complete_with_action_not_allowed",
+                )
+
+            followup_conflict = self._remaining_followup_conflict_reason(response_text)
+            if followup_conflict:
+                self.stage_logger.log(
+                    "intent_transition",
+                    "continue",
+                    reason=followup_conflict,
+                    source="intent_runtime",
+                    universe="transition_in_progress",
+                    transition=intent_decision.transition_info.get("transition", ""),
+                    before_active_intent_id=intent_decision.transition_info.get("before_active_intent_id", ""),
+                    after_active_intent_id=intent_decision.transition_info.get("after_active_intent_id", ""),
+                )
+                return IntentHandlingDecision(
+                    handled=True,
+                    next_query=self.prompt_builder.build_followup_conflict_prompt(followup_conflict),
+                    clear_pending_stop=True,
+                    reason=followup_conflict,
                 )
 
             self._finalize_completed_intent()
@@ -497,11 +554,12 @@ class IntentTransitionHandler:
             )
             return IntentHandlingDecision(handled=False)
 
-        if self._remaining_transition_bundle_too_dense(response_text):
+        followup_conflict = self._remaining_followup_conflict_reason(response_text)
+        if followup_conflict:
             self.stage_logger.log(
                 "intent_transition",
                 "continue",
-                reason="transition_bundle_too_dense",
+                reason=followup_conflict,
                 source="intent_runtime",
                 universe="transition_in_progress",
                 transition=intent_decision.transition_info.get("transition", ""),
@@ -510,9 +568,9 @@ class IntentTransitionHandler:
             )
             return IntentHandlingDecision(
                 handled=True,
-                next_query=self.prompt_builder.build_transition_bundle_too_dense_prompt(),
+                next_query=self.prompt_builder.build_followup_conflict_prompt(followup_conflict),
                 clear_pending_stop=True,
-                reason="transition_bundle_too_dense",
+                reason=followup_conflict,
             )
 
         active_intent = intent_decision.active_intent or getattr(self.state, "active_intent", None)

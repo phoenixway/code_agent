@@ -205,6 +205,8 @@ class AgentConfig:
             "replace",
             "edit_file",
             "write_file",
+            "write_file_block",
+            "append_file_block",
             "git_add",
             "git_commit",
             "git_checkout",

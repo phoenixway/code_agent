@@ -415,7 +415,11 @@ class RecoveryCoordinator:
                 if (
                     active_intent is not None
                     and bool(stop_info.get("recoverable"))
-                    and str(stop_info.get("error_code") or "").strip().upper() == "VALIDATION_ERROR"
+                    and str(stop_info.get("error_code") or "").strip().upper() in {
+                        "VALIDATION_ERROR",
+                        "CONTENT_TOO_LARGE_FOR_JSON_FILE_ACTION",
+                        "MISSING_FILE_CONTENT_BLOCK",
+                    }
                 ):
                     return StopHandlingDecision.continue_with(
                         self.prompt_builder.build_current_intent_retry_recovery_query(
@@ -447,6 +451,12 @@ class RecoveryCoordinator:
                 )
 
         if stop_info:
+            if stop_info.get("reason") == "missing_executable":
+                return StopHandlingDecision.continue_with(
+                    self.prompt_builder.build_missing_executable_prompt(stop_info),
+                    clear_pending_stop=True,
+                )
+
             if stop_info.get("reason") == "malformed_read_file_payload":
                 return StopHandlingDecision.continue_with(
                     self.prompt_builder.build_malformed_read_file_payload_prompt(),
@@ -494,6 +504,26 @@ class RecoveryCoordinator:
                 )
 
             if stop_info.get("recoverable"):
+                if str(stop_info.get("error_code") or "").strip().upper() == "MISSING_EXECUTABLE":
+                    return StopHandlingDecision.continue_with(
+                        self.prompt_builder.build_missing_executable_prompt(stop_info),
+                        clear_pending_stop=True,
+                    )
+                if str(stop_info.get("error_code") or "").strip().upper() in {
+                    "CONTENT_TOO_LARGE_FOR_JSON_FILE_ACTION",
+                    "MISSING_FILE_CONTENT_BLOCK",
+                }:
+                    active_intent = getattr(self.state, "active_intent", None)
+                    if active_intent is not None:
+                        allowed = self._intent_actions_from_stop_info(stop_info, active_intent)
+                        return StopHandlingDecision.continue_with(
+                            self.prompt_builder.build_current_intent_retry_recovery_query(
+                                allowed,
+                                error_code=str(stop_info.get("error_code") or ""),
+                                error_details=stop_info.get("error_details") or {},
+                            ),
+                            clear_pending_stop=True,
+                        )
                 if str(stop_info.get("error_code") or "").strip().upper() == "VALIDATION_ERROR":
                     active_intent = getattr(self.state, "active_intent", None)
                     if active_intent is not None:

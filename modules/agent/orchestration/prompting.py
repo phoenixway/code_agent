@@ -19,6 +19,7 @@ class OrchestratorPromptBuilder:
         self.agent = agent
         self.state = agent.state
         self.config = agent.config
+        self.planner = getattr(agent, "planner", None)
         self.memory_board_store = getattr(agent, "memory_board_store", None)
         self.recovery_policy_resolver = getattr(agent, "recovery_policy_resolver", None) or RecoveryPolicyResolver(
             getattr(agent, "allowed_actions_resolver", None)
@@ -104,6 +105,21 @@ class OrchestratorPromptBuilder:
                 pass
         active_intent_id = str(getattr(active_intent, "intent_id", "") or "").strip()
         return [active_intent_id] if active_intent_id else []
+
+    def _memory_projection_intent_ids(self) -> list[str]:
+        active_lineage_ids = self._active_intent_lineage_ids()
+        if active_lineage_ids:
+            return active_lineage_ids
+
+        recent_ids: list[str] = []
+        for value in (
+            getattr(self.state, "last_resumable_intent_id", None),
+            getattr(self.state, "last_resumable_intent_lineage_id", None),
+        ):
+            text = str(value or "").strip()
+            if text and text not in recent_ids:
+                recent_ids.append(text)
+        return recent_ids
 
     def _memory_tag_followup_lines(self) -> list[str]:
         expected = bool(getattr(self.state, "memory_tag_expected_next_step", False))
@@ -440,29 +456,7 @@ class OrchestratorPromptBuilder:
             "Under MODIFY, investigation remains valid until edit-readiness is achieved."
         )
 
-        active_intent_id = self._current_active_intent_id()
-
-        active_intent_prompt = self.build_active_intent_contract_prompt()
-        if active_intent_prompt:
-            blocks.append(active_intent_prompt)
-            if self.agent.log:
-                self.agent.log.debug(
-                    "PromptBuilder.active_intent_contract_prompt active_intent_id=%s chars=%s\n%s",
-                    active_intent_id or "",
-                    len(active_intent_prompt),
-                    active_intent_prompt,
-                )
-        else:
-            no_active_prompt = self.build_no_active_intent_contract_prompt()
-            if no_active_prompt:
-                blocks.append(no_active_prompt)
-                if self.agent.log:
-                    self.agent.log.debug(
-                        "PromptBuilder.no_active_intent_contract_prompt chars=%s\n%s",
-                        len(no_active_prompt),
-                        no_active_prompt,
-                    )
-
+        blocks.append(self.build_plan_board_protocol_prompt())
         blocks.append(self.build_memory_board_protocol_prompt())
         system_message = "\n\n".join(block for block in blocks if isinstance(block, str) and block.strip())
         if self.agent.log:
@@ -476,13 +470,51 @@ class OrchestratorPromptBuilder:
             self.agent.log.debug("PromptBuilder.system_message.full\n%s", system_message)
         return system_message
 
+    def build_intent_runtime_context_message(self) -> dict[str, str] | None:
+        active_intent_id = self._current_active_intent_id()
+        active_intent_prompt = self.build_active_intent_contract_prompt()
+        if active_intent_prompt:
+            if self.agent.log:
+                self.agent.log.debug(
+                    "PromptBuilder.intent_runtime_context active_intent_id=%s chars=%s\n%s",
+                    active_intent_id or "",
+                    len(active_intent_prompt),
+                    active_intent_prompt,
+                )
+            return {
+                "role": "user",
+                "content": (
+                    "Runtime context only. This intent contract/status block is authoritative for the current step.\n\n"
+                    f"{active_intent_prompt}"
+                ),
+            }
+
+        no_active_prompt = self.build_no_active_intent_contract_prompt()
+        if not no_active_prompt:
+            return None
+
+        if self.agent.log:
+            self.agent.log.debug(
+                "PromptBuilder.intent_runtime_context chars=%s\n%s",
+                len(no_active_prompt),
+                no_active_prompt,
+            )
+
+        return {
+            "role": "user",
+            "content": (
+                "Runtime context only. This intent contract/status block is authoritative for the current step.\n\n"
+                f"{no_active_prompt}"
+            ),
+        }
+
     def build_memory_board_context_message(self) -> dict[str, str] | None:
         memory_board = getattr(self.agent, "memory_board_store", None)
         if memory_board is None or not hasattr(memory_board, "to_system_prompt"):
             return None
 
         active_intent_id = self._current_active_intent_id()
-        active_intent_lineage_ids = self._active_intent_lineage_ids()
+        active_intent_lineage_ids = self._memory_projection_intent_ids()
         try:
             memory_prompt = memory_board.to_system_prompt(
                 active_intent_id=active_intent_id,
@@ -512,6 +544,34 @@ class OrchestratorPromptBuilder:
             ),
         }
 
+    def build_plan_board_context_message(self) -> dict[str, str] | None:
+        planner = getattr(self.agent, "planner", None)
+        if planner is None or not hasattr(planner, "render_runtime_snapshot"):
+            return None
+        board = getattr(self.state, "task_board", None)
+        snapshot = planner.render_runtime_snapshot(board)
+        if not isinstance(snapshot, str) or not snapshot.strip():
+            return None
+        if self.agent.log:
+            self.agent.log.debug(
+                "PromptBuilder.plan_board_context chars=%s\n%s",
+                len(snapshot),
+                snapshot,
+            )
+        return {
+            "role": "user",
+            "content": (
+                "Runtime context only. This current plan board is canonical decomposition state for the current active intent.\n\n"
+                f"{snapshot}"
+            ),
+        }
+
+    def build_plan_board_protocol_prompt(self) -> str:
+        planner = getattr(self.agent, "planner", None)
+        if planner is not None and hasattr(planner, "build_protocol_instructions"):
+            return planner.build_protocol_instructions()
+        return ""
+
     def build_memory_board_protocol_prompt(self) -> str:
         return dedent(
             """
@@ -523,21 +583,37 @@ class OrchestratorPromptBuilder:
             - <decision scope="intent|session|project">...</decision>
             - <preference scope="intent|session|project">...</preference>
             - <progress scope="intent">...</progress>
+            - <path scope="intent|session|project">...</path>
+            - <memory_review status="no_change" scope="intent" />
+            - <memory_update_done />
 
-            THINK REFLECTION RULE:
-            - After every <think> containing 5 or more words, emit a formal reflection of that thinking using one or more memory tags.
+            DURABLE STATE CHECKPOINT RULE:
+            - Durable-state checkpointing is mandatory.
+            - Every step must run this cycle in order: Sufficiency Check -> State Review -> Memory/Subgoal Update -> Action or Answer.
+            - You MUST emit memory tags and/or formal plan tags:
+              after every <think>,
+              after every meaningful reasoning result,
+              after every tool result that materially changes what is known, what should be done next, or what is already completed,
+              and after every user input that changes the active goal interpretation, plan structure, priorities, constraints, or durable memory relevance.
             - Put the tags immediately after </think> and before any <action> or plain-text continuation.
-            - This reflection is REQUIRED for substantial thinking.
-            - Capture ALL valuable results of the thinking, not just one.
-            - If the thinking produced multiple valuable outcomes, emit multiple tags.
-            - Long <think> + one tiny tag is usually incomplete.
+            - End the memory/subgoal review block for the step with <memory_update_done />.
+            - If the review found no memory/subgoal mutation to emit, output <memory_update_done /> anyway after the review.
+            - If the review found no durable mutation but you still need to acknowledge the review explicitly before a risky action, you may emit <memory_review status="no_change" scope="intent" /> immediately before <memory_update_done />.
+            - When in doubt, checkpoint more rather than less.
+            - Loss of durable operational state after history compression is a critical failure.
 
             Tag selection:
             - Use <fact> for information directly verified by tool output, code, or runtime state already visible in history.
             - Use <finding> for conclusions, interpretations, suspected behavior, or any statement that is not directly quoted or directly observable from tool output.
-            - Use <decision> for chosen plans, strategy choices, or explicit working decisions.
+            - Use <decision> for durable chosen rules, strategy choices, or explicit working decisions that should survive compression.
             - Use <progress> for milestone-level continuation state.
+            - Use <path> for file paths, directory paths, module paths, or exact edit/inspection surfaces that are likely to matter later in the same work.
             - Use <preference> only for durable preference-like guidance that actually matters later.
+            - Do NOT write plans, subgoals, next-step lists, or pending task decompositions into the memory board.
+            - Do NOT collapse formal subgoal mutations into <progress> or <decision>; use the dedicated <subgoal ...> XML tags for subgoal state changes.
+            - If the content is a plan, step list, next action, or task decomposition, it belongs in <subgoal ...>, not in memory tags.
+            - If a newly discovered path is likely to be revisited, checkpoint it explicitly with <path> instead of burying it inside <fact> or prose.
+            - If the injected MEMORY BOARD is marked stale, review it first and correct misleading operational memory before relying on it.
 
             Scope rules:
             - Use scope="intent" for information useful for continuing the current line of work.
@@ -549,6 +625,7 @@ class OrchestratorPromptBuilder:
             - all verified facts established during thinking
             - all real conclusions reached during thinking
             - all chosen decisions made during thinking
+            - important paths that the agent is likely to revisit
             - milestone-level progress that would matter after compression
             - recovery consequences that change the continuation rules
             - current-best-answer updates when they materially changed
@@ -557,6 +634,7 @@ class OrchestratorPromptBuilder:
             - Do not log routine actions, tool calls, or noisy low-level observations.
             - Do not emit one arbitrary tag when the thinking produced several durable outcomes.
             - Do not silently contradict previously committed memory; if new evidence changes something important, emit a new explicit correcting tag.
+            - Do not store "plan to", "next I will", "remaining steps", "todo list", or similar planning content in memory tags.
 
             Good examples:
             <think>
@@ -564,19 +642,29 @@ class OrchestratorPromptBuilder:
             </think>
             <finding scope="intent">DayPlanScopeLinksHandler is day-specific because it reads planIdFlow and mutates links through getPlanById(planId).</finding>
             <decision scope="intent">Remove the day-plan dependency at the handler boundary instead of preserving planIdFlow semantics for Today links.</decision>
+            <memory_update_done />
 
             <think>
             The sheet derives displayed links from DayPlanUiState.dayPlan linked IDs. That means the rendering layer is also day-specific, not only the mutation layer. We now know there are at least two binding points to replace.
             </think>
+            <path scope="intent">modules/day_plan/day_scope_links_sheet.py</path>
             <fact scope="intent">DayScopeLinksSheet derives displayed links from DayPlanUiState.dayPlan linked IDs.</fact>
             <finding scope="intent">The current Today links flow is day-specific in both mutation logic and rendering logic.</finding>
             <progress scope="intent">Identified the main per-day binding points that must be replaced.</progress>
+            <memory_update_done />
 
             <think>
             The last file read failed because the path was wrong, but runtime provided a reliable parent directory. I should not retry the same missing path. I should inspect the suggested directory and locate the correct file from there.
             </think>
             <finding scope="intent">The previous file-read failure was caused by a wrong path, not by proof that the repository logic is absent.</finding>
             <decision scope="intent">Do not retry the same missing-file read; inspect the suggested parent directory and locate the correct file from there.</decision>
+            <memory_update_done />
+
+            <think>
+            Memory board reviewed. No durable correction is needed before continuing.
+            </think>
+            <memory_review status="no_change" scope="intent" />
+            <memory_update_done />
 
             Format:
             - Prefer 1-4 sentences per tag.
@@ -641,7 +729,7 @@ class OrchestratorPromptBuilder:
             "There is still NO active accepted intent contract unless runtime explicitly says otherwise.\n"
             "Continue from already gathered evidence. Do not restart from zero.\n"
             "Canonical format is a JSON object inside the intent tag.\n"
-            "Do not put intent fields as XML attributes.\n"
+            "Do not rely on XML attributes for intent fields other than the outer mode attribute.\n"
             "Do not use a self-closing intent tag.\n"
             "Return EXACTLY ONE corrected <intent> JSON block now.\n"
             "Do not return a bare <action> before the corrected <intent> is accepted."
@@ -665,7 +753,7 @@ class OrchestratorPromptBuilder:
             f"Resumable goal: {resumable_goal or '<same resumable goal>'}.\n"
             "Return EXACTLY ONE corrected <intent mode=\"reuse\"> block now.\n"
             "Canonical format is a JSON object inside the intent tag.\n"
-            "Do not put intent fields as XML attributes.\n"
+            "Do not rely on XML attributes for intent fields other than the outer mode attribute.\n"
             "Do not use a self-closing intent tag.\n"
             "Do not emit an <action> before reuse is accepted.\n"
             "Return exactly:\n"
@@ -685,6 +773,7 @@ class OrchestratorPromptBuilder:
             "SYSTEM: Your last response used plain \"think\" instead of <think>...</think> and did not include a valid action or final answer.\n"
             "Do not use plain think markers.\n"
             "Return a valid response using the required tags.\n"
+            "If you use <think>, emit any required memory/subgoal tags and end that checkpoint with <memory_update_done /> before the action or final answer.\n"
             "Return exactly one valid <action>...</action>, one valid <intent>...</intent> if runtime requires it, or one normal final plain-text answer."
         )
 
@@ -757,7 +846,8 @@ class OrchestratorPromptBuilder:
             "- one valid read-only batch of tool calls if batching is allowed\n"
             "- one plain-text final answer\n"
             "- one valid <intent> request/transition if runtime truly requires it\n"
-            "- or a valid combination of thinking plus memory tags plus one of the allowed outputs above\n"
+            "- or a valid combination of thinking plus memory/subgoal tags plus one of the allowed outputs above\n"
+            "If you use <think> or emit memory/subgoal tags, close the durable-state checkpoint with <memory_update_done /> before the action or final answer.\n"
             "Do NOT return another planning/thinking-only reply.\n"
             "Do NOT restate the next step without performing it.\n"
             "Return a valid output now."
@@ -1048,8 +1138,51 @@ class OrchestratorPromptBuilder:
             "- include exactly ONE JSON object for exactly ONE next action.\n"
             "- Do not return multiple <action> blocks.\n"
             "- Do not return a JSON array.\n"
+            "- If you need to write a large file, use write_file_block plus a following raw <file_content>...</file_content> block instead of huge escaped JSON content.\n"
             "- Do not include prose outside <action>.\n"
             "If no tool is needed, return a plain-text answer instead of any <action>."
+        )
+
+    def build_incomplete_think_recovery_prompt(self) -> str:
+        return (
+            "SYSTEM: Your last response was truncated inside <think>.\n"
+            "That is internal control text and cannot be forwarded to the user.\n"
+            "Return a complete valid response from the beginning.\n"
+            "<think>...</think>\n"
+            "<memory_update_done />\n"
+            "Then return either exactly one <action>...</action> or a plain final answer.\n"
+            "Do not continue the previous incomplete sentence."
+        )
+
+    def build_incomplete_action_recovery_prompt(self) -> str:
+        return (
+            "SYSTEM: Your last response was truncated inside <action>.\n"
+            "Return the complete action package again from the beginning.\n"
+            "If a tool is needed, return EXACTLY ONE complete valid <action>...</action> block.\n"
+            "Do not continue the previous incomplete JSON fragment."
+        )
+
+    def build_incomplete_intent_recovery_prompt(self) -> str:
+        return (
+            "SYSTEM: Your last response was truncated inside <intent>.\n"
+            "Return the complete intent transition again from the beginning, or omit it if no transition is needed.\n"
+            "Do not continue the previous incomplete JSON fragment."
+        )
+
+    def build_incomplete_file_content_recovery_prompt(self) -> str:
+        return (
+            "SYSTEM: Your last response was truncated inside <file_content>.\n"
+            "Return the entire action package again, or split the file into smaller append_file_block chunks.\n"
+            "A block file write must include a complete <action>...</action> plus a complete <file_content>...</file_content> block.\n"
+            "Do not continue the previous incomplete file body."
+        )
+
+    def build_truncated_internal_response_prompt(self) -> str:
+        return (
+            "SYSTEM: Your last response was truncated inside internal control markup.\n"
+            "That internal text cannot be forwarded to the user.\n"
+            "Return a complete valid response from the beginning.\n"
+            "Use complete control tags only; do not continue the previous incomplete fragment."
         )
 
     def build_audit_marker_echo_strict_recovery_prompt(self) -> str:
@@ -1064,19 +1197,105 @@ class OrchestratorPromptBuilder:
 
     def build_missing_think_reflection_prompt(self) -> str:
         return (
-            "SYSTEM: Your last <think> block was substantial but did not end with formal reflection tags.\n"
-            "Return ONLY the reflection of that thinking now using supported memory tags.\n"
+            "SYSTEM: Your last <think> block continued execution without the required durable-state checkpoint.\n"
+            "Return ONLY the missing checkpoint now using supported memory tags and/or formal <subgoal ...> tags.\n"
             "This is a repair-only turn: do not return an <action>, a final answer, or a new <intent> block in the same reply.\n"
             "Capture ALL valuable results of the thinking, not just one token tag.\n"
-            "Use these tags as needed: <fact>, <finding>, <decision>, <preference>, <progress>.\n"
+            "Use these tags as needed: <fact>, <finding>, <decision>, <preference>, <progress>, <path>, <subgoal ...>, or <memory_review status=\"no_change\" scope=\"intent\" /> when the review changed nothing durable.\n"
             "If the thinking produced multiple facts, findings, decisions, or milestones, emit multiple tags.\n"
-            "Place the tags immediately after </think>.\n"
+            "Place the tags immediately after </think> and end with <memory_update_done />.\n"
             "After runtime accepts the reflection repair, it will ask for the next valid output separately."
         )
 
+    def build_state_changing_action_requires_think_reflection_prompt(self) -> str:
+        return (
+            "SYSTEM: Your last response moved from meaningful reasoning into a state-changing MODIFY action without the required durable-state checkpoint.\n"
+            "Return a complete operational review now before the action continues.\n"
+            "Start with a complete <think>...</think> block.\n"
+            "Then emit the needed memory/subgoal update tags.\n"
+            "If nothing durable changed, emit <memory_review status=\"no_change\" scope=\"intent\" />.\n"
+            "Close the checkpoint with <memory_update_done />.\n"
+            "After that, if a change is still needed, return EXACTLY ONE allowed state-changing <action>...</action> block."
+        )
+
+    def build_missing_memory_update_done_prompt(self) -> str:
+        return (
+            "SYSTEM: Your last response updated durable state but did not close the checkpoint with <memory_update_done />.\n"
+            "Return ONLY the missing checkpoint close now.\n"
+            "If the previously emitted memory/subgoal tags are still correct, do not repeat long prose or an action.\n"
+            "If a memory/subgoal mutation is still missing, emit it first and then end with <memory_update_done />.\n"
+            "This is a repair-only turn: do not return an <action>, a final answer, or a new <intent> block in the same reply."
+        )
+
+    def build_missing_think_for_state_change_prompt(self) -> str:
+        return (
+            "SYSTEM: A state-changing MODIFY action requires a complete tagged <think>...</think> block before the checkpoint.\n"
+            "Return a complete operational review now.\n"
+            "Start with a complete <think>...</think> block.\n"
+            "Then emit durable tags such as <subgoal ...>, <decision>, <finding>, <progress>, <path>, or <memory_review status=\"no_change\" scope=\"intent\" />.\n"
+            "Close the checkpoint with <memory_update_done />.\n"
+            "After that, if a change is still needed, return EXACTLY ONE allowed state-changing <action>...</action> block."
+        )
+
+    def build_no_accepted_checkpoint_tags_prompt(self) -> str:
+        return (
+            "SYSTEM: Your last state-changing MODIFY step had a <think> block but no accepted durable-state checkpoint tags before the action.\n"
+            "Return a complete checkpoint now.\n"
+            "Start with a complete <think>...</think> block.\n"
+            "Then emit at least one accepted durable tag: <subgoal ...>, <fact>, <finding>, <decision>, <preference>, <progress>, <path>, or <memory_review status=\"no_change\" scope=\"intent\" />.\n"
+            "Close the checkpoint with <memory_update_done />.\n"
+            "After that, if a change is still needed, return EXACTLY ONE allowed state-changing <action>...</action> block."
+        )
+
+    def build_malformed_plain_think_requires_tagged_think_prompt(self) -> str:
+        return (
+            "SYSTEM: For a state-changing MODIFY step, plain `think` text is invalid here.\n"
+            "Use a proper tagged block: <think>...</think>.\n"
+            "Return the full operational review again from the beginning.\n"
+            "Start with complete <think>...</think>, then durable tags, then <memory_update_done />, then at most one state-changing <action>."
+        )
+
+    def build_malformed_checkpoint_prompt(self) -> str:
+        return (
+            "SYSTEM: Your last state-changing MODIFY step had an invalid durable-state checkpoint shape.\n"
+            "Use exactly this order:\n"
+            "1. complete <think>...</think>\n"
+            "2. one or more durable tags or <memory_review status=\"no_change\" scope=\"intent\" />\n"
+            "3. <memory_update_done />\n"
+            "4. exactly one state-changing <action>...</action>\n"
+            "Return the corrected step from the beginning."
+        )
+
+    def build_recovery_loop_detected_prompt(self, defect_kind: str) -> str:
+        return (
+            "SYSTEM: The same checkpoint recovery defect repeated multiple times without dispatch.\n"
+            f"Detected defect: {str(defect_kind or '').strip() or 'checkpoint_contradiction'}.\n"
+            "Do not repeat the same checkpoint ritual again.\n"
+            "Either return one materially corrected full step with complete <think>, durable tags, <memory_update_done />, and one action, or return a plain-text diagnostic explaining that runtime verification is internally contradictory."
+        )
+
+    def build_checkpoint_defect_prompt(self, invalid_kind: str) -> str:
+        normalized = str(invalid_kind or "").strip()
+        if normalized == "missing_think":
+            return self.build_missing_think_for_state_change_prompt()
+        if normalized == "missing_memory_update_done":
+            return self.build_missing_memory_update_done_prompt()
+        if normalized == "no_accepted_checkpoint_tags":
+            return self.build_no_accepted_checkpoint_tags_prompt()
+        if normalized == "malformed_plain_think_requires_tagged_think":
+            return self.build_malformed_plain_think_requires_tagged_think_prompt()
+        if normalized == "malformed_checkpoint":
+            return self.build_malformed_checkpoint_prompt()
+        return self.build_state_changing_action_requires_think_reflection_prompt()
+
+    def build_durable_state_repair_prompt(self, repair_kind: str = "") -> str:
+        if str(repair_kind or "").strip() == "missing_memory_update_done":
+            return self.build_missing_memory_update_done_prompt()
+        return self.build_missing_think_reflection_prompt()
+
     def build_reflection_repair_accepted_prompt(self) -> str:
         return (
-            "SYSTEM: Think reflection accepted.\n"
+            "SYSTEM: Durable-state checkpoint repair accepted.\n"
             "Continue directly from the already chosen next step.\n"
             "Do not repeat the reflection tags.\n"
             "Do not restate the same decision in prose.\n"
@@ -1102,6 +1321,7 @@ class OrchestratorPromptBuilder:
             "Return the next valid output now.\n"
             "If a tool is needed, return EXACTLY ONE valid <action>...</action> block.\n"
             "If no tool is needed, return a plain-text answer.\n"
+            "If you use <think> or emit memory/subgoal tags, end that checkpoint with <memory_update_done /> before the action or answer.\n"
             "Do not output historical tool markers, SYSTEM_TOOL_AUDIT, or <previously_performed_action>.\n"
             "Do not output <think> without an action or final answer."
         )
@@ -1171,12 +1391,49 @@ class OrchestratorPromptBuilder:
 
     def build_transition_bundle_too_dense_prompt(self) -> str:
         return (
-            "SYSTEM: Your last response bundled too many transition/control items together.\n"
-            "The runtime handles intent transition separately from the next execution step.\n"
-            "Return only the next valid output now under the current runtime state.\n"
-            "If a contract is already active, do not emit another <intent> block.\n"
+            "SYSTEM: Your last response contained conflicting or ambiguous control items.\n"
+            "Transactional bundles are allowed only when they stay coherent: at most one intent transition and at most one action.\n"
+            "Return only the corrected next valid output now under the current runtime state.\n"
+            "Do not emit multiple intent transitions.\n"
+            "Do not emit multiple <action> blocks or an action array.\n"
+            "If a contract is already active, do not emit another <intent> block unless a real transition is required.\n"
             "If tool use is needed, return EXACTLY ONE valid <action>...</action> block.\n"
             "If no tool is needed, return a plain-text answer."
+        )
+
+    def build_multiple_actions_prompt(self) -> str:
+        return (
+            "SYSTEM: Your last response contained multiple top-level <action> blocks.\n"
+            "Return EXACTLY ONE valid <action>...</action> block now.\n"
+            "Only top-level protocol <action> blocks count here; raw text inside <file_content> does not.\n"
+            "Do not use an action array.\n"
+            "Do not batch state-changing actions."
+        )
+
+    def build_conflicting_intent_transitions_prompt(self) -> str:
+        return (
+            "SYSTEM: Your last response contained conflicting intent transitions.\n"
+            "Return at most one <intent> transition in the reply.\n"
+            "If a contract is already active and no real transition is needed, do not emit another <intent> block.\n"
+            "After that, return either one valid <action> or a plain-text answer."
+        )
+
+    def build_followup_conflict_prompt(self, reason: str) -> str:
+        normalized = str(reason or "").strip()
+        if normalized == "multiple_actions":
+            return self.build_multiple_actions_prompt()
+        if normalized == "conflicting_intent_transitions":
+            return self.build_conflicting_intent_transitions_prompt()
+        if normalized == "intent_complete_with_action_not_allowed":
+            return self.build_completion_with_action_not_allowed_prompt()
+        return self.build_transition_bundle_too_dense_prompt()
+
+    def build_completion_with_action_not_allowed_prompt(self) -> str:
+        return (
+            "SYSTEM: A completed intent may not include a follow-up <action> in the same reply.\n"
+            "If the goal is complete, return the final plain-text answer only.\n"
+            "If more tool work is still needed, do not complete the intent yet.\n"
+            "Return the corrected output now."
         )
 
     def typed_recovery_header(self, stop_info: dict | None) -> str:
@@ -1276,6 +1533,8 @@ class OrchestratorPromptBuilder:
         ctx = self._recovery_context(stop_info)
         stop_info = ctx.to_stop_info()
         reason = ctx.reason.strip()
+        if reason == "missing_executable":
+            return self.build_missing_executable_prompt(stop_info)
         state_changing_only = reason in {"repeating_failure", "repeating_no_progress", "observe_budget_exhausted"}
         single_readonly_action_only = reason in {
             "too_broad_search",
@@ -1361,6 +1620,25 @@ class OrchestratorPromptBuilder:
             "Do not ask to inspect more files.",
             "Answer the user's question directly and, if relevant, give one concrete next step.",
         ]
+        if str(kind or "").strip().upper() == "MODIFY":
+            parts.extend(
+                [
+                    "Because this is MODIFY work, the final answer must include:",
+                    "- exact file paths changed in this run",
+                    "- a short statement of what changed",
+                    "- whether git diff was checked",
+                    "- whether build/tests were run",
+                    "- any unverified assumption or residual risk",
+                    "If git diff was not checked, say so explicitly.",
+                    "If build/tests were not run, say so explicitly.",
+                    "Do not imply full verification without tool evidence.",
+                ]
+            )
+        missing_exec = str(ctx.error_details.get("missing_executable") or "").strip()
+        if missing_exec in {"gradle", "gradlew"}:
+            parts.append(
+                "If build verification was blocked by missing Gradle/gradlew, say explicitly that build/tests were not run because Gradle is unavailable in this environment."
+            )
         resumable_intent_id = str(getattr(self.state, "last_resumable_intent_id", "") or "").strip()
         if resumable_intent_id:
             parts.append(
@@ -1383,12 +1661,21 @@ class OrchestratorPromptBuilder:
         return self.build_orchestrated_recovery_prompt(stop_info)
 
     def build_intent_completed_prompt(self) -> str:
-        return (
-            "SYSTEM: The current intent contract is completed.\n"
-            "Return a concise plain-text answer for the user using the evidence already gathered.\n"
-            "Do not emit another <intent> block.\n"
-            "Do not emit any <action> block."
-        )
+        parts = [
+            "SYSTEM: The current intent contract is completed.",
+            "Return a concise plain-text answer for the user using the evidence already gathered.",
+            "Do not emit another <intent> block.",
+            "Do not emit any <action> block.",
+        ]
+        last_completed_intent_type = str(getattr(self.state, "last_completed_intent_type", "") or "").strip().upper()
+        if last_completed_intent_type == "MODIFY":
+            parts.extend(
+                [
+                    "Because this completed intent was MODIFY, the final answer must include changed files, what changed, whether git diff was checked, whether build/tests were run, and any unverified risks.",
+                    "If git diff or build/tests were not run, say that explicitly.",
+                ]
+            )
+        return "\n".join(parts)
 
     def build_approved_changed_goal_prompt(self) -> str:
         return (
@@ -1456,6 +1743,23 @@ class OrchestratorPromptBuilder:
         code = str(error_code or "").strip().upper()
         details = error_details or {}
         mismatch_type = str(details.get("mismatch_type") or "")
+        if code == "CONTENT_TOO_LARGE_FOR_JSON_FILE_ACTION":
+            lines.extend(
+                [
+                    "Do not retry the same large JSON file payload.",
+                    "Return exactly one write_file_block action with only metadata in JSON.",
+                    "Immediately after </action>, place the real raw file body in <file_content>...</file_content>.",
+                    "If the file body is too large for one reply, split the remaining body into append_file_block chunks.",
+                ]
+            )
+        if code == "MISSING_FILE_CONTENT_BLOCK":
+            lines.extend(
+                [
+                    "write_file_block requires a complete <file_content>...</file_content> block immediately after </action>.",
+                    "Do not move the file body into escaped JSON content.",
+                    "If the body is too large for one reply, send it in append_file_block chunks.",
+                ]
+            )
         if code == "VALIDATION_ERROR":
             lines.extend(
                 [
@@ -1467,8 +1771,50 @@ class OrchestratorPromptBuilder:
             )
             if mismatch_type:
                 lines.append(f"Last recoverable failure detail: {mismatch_type}.")
+        if code == "MISSING_EXECUTABLE":
+            missing_exec = str(details.get("missing_executable") or "")
+            if missing_exec:
+                lines.append(
+                    f"The last shell command failed because executable `{missing_exec}` is not installed or not in PATH."
+                )
+            lines.extend(
+                [
+                    "Do not retry the same shell command.",
+                    "Either find an available wrapper/tool, use an alternative installed tool, or report verification blocked.",
+                ]
+            )
+            if missing_exec in {"gradle", "gradlew"}:
+                lines.extend(
+                    [
+                        "For Gradle verification, do not keep trying to build if both `gradle` and `gradlew` are unavailable.",
+                        "If the code change itself is already complete, you may return a plain-text handoff stating build/tests were not run because Gradle is unavailable.",
+                    ]
+                )
 
         return "\n".join(line for line in lines if line)
+
+    def build_missing_executable_prompt(self, stop_info: dict | None) -> str:
+        ctx = self._recovery_context(stop_info)
+        missing_exec = str(ctx.error_details.get("missing_executable") or "").strip() or "<unknown>"
+        lines = [
+            f"SYSTEM: The command failed because executable `{missing_exec}` is not installed or not in PATH.",
+            "Do not retry the same command.",
+            "Either find an available wrapper/tool, use an alternative installed tool, or report build verification blocked.",
+        ]
+        if missing_exec in {"gradle", "gradlew"}:
+            lines.extend(
+                [
+                    "For Gradle specifically: if `gradlew` is missing and `gradle` is unavailable, stop retrying build commands.",
+                    "If the code generation/change is already complete, you may return a final plain-text handoff saying files were generated but build/tests were not run because Gradle is unavailable.",
+                ]
+            )
+        lines.extend(
+            [
+                "Return either one materially different next step or a plain-text answer if verification is blocked and no safe alternative remains.",
+                "Do not emit the same failing shell command again.",
+            ]
+        )
+        return "\n".join(lines)
 
     def build_open_search_recovery_query(self, error_details: str) -> str:
         return (

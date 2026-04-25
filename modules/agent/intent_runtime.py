@@ -37,6 +37,8 @@ KNOWN_TOOL_ACTIONS = {
     "run_shell",
     "create_file",
     "write_file",
+    "write_file_block",
+    "append_file_block",
     "edit_file",
     "replace",
     "delete_file",
@@ -81,6 +83,8 @@ class IntentRuntime:
     MODIFY_DEFAULT_ACTIONS = (
         "edit_file",
         "write_file",
+        "write_file_block",
+        "append_file_block",
         "create_file",
         "run_shell",
         "read_chunk",
@@ -350,7 +354,7 @@ class IntentRuntime:
             return cleaned
 
         has_state_changing = any(
-            action in {"edit_file", "write_file", "create_file"}
+            action in {"edit_file", "write_file", "write_file_block", "append_file_block", "create_file"}
             for action in cleaned
         )
         if has_state_changing:

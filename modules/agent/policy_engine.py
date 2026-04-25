@@ -66,7 +66,7 @@ class PolicyEngine:
     }
 
     STATE_CHANGING_ACTIONS = {
-        "create_file", "write_file", "edit_file", "replace", "delete_file",
+        "create_file", "write_file", "write_file_block", "append_file_block", "edit_file", "replace", "delete_file",
     }
 
     def _active_investigation_can_continue(self, ctx: PreActionPolicyInput) -> bool:

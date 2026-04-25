@@ -265,6 +265,18 @@ class MemoryCheckpointAndTextTests(unittest.IsolatedAsyncioTestCase):
             DummyIntentTransitions(handled=False),
             DummyOutputRecovery(handled=False),
             DummyActionPolicy(handled=False, parsed_action_count=0),
+            plan_board_stage=SimpleNamespace(
+                apply=self._async_return(
+                    SimpleNamespace(
+                        handled=False,
+                        continue_loop=False,
+                        next_query=None,
+                        reason="plan_board_pass",
+                        source="plan_board",
+                        response_text="Final answer.",
+                    )
+                )
+            ),
             memory_board_stage=SimpleNamespace(
                 apply=self._async_return(
                     SimpleNamespace(

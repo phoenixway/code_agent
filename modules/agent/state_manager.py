@@ -74,9 +74,12 @@ class AgentState:
         self.allow_suspect_intent_once = False
         self.memory_board_store = None
         self.memory_board_engine = None
+        self.task_board = None
+        self.task_board_enabled = False
         self.last_memory_board_parsed_count = 0
         self.last_memory_board_accepted_count = 0
         self.last_memory_board_rejected_count = 0
+        self.last_memory_update_done = False
         self.memory_tag_expected_next_step = False
         self.memory_tag_reason = ""
         self.memory_tag_expected_intent_id = ""
@@ -84,6 +87,9 @@ class AgentState:
         self.current_turn_state_change_tools = []
         self.consecutive_nonproductive_thinking_count = 0
         self.last_nonproductive_thinking_reason = ""
+        self.missing_think_reflection_warning_count = 0
+        self.missing_think_reflection_warning_intent_id = ""
+        self.think_reflection_repair_kind = ""
         # FIXME:
         # This is a secondary/fallback signal only. When an active accepted
         # intent exists, downstream policy must prefer the active contract type
@@ -162,11 +168,13 @@ class AgentState:
         self.last_memory_board_parsed_count = 0
         self.last_memory_board_accepted_count = 0
         self.last_memory_board_rejected_count = 0
+        self.last_memory_update_done = False
         self.memory_tag_expected_next_step = False
         self.memory_tag_reason = ""
         self.memory_tag_expected_intent_id = ""
         self.current_turn_state_change_count = 0
         self.current_turn_state_change_tools = []
+        self.think_reflection_repair_kind = ""
         # FIXME:
         # This is a secondary/fallback signal only. When an active accepted
         # intent exists, downstream policy must prefer the active contract type
@@ -637,7 +645,7 @@ class AgentState:
         if status != "success":
             return False
 
-        if cmd_type in {"create_file", "write_file", "edit_file", "replace"}:
+        if cmd_type in {"create_file", "write_file", "write_file_block", "append_file_block", "edit_file", "replace"}:
             return True
 
         if cmd_type != "run_shell":

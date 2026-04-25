@@ -30,9 +30,36 @@ class ResponseGuardPolicy:
     def reflection_repair_pending(self) -> bool:
         return bool(getattr(self.state, "think_reflection_repair_pending", False))
 
-    def set_reflection_repair_pending(self, value: bool) -> None:
+    def reflection_repair_kind(self) -> str:
+        return str(getattr(self.state, "think_reflection_repair_kind", "") or "").strip()
+
+    def set_reflection_repair_pending(self, value: bool, kind: str = "") -> None:
         try:
             setattr(self.state, "think_reflection_repair_pending", bool(value))
+            setattr(self.state, "think_reflection_repair_kind", str(kind or "").strip() if value else "")
+        except Exception:
+            pass
+
+    def note_missing_think_reflection_warning(self, intent_id: str = "") -> int:
+        normalized_intent_id = str(intent_id or "").strip()
+        current_intent_id = str(getattr(self.state, "missing_think_reflection_warning_intent_id", "") or "").strip()
+        current_count = int(getattr(self.state, "missing_think_reflection_warning_count", 0) or 0)
+
+        if not normalized_intent_id or normalized_intent_id != current_intent_id:
+            current_count = 0
+
+        current_count += 1
+        try:
+            setattr(self.state, "missing_think_reflection_warning_count", current_count)
+            setattr(self.state, "missing_think_reflection_warning_intent_id", normalized_intent_id)
+        except Exception:
+            pass
+        return current_count
+
+    def clear_missing_think_reflection_warning(self) -> None:
+        try:
+            setattr(self.state, "missing_think_reflection_warning_count", 0)
+            setattr(self.state, "missing_think_reflection_warning_intent_id", "")
         except Exception:
             pass
 

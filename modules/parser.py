@@ -7,18 +7,27 @@ from typing import List, Any, Optional
 
 @dataclass
 class Segment:
-    type: str  # 'thought', 'text', 'action'
+    type: str  # 'thought', 'text', 'action', 'file_content'
     content: Any
 
 
 class ResponseParser:
     ACTION_KEYS = ("type", "command", "action")
+    FILE_BLOCK_ACTION_TYPES = {"write_file_block", "append_file_block"}
+    ACTION_TAG_RE = re.compile(
+        r"<action[^>]*>.*?</action>",
+        re.DOTALL | re.IGNORECASE,
+    )
     NESTED_TOOL_TAG_RE = re.compile(
         r'^\s*<([a-zA-Z_][\w\-]*)>(.*?)</\1>\s*$',
         re.DOTALL | re.IGNORECASE,
     )
     ACTION_INTERNAL_THINK_RE = re.compile(
         r'<(?:think|thinking)>(.*?)</(?:think|thinking)>',
+        re.DOTALL | re.IGNORECASE,
+    )
+    FILE_CONTENT_TAG_RE = re.compile(
+        r"<file_content(?:\s+[^>]*)?>(.*?)</file_content>",
         re.DOTALL | re.IGNORECASE,
     )
 
@@ -58,7 +67,7 @@ class ResponseParser:
                 # The rest is potential Actions/Text
                 remaining_text = text[end_pos:]
                 segments.extend(self._parse_mixed_content(remaining_text))
-                return segments
+                return self._attach_file_content_blocks(segments)
 
         # 2. Standard Logic: Split by <think> blocks
         parts = re.split(r'(<think>.*?</think>)', text, flags=re.DOTALL | re.IGNORECASE)
@@ -75,59 +84,114 @@ class ResponseParser:
             else:
                 segments.extend(self._parse_mixed_content(part))
 
-        return segments
+        return self._attach_file_content_blocks(segments)
 
     def _parse_mixed_content(self, text: str) -> List[Segment]:
         """
-        Scans a string for <action> tags. Anything not in an action tag is Text.
+        Scans a string for protocol tags while treating <file_content> as an opaque raw block.
+        Anything not in an action or file_content tag is Text.
         """
         segments = []
-        parts = re.split(r'(<action[^>]*>.*?</action>)', text, flags=re.DOTALL | re.IGNORECASE)
+        parts = re.split(
+            r'(<file_content(?:\s+[^>]*)?>.*?</file_content>)',
+            text,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
 
         for part in parts:
             if not part.strip():
                 continue
 
-            action_match = re.match(r'<action([^>]*)>(.*?)</action>', part, flags=re.DOTALL | re.IGNORECASE)
+            file_content_match = re.match(
+                r'<file_content(?:\s+[^>]*)?>(.*?)</file_content>',
+                part,
+                flags=re.DOTALL | re.IGNORECASE,
+            )
 
-            if action_match:
-                action_attrs_raw = action_match.group(1) or ""
-                raw_action_content = action_match.group(2).strip()
-                action_attrs = self._parse_action_attributes(action_attrs_raw)
+            if file_content_match:
+                segments.append(Segment("file_content", file_content_match.group(1) or ""))
+            else:
+                action_parts = re.split(self.ACTION_TAG_RE, part)
+                action_matches = list(self.ACTION_TAG_RE.finditer(part))
+                for index, text_part in enumerate(action_parts):
+                    stripped_part = text_part.strip()
+                    if stripped_part:
+                        segments.append(Segment('text', stripped_part))
+                    if index >= len(action_matches):
+                        continue
 
-                json_content = self._strip_internal_action_thoughts(raw_action_content)
+                    action_match = action_matches[index]
+                    part_text = action_match.group(0)
+                    inner_match = re.match(r'<action([^>]*)>(.*?)</action>', part_text, flags=re.DOTALL | re.IGNORECASE)
+                    if not inner_match:
+                        segments.append(Segment('text', part_text))
+                        continue
 
-                json_payload = self._extract_nested_tool_payload(json_content)
-                if json_payload is None:
-                    json_payload = self._extract_json(json_content)
+                    action_attrs_raw = inner_match.group(1) or ""
+                    raw_action_content = inner_match.group(2).strip()
+                    action_attrs = self._parse_action_attributes(action_attrs_raw)
 
-                if json_payload is not None:
-                    normalized_actions = self._normalize_action_payload(action_attrs, json_payload)
-                    if normalized_actions:
-                        segments.extend(Segment('action', action_obj) for action_obj in normalized_actions)
+                    json_content = self._strip_internal_action_thoughts(raw_action_content)
+
+                    json_payload = self._extract_nested_tool_payload(json_content)
+                    if json_payload is None:
+                        json_payload = self._extract_json(json_content)
+
+                    if json_payload is not None:
+                        normalized_actions = self._normalize_action_payload(action_attrs, json_payload)
+                        if normalized_actions:
+                            segments.extend(Segment('action', action_obj) for action_obj in normalized_actions)
+                        else:
+                            if self.log:
+                                preview = part_text.strip().replace("\n", " ")[:240]
+                                self.log.warning(
+                                    f"Parser warning: action block missing required keys. Preview: {preview}"
+                                )
+                            segments.append(Segment('text', part_text))
                     else:
                         if self.log:
-                            preview = part.strip().replace("\n", " ")[:240]
+                            preview = part_text.strip().replace("\n", " ")[:240]
+                            cleaned_preview = json_content.strip().replace("\n", " ")[:240]
                             self.log.warning(
-                                f"Parser warning: action block missing required keys. Preview: {preview}"
+                                "Parser warning: failed to parse action JSON. Preview: %s | cleaned_action_content: %s",
+                                preview,
+                                cleaned_preview,
                             )
-                        segments.append(Segment('text', part))
-                else:
-                    if self.log:
-                        preview = part.strip().replace("\n", " ")[:240]
-                        cleaned_preview = json_content.strip().replace("\n", " ")[:240]
-                        self.log.warning(
-                            "Parser warning: failed to parse action JSON. Preview: %s | cleaned_action_content: %s",
-                            preview,
-                            cleaned_preview,
-                        )
-                    segments.append(Segment('text', part))
-            else:
-                stripped_part = part.strip()
-                if stripped_part:
-                    segments.append(Segment('text', stripped_part))
+                        segments.append(Segment('text', part_text))
 
         return segments
+
+    def _attach_file_content_blocks(self, segments: List[Segment]) -> List[Segment]:
+        if not segments:
+            return segments
+
+        merged: List[Segment] = []
+        i = 0
+        while i < len(segments):
+            segment = segments[i]
+            if (
+                segment.type == "action"
+                and isinstance(segment.content, dict)
+                and i + 1 < len(segments)
+            ):
+                next_segment = segments[i + 1]
+                action_type = str(segment.content.get("type") or segment.content.get("action") or "").strip().lower()
+                if action_type in self.FILE_BLOCK_ACTION_TYPES and getattr(next_segment, "type", "") == "file_content":
+                    action_payload = dict(segment.content)
+                    body = str(getattr(next_segment, "content", "") or "")
+                    if body.startswith("\r\n"):
+                        body = body[2:]
+                    elif body.startswith("\n"):
+                        body = body[1:]
+                    action_payload["file_content"] = body
+                    merged.append(Segment("action", action_payload))
+                    i += 2
+                    continue
+
+            merged.append(segment)
+            i += 1
+
+        return merged
 
     def _strip_internal_action_thoughts(self, text: str) -> str:
         """
@@ -289,12 +353,17 @@ class ResponseParser:
             elif segment.type == 'action':
                 action_content = segment.content.copy()
                 action_type = action_content.pop('type', None)
+                file_content = action_content.pop("file_content", None)
                 action_str = json.dumps(action_content, indent=4)
 
                 if action_type:
                     response_parts.append(f'<action type="{action_type}">\n{action_str}\n</action>')
                 else:
                     response_parts.append(f"<action>\n{action_str}\n</action>")
+                if action_type in self.FILE_BLOCK_ACTION_TYPES and isinstance(file_content, str):
+                    response_parts.append(f"<file_content>{file_content}</file_content>")
+            elif segment.type == 'file_content':
+                response_parts.append(f"<file_content>{segment.content}</file_content>")
 
             elif segment.type == 'text':
                 response_parts.append(segment.content)

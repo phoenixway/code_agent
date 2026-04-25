@@ -43,7 +43,7 @@ class ConfirmationScreen(ModalScreen[bool]):
         details = ""
         if action_type == "run_command":
             details = self.action_details.get("command", "")
-        elif action_type in ["write_file", "create_file", "edit_file"]:
+        elif action_type in ["write_file", "write_file_block", "append_file_block", "create_file", "edit_file"]:
             details = self.action_details.get("path") or self.action_details.get("file_path", "")
         elif action_type == "summarize_history":
             details = "The conversation is getting long."

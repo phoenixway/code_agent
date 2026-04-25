@@ -63,6 +63,12 @@ shell_allowlist_prefixes: [] # optional; when not empty, only these command pref
 available_models: 
   - "ollama/qwen2.5-coder:7b"
   - "openai/gpt-4o"
+  - "vertexai/gemini-2.5-flash"
+
+vertexai:
+  project_id: "your-google-cloud-project-id"
+  location: "us-central1"
+  use_adc: true
 ```
 
 ## ⌨️ Usage

@@ -18,6 +18,7 @@ class ModelResponsePipeline:
         intent_transitions,
         output_recovery,
         action_policy,
+        plan_board_stage,
         memory_board_stage,
     ):
         self.agent = agent
@@ -29,6 +30,7 @@ class ModelResponsePipeline:
         self.intent_transitions = intent_transitions
         self.output_recovery = output_recovery
         self.action_policy = action_policy
+        self.plan_board_stage = plan_board_stage
         self.memory_board_stage = memory_board_stage
         self.stage_logger = OrchestrationStageLogger(getattr(agent, "log", None), self.state)
         self.memory_checkpoint_hard_stop_streak = int(
@@ -68,6 +70,7 @@ class ModelResponsePipeline:
             )
 
         reflection_repair_pending = self.guards.reflection_repair_pending()
+        reflection_repair_kind = self.guards.reflection_repair_kind()
 
         if getattr(self.state, "intent_required_until_activated", False) and "<action" in raw_response.lower():
             self.stage_logger.log(
@@ -84,11 +87,75 @@ class ModelResponsePipeline:
                 source="intent_requirement_gate",
             )
 
-        memory_board_decision = await self.memory_board_stage.apply(ctx, raw_response)
+        plan_board_decision = await self.plan_board_stage.apply(ctx, raw_response)
+        response_after_plan = plan_board_decision.response_text
+        plan_checkpoint_only = bool(getattr(plan_board_decision, "plan_checkpoint_only", False))
+        plan_checkpoint_and_text = bool(getattr(plan_board_decision, "plan_checkpoint_and_text", False))
+        plan_checkpoint_and_action = bool(getattr(plan_board_decision, "plan_checkpoint_and_action", False))
+        if plan_board_decision.handled:
+            return ResponsePipelineOutcome.continue_with(
+                plan_board_decision.next_query,
+                response_text=response_after_plan,
+                reason=plan_board_decision.reason,
+                source=plan_board_decision.source,
+            )
+
+        memory_board_decision = await self.memory_board_stage.apply(ctx, response_after_plan)
         response = memory_board_decision.response_text
         memory_checkpoint_only = bool(getattr(memory_board_decision, "memory_checkpoint_only", False))
         memory_checkpoint_and_text = bool(getattr(memory_board_decision, "memory_checkpoint_and_text", False))
         memory_checkpoint_and_action = bool(getattr(memory_board_decision, "memory_checkpoint_and_action", False))
+
+        def _repair_checkpoint_completed() -> bool:
+            if not bool(getattr(self.state, "last_memory_update_done", False)):
+                return False
+            if reflection_repair_kind == "missing_memory_update_done":
+                return True
+            memory_committed = int(getattr(self.state, "last_memory_board_accepted_count", 0) or 0) > 0
+            plan_committed = plan_checkpoint_only or plan_checkpoint_and_text or plan_checkpoint_and_action
+            return memory_committed or plan_committed
+
+        if reflection_repair_pending and memory_checkpoint_only:
+            if _repair_checkpoint_completed():
+                self.stage_logger.log_architecture_defect(
+                    reflection_repair_kind or "missing_think_reflection",
+                    "repair_completed",
+                    source_stage="memory_board",
+                )
+                self.guards.set_reflection_repair_pending(False)
+                self.guards.set_nonproductive_thinking_state(False)
+                self.stage_logger.log(
+                    "response_pipeline",
+                    "continue",
+                    reason="think_reflection_repair_completed",
+                    source="think_reflection_guard",
+                )
+                return ResponsePipelineOutcome.continue_with(
+                    self.prompt_builder.build_reflection_repair_accepted_prompt(),
+                    response_text=response,
+                    reason="think_reflection_repair_completed",
+                    source="think_reflection_guard",
+                )
+            self.stage_logger.log_architecture_defect(
+                reflection_repair_kind or "missing_think_reflection",
+                "repair_enforced",
+                source_stage="memory_board",
+            )
+            self.stage_logger.log(
+                "response_pipeline",
+                "continue",
+                reason=reflection_repair_kind or "missing_think_reflection",
+                source="think_reflection_guard",
+            )
+            return ResponsePipelineOutcome.continue_with(
+                self.prompt_builder.build_durable_state_repair_prompt(reflection_repair_kind),
+                response_text=response,
+                reason=reflection_repair_kind or "missing_think_reflection",
+                source="think_reflection_guard",
+                memory_checkpoint_only=True,
+                memory_checkpoint_and_text=False,
+                memory_checkpoint_and_action=False,
+            )
 
         # Only checkpoint-only responses should be consumed here.
         # memory+text and memory+action are semantic model outputs with durable
@@ -163,12 +230,39 @@ class ModelResponsePipeline:
 
         segments = self.parser.parse(response)
         parsed_output = self.intent_response_parser.classify(response, segments)
+        parsed_output.model_stop_reason = str(getattr(step, "model_stop_reason", "") or "").strip()
+        checkpoint_has_think = self.semantics.has_complete_think_before_action(raw_response)
+        checkpoint_has_marker = bool(
+            getattr(self.state, "last_memory_update_done", False)
+            or self.semantics.has_memory_update_done_before_action(raw_response)
+        )
+        checkpoint_has_tags = self.semantics.has_checkpoint_before_action(raw_response)
+        checkpoint_has_board_commit = bool(memory_checkpoint_and_action or plan_checkpoint_and_action)
+        checkpoint_source_satisfied = bool(
+            checkpoint_has_board_commit
+            or (checkpoint_has_tags and checkpoint_has_marker)
+        )
+        checkpoint_satisfied = bool(
+            checkpoint_has_think
+            and checkpoint_source_satisfied
+        )
+        parsed_output.operational_checkpoint_has_think = checkpoint_has_think
+        parsed_output.operational_checkpoint_has_marker = checkpoint_has_marker
+        parsed_output.operational_checkpoint_has_board_commit = checkpoint_has_board_commit
+        parsed_output.operational_checkpoint_has_tags = checkpoint_has_tags
+        parsed_output.operational_checkpoint_satisfied = checkpoint_satisfied
         self.stage_logger.log(
             "response_pipeline",
             "classified",
             segment_count=len(segments),
             invalid_kind=parsed_output.invalid_kind or "",
             has_action_segment=parsed_output.has_action_segment,
+            model_stop_reason=parsed_output.model_stop_reason,
+            operational_checkpoint_satisfied=checkpoint_satisfied,
+            operational_checkpoint_has_think=checkpoint_has_think,
+            operational_checkpoint_has_marker=checkpoint_has_marker,
+            operational_checkpoint_has_board_commit=checkpoint_has_board_commit,
+            operational_checkpoint_has_tags=checkpoint_has_tags,
         )
 
         active_intent = getattr(self.state, "active_intent", None)
@@ -212,6 +306,25 @@ class ModelResponsePipeline:
             intent_payload=step.intent_payload,
         )
         parsed_action_count = action_policy_decision.parsed_action_count
+        if parsed_action_count > 1:
+            self.stage_logger.log(
+                "response_pipeline",
+                "continue",
+                reason="multiple_actions",
+                source="transaction_guard",
+                action_count=parsed_action_count,
+            )
+            return ResponsePipelineOutcome.continue_with(
+                self.prompt_builder.build_multiple_actions_prompt(),
+                response_text=response,
+                segments=segments,
+                parsed_output=parsed_output,
+                parsed_action_count=parsed_action_count,
+                malformed_action_retries=0,
+                audit_marker_retries=0,
+                reason="multiple_actions",
+                source="transaction_guard",
+            )
         if parsed_action_count > 0 or bool(getattr(parsed_output, "has_action_segment", False)):
             self.guards.set_nonproductive_thinking_state(False)
             self.guards.clear_terminal_plaintext_completion()
@@ -255,12 +368,59 @@ class ModelResponsePipeline:
             raw_response, parsed_output, parsed_action_count
         )
 
-        if (not plaintext_answer_path) and self.semantics.substantial_think_without_reflection(raw_response):
-            self.guards.set_reflection_repair_pending(False)
+        durable_state_repair = self.semantics.is_durable_state_repair_turn(
+            raw_response,
+            parsed_output,
+            parsed_action_count,
+            required_kind=reflection_repair_kind,
+        )
+
+        if reflection_repair_pending:
+            if durable_state_repair:
+                self.stage_logger.log_architecture_defect(
+                    reflection_repair_kind or "missing_think_reflection",
+                    "repair_completed",
+                    source_stage="response_pipeline",
+                )
+                self.guards.set_reflection_repair_pending(False)
+                self.guards.set_nonproductive_thinking_state(False)
+                self.stage_logger.log(
+                    "response_pipeline",
+                    "continue",
+                    reason="think_reflection_repair_completed",
+                    source="think_reflection_guard",
+                )
+                return ResponsePipelineOutcome.continue_with(
+                    self.prompt_builder.build_reflection_repair_accepted_prompt(),
+                    response_text=response,
+                    segments=segments,
+                    parsed_output=parsed_output,
+                    parsed_action_count=0,
+                    malformed_action_retries=0,
+                    audit_marker_retries=0,
+                    reason="think_reflection_repair_completed",
+                    source="think_reflection_guard",
+                )
+            self.stage_logger.log_architecture_defect(
+                reflection_repair_kind or "missing_think_reflection",
+                "repair_enforced",
+                source_stage="response_pipeline",
+            )
             self.stage_logger.log(
                 "response_pipeline",
-                "pass",
-                reason="missing_think_reflection_detected_non_blocking",
+                "continue",
+                reason=reflection_repair_kind or "missing_think_reflection",
+                source="think_reflection_guard",
+            )
+            return ResponsePipelineOutcome.continue_with(
+                self.prompt_builder.build_durable_state_repair_prompt(reflection_repair_kind),
+                response_text=response,
+                segments=segments,
+                parsed_output=parsed_output,
+                parsed_action_count=0,
+                malformed_action_retries=0,
+                audit_marker_retries=0,
+                reason=reflection_repair_kind or "missing_think_reflection",
                 source="think_reflection_guard",
             )
 

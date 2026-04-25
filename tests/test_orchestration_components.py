@@ -216,6 +216,31 @@ class IntentResponseParserTests(unittest.TestCase):
 
         self.assertTrue(needs)
 
+    def test_classify_detects_incomplete_think_as_malformed_internal_response(self):
+        parsed = self.parser.classify("<think>unfinished", [_Segment("text", "<think>unfinished")])
+
+        self.assertEqual("malformed_incomplete_think", parsed.invalid_kind)
+
+    def test_classify_detects_incomplete_action_as_malformed_action(self):
+        parsed = self.parser.classify('<action>{"type":"read_file"', [_Segment("text", '<action>{"type":"read_file"')])
+
+        self.assertEqual("malformed_incomplete_action", parsed.invalid_kind)
+
+    def test_classify_detects_incomplete_file_content(self):
+        response = (
+            '<action>{"type":"write_file_block","path":"a.py","overwrite":true}</action>\n'
+            "<file_content>abc"
+        )
+        parsed = self.parser.classify(response, [_Segment("action", {"type": "write_file_block", "path": "a.py"})])
+
+        self.assertEqual("malformed_incomplete_file_content", parsed.invalid_kind)
+
+    def test_classify_keeps_normal_plain_answer_valid(self):
+        parsed = self.parser.classify("Normal final answer.", [_Segment("text", "Normal final answer.")])
+
+        self.assertEqual("", parsed.invalid_kind)
+        self.assertEqual("Normal final answer.", parsed.visible_text)
+
     def test_tool_history_echo_without_action_detected(self):
         is_echo = self.parser.is_tool_history_echo_without_action(
             'TOOL_HISTORY {"type":"search_content","path":"a.py"}',
@@ -256,7 +281,7 @@ class IntentResponseParserTests(unittest.TestCase):
 
         self.assertEqual("intent_only_without_next_step", parsed.invalid_kind)
 
-    def test_classify_model_output_detects_transition_bundle_too_dense(self):
+    def test_classify_model_output_detects_conflicting_intent_transitions(self):
         parsed = self.parser.classify(
             '<intent mode="complete">{"mode":"complete"}</intent>\n'
             '<intent mode="activate">{"goal":"inspect"}</intent>\n'
@@ -268,7 +293,36 @@ class IntentResponseParserTests(unittest.TestCase):
             ],
         )
 
-        self.assertEqual("transition_bundle_too_dense", parsed.invalid_kind)
+        self.assertEqual("conflicting_intent_transitions", parsed.invalid_kind)
+
+    def test_classify_model_output_ignores_intent_like_text_inside_single_action_payload(self):
+        parsed = self.parser.classify(
+            '<subgoal action="modify" id="sg_1" status="in_progress">Update generator</subgoal>\n'
+            '<decision scope="intent">Write the full generator template in one file write.</decision>\n'
+            '<path scope="intent">generate_app.py</path>\n'
+            '<memory_update_done />\n'
+            '<action>{"type":"write_file","path":"generate_app.py","content":"Use <intent mode=\\"activate\\"> in docs only."}</action>',
+            [
+                _Segment("action", {"type": "write_file", "path": "generate_app.py", "content": 'Use <intent mode="activate"> in docs only.'}),
+            ],
+        )
+
+        self.assertEqual("", parsed.invalid_kind)
+
+    def test_classify_model_output_allows_transactional_intent_memory_and_action_bundle(self):
+        parsed = self.parser.classify(
+            '<intent mode="activate">{"goal":"inspect"}</intent>\n'
+            '<subgoal action="create" id="sg_1" status="in_progress">Inspect scaffold entry</subgoal>\n'
+            '<memory_review status="no_change" scope="intent" />\n'
+            '<memory_update_done />\n'
+            '<action>{"type":"read_chunk","path":"a.py","start_line":1,"end_line":10}</action>',
+            [
+                _Segment("intent", {"mode": "activate", "goal": "inspect"}),
+                _Segment("action", {"type": "read_chunk", "path": "a.py", "start_line": 1, "end_line": 10}),
+            ],
+        )
+
+        self.assertEqual("", parsed.invalid_kind)
 
     def test_classify_model_output_ignores_plain_think_prefix_before_valid_intent(self):
         parsed = self.parser.classify(
@@ -514,6 +568,41 @@ class ActionPolicyHandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('mode="reuse"', decision.next_query)
         self.assertEqual(["exhausted_intent_requires_reuse_or_completion"], required_reasons)
 
+    async def test_blocks_action_not_allowed_under_resulting_active_intent(self):
+        state = SimpleNamespace(
+            active_intent=SimpleNamespace(
+                intent_id="create_bookmark_app",
+                intent_type="MODIFY",
+                goal="Scaffold the create bookmark app flow",
+                allowed_actions=["read_chunk", "create_file"],
+            ),
+            readonly_steps_this_turn=0,
+            intent_required_until_activated=False,
+            has_retry_context=lambda: False,
+            can_continue_current_intent_after_failure=lambda: True,
+        )
+        agent = SimpleNamespace(
+            state=state,
+            log=None,
+        )
+        prompt_builder = OrchestratorPromptBuilder(
+            SimpleNamespace(
+                state=state,
+                config=SimpleNamespace(),
+                memory_board_store=None,
+                log=None,
+            )
+        )
+        handler = ActionPolicyHandler(agent, IntentGuard(), prompt_builder)
+        ctx = SimpleNamespace(user_input="Continue the scaffold implementation")
+        segments = [_Segment("action", {"type": "edit_file", "path": "app.py"})]
+
+        decision = await handler.decide(ctx, segments, intent_payload=None)
+
+        self.assertTrue(decision.handled)
+        self.assertEqual("intent_action_not_allowed", decision.reason)
+        self.assertIn("formal intent transition/update is required", decision.next_query.lower())
+
 
 class ResponsePipelineForcePlaintextGateTests(unittest.IsolatedAsyncioTestCase):
     async def test_force_plaintext_completion_blocks_actions_before_dispatch(self):
@@ -566,6 +655,18 @@ class ResponsePipelineForcePlaintextGateTests(unittest.IsolatedAsyncioTestCase):
             intent_transitions=intent_transitions,
             output_recovery=output_recovery,
             action_policy=action_policy,
+            plan_board_stage=SimpleNamespace(
+                apply=AsyncMock(
+                    return_value=SimpleNamespace(
+                        handled=False,
+                        continue_loop=False,
+                        next_query=None,
+                        reason="plan_board_pass",
+                        source="plan_board",
+                        response_text='<action>{"type":"search_content","path":"a.py"}</action>',
+                    )
+                )
+            ),
             memory_board_stage=memory_board_stage,
         )
         ctx = SimpleNamespace(
@@ -707,6 +808,7 @@ class MemoryBoardStageHandlerTests(unittest.IsolatedAsyncioTestCase):
             last_memory_board_parsed_count=0,
             last_memory_board_accepted_count=0,
             last_memory_board_rejected_count=0,
+            last_memory_update_done=False,
             memory_tag_expected_next_step=True,
             memory_tag_reason="meaningful_evidence_gain",
             memory_tag_expected_intent_id="intent_1",
@@ -736,9 +838,47 @@ class MemoryBoardStageHandlerTests(unittest.IsolatedAsyncioTestCase):
         prompt = store.to_system_prompt(active_intent_id="intent_1")
         self.assertIn("ActivityRepository sorts by created_at.", prompt)
         self.assertIn("DAO ordering path identified.", prompt)
+        self.assertFalse(state.last_memory_update_done)
         self.assertFalse(state.memory_tag_expected_next_step)
         self.assertEqual("", state.memory_tag_reason)
         self.assertEqual("", state.memory_tag_expected_intent_id)
+
+    async def test_memory_update_done_marker_only_requests_next_query_and_updates_state(self):
+        board_engine = SimpleNamespace(
+            apply_response_text=MagicMock(
+                return_value=SimpleNamespace(
+                    parsed_count=0,
+                    accepted_count=0,
+                    rejected_count=0,
+                    clean_text="<think>Reviewed memory.</think>\n<memory_update_done />",
+                )
+            )
+        )
+        state = SimpleNamespace(
+            last_memory_board_parsed_count=0,
+            last_memory_board_accepted_count=0,
+            last_memory_board_rejected_count=0,
+            last_memory_update_done=False,
+            memory_tag_expected_next_step=False,
+            memory_tag_reason="",
+            memory_tag_expected_intent_id="",
+        )
+        agent = SimpleNamespace(
+            state=state,
+            memory_board_engine=board_engine,
+            log=None,
+        )
+        prompt_builder = SimpleNamespace(_current_active_intent_id=MagicMock(return_value="intent_1"))
+        handler = MemoryBoardStageHandler(agent, prompt_builder)
+        ctx = SimpleNamespace(user_input="Continue investigation")
+
+        decision = await handler.apply(ctx, "<think>Reviewed memory.</think>\n<memory_update_done />")
+
+        self.assertTrue(decision.handled)
+        self.assertTrue(decision.continue_loop)
+        self.assertEqual("memory_checkpoint_only", decision.reason)
+        self.assertTrue(state.last_memory_update_done)
+        self.assertNotIn("memory_update_done", decision.response_text)
 
     async def test_memory_tag_xml_attribute_fallback_is_committed_and_cleaned(self):
         store = MemoryBoardStore(storage_path=None)
@@ -752,6 +892,36 @@ class MemoryBoardStageHandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("progress", tags[0].kind)
         self.assertEqual("intent", tags[0].scope)
         self.assertEqual("Checked LinkHelpers.kt fallback logic.", tags[0].text)
+
+    async def test_path_memory_tag_is_committed_and_rendered(self):
+        store = MemoryBoardStore(storage_path=None)
+        board_engine = MemoryBoardEngine(store, logger=None)
+
+        result = board_engine.apply_response_text(
+            '<path scope="intent">modules/activity_tracker/ui/edit_dialog.py</path>',
+            active_intent_id="intent_1",
+            current_user_input="Continue",
+            source="model",
+        )
+
+        self.assertEqual(1, result.parsed_count)
+        self.assertEqual(1, result.accepted_count)
+        prompt = store.to_system_prompt(active_intent_id="intent_1")
+        self.assertIn("path (intent=intent_1): modules/activity_tracker/ui/edit_dialog.py", prompt)
+
+    async def test_stale_memory_projection_is_marked_when_rendering_previous_intent(self):
+        store = MemoryBoardStore(storage_path=None)
+        store.add_entry(
+            kind="finding",
+            text="Legacy tracker dialog path was modules/activity_tracker/ui/legacy_dialog.py.",
+            scope="intent",
+            intent_id="old_intent_1",
+        )
+
+        prompt = store.to_system_prompt(active_intent_id=None, lineage_intent_ids=["old_intent_1"])
+
+        self.assertIn("## MEMORY BOARD (STALE INTENT CONTEXT)", prompt)
+        self.assertIn("[STALE INTENT MEMORY TO REVIEW]", prompt)
 
     async def test_memory_tag_xml_attribute_fallback_rejects_empty_text_cleanly(self):
         store = MemoryBoardStore(storage_path=None)
@@ -768,6 +938,22 @@ class MemoryBoardStageHandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(0, result.accepted_count)
         self.assertEqual(1, result.rejected_count)
         self.assertEqual("empty_text", result.commits[0].reason)
+
+    async def test_memory_tag_rejects_plan_content_that_should_use_subgoal_tags(self):
+        store = MemoryBoardStore(storage_path=None)
+        board_engine = MemoryBoardEngine(store, logger=None)
+
+        result = board_engine.apply_response_text(
+            '<decision scope="intent">Next I will create subgoal sg_1 and then inspect the file.</decision>',
+            active_intent_id="intent_1",
+            current_user_input="Continue",
+            source="model",
+        )
+
+        self.assertEqual(1, result.parsed_count)
+        self.assertEqual(0, result.accepted_count)
+        self.assertEqual(1, result.rejected_count)
+        self.assertEqual("low_value_entry", result.commits[0].reason)
 
 
 class ModelOutputRecoveryHandlerTests(unittest.IsolatedAsyncioTestCase):
@@ -844,6 +1030,93 @@ class ModelOutputRecoveryHandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Return the next valid output now.", decision.next_query)
         self.assertIn("If a tool is needed, return EXACTLY ONE valid <action>...</action> block.", decision.next_query)
 
+    async def test_missing_durable_state_checkpoint_is_non_blocking_without_modify_intent(self):
+        ui = SimpleNamespace(print_error=AsyncMock())
+        state = SimpleNamespace(
+            set_malformed_grace=MagicMock(),
+            forbid_next_action_fingerprint=MagicMock(),
+            last_completed_fingerprint=None,
+            think_reflection_repair_pending=False,
+            think_reflection_repair_kind="",
+        )
+        agent = SimpleNamespace(
+            ui=ui,
+            state=state,
+            config=SimpleNamespace(MALFORMED_ACTION_GRACE_STEPS=2),
+            log=None,
+        )
+        prompt_builder = OrchestratorPromptBuilder(
+            SimpleNamespace(
+                state=SimpleNamespace(active_intent=None),
+                config=SimpleNamespace(),
+                memory_board_store=None,
+                log=None,
+            )
+        )
+        handler = ModelOutputRecoveryHandler(agent, prompt_builder)
+
+        decision = await handler.decide(
+            ParsedModelOutput(
+                response="<think>one two three four five six</think><action>{\"type\":\"read_chunk\"}</action>",
+                segments=[_Segment("action", {"type": "read_chunk"})],
+                has_action_segment=True,
+                invalid_kind="",
+                visible_text="",
+            ),
+            malformed_action_retries=0,
+            audit_marker_retries=0,
+        )
+
+        self.assertFalse(decision.handled)
+        self.assertEqual("missing_think_reflection_detected_non_blocking", decision.reason)
+        self.assertFalse(state.think_reflection_repair_pending)
+
+    async def test_missing_memory_update_done_triggers_repair_prompt_and_pending_state(self):
+        ui = SimpleNamespace(print_error=AsyncMock())
+        state = SimpleNamespace(
+            set_malformed_grace=MagicMock(),
+            forbid_next_action_fingerprint=MagicMock(),
+            last_completed_fingerprint=None,
+            think_reflection_repair_pending=False,
+            think_reflection_repair_kind="",
+            orchestration_trace=[],
+            orchestration_trace_sequence=0,
+        )
+        agent = SimpleNamespace(
+            ui=ui,
+            state=state,
+            config=SimpleNamespace(MALFORMED_ACTION_GRACE_STEPS=2),
+            log=None,
+        )
+        prompt_builder = OrchestratorPromptBuilder(
+            SimpleNamespace(
+                state=SimpleNamespace(active_intent=None),
+                config=SimpleNamespace(),
+                memory_board_store=None,
+                log=None,
+            )
+        )
+        handler = ModelOutputRecoveryHandler(agent, prompt_builder)
+
+        decision = await handler.decide(
+            ParsedModelOutput(
+                response="<finding scope=\"intent\">Found X</finding><action>{\"type\":\"read_chunk\"}</action>",
+                has_action_segment=True,
+                invalid_kind="",
+                visible_text="",
+            ),
+            malformed_action_retries=0,
+            audit_marker_retries=0,
+        )
+
+        self.assertTrue(decision.handled)
+        self.assertEqual("missing_memory_update_done", decision.reason)
+        self.assertTrue(state.think_reflection_repair_pending)
+        self.assertEqual("missing_memory_update_done", state.think_reflection_repair_kind)
+        self.assertIn("<memory_update_done />", decision.next_query)
+        self.assertTrue(any(entry.stage == "architecture_defect" for entry in state.orchestration_trace))
+        self.assertTrue(any(entry.fields.get("defect_kind") == "missing_memory_update_done" for entry in state.orchestration_trace))
+
     async def test_transition_bundle_too_dense_returns_transition_specific_prompt(self):
         ui = SimpleNamespace(print_error=AsyncMock())
         state = SimpleNamespace(
@@ -870,14 +1143,14 @@ class ModelOutputRecoveryHandlerTests(unittest.IsolatedAsyncioTestCase):
         decision = await handler.decide(
             ParsedModelOutput(
                 response="x",
-                invalid_kind="transition_bundle_too_dense",
+                invalid_kind="conflicting_intent_transitions",
             ),
             malformed_action_retries=0,
             audit_marker_retries=0,
         )
 
         self.assertTrue(decision.handled)
-        self.assertIn("bundled too many transition/control items together", decision.next_query)
+        self.assertIn("conflicting intent transitions", decision.next_query)
 
     async def test_modify_completion_claim_without_state_change_proof_returns_recovery(self):
         ui = SimpleNamespace(print_error=AsyncMock())
@@ -1072,6 +1345,80 @@ class ForcePlaintextCompletionStateTests(unittest.TestCase):
 
 
 class OrchestrationPipelineTests(unittest.IsolatedAsyncioTestCase):
+    async def test_run_model_step_appends_intent_runtime_and_memory_board_injected_messages(self):
+        class DummyModel:
+            def __init__(self):
+                self.calls = []
+
+            async def get_streaming_response(self, *args, **kwargs):
+                self.calls.append(kwargs)
+                return "Final answer."
+
+        loop_gate = SimpleNamespace(
+            run=AsyncMock(return_value=SimpleNamespace(proceed=True, reason="step_ready", source="loop_gate"))
+        )
+        state = SimpleNamespace(
+            current_task=None,
+            orchestration_trace=[],
+            orchestration_trace_sequence=0,
+            clear_technical_interruption=MagicMock(),
+        )
+        model = DummyModel()
+        agent = SimpleNamespace(
+            ui=SimpleNamespace(),
+            state=state,
+            history=SimpleNamespace(),
+            model_client=model,
+            config=SimpleNamespace(MAX_STEP_SECONDS=30),
+            log=None,
+        )
+        prompt_builder = SimpleNamespace(
+            _intent_universe=MagicMock(return_value=SimpleNamespace(
+                kind="active_contract",
+                has_active_contract=True,
+                intent_required_now=False,
+                active_intent_type="MODIFY",
+                intentless_steps_used=0,
+            )),
+            build_system_message=MagicMock(return_value="SYSTEM"),
+            build_intent_runtime_context_message=MagicMock(
+                return_value={"role": "user", "content": "INTENT RUNTIME CONTEXT"}
+            ),
+            build_memory_board_context_message=MagicMock(
+                return_value={"role": "user", "content": "MEMORY BOARD CONTEXT"}
+            ),
+        )
+        intent_response_parser = SimpleNamespace(
+            extract_intent_update_and_strip=MagicMock(return_value=("Final answer.", None, None))
+        )
+        pipeline = OrchestrationPipeline(
+            agent,
+            prompt_builder=prompt_builder,
+            intent_response_parser=intent_response_parser,
+            loop_gate=loop_gate,
+            response_pipeline=SimpleNamespace(),
+        )
+        ctx = SimpleNamespace(
+            current_query="continue",
+            malformed_action_retries=0,
+            audit_marker_retries=0,
+            consecutive_calls=1,
+            active_loop=True,
+            tools_prompt="TOOLS",
+            ctx_prompt="CTX",
+        )
+
+        step = await pipeline._run_model_step(ctx)
+
+        self.assertEqual("Final answer.", step.response)
+        self.assertEqual(
+            [
+                {"role": "user", "content": "INTENT RUNTIME CONTEXT"},
+                {"role": "user", "content": "MEMORY BOARD CONTEXT"},
+            ],
+            model.calls[0]["injected_messages"],
+        )
+
     async def test_run_iteration_returns_dispatch_ready_decision(self):
         loop_gate = SimpleNamespace(
             run=AsyncMock(return_value=SimpleNamespace(proceed=True, reason="step_ready", source="loop_gate"))
@@ -1166,6 +1513,47 @@ class DispatchOutcomeHandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(state.memory_tag_expected_next_step)
         self.assertEqual("meaningful_evidence_gain", state.memory_tag_reason)
         self.assertEqual("intent_1", state.memory_tag_expected_intent_id)
+
+    async def test_does_not_store_control_only_scaffold_as_assistant_history_when_system_results_continue(self):
+        history = SimpleNamespace(add_message=MagicMock())
+        state = SimpleNamespace(
+            pending_loop_stop_info=None,
+            last_memory_board_parsed_count=0,
+            memory_tag_expected_next_step=False,
+            memory_tag_reason="",
+            memory_tag_expected_intent_id="",
+            active_intent=SimpleNamespace(intent_id="intent_1"),
+        )
+        agent = SimpleNamespace(
+            ui=SimpleNamespace(print_system=AsyncMock(), confirm_loop_recovery=AsyncMock()),
+            state=state,
+            history=history,
+            log=None,
+        )
+        parser = SimpleNamespace(
+            reconstruct=MagicMock(
+                return_value=(
+                    "<think>\nNeed to inspect.\n</think>\n"
+                    "<action>\n"
+                    '{"type":"run_shell","command":"du -sh *"}\n'
+                    "</action>"
+                )
+            )
+        )
+        recovery = SimpleNamespace(handle_dispatch_stop=AsyncMock())
+        handler = DispatchOutcomeHandler(agent, parser, recovery)
+        ctx = SimpleNamespace(active_loop=True, current_query="", state_machine=None)
+
+        decision = await handler.handle(
+            ctx,
+            processed_segs=[_Segment("action", {"type": "run_shell"})],
+            sys_results=["SYSTEM RESULT for `run_shell`: ok"],
+            should_stop=False,
+        )
+
+        self.assertFalse(decision.handled)
+        history.add_message.assert_called_once_with("system", "SYSTEM RESULT for `run_shell`: ok")
+        self.assertEqual("SYSTEM RESULT for `run_shell`: ok", ctx.current_query)
 
     async def test_does_not_request_memory_followup_when_previous_response_already_had_memory_tag(self):
         history = SimpleNamespace(add_message=MagicMock())
@@ -1279,6 +1667,39 @@ class DispatchOutcomeHandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("intent_1", state.last_resumable_intent_id)
         self.assertEqual("intent_step_limit_exceeded", state.last_resumable_intent_completion_reason)
         history.add_message.assert_called_once_with("assistant", "Final answer from current evidence.")
+
+    async def test_incomplete_think_is_suppressed_not_forwarded_as_text_only(self):
+        history = SimpleNamespace(add_message=MagicMock())
+        agent = SimpleNamespace(
+            ui=SimpleNamespace(
+                print_system=AsyncMock(),
+                confirm_loop_recovery=AsyncMock(),
+                print_error=AsyncMock(),
+                print_message=AsyncMock(),
+            ),
+            state=SimpleNamespace(
+                orchestration_trace=[],
+                orchestration_trace_sequence=0,
+            ),
+            history=history,
+            log=None,
+        )
+        parser = SimpleNamespace(reconstruct=MagicMock(return_value="<think>unfinished"))
+        recovery = SimpleNamespace(handle_dispatch_stop=AsyncMock())
+        handler = DispatchOutcomeHandler(agent, parser, recovery)
+        ctx = SimpleNamespace(active_loop=True, current_query="", state_machine=None)
+
+        decision = await handler.handle(
+            ctx,
+            processed_segs=[],
+            sys_results=[],
+            should_stop=False,
+        )
+
+        self.assertEqual("truncated_internal_response_suppressed", decision.reason)
+        history.add_message.assert_not_called()
+        agent.ui.print_message.assert_not_called()
+        agent.ui.print_error.assert_called_once()
 
 
 class OrchestrationPipelineTechnicalInterruptionTests(unittest.IsolatedAsyncioTestCase):
@@ -1727,8 +2148,8 @@ class IntentTransitionHandlerTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertTrue(decision.handled)
-        self.assertEqual("transition_bundle_too_dense", decision.reason)
-        self.assertIn("Return only the next valid output now", decision.next_query)
+        self.assertEqual("conflicting_intent_transitions", decision.reason)
+        self.assertIn("conflicting intent transitions", decision.next_query)
 
     async def test_completed_intent_with_plaintext_answer_is_allowed_to_continue_as_final_answer(self):
         state = SimpleNamespace(
@@ -1779,7 +2200,60 @@ class IntentTransitionHandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(decision.handled)
         self.assertEqual("", getattr(state, "pending_loop_stop_info", None) or "")
 
-    async def test_completed_intent_with_followup_action_is_still_transition_bundle_too_dense(self):
+    async def test_completed_intent_with_archival_updates_and_plaintext_answer_is_allowed(self):
+        state = SimpleNamespace(
+            intent_required_until_activated=False,
+            active_intent=SimpleNamespace(
+                intent_id="activity_tracker_edit_sort",
+                intent_type="INVESTIGATE",
+                goal="Understand current implementation",
+                allowed_actions=["read_chunk", "search_content"],
+            ),
+            intent_runtime=SimpleNamespace(
+                last_apply_warning="",
+                last_transition_info={
+                    "transition": "intent_completed",
+                    "before_active_intent_id": "activity_tracker_edit_sort",
+                    "after_active_intent_id": "",
+                },
+            ),
+            apply_intent_contract=MagicMock(return_value=(True, "intent_completed")),
+            note_intent_only_response=MagicMock(),
+            active_intent_summary=MagicMock(return_value="activity_tracker_edit_sort"),
+            pending_loop_stop_info=None,
+        )
+        agent = SimpleNamespace(
+            ui=SimpleNamespace(),
+            state=state,
+            config=SimpleNamespace(),
+            log=None,
+        )
+        prompt_builder = OrchestratorPromptBuilder(
+            SimpleNamespace(
+                state=state,
+                config=SimpleNamespace(),
+                memory_board_store=None,
+                log=None,
+            )
+        )
+        recovery = SimpleNamespace(handle_defect_detector_stop=AsyncMock())
+        handler = IntentTransitionHandler(agent, prompt_builder, recovery)
+
+        decision = await handler.handle_model_step(
+            intent_payload={"intent_id": "activity_tracker_edit_sort", "mode": "complete"},
+            intent_error=None,
+            response_text=(
+                '<subgoal action="remove" id="sg_2" reason="Goal completed" />\n'
+                '<memory_review status="no_change" scope="intent" />\n'
+                '<memory_update_done />\n'
+                'Final answer from current evidence.'
+            ),
+            state_machine=None,
+        )
+
+        self.assertFalse(decision.handled)
+
+    async def test_completed_intent_with_followup_action_is_rejected(self):
         state = SimpleNamespace(
             intent_required_until_activated=False,
             active_intent=SimpleNamespace(
@@ -1825,7 +2299,61 @@ class IntentTransitionHandlerTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertTrue(decision.handled)
-        self.assertEqual("transition_bundle_too_dense", decision.reason)
+        self.assertEqual("intent_complete_with_action_not_allowed", decision.reason)
+        self.assertIn("completed intent may not include a follow-up <action>", decision.next_query)
+
+    async def test_accepted_intent_with_subgoal_memory_review_and_action_is_allowed_to_pass_through(self):
+        state = SimpleNamespace(
+            intent_required_until_activated=False,
+            active_intent=SimpleNamespace(
+                intent_id="create_bookmark_app",
+                intent_type="MODIFY",
+                goal="Scaffold the create bookmark app flow",
+                allowed_actions=["create_file", "read_chunk"],
+            ),
+            intent_runtime=SimpleNamespace(
+                last_apply_warning="",
+                last_transition_info={
+                    "transition": "intent_activated",
+                    "before_active_intent_id": "",
+                    "after_active_intent_id": "create_bookmark_app",
+                },
+            ),
+            apply_intent_contract=MagicMock(return_value=(True, "intent_activated")),
+            note_intent_only_response=MagicMock(),
+            active_intent_summary=MagicMock(return_value="create_bookmark_app"),
+            pending_loop_stop_info=None,
+        )
+        agent = SimpleNamespace(
+            ui=SimpleNamespace(),
+            state=state,
+            config=SimpleNamespace(),
+            log=None,
+        )
+        prompt_builder = OrchestratorPromptBuilder(
+            SimpleNamespace(
+                state=state,
+                config=SimpleNamespace(),
+                memory_board_store=None,
+                log=None,
+            )
+        )
+        recovery = SimpleNamespace(handle_defect_detector_stop=AsyncMock())
+        handler = IntentTransitionHandler(agent, prompt_builder, recovery)
+
+        decision = await handler.handle_model_step(
+            intent_payload={"intent_id": "create_bookmark_app", "mode": "activate"},
+            intent_error=None,
+            response_text=(
+                '<subgoal action="create" id="sg_1" status="in_progress">Create initial scaffold</subgoal>\n'
+                '<memory_review status="no_change" scope="intent" />\n'
+                '<memory_update_done />\n'
+                '<action>{"type":"create_file","path":"app.py","content":"pass"}</action>'
+            ),
+            state_machine=None,
+        )
+
+        self.assertFalse(decision.handled)
 
     async def test_accepted_intent_with_followup_action_is_allowed_to_pass_through(self):
         state = SimpleNamespace(
@@ -1875,6 +2403,179 @@ class IntentTransitionHandlerTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertFalse(decision.handled)
         self.assertEqual("", getattr(state, "pending_loop_stop_info", None) or "")
+
+    async def test_write_file_block_followup_with_android_xml_inside_file_content_is_not_multiple_actions(self):
+        state = SimpleNamespace(
+            intent_required_until_activated=False,
+            active_intent=SimpleNamespace(
+                intent_id="create_bookmark_app",
+                intent_type="MODIFY",
+                goal="Scaffold the create bookmark app flow",
+                allowed_actions=["write_file", "read_chunk"],
+            ),
+            intent_runtime=SimpleNamespace(
+                last_apply_warning="",
+                last_transition_info={
+                    "transition": "intent_activated",
+                    "before_active_intent_id": "",
+                    "after_active_intent_id": "create_bookmark_app",
+                },
+            ),
+            apply_intent_contract=MagicMock(return_value=(True, "intent_activated")),
+            note_intent_only_response=MagicMock(),
+            active_intent_summary=MagicMock(return_value="create_bookmark_app"),
+            pending_loop_stop_info=None,
+        )
+        agent = SimpleNamespace(
+            ui=SimpleNamespace(),
+            state=state,
+            config=SimpleNamespace(),
+            log=None,
+        )
+        prompt_builder = OrchestratorPromptBuilder(
+            SimpleNamespace(
+                state=state,
+                config=SimpleNamespace(),
+                memory_board_store=None,
+                log=None,
+            )
+        )
+        recovery = SimpleNamespace(handle_defect_detector_stop=AsyncMock())
+        handler = IntentTransitionHandler(agent, prompt_builder, recovery)
+
+        decision = await handler.handle_model_step(
+            intent_payload={"intent_id": "create_bookmark_app", "mode": "activate"},
+            intent_error=None,
+            response_text=(
+                '<subgoal action="modify" id="sg_1" status="in_progress">Write generator</subgoal>\n'
+                '<decision scope="intent">Emit the full scaffold via raw file block.</decision>\n'
+                '<memory_update_done />\n'
+                '<action>{"type":"write_file_block","path":"generate_bookmarks_app.py","overwrite":true}</action>\n'
+                '<file_content>#!/usr/bin/env python3\n'
+                'create_file("app/src/main/AndroidManifest.xml", """\n'
+                '<?xml version="1.0" encoding="utf-8"?>\n'
+                '<manifest>\n'
+                '  <application>\n'
+                '    <activity>\n'
+                '      <intent-filter>\n'
+                '        <action android:name="android.intent.action.MAIN" />\n'
+                '      </intent-filter>\n'
+                '    </activity>\n'
+                '  </application>\n'
+                '</manifest>\n'
+                '""")\n'
+                '</file_content>'
+            ),
+            state_machine=None,
+        )
+
+        self.assertFalse(decision.handled)
+
+    async def test_write_file_block_followup_with_literal_action_text_inside_file_content_is_not_multiple_actions(self):
+        state = SimpleNamespace(
+            intent_required_until_activated=False,
+            active_intent=SimpleNamespace(
+                intent_id="create_bookmark_app",
+                intent_type="MODIFY",
+                goal="Scaffold the create bookmark app flow",
+                allowed_actions=["write_file", "read_chunk"],
+            ),
+            intent_runtime=SimpleNamespace(
+                last_apply_warning="",
+                last_transition_info={
+                    "transition": "intent_activated",
+                    "before_active_intent_id": "",
+                    "after_active_intent_id": "create_bookmark_app",
+                },
+            ),
+            apply_intent_contract=MagicMock(return_value=(True, "intent_activated")),
+            note_intent_only_response=MagicMock(),
+            active_intent_summary=MagicMock(return_value="create_bookmark_app"),
+            pending_loop_stop_info=None,
+        )
+        agent = SimpleNamespace(
+            ui=SimpleNamespace(),
+            state=state,
+            config=SimpleNamespace(),
+            log=None,
+        )
+        prompt_builder = OrchestratorPromptBuilder(
+            SimpleNamespace(
+                state=state,
+                config=SimpleNamespace(),
+                memory_board_store=None,
+                log=None,
+            )
+        )
+        recovery = SimpleNamespace(handle_defect_detector_stop=AsyncMock())
+        handler = IntentTransitionHandler(agent, prompt_builder, recovery)
+
+        decision = await handler.handle_model_step(
+            intent_payload={"intent_id": "create_bookmark_app", "mode": "activate"},
+            intent_error=None,
+            response_text=(
+                '<subgoal action="modify" id="sg_1" status="in_progress">Write generator</subgoal>\n'
+                '<decision scope="intent">Keep protocol examples as raw text inside file body.</decision>\n'
+                '<memory_update_done />\n'
+                '<action>{"type":"write_file_block","path":"generate_bookmarks_app.py","overwrite":true}</action>\n'
+                '<file_content>print("""\n'
+                '<action>{"type":"read_file","path":"example.py"}</action>\n'
+                '""")\n'
+                '</file_content>'
+            ),
+            state_machine=None,
+        )
+
+        self.assertFalse(decision.handled)
+
+    async def test_accepted_intent_with_conflicting_second_intent_is_rejected_as_dense(self):
+        state = SimpleNamespace(
+            intent_required_until_activated=False,
+            active_intent=SimpleNamespace(
+                intent_id="activity_tracker_edit_sort",
+                intent_type="INVESTIGATE",
+                goal="Understand current implementation",
+                allowed_actions=["read_chunk", "search_content"],
+            ),
+            intent_runtime=SimpleNamespace(
+                last_apply_warning="",
+                last_transition_info={
+                    "transition": "intent_activated",
+                    "before_active_intent_id": "",
+                    "after_active_intent_id": "activity_tracker_edit_sort",
+                },
+            ),
+            apply_intent_contract=MagicMock(return_value=(True, "intent_activated")),
+            note_intent_only_response=MagicMock(),
+            active_intent_summary=MagicMock(return_value="activity_tracker_edit_sort"),
+            pending_loop_stop_info=None,
+        )
+        agent = SimpleNamespace(
+            ui=SimpleNamespace(),
+            state=state,
+            config=SimpleNamespace(),
+            log=None,
+        )
+        prompt_builder = OrchestratorPromptBuilder(
+            SimpleNamespace(
+                state=state,
+                config=SimpleNamespace(),
+                memory_board_store=None,
+                log=None,
+            )
+        )
+        recovery = SimpleNamespace(handle_defect_detector_stop=AsyncMock())
+        handler = IntentTransitionHandler(agent, prompt_builder, recovery)
+
+        decision = await handler.handle_model_step(
+            intent_payload={"intent_id": "activity_tracker_edit_sort", "mode": "activate"},
+            intent_error=None,
+            response_text='<intent mode="replace">{"intent_id":"other"}</intent>\n<action>{"type":"read_chunk","path":"a.py","start_line":1,"end_line":10}</action>',
+            state_machine=None,
+        )
+
+        self.assertTrue(decision.handled)
+        self.assertEqual("conflicting_intent_transitions", decision.reason)
 
     async def test_redundant_same_lineage_intent_with_followup_action_is_ignored_under_active_contract(self):
         state = SimpleNamespace(
@@ -1986,6 +2687,66 @@ class IntentTransitionHandlerTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertFalse(decision.handled)
         self.assertEqual("", getattr(state, "pending_loop_stop_info", None) or "")
+
+    async def test_rejected_intent_with_followup_action_does_not_pass_to_dispatch(self):
+        state = SimpleNamespace(
+            intent_required_until_activated=False,
+            active_intent=SimpleNamespace(
+                intent_id="datetimepicker_fix",
+                intent_type="MODIFY",
+                goal="Add allowPastValues to DateTimePickerDialog",
+                allowed_actions=["read_file", "read_chunk"],
+            ),
+            intent_runtime=SimpleNamespace(
+                last_apply_warning="",
+                last_transition_info={
+                    "transition": "policy_rejected",
+                    "reason": "intent_goal_too_local_or_underspecified",
+                    "before_active_intent_id": "datetimepicker_fix",
+                    "after_active_intent_id": "datetimepicker_fix",
+                },
+            ),
+            apply_intent_contract=MagicMock(return_value=(False, "intent_goal_too_local_or_underspecified")),
+            note_intent_only_response=MagicMock(),
+            active_intent_summary=MagicMock(return_value="datetimepicker_fix"),
+            last_defect_info={
+                "reason": "intent_goal_too_local_or_underspecified",
+                "recoverable": True,
+                "next_actions": ["read_file", "read_chunk"],
+            },
+            pending_loop_stop_info=None,
+        )
+        agent = SimpleNamespace(
+            ui=SimpleNamespace(),
+            state=state,
+            config=SimpleNamespace(),
+            log=None,
+        )
+        prompt_builder = OrchestratorPromptBuilder(
+            SimpleNamespace(
+                state=state,
+                config=SimpleNamespace(),
+                memory_board_store=None,
+                log=None,
+            )
+        )
+        recovery = SimpleNamespace(
+            handle_defect_detector_stop=AsyncMock(
+                return_value=SimpleNamespace(handled=True, next_query="INTENT_RECOVERY", reason="intent_goal_too_local_or_underspecified")
+            )
+        )
+        handler = IntentTransitionHandler(agent, prompt_builder, recovery)
+
+        decision = await handler.handle_model_step(
+            intent_payload={"intent_id": "datetimepicker_fix", "mode": "replace"},
+            intent_error=None,
+            response_text='<action>{"type":"edit_file","path":"a.kt"}</action>',
+            state_machine=None,
+        )
+
+        self.assertTrue(decision.handled)
+        self.assertEqual("intent_goal_too_local_or_underspecified", decision.reason)
+        self.assertEqual("INTENT_RECOVERY", decision.next_query)
 
     async def test_suspect_intent_relabel_repeat_forces_keep_current_contract(self):
         ui = SimpleNamespace(

@@ -79,6 +79,19 @@ class DummyOutputRecovery:
         )
 
 
+class CapturingOutputRecovery(DummyOutputRecovery):
+    def __init__(self):
+        self.last_parsed_output = None
+
+    async def decide(self, parsed_output, malformed_action_retries=0, audit_marker_retries=0):
+        self.last_parsed_output = parsed_output
+        return await super().decide(
+            parsed_output,
+            malformed_action_retries=malformed_action_retries,
+            audit_marker_retries=audit_marker_retries,
+        )
+
+
 class PlainThinkOutputRecovery(DummyOutputRecovery):
     async def decide(self, parsed_output, malformed_action_retries=0, audit_marker_retries=0):
         if getattr(parsed_output, "invalid_kind", "") == "plain_think_without_valid_output":
@@ -135,6 +148,17 @@ class DummyMemoryBoardStage:
         )
 
 
+class DummyPlanBoardStage:
+    async def apply(self, ctx, raw_response):
+        return SimpleNamespace(
+            handled=False,
+            response_text=raw_response,
+            next_query="",
+            reason="",
+            source="plan_board",
+        )
+
+
 class MemoryCheckpointOnlyStage:
     async def apply(self, ctx, raw_response):
         return SimpleNamespace(
@@ -163,6 +187,20 @@ class MemoryCheckpointAndActionStage:
         )
 
 
+class PlanCheckpointAndActionStage:
+    async def apply(self, ctx, raw_response):
+        return SimpleNamespace(
+            handled=False,
+            response_text=raw_response,
+            next_query="",
+            reason="plan_checkpoint_and_action",
+            source="plan_board",
+            plan_checkpoint_only=False,
+            plan_checkpoint_and_text=False,
+            plan_checkpoint_and_action=True,
+        )
+
+
 class DummyPromptBuilder:
     def build_intent_required_prompt(self, reason):
         return f"INTENT_REQUIRED::{reason}"
@@ -176,6 +214,9 @@ class DummyPromptBuilder:
     def build_reflection_repair_accepted_prompt(self):
         return "REFLECTION_ACCEPTED"
 
+    def build_durable_state_repair_prompt(self, repair_kind=""):
+        return f"DURABLE_STATE_REPAIR::{repair_kind or 'missing_think_reflection'}"
+
     def build_repeated_thinking_without_valid_output_prompt(self, stop_info=None):
         return "ENOUGH_THINKING_GIVE_VALID_OUTPUT"
 
@@ -184,6 +225,18 @@ class DummyPromptBuilder:
 
     def build_plain_think_without_valid_output_prompt(self):
         return 'PLAIN_THINK_INVALID_OUTPUT'
+
+    def build_transition_bundle_too_dense_prompt(self):
+        return "TRANSITION_BUNDLE_TOO_DENSE"
+
+    def build_completion_with_action_not_allowed_prompt(self):
+        return "COMPLETION_WITH_ACTION_NOT_ALLOWED"
+
+    def build_multiple_actions_prompt(self):
+        return "MULTIPLE_ACTIONS"
+
+    def build_conflicting_intent_transitions_prompt(self):
+        return "CONFLICTING_INTENT_TRANSITIONS"
 
 
 class DummyUI:
@@ -208,6 +261,7 @@ class ResponsePipelineRefactorIntegrationTests(unittest.IsolatedAsyncioTestCase)
             consecutive_nonproductive_thinking_count=0,
             last_nonproductive_thinking_reason="",
             think_reflection_repair_pending=False,
+            think_reflection_repair_kind="",
             terminal_plaintext_completion_pending=False,
             terminal_plaintext_completion_text="",
             orchestration_trace=[],
@@ -233,6 +287,7 @@ class ResponsePipelineRefactorIntegrationTests(unittest.IsolatedAsyncioTestCase)
         intent_transitions=None,
         action_policy=None,
         memory_board_stage=None,
+        plan_board_stage=None,
         output_recovery=None,
     ):
         state = state or self._state()
@@ -254,6 +309,7 @@ class ResponsePipelineRefactorIntegrationTests(unittest.IsolatedAsyncioTestCase)
             intent_transitions=intent_transitions or DummyIntentTransitions(),
             output_recovery=output_recovery or DummyOutputRecovery(),
             action_policy=action_policy or DummyActionPolicy(),
+            plan_board_stage=plan_board_stage or DummyPlanBoardStage(),
             memory_board_stage=memory_board_stage or DummyMemoryBoardStage(),
         ), state, agent.ui
 
@@ -423,16 +479,52 @@ class ResponsePipelineRefactorIntegrationTests(unittest.IsolatedAsyncioTestCase)
         self.assertEqual("PLAIN_TEXT_COMPLETION_PROMPT", result.next_query)
 
     async def test_reflection_only_repair_is_accepted_before_generic_recovery(self):
-        state = self._state(think_reflection_repair_pending=True)
+        state = self._state(
+            think_reflection_repair_pending=True,
+            think_reflection_repair_kind="missing_think_reflection",
+        )
         pipeline, state, _ui = self._make_pipeline(state=state)
 
-        response = '<finding scope="intent">Found X</finding><decision scope="intent">Do Y</decision>'
+        response = '<finding scope="intent">Found X</finding><decision scope="intent">Do Y</decision><memory_update_done />'
         result = await pipeline.run_step(self._ctx(), self._step(response))
 
         self.assertTrue(result.continue_loop)
         self.assertEqual("think_reflection_repair_completed", result.reason)
         self.assertEqual("REFLECTION_ACCEPTED", result.next_query)
         self.assertFalse(state.think_reflection_repair_pending)
+
+    async def test_pending_durable_state_repair_blocks_dispatch_until_repair_only_turn(self):
+        state = self._state(
+            think_reflection_repair_pending=True,
+            think_reflection_repair_kind="missing_memory_update_done",
+        )
+        pipeline, state, _ui = self._make_pipeline(state=state)
+
+        result = await pipeline.run_step(self._ctx(), self._step('<action>{"type":"read_chunk"}</action>'))
+
+        self.assertTrue(result.continue_loop)
+        self.assertEqual("missing_memory_update_done", result.reason)
+        self.assertEqual("DURABLE_STATE_REPAIR::missing_memory_update_done", result.next_query)
+        self.assertTrue(state.think_reflection_repair_pending)
+
+    async def test_marker_only_repair_turn_is_accepted_when_missing_memory_update_done_pending(self):
+        state = self._state(
+            think_reflection_repair_pending=True,
+            think_reflection_repair_kind="missing_memory_update_done",
+            last_memory_update_done=True,
+        )
+        pipeline, state, _ui = self._make_pipeline(state=state)
+
+        result = await pipeline.run_step(self._ctx(), self._step("<memory_update_done />"))
+
+        self.assertTrue(result.continue_loop)
+        self.assertEqual("think_reflection_repair_completed", result.reason)
+        self.assertEqual("REFLECTION_ACCEPTED", result.next_query)
+        self.assertFalse(state.think_reflection_repair_pending)
+        architecture_entries = [entry for entry in state.orchestration_trace if entry.stage == "architecture_defect"]
+        self.assertTrue(architecture_entries)
+        self.assertEqual("repair_completed", architecture_entries[-1].decision)
+        self.assertEqual("missing_memory_update_done", architecture_entries[-1].fields.get("defect_kind"))
 
     async def test_plaintext_answer_path_does_not_trigger_repeated_thinking_guard(self):
         state = self._state(consecutive_nonproductive_thinking_count=1)
@@ -453,6 +545,80 @@ class ResponsePipelineRefactorIntegrationTests(unittest.IsolatedAsyncioTestCase)
         self.assertEqual("action_not_allowed", result.reason)
         self.assertEqual("action_policy", result.source)
         self.assertEqual("ACTION_POLICY_RECOVERY", result.next_query)
+
+    async def test_multiple_actions_are_rejected_before_dispatch(self):
+        class MultiActionPolicy:
+            async def decide(self, ctx, segments, intent_payload=None):
+                return SimpleNamespace(
+                    handled=False,
+                    next_query="",
+                    reason="",
+                    source="",
+                    parsed_action_count=2,
+                )
+
+        pipeline, _state, _ui = self._make_pipeline(action_policy=MultiActionPolicy())
+
+        result = await pipeline.run_step(
+            self._ctx(),
+            self._step('<action>{"type":"read_chunk"}</action><action>{"type":"read_chunk"}</action>'),
+        )
+
+        self.assertTrue(result.continue_loop)
+        self.assertEqual("multiple_actions", result.reason)
+        self.assertEqual("transaction_guard", result.source)
+        self.assertEqual("MULTIPLE_ACTIONS", result.next_query)
+
+    async def test_checkpoint_and_action_bundle_sets_operational_checkpoint_satisfied(self):
+        recovery = CapturingOutputRecovery()
+        state = self._state(last_memory_update_done=True)
+        pipeline, _state, _ui = self._make_pipeline(
+            state=state,
+            output_recovery=recovery,
+            memory_board_stage=MemoryCheckpointAndActionStage(),
+        )
+
+        response = (
+            "<think>one two three four five six</think>"
+            "<subgoal action=\"mark_done\" id=\"sg_1\" reason=\"done\" />"
+            "<progress scope=\"intent\">Ready for command.</progress>"
+            "<memory_update_done />"
+            "<action>{\"type\":\"run_shell\",\"command\":\"python generate.py\"}</action>"
+        )
+
+        result = await pipeline.run_step(self._ctx(), self._step(response))
+
+        self.assertFalse(result.continue_loop)
+        self.assertIsNotNone(recovery.last_parsed_output)
+        self.assertTrue(getattr(recovery.last_parsed_output, "operational_checkpoint_satisfied", False))
+        self.assertTrue(getattr(recovery.last_parsed_output, "operational_checkpoint_has_think", False))
+        self.assertTrue(getattr(recovery.last_parsed_output, "operational_checkpoint_has_marker", False))
+        self.assertTrue(getattr(recovery.last_parsed_output, "operational_checkpoint_has_board_commit", False))
+
+    async def test_plan_checkpoint_and_action_bundle_sets_operational_checkpoint_satisfied(self):
+        recovery = CapturingOutputRecovery()
+        state = self._state(last_memory_update_done=True)
+        pipeline, _state, _ui = self._make_pipeline(
+            state=state,
+            output_recovery=recovery,
+            plan_board_stage=PlanCheckpointAndActionStage(),
+        )
+
+        response = (
+            "<think>Verified manifest target and planned the permission edit.</think>"
+            "<subgoal action=\"modify\" id=\"sg_1\" status=\"in_progress\">Add INTERNET permission</subgoal>"
+            "<memory_update_done />"
+            "<action>{\"type\":\"edit_file\",\"path\":\"app/src/main/AndroidManifest.xml\"}</action>"
+        )
+
+        result = await pipeline.run_step(self._ctx(), self._step(response))
+
+        self.assertFalse(result.continue_loop)
+        self.assertIsNotNone(recovery.last_parsed_output)
+        self.assertTrue(getattr(recovery.last_parsed_output, "operational_checkpoint_satisfied", False))
+        self.assertTrue(getattr(recovery.last_parsed_output, "operational_checkpoint_has_think", False))
+        self.assertTrue(getattr(recovery.last_parsed_output, "operational_checkpoint_has_marker", False))
+        self.assertTrue(getattr(recovery.last_parsed_output, "operational_checkpoint_has_board_commit", False))
 
 
 if __name__ == "__main__":
