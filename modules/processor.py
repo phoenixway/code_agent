@@ -204,7 +204,7 @@ class ResponseProcessor:
                 if len(result["output"]) > threshold:
                     if force_full_output:
                         pass
-                    elif force_truncate:
+                    elif force_truncate or action_type == "run_shell":
                         result["output"] = self._truncate_output(result["output"], threshold)
                     elif await self.ui.confirm_truncation(action_type, len(result["output"])):
                         result["output"] = self._truncate_output(result["output"], threshold)

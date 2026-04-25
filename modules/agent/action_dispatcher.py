@@ -1546,6 +1546,7 @@ class ActionDispatcher:
             "tool": cmd_type,
             "path": path,
             "status": status,
+            "command": command.get("command") if cmd_type == "run_shell" else "",
             # Preview fields kept for UI / compact history paths
             "output": result.get("output"),
         }

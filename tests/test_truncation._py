@@ -48,5 +48,17 @@ class TestOutputTruncation(unittest.IsolatedAsyncioTestCase):
         self.assertIn("truncated 100 characters", result["output"])
         self.ui.confirm_truncation.assert_not_called()
 
+    async def test_run_shell_never_prompts_for_truncation_when_output_is_large(self):
+        long_output = "D" * 200
+        self.tools.call = AsyncMock(return_value={"status": "success", "output": long_output})
+        self.policy.check = AsyncMock(return_value=True)
+        self.ui.confirm_truncation = AsyncMock(return_value=True)
+        self.processor.LARGE_FILE_THRESHOLD = 100
+
+        result = await self.processor.process_single_action({"type": "run_shell", "command": "cat file.txt"})
+
+        self.assertIn("truncated 100 characters", result["output"])
+        self.ui.confirm_truncation.assert_not_called()
+
 if __name__ == "__main__":
     unittest.main()

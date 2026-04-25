@@ -179,6 +179,57 @@ class TestHistoryContext(unittest.TestCase):
         materials = [m for m in self.history.messages if m.get("turn_working_material")]
         self.assertEqual(materials[0]["content"].get("version"), 1)
 
+    def test_run_shell_working_material_is_protected_and_keeps_command(self):
+        dispatcher = ActionDispatcher.__new__(ActionDispatcher)
+        dispatcher.agent = SimpleNamespace(history=self.history)
+        state = SimpleNamespace(current_turn_id=1)
+
+        dispatcher._capture_turn_working_material(
+            {"type": "run_shell", "command": "rg -n TODO ."},
+            {
+                "status": "success",
+                "output": "TODO found",
+                "stdout": "TODO found",
+                "raw_output": "TODO found\nline 2\nline 3",
+                "stdout_full": "TODO found\nline 2\nline 3",
+                "stderr_full": "",
+            },
+            state,
+        )
+
+        materials = [m for m in self.history.messages if m.get("turn_working_material")]
+        self.assertEqual(1, len(materials))
+        self.assertEqual("shell", materials[0].get("material_kind"))
+        self.assertEqual(2, materials[0].get("protection_hops_remaining"))
+        self.assertEqual("rg -n TODO .", materials[0]["content"].get("command"))
+
+    def test_run_shell_working_material_expires_into_ordinary_history_after_two_turns(self):
+        dispatcher = ActionDispatcher.__new__(ActionDispatcher)
+        dispatcher.agent = SimpleNamespace(history=self.history)
+        state = SimpleNamespace(current_turn_id=1)
+
+        dispatcher._capture_turn_working_material(
+            {"type": "run_shell", "command": "rg -n TODO ."},
+            {
+                "status": "success",
+                "output": "TODO found",
+                "stdout": "TODO found",
+                "raw_output": "TODO found\nline 2\nline 3",
+                "stdout_full": "TODO found\nline 2\nline 3",
+                "stderr_full": "",
+            },
+            state,
+        )
+
+        self.history.start_turn(2)
+        self.assertTrue(self.history.messages[0].get("turn_working_material"))
+        self.assertEqual(1, self.history.messages[0].get("protection_hops_remaining"))
+
+        self.history.start_turn(3)
+        self.assertFalse(self.history.messages[0].get("turn_working_material"))
+        self.assertEqual("tool_result_history", self.history.messages[0].get("type"))
+        self.assertEqual("shell", self.history.messages[0].get("history_material_kind"))
+
 
 if __name__ == "__main__":
     unittest.main()

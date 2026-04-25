@@ -81,6 +81,7 @@ class HistoryManager:
 
         # Pressure-aware working material policy.
         self.WM_DEFAULT_HOPS = 1
+        self.WM_SHELL_HOPS = 2
         self.WM_MAX_PROTECTED_ITEMS = 6
         self.WM_MAX_FULL_FILE_ITEMS = 1
         self.WM_PROTECTED_RESERVE_RATIO = 0.12
@@ -252,9 +253,45 @@ class HistoryManager:
 
     def _default_hops_for_content(self, content) -> int:
         kind = self._material_kind(content)
+        if kind == "shell":
+            return self.WM_SHELL_HOPS
         if kind in {"full_file", "chunk", "skeleton", "exact_symbol"}:
             return self.WM_DEFAULT_HOPS
         return 0
+
+    def _expire_short_lived_working_material(self):
+        expired = 0
+        aged = 0
+        for idx, msg in enumerate(list(self.messages)):
+            if not msg.get("turn_working_material"):
+                continue
+            if str(msg.get("material_kind") or "") != "shell":
+                continue
+            hops = int(msg.get("protection_hops_remaining", 0) or 0)
+            if hops <= 0:
+                continue
+            updated = dict(msg)
+            updated["protection_hops_remaining"] = max(0, hops - 1)
+            aged += 1
+
+            if updated["protection_hops_remaining"] <= 0:
+                updated["turn_working_material"] = False
+                updated["type"] = "tool_result_history"
+                content = updated.get("content")
+                if isinstance(content, dict):
+                    updated.setdefault("history_material_kind", self.material_tools.material_kind(content))
+                    updated.setdefault("history_degrade_stage", 0)
+                    updated.setdefault("history_added_seq", self._next_wm_seq())
+                expired += 1
+
+            self.messages[idx] = updated
+
+        if (aged or expired) and self.logger:
+            self.logger.info(
+                "WorkingMaterial.age aged=%s shell_expired_to_history=%s",
+                aged,
+                expired,
+            )
 
     def _is_effectively_empty_material(self, content) -> bool:
         if not isinstance(content, dict):
@@ -443,6 +480,7 @@ class HistoryManager:
         self._enforce_ordinary_history_pressure()
 
     def age_working_material(self):
+        self._expire_short_lived_working_material()
         self._enforce_working_material_caps()
 
     def add_turn_working_material(self, content, *, msg_type="turn_working_material", turn_id=None, role="system"):
