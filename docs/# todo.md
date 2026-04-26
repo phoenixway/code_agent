@@ -30,3 +30,36 @@ Use a smaller file, chunked write, or run_shell heredoc. << дай запит а
 
 ***
 
+після першого редагування файлу його зміст в історії якщо зберігається повному стані має оновлюватися бо модель використовує його для повторних читань. 
+
+шляхи того що раз редагували чи досліджували - в дошку пам'яті як <path>my path</path>. але не більше 40 записів
+
+DAY TASK < 5 DAY FOCUSSES
+
+кращий віджет системних помилок
+
+***
+
+Що зламалось / головний дефект
+P0: accepted intent + malformed think + action = action discarded
+
+У step 6 агент нарешті видав валідний top-level intent, але зробив це всередині незакритого <think>. Runtime:
+
+застосував intent;
+побачив malformed_incomplete_think;
+не dispatch-нув list_directory;
+перейшов у recovery під уже активним INVESTIGATE intent.
+
+Це дуже важливий edge case.
+
+Формально runtime діє безпечно: action не виконується, бо response malformed. Але виникає частково застосований transaction:
+
+intent committed;
+action rejected;
+model тепер у новому active contract;
+користувач не отримав прогресу;
+наступний крок залежить від recovery.
+
+Це transactional atomicity bug / design smell.
+
+Якщо response bundle невалідний через malformed control text, runtime не має частково commit-ити intent transition, якщо follow-up action у тому ж bundle не може бути dispatched.

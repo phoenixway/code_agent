@@ -142,6 +142,8 @@ class IntentRuntimePolicyIntegrationTests(unittest.TestCase):
         self.assertEqual("MODIFY", self.runtime.active_intent.intent_type)
         self.assertIn("edit_file", self.runtime.active_intent.allowed_actions)
         self.assertIn("write_file", self.runtime.active_intent.allowed_actions)
+        self.assertIn("write_file_block", self.runtime.active_intent.allowed_actions)
+        self.assertIn("append_file_block", self.runtime.active_intent.allowed_actions)
         self.assertIn("create_file", self.runtime.active_intent.allowed_actions)
 
     def test_extract_kotlin_function_is_retained_as_known_allowed_action(self):
@@ -207,6 +209,8 @@ class IntentRuntimePolicyIntegrationTests(unittest.TestCase):
         self.assertEqual("MODIFY", self.runtime.active_intent.intent_type)
         self.assertIn("edit_file", self.runtime.active_intent.allowed_actions)
         self.assertIn("write_file", self.runtime.active_intent.allowed_actions)
+        self.assertIn("write_file_block", self.runtime.active_intent.allowed_actions)
+        self.assertIn("append_file_block", self.runtime.active_intent.allowed_actions)
         self.assertIn("create_file", self.runtime.active_intent.allowed_actions)
         self.assertIn("run_shell", self.runtime.active_intent.allowed_actions)
 
@@ -229,6 +233,41 @@ class IntentRuntimePolicyIntegrationTests(unittest.TestCase):
         self.assertFalse(self.runtime.intent_required_until_activated)
         self.assertEqual("intent_reused_with_step_refresh", self.runtime.last_transition_info.get("transition"))
         self.assertGreater(self.runtime.active_intent.user_step_extension, 0)
+
+    def test_reuse_allows_investigate_to_modify_same_lineage_with_work_type_changed(self):
+        payload = {
+            "intent_id": "activity_tracker_edit",
+            "mode": "reuse",
+            "intent_type": "MODIFY",
+            "goal": "Determine how to move today's record to yesterday via edit dialog",
+            "allowed_actions": ["read_chunk", "search_content", "edit_file", "write_file"],
+            "requested_steps": 4,
+            "switch_reason": "work_type_changed",
+            "switch_explanation": "investigation is complete and the same goal now requires edits",
+        }
+
+        ok, msg = self.runtime.apply_payload(payload)
+
+        self.assertTrue(ok, msg)
+        self.assertEqual("intent_reused_with_step_refresh", msg)
+        self.assertEqual("MODIFY", self.runtime.active_intent.intent_type)
+        self.assertIn("edit_file", self.runtime.active_intent.allowed_actions)
+        self.assertEqual("work_type_changed", self.runtime.last_transition_info.get("switch_reason"))
+
+    def test_investigate_to_modify_reuse_is_not_rejected_for_switch_reason(self):
+        contract, error = self.runtime.validate_payload(
+            {
+                "intent_id": "activity_tracker_edit",
+                "mode": "reuse",
+                "intent_type": "MODIFY",
+                "goal": "Determine how to move today's record to yesterday via edit dialog",
+                "allowed_actions": ["edit_file", "read_chunk"],
+                "requested_steps": 3,
+                "switch_reason": "work_type_changed",
+            }
+        )
+        self.assertIsNone(error)
+        self.assertEqual("MODIFY", contract.intent_type)
 
 
 if __name__ == "__main__":

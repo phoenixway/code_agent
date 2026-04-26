@@ -33,6 +33,9 @@ class ResponseSemantics:
         r"\bSYSTEM\s+RESULT\b(?:\s*\([^)]*\)|\s+for\b|\s*:)",
         re.IGNORECASE,
     )
+    THINK_NON_OPERATIONAL_RE = re.compile(
+        r"(?is)\b(here\s+is\s+the\s+plan|plan\s*:|implementation\s+plan|markdown\s+plan|step\s+1\b|1\.\s+.+2\.)"
+    )
 
     def has_plain_think_prefix(self, raw_response: str) -> bool:
         _cleaned, stripped = strip_plain_think_prefix_artifacts(str(raw_response or ""))
@@ -107,6 +110,33 @@ class ResponseSemantics:
         if not self.has_memory_update_done_before_action(text):
             return False
         return True
+
+    def has_malformed_state_changing_think_before_action(self, raw_response: str) -> bool:
+        text = str(raw_response or "")
+        if not text:
+            return False
+
+        action_match = self.ACTION_OPEN_RE.search(text)
+        if not action_match:
+            return False
+
+        action_start = action_match.start()
+        for match in self.THINK_BLOCK_RE.finditer(text):
+            if match.end() > action_start:
+                continue
+            think_text = str(match.group(1) or "").strip()
+            if not think_text:
+                return True
+            if "```" in think_text:
+                return True
+            if len(think_text) > 800:
+                return True
+            if self.THINK_NON_OPERATIONAL_RE.search(think_text):
+                return True
+            if "!" not in think_text or "→" not in think_text:
+                return True
+            return False
+        return False
 
     def has_substantial_think(self, raw_response: str) -> bool:
         text = str(raw_response or "")

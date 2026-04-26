@@ -426,6 +426,7 @@ class RecoveryCoordinator:
                             recovery_actions,
                             error_code=str(stop_info.get("error_code") or ""),
                             error_details=stop_info.get("error_details") or {},
+                            command=stop_info.get("command") or {},
                         ),
                         clear_pending_stop=True,
                     )
@@ -521,6 +522,7 @@ class RecoveryCoordinator:
                                 allowed,
                                 error_code=str(stop_info.get("error_code") or ""),
                                 error_details=stop_info.get("error_details") or {},
+                                command=stop_info.get("command") or {},
                             ),
                             clear_pending_stop=True,
                         )
@@ -529,27 +531,13 @@ class RecoveryCoordinator:
                     if active_intent is not None:
                         allowed = self._intent_actions_from_stop_info(stop_info, active_intent)
                         details = stop_info.get("error_details") or {}
-                        mismatch_type = str(details.get("mismatch_type") or "")
-                        note = ""
-                        if mismatch_type == "multiple_similar_blocks":
-                            note = (
-                                "\nThe last edit failed because the search block matched multiple similar regions."
-                                "\nDo not open a new intent contract."
-                                "\nPrefer one deterministic recovery step inside the SAME intent contract:"
-                                "\n- read the exact target block,"
-                                "\n- then retry edit_file with exact copied whitespace,"
-                                "\n- or switch to write_file with full validated content."
-                            )
                         return StopHandlingDecision.continue_with(
-                            self.prompt_builder.build_keep_current_intent_recovery_prompt(
-                                {
-                                    **(stop_info or {}),
-                                    "reason": "retry_or_continuation_after_failure",
-                                    "next_actions": allowed,
-                                    "intent_allowed_actions": allowed,
-                                    "next_actions_source": "intent",
-                                }
-                            ) + note,
+                            self.prompt_builder.build_current_intent_retry_recovery_query(
+                                allowed,
+                                error_code=str(stop_info.get("error_code") or ""),
+                                error_details=details,
+                                command=stop_info.get("command") or {},
+                            ),
                             clear_pending_stop=True,
                         )
 

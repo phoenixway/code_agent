@@ -52,6 +52,7 @@ class PromptBuilderCurrentIntentRetryRecoveryTests(unittest.TestCase):
             "recoverable": True,
             "next_actions": ["edit_file", "read_chunk", "search_content", "run_shell"],
             "error_code": "VALIDATION_ERROR",
+            "command": {"type": "edit_file", "path": "app/src/main/kotlin/Feature.kt"},
             "policy_metadata": {
                 "blocked_reason": "multiple_similar_blocks",
             },
@@ -59,14 +60,10 @@ class PromptBuilderCurrentIntentRetryRecoveryTests(unittest.TestCase):
 
         out = builder.build_orchestrated_recovery_prompt(stop_info)
 
-        self.assertIn(
-            "Allowed actions under the CURRENT intent contract: edit_file, read_chunk, search_content, run_shell.",
-            out,
-        )
-        self.assertIn("Current contract goal remains the same:", out)
-        self.assertIn("Intent here means the formal runtime contract", out)
-        self.assertIn("Do not restart the task from the beginning", out)
-        self.assertNotIn("Previous action violated orchestration policy.", out)
+        self.assertIn("<memory_update_done />", out)
+        self.assertIn("<action>", out)
+        self.assertIn("targeted edit_file", out)
+        self.assertNotIn("Analyze the error in <think>", out)
 
     def test_retry_after_failure_without_active_intent_falls_back_to_generic_prompt(self):
         builder = self._builder(active_intent=None)
@@ -80,10 +77,10 @@ class PromptBuilderCurrentIntentRetryRecoveryTests(unittest.TestCase):
 
         out = builder.build_orchestrated_recovery_prompt(stop_info)
 
-        self.assertIn("No active intent contract is currently in force.", out)
-        self.assertIn("Continue from already gathered evidence", out)
-        self.assertIn("If the next step needs governed multi-step execution, activate a formal <intent> now.", out)
-        self.assertIn("Allowed next actions: read_file, search_content, edit_file, write_file.", out)
+        self.assertIn("<memory_update_done />", out)
+        self.assertIn("<action>", out)
+        self.assertIn("targeted edit_file", out)
+        self.assertNotIn("Analyze the error in <think>", out)
 
     def test_retry_after_failure_without_active_intent_marks_recommended_actions_as_hints_only(self):
         builder = self._builder(active_intent=None)
@@ -98,9 +95,68 @@ class PromptBuilderCurrentIntentRetryRecoveryTests(unittest.TestCase):
 
         out = builder.build_orchestrated_recovery_prompt(stop_info)
 
-        self.assertIn("Runtime-suggested next actions: read_file, search_content, edit_file, write_file.", out)
-        self.assertIn("These are recovery hints, not proof that contract-scoped tool use is already allowed.", out)
-        self.assertIn("Until activation succeeds, do not assume contract-scoped permissions or allowed_actions.", out)
+        self.assertIn("<memory_update_done />", out)
+        self.assertIn("<action>", out)
+        self.assertIn("targeted edit_file", out)
+        self.assertNotIn("think about", out)
+
+    def test_missing_file_content_block_recovery_uses_strict_template_without_plan_language(self):
+        active_intent = SimpleNamespace(
+            intent_id="new_file_write",
+            intent_type="MODIFY",
+            goal="Create a new source file safely.",
+            allowed_actions=["write_file_block", "append_file_block", "edit_file"],
+        )
+        builder = self._builder(active_intent)
+
+        out = builder.build_current_intent_retry_recovery_query(
+            ["write_file_block", "append_file_block", "edit_file"],
+            error_code="MISSING_FILE_CONTENT_BLOCK",
+            error_details={"target_exists": False, "path": "src/new_file.py"},
+            command={"type": "write_file_block", "path": "src/new_file.py", "overwrite": True},
+        )
+
+        self.assertNotIn("Analyze the error in <think>", out)
+        self.assertNotIn("think about", out)
+        self.assertNotIn("plan", out.lower())
+        self.assertTrue("<op " in out or "<think>" in out)
+        self.assertIn("<memory_update_done />", out)
+        self.assertIn("<file_content>\nraw content\n</file_content>", out)
+
+    def test_existing_source_full_rewrite_failure_prefers_git_diff_and_targeted_edit(self):
+        active_intent = SimpleNamespace(
+            intent_id="kotlin_modify",
+            intent_type="MODIFY",
+            goal="Patch an existing Kotlin source file.",
+            allowed_actions=["write_file_block", "edit_file", "git_diff", "read_chunk"],
+        )
+        builder = self._builder(active_intent)
+
+        out = builder.build_current_intent_retry_recovery_query(
+            ["write_file_block", "edit_file", "git_diff", "read_chunk"],
+            error_code="MISSING_FILE_CONTENT_BLOCK",
+            error_details={"target_exists": True, "path": "app/src/main/kotlin/Feature.kt"},
+            command={"type": "write_file_block", "path": "app/src/main/kotlin/Feature.kt", "overwrite": True},
+        )
+
+        self.assertIn("Do not retry full-file rewrite yet", out)
+        self.assertIn("git_diff", out)
+        self.assertIn("targeted edit_file", out)
+        self.assertNotIn('"type": "write_file_block"', out)
+
+    def test_malformed_read_chunk_recovery_shows_valid_payload_shape(self):
+        builder = self._builder(active_intent=None)
+
+        out = builder.build_current_intent_retry_recovery_query(
+            ["read_chunk"],
+            error_code="MALFORMED_READ_CHUNK_PAYLOAD",
+            error_details={"path": "src/main.py"},
+            command={"type": "read_chunk", "path": "src/main.py"},
+        )
+
+        self.assertIn('"type":"read_chunk"', out.replace(" ", ""))
+        self.assertIn('"start_line":1304', out)
+        self.assertNotIn("Analyze the error in <think>", out)
 
     def test_build_system_message_does_not_embed_active_intent_contract_block(self):
         active_intent = SimpleNamespace(

@@ -393,6 +393,14 @@ class IntentRuntime:
             "current_intent_no_longer_fits",
         }
 
+    def _reuse_work_type_change_allowed(self, base_type: str, requested_type: str, switch_reason: str) -> bool:
+        base = str(base_type or "").strip().upper()
+        requested = str(requested_type or "").strip().upper()
+        reason = self._normalize_transition_reason(switch_reason)
+        if reason != "work_type_changed":
+            return False
+        return base == "INVESTIGATE" and requested == "MODIFY"
+
     def _allowed_completion_reasons(self) -> set[str]:
         return {
             "goal_completed",
@@ -736,7 +744,11 @@ class IntentRuntime:
 
             switch_reason = self._normalize_transition_reason(payload.get("switch_reason") or "current_intent_exhausted")
             switch_explanation = str(payload.get("switch_explanation") or "").strip()
-            if switch_reason not in {"current_intent_exhausted", "current_intent_completed", "current_intent_no_longer_fits"}:
+            base_type = active.intent_type if active is not None else str(recent_meta.get("intent_type") or "")
+            requested_type = str(payload.get("intent_type") or base_type).strip().upper() or base_type
+            if switch_reason not in {"current_intent_exhausted", "current_intent_completed", "current_intent_no_longer_fits", "work_type_changed"}:
+                return None, "intent_reuse_switch_reason_invalid"
+            if switch_reason == "work_type_changed" and not self._reuse_work_type_change_allowed(base_type, requested_type, switch_reason):
                 return None, "intent_reuse_switch_reason_invalid"
 
             base_goal = active.goal if active is not None else str(recent_meta.get("goal") or "")
@@ -753,9 +765,7 @@ class IntentRuntime:
             ):
                 return None, "intent_reuse_goal_mismatch"
 
-            base_type = active.intent_type if active is not None else str(recent_meta.get("intent_type") or "")
-            requested_type = str(payload.get("intent_type") or base_type).strip().upper() or base_type
-            if requested_type != base_type:
+            if requested_type != base_type and not self._reuse_work_type_change_allowed(base_type, requested_type, switch_reason):
                 return None, "intent_reuse_type_mismatch"
 
             requested_actions = payload.get("allowed_actions")
@@ -775,7 +785,7 @@ class IntentRuntime:
 
             return IntentContract(
                 intent_id=expected_id,
-                intent_type=base_type,
+                intent_type=requested_type,
                 goal=requested_goal,
                 canonical_goal=(active.canonical_goal or active.goal) if active is not None else base_goal,
                 goal_frozen=True,
@@ -916,6 +926,7 @@ class IntentRuntime:
             active.user_step_extension += grant
             active.hard_limit_hit_count = 0
             active.force_plaintext_completion = False
+            active.intent_type = contract.intent_type or active.intent_type
             active.switch_reason = contract.switch_reason
             active.switch_explanation = contract.switch_explanation
             active.user_visible_note = contract.user_visible_note or active.user_visible_note

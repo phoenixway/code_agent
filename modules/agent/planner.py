@@ -269,7 +269,7 @@ class TaskBoardPlanner:
             return
         del steps[max_steps:]
 
-    def apply_update(self, state, update_ops: list[dict]) -> tuple[bool, str]:
+    def apply_update(self, state, update_ops: list[dict]) -> tuple[bool, dict]:
         """Applies validated plan mutations to runtime state."""
         if not isinstance(update_ops, list) or not update_ops:
             return False, "No plan changes."
@@ -355,9 +355,7 @@ class TaskBoardPlanner:
         self._ensure_active_step(board)
         state.task_board = board
         state.task_board_enabled = bool(board.get("steps"))
-        summary = self.render_human_summary(board)
-        delta = self.render_update_delta(previous, board)
-        return True, f"{summary}\n{delta}"
+        return True, self.render_chat_update_payload(previous, board)
 
     def render_compact_summary(self, board: dict) -> str:
         steps = board.get("steps") or []
@@ -498,3 +496,50 @@ class TaskBoardPlanner:
         if active_title:
             return f"План оновлено. Зараз: {active_title}. Прогрес {done}/{len(steps)}."
         return f"План оновлено. Прогрес {done}/{len(steps)}."
+
+    def render_chat_update_payload(self, previous: dict | None, current: dict) -> dict:
+        steps = [s for s in (current.get("steps") or []) if isinstance(s, dict)]
+        total = len(steps)
+        completed = sum(1 for s in steps if s.get("status") == "done")
+
+        active_step_id = str(current.get("active_step_id") or "").strip()
+        current_step = None
+        if active_step_id:
+            current_step = next((s for s in steps if str(s.get("id") or "").strip() == active_step_id), None)
+        if current_step is None:
+            current_step = next((s for s in steps if s.get("status") == "in_progress"), None)
+        if current_step is None:
+            current_step = next((s for s in steps if s.get("status") in {"todo", "blocked"}), None)
+
+        current_title = ""
+        if current_step is not None:
+            current_title = str(current_step.get("title", "")).strip()
+        if not current_title:
+            current_title = str(current.get("goal", "")).strip()
+
+        prev_steps = {}
+        if isinstance(previous, dict):
+            prev_steps = {
+                str(s.get("id")): s
+                for s in (previous.get("steps") or [])
+                if isinstance(s, dict) and str(s.get("id") or "").strip()
+            }
+
+        changed_steps: list[dict] = []
+        for step in steps:
+            step_id = str(step.get("id") or "").strip()
+            if not step_id:
+                continue
+            status = str(step.get("status") or "").strip()
+            prev = prev_steps.get(step_id)
+            prev_status = str(prev.get("status") or "").strip() if isinstance(prev, dict) else ""
+            if prev is None or prev_status != status:
+                changed_steps.append({"id": step_id, "status": status})
+
+        return {
+            "kind": "plan_update",
+            "completed": completed,
+            "total": total,
+            "current_title": current_title,
+            "changed_steps": changed_steps,
+        }

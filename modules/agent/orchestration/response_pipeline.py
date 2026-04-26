@@ -327,9 +327,22 @@ class ModelResponsePipeline:
             )
         if parsed_action_count > 0 or bool(getattr(parsed_output, "has_action_segment", False)):
             self.guards.set_nonproductive_thinking_state(False)
-            self.guards.clear_terminal_plaintext_completion()
 
         if action_policy_decision.handled:
+            if bool(getattr(self.state, "terminal_plaintext_completion_pending", False)):
+                self.stage_logger.log(
+                    "response_pipeline",
+                    "stop",
+                    reason=action_policy_decision.reason or "terminal_plaintext_completion",
+                    source=action_policy_decision.source or "action_policy",
+                )
+                return ResponsePipelineOutcome.stop(
+                    response_text=response,
+                    malformed_action_retries=0,
+                    audit_marker_retries=0,
+                    reason=action_policy_decision.reason or "terminal_plaintext_completion",
+                    source=action_policy_decision.source or "action_policy",
+                )
             return ResponsePipelineOutcome.continue_with(
                 action_policy_decision.next_query,
                 response_text=response,
@@ -339,6 +352,9 @@ class ModelResponsePipeline:
                 reason=action_policy_decision.reason,
                 source=action_policy_decision.source,
             )
+
+        if parsed_action_count > 0 or bool(getattr(parsed_output, "has_action_segment", False)):
+            self.guards.clear_terminal_plaintext_completion()
 
         if reflection_repair_pending and self.semantics.is_reflection_only_repair_turn(
             raw_response, parsed_output, parsed_action_count
@@ -519,6 +535,20 @@ class ModelResponsePipeline:
             audit_marker_retries=ctx.audit_marker_retries,
         )
         if recovery_decision.handled:
+            if bool(getattr(self.state, "terminal_plaintext_completion_pending", False)):
+                self.stage_logger.log(
+                    "response_pipeline",
+                    "stop",
+                    reason=recovery_decision.reason or "terminal_plaintext_completion",
+                    source="output_recovery",
+                )
+                return ResponsePipelineOutcome.stop(
+                    response_text=response,
+                    malformed_action_retries=recovery_decision.malformed_action_retries,
+                    audit_marker_retries=recovery_decision.audit_marker_retries,
+                    reason=recovery_decision.reason or "terminal_plaintext_completion",
+                    source="output_recovery",
+                )
             self.stage_logger.log(
                 "response_pipeline",
                 "continue",

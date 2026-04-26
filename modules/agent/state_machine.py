@@ -231,6 +231,44 @@ class AgentStateMachine:
                 return False
         return False
 
+    def _latest_history_version(self, path: str | None) -> int | None:
+        if not path or self.history is None:
+            return None
+        getter = getattr(self.history, "get_latest_file_version", None)
+        if callable(getter):
+            try:
+                version = getter(path)
+                return int(version) if version is not None else None
+            except Exception:
+                return None
+        return None
+
+    def _fresh_read_after_edit_mismatch_allowed(self, path: str | None) -> bool:
+        if not path:
+            return False
+        state = getattr(self.intent_runtime, "state", None) if self.intent_runtime is not None else None
+        if state is None:
+            return False
+        blocked_path = str(getattr(state, "pending_edit_mismatch_path", "") or "").strip()
+        blocked_intent = str(getattr(state, "pending_edit_mismatch_intent_id", "") or "").strip()
+        active_intent = getattr(self.intent_runtime, "active_intent", None)
+        active_intent_id = str(getattr(active_intent, "intent_id", "") or "").strip()
+        return bool(blocked_path and path == blocked_path and blocked_intent == active_intent_id)
+
+    def _reread_repeat_count(self, path: str | None) -> int:
+        if not path:
+            return 0
+        state = getattr(self.intent_runtime, "state", None) if self.intent_runtime is not None else None
+        if state is None:
+            return 0
+        blocked_path = str(getattr(state, "reread_blocked_path", "") or "").strip()
+        blocked_intent = str(getattr(state, "reread_blocked_intent_id", "") or "").strip()
+        active_intent = getattr(self.intent_runtime, "active_intent", None)
+        active_intent_id = str(getattr(active_intent, "intent_id", "") or "").strip()
+        if path != blocked_path or active_intent_id != blocked_intent:
+            return 0
+        return int(getattr(state, "reread_blocked_count", 0) or 0)
+
     def _reread_after_summary(self) -> bool:
         if self.history is None:
             return False
@@ -265,6 +303,9 @@ class AgentStateMachine:
                 already_read_current_version=self._already_read_current_version(path),
                 reread_reason_ok=self._has_reread_reason(command),
                 reread_after_summary=self._reread_after_summary(),
+                history_version=self._latest_history_version(path),
+                fresh_read_after_edit_mismatch_allowed=self._fresh_read_after_edit_mismatch_allowed(path),
+                reread_repeat_count=self._reread_repeat_count(path),
                 active_intent_type=(getattr(active_intent, "intent_type", None)),
                 active_intent_step_count=int(getattr(active_intent, "step_count", 0) or 0),
                 active_intent_safe_steps_limit=int(getattr(active_intent, "safe_steps_limit", 0) or 0),

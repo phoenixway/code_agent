@@ -89,7 +89,26 @@ class AgentState:
         self.last_nonproductive_thinking_reason = ""
         self.missing_think_reflection_warning_count = 0
         self.missing_think_reflection_warning_intent_id = ""
+        self.malformed_think_count = 0
+        self.malformed_think_intent_id = ""
+        self.recovery_loop_handoff_count = 0
+        self.recovery_loop_handoff_intent_id = ""
+        self.recovery_loop_handoff_defect_kind = ""
+        self.large_malformed_response_count = 0
+        self.large_malformed_response_intent_id = ""
+        self.large_malformed_response_kind = ""
         self.think_reflection_repair_kind = ""
+        self.reread_blocked_path = ""
+        self.reread_blocked_intent_id = ""
+        self.reread_blocked_count = 0
+        self.pending_edit_mismatch_path = ""
+        self.pending_edit_mismatch_intent_id = ""
+        self.pending_edit_mismatch_count = 0
+        self.disallowed_action_repeat_type = ""
+        self.disallowed_action_repeat_intent_id = ""
+        self.disallowed_action_repeat_count = 0
+        self.last_blocked_action_type = ""
+        self.last_blocked_action_path = ""
         # FIXME:
         # This is a secondary/fallback signal only. When an active accepted
         # intent exists, downstream policy must prefer the active contract type
@@ -132,6 +151,20 @@ class AgentState:
         reason = str(value.get("reason") or "").strip()
         if reason:
             self.stop_reason_counts[reason] = int(self.stop_reason_counts.get(reason, 0) or 0) + 1
+        command = value.get("command") if isinstance(value.get("command"), dict) else {}
+        path = str(command.get("path") or "").strip()
+        active_intent = self.active_intent
+        intent_id = str(getattr(active_intent, "intent_id", "") or "").strip()
+        if reason in {"reread_already_in_history", "reread_already_in_history_use_existing_content"} and path:
+            if self.reread_blocked_path != path or self.reread_blocked_intent_id != intent_id:
+                self.reread_blocked_count = 0
+            self.reread_blocked_path = path
+            self.reread_blocked_intent_id = intent_id
+            self.reread_blocked_count = int(self.reread_blocked_count or 0) + 1
+        elif reason:
+            self.reread_blocked_path = ""
+            self.reread_blocked_intent_id = ""
+            self.reread_blocked_count = 0
         updates = value.get("intent_constraint_updates")
         if isinstance(updates, dict):
             self.apply_intent_constraint_updates(updates)
@@ -710,6 +743,14 @@ class AgentState:
             self.last_failed_action_command = command.copy()
             self.last_failed_action_result = {k: v for k, v in result.items() if k != "output"}
             self.last_failed_action_result["output"] = str(error_message)[:4000]
+            if cmd_type == "edit_file" and error_code == "VALIDATION_ERROR":
+                details = result.get("error_details") or {}
+                mismatch_type = str(details.get("mismatch_type") or "").strip()
+                if mismatch_type in {"no_similar_block_found", "search_text_stale_or_block_modified", "whitespace_mismatch"}:
+                    active_intent = self.active_intent
+                    self.pending_edit_mismatch_path = str(command.get("path") or "").strip()
+                    self.pending_edit_mismatch_intent_id = str(getattr(active_intent, "intent_id", "") or "").strip()
+                    self.pending_edit_mismatch_count = int(self.pending_edit_mismatch_count or 0) + 1
         else:
             if cmd_type not in READ_ONLY_RECOVERY_ACTIONS:
                 self.consecutive_same_error_count = 0
@@ -720,6 +761,12 @@ class AgentState:
                 self.last_error_next_actions = []
                 self.last_failed_action_command = None
                 self.last_failed_action_result = None
+            if cmd_type in {"read_file", "read_chunk"}:
+                path = str(command.get("path") or "").strip()
+                if path and path == str(self.pending_edit_mismatch_path or "").strip():
+                    self.pending_edit_mismatch_path = ""
+                    self.pending_edit_mismatch_intent_id = ""
+                    self.pending_edit_mismatch_count = 0
 
         defect_info = None
         if self.intent_runtime:

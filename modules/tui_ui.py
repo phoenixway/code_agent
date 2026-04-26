@@ -18,6 +18,7 @@ from modules.ui_components.generic_tool_call_card import (
     GenericToolCallCard,
     has_specialized_tool_call_renderer,
 )
+from modules.ui_components.plan_update_formatter import format_plan_update_compact
 from modules.ui_components.technical_interruption_widget import TechnicalInterruptionWidget
 
 
@@ -427,8 +428,44 @@ class TuiUI:
         if text and text.strip():
             await self._print_styled(text, "thought")
 
-    async def print_plan(self, text: str):
-        await self._print_styled(text, "plan")
+    def _history_width(self) -> int:
+        for owner in (self.history, self.app):
+            try:
+                width = int(getattr(getattr(owner, "size", None), "width", 0) or 0)
+                if width > 0:
+                    return width
+            except Exception:
+                continue
+        return 40
+
+    def _color_enabled(self) -> bool:
+        try:
+            no_color = bool(getattr(self.app, "no_color", False))
+            if no_color:
+                return False
+        except Exception:
+            pass
+        try:
+            return not bool(getattr(getattr(self.app, "console", None), "no_color", False))
+        except Exception:
+            return True
+
+    async def print_plan(self, text: str | dict):
+        if isinstance(text, dict) and str(text.get("kind") or "").strip() == "plan_update":
+            renderable = format_plan_update_compact(
+                text,
+                {
+                    "width": self._history_width(),
+                    "color": self._color_enabled(),
+                    "maxBarWidth": 10,
+                    "compact": True,
+                },
+            )
+            widget = Static(renderable, classes="chat-message plan-message", expand=False)
+            widget.can_focus = False
+            self._mount_widget(widget)
+            return
+        await self._print_styled(str(text), "plan")
 
     async def print_confirmation(self, text: str):
         await self._print_styled(text, "confirmation")

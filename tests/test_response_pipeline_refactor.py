@@ -134,6 +134,22 @@ class HandledActionPolicy:
         )
 
 
+class TerminalHandledActionPolicy:
+    def __init__(self, state):
+        self.state = state
+
+    async def decide(self, ctx, segments, intent_payload=None):
+        self.state.terminal_plaintext_completion_pending = True
+        self.state.terminal_plaintext_completion_text = "Terminal handoff."
+        return SimpleNamespace(
+            handled=True,
+            next_query=None,
+            reason="terminal_repeated_disallowed_action_handoff",
+            source="action_policy",
+            parsed_action_count=1,
+        )
+
+
 class DummyMemoryBoardStage:
     async def apply(self, ctx, raw_response):
         return SimpleNamespace(
@@ -466,6 +482,23 @@ class ResponsePipelineRefactorIntegrationTests(unittest.IsolatedAsyncioTestCase)
         self.assertEqual(0, state.consecutive_nonproductive_thinking_count)
         self.assertFalse(state.terminal_plaintext_completion_pending)
         self.assertEqual("", state.terminal_plaintext_completion_text)
+
+    async def test_action_policy_terminal_plaintext_handoff_is_not_cleared(self):
+        state = self._state(
+            terminal_plaintext_completion_pending=False,
+            terminal_plaintext_completion_text="",
+        )
+        pipeline, state, _ui = self._make_pipeline(
+            state=state,
+            action_policy=TerminalHandledActionPolicy(state),
+        )
+
+        result = await pipeline.run_step(self._ctx(), self._step('<action>{"type":"write_file_block"}</action>'))
+
+        self.assertTrue(result.stop_loop)
+        self.assertEqual("terminal_repeated_disallowed_action_handoff", result.reason)
+        self.assertTrue(state.terminal_plaintext_completion_pending)
+        self.assertEqual("Terminal handoff.", state.terminal_plaintext_completion_text)
 
     async def test_force_plaintext_completion_blocks_action(self):
         state = self._state(active_intent=SimpleNamespace(force_plaintext_completion=True))

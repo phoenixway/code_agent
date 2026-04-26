@@ -104,6 +104,61 @@ class TestFileTools(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["status"], "success")
         self.assertEqual(file_path.read_text(), "Hello Universe")
 
+    async def test_edit_file_rejects_full_rewrite_of_existing_source_file(self):
+        file_path = Path(self.test_dir) / "BookmarksViewModel.kt"
+        original = (
+            "package sample\n\n"
+            "import sample.A\n\n"
+            "class BookmarksViewModel {\n"
+            + "".join(
+                f"    fun helper{i}() = println(\"old{i}\")\n"
+                for i in range(60)
+            )
+            +
+            "}\n"
+        )
+        file_path.write_text(original)
+        replacement = original.replace("old", "new") + "\n// extra generated block\n" + ("x" * 1600)
+        command = {
+            "type": "edit_file",
+            "path": str(file_path),
+            "search_text": original,
+            "replace_text": replacement,
+        }
+        result = await self.processor.process_single_action(command)
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result.get("error_code"), "VALIDATION_ERROR")
+        self.assertEqual("edit_file_full_rewrite_disallowed", result.get("error_details", {}).get("mismatch_type"))
+        self.assertIn("whole-file rewrite", result["output"])
+        self.assertEqual(file_path.read_text(), original)
+
+    async def test_edit_file_rejects_import_injection_via_class_anchor_replacement(self):
+        file_path = Path(self.test_dir) / "BookmarksViewModel.kt"
+        original = (
+            "package sample\n\n"
+            "import sample.A\n\n"
+            "class BookmarksViewModel {\n"
+            "}\n"
+        )
+        file_path.write_text(original)
+        command = {
+            "type": "edit_file",
+            "path": str(file_path),
+            "search_text": "class BookmarksViewModel {",
+            "replace_text": (
+                "import kotlinx.coroutines.Job\n"
+                "import kotlinx.coroutines.flow.MutableStateFlow\n\n"
+                "class BookmarksViewModel {\n"
+                "    private var deleteJob: Job? = null"
+            ),
+        }
+        result = await self.processor.process_single_action(command)
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result.get("error_code"), "VALIDATION_ERROR")
+        self.assertEqual("edit_file_crosses_import_boundary", result.get("error_details", {}).get("mismatch_type"))
+        self.assertIn("Do not inject import statements", result["output"])
+        self.assertEqual(file_path.read_text(), original)
+
     async def test_write_file_rejects_compact_omitted_placeholder(self):
         file_path = Path(self.test_dir) / "bad.go"
         file_path.write_text("package main\n")

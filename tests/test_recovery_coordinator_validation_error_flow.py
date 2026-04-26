@@ -66,8 +66,9 @@ class RecoveryCoordinatorValidationErrorFlowTests(unittest.IsolatedAsyncioTestCa
         self.assertFalse(decision.stop_loop)
         self.assertTrue(decision.clear_pending_stop)
         self.assertIsInstance(decision.next_query, str)
-        self.assertIn("Retry inside the SAME current intent contract.", decision.next_query)
-        self.assertIn("Do not emit a new <intent> block.", decision.next_query)
+        self.assertIn("<memory_update_done />", decision.next_query)
+        self.assertIn("<action>", decision.next_query)
+        self.assertNotIn("Analyze the error in <think>", decision.next_query)
 
     async def test_repeating_recoverable_validation_error_under_active_intent_stays_in_same_contract(self):
         agent = self._make_agent()
@@ -89,10 +90,30 @@ class RecoveryCoordinatorValidationErrorFlowTests(unittest.IsolatedAsyncioTestCa
         self.assertTrue(decision.handled)
         self.assertFalse(decision.stop_loop)
         self.assertTrue(decision.clear_pending_stop)
-        self.assertIn("Retry inside the SAME current intent contract.", decision.next_query)
-        self.assertIn("Do not emit a new <intent> block.", decision.next_query)
-        self.assertIn("retrieve the exact current target block from file content", decision.next_query)
-        self.assertIn("copy search_text verbatim", decision.next_query)
+        self.assertIn("read exact current block", decision.next_query)
+        self.assertIn("targeted edit_file", decision.next_query)
+        self.assertNotIn("Analyze the error in <think>", decision.next_query)
+
+    async def test_whitespace_mismatch_recovery_forces_fresh_exact_read(self):
+        agent = self._make_agent()
+        prompt_builder = OrchestratorPromptBuilder(agent)
+        recovery = RecoveryCoordinator(agent, prompt_builder)
+
+        stop_info = {
+            "reason": "repeating_failure",
+            "recoverable": True,
+            "error_code": "VALIDATION_ERROR",
+            "next_actions": ["read_chunk", "read_file", "search_content", "edit_file"],
+            "error_details": {
+                "mismatch_type": "whitespace_mismatch",
+            },
+        }
+
+        decision = await recovery.handle_dispatch_stop(stop_info, sm=None)
+
+        self.assertTrue(decision.handled)
+        self.assertIn("search_text does not match current file", decision.next_query)
+        self.assertIn("read_chunk", decision.next_query)
 
     async def test_repeated_malformed_read_chunk_payload_forces_different_action(self):
         config = SimpleNamespace(
@@ -155,7 +176,6 @@ class RecoveryCoordinatorValidationErrorFlowTests(unittest.IsolatedAsyncioTestCa
 
         self.assertTrue(decision.handled)
         self.assertTrue(decision.clear_pending_stop)
-        self.assertIn("executable `gradle` is not installed or not in PATH", decision.next_query)
-        self.assertIn("Do not retry the same command", decision.next_query)
-        self.assertIn("build/tests were not run because Gradle is unavailable", decision.next_query)
+        self.assertIn("run_shell failed", decision.next_query)
+        self.assertIn("Gradle verification is unavailable", decision.next_query)
         self.assertNotIn("gradle wrapper --gradle-version 8.7", decision.next_query)

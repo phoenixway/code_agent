@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from textwrap import dedent
+from pathlib import Path
 
 from modules.defaults import DEFAULT_SYSTEM_PROMPT
 
@@ -15,6 +16,13 @@ from .recovery_policy import RecoveryPolicyResolver
 
 
 class OrchestratorPromptBuilder:
+    SOURCE_FILE_SUFFIXES = {
+        ".py", ".kt", ".kts", ".java", ".js", ".jsx", ".ts", ".tsx", ".go",
+        ".rs", ".c", ".cc", ".cpp", ".cxx", ".h", ".hpp", ".cs", ".swift",
+        ".rb", ".php", ".scala", ".sql", ".sh", ".bash", ".zsh", ".xml",
+        ".json", ".yaml", ".yml", ".toml", ".gradle", ".md",
+    }
+
     def __init__(self, agent):
         self.agent = agent
         self.state = agent.state
@@ -142,6 +150,158 @@ class OrchestratorPromptBuilder:
     def _render_recovery_message(self, message_key: str, default: str, *, next_hint: str = "") -> str:
         rendered = render_intent_message(message_key, next_hint=next_hint, default="")
         return rendered or default
+
+    def _recovery_protocol_name(self) -> str:
+        for value in (
+            getattr(self.state, "recovery_protocol", None),
+            getattr(self.state, "operational_recovery_protocol", None),
+            getattr(self.config, "RECOVERY_PROTOCOL", None),
+            getattr(self.config, "OPERATIONAL_RECOVERY_PROTOCOL", None),
+        ):
+            text = str(value or "").strip().lower()
+            if text in {"op", "legacy_think"}:
+                return text
+        return "legacy_think"
+
+    def _short_failed_tool(self, stop_info: dict | None) -> str:
+        ctx = self._recovery_context(stop_info)
+        if ctx.failed_tool:
+            return ctx.failed_tool
+        command = ctx.command or {}
+        return str(command.get("type") or command.get("action") or "action").strip() or "action"
+
+    def _short_failed_error(self, stop_info: dict | None) -> str:
+        ctx = self._recovery_context(stop_info)
+        if ctx.failed_error_message_short:
+            return ctx.failed_error_message_short
+        details = ctx.error_details or {}
+        for key in ("short_message", "message_short", "error_message_short", "message"):
+            value = str(details.get(key) or "").strip()
+            if value:
+                return value
+        value = str(ctx.message or "").strip()
+        if value:
+            return value
+        code = str(ctx.failed_error_code or ctx.error_code or "").strip()
+        return code or "unknown error"
+
+    def _stop_info_path(self, stop_info: dict | None) -> str:
+        ctx = self._recovery_context(stop_info)
+        command = ctx.command or {}
+        details = ctx.error_details or {}
+        return str(
+            command.get("path")
+            or details.get("path")
+            or details.get("target_path")
+            or ""
+        ).strip()
+
+    def _is_existing_source_file(self, path: str, stop_info: dict | None) -> bool:
+        if not path:
+            return False
+        ctx = self._recovery_context(stop_info)
+        details = ctx.error_details or {}
+        if "target_exists" in details:
+            target_exists = details.get("target_exists")
+        else:
+            target_exists = Path(path).exists()
+        suffix = Path(path).suffix.lower()
+        return bool(target_exists) and suffix in self.SOURCE_FILE_SUFFIXES
+
+    def _active_intent_allows_full_rewrite(self) -> bool:
+        allowed = {str(a).strip() for a in self._current_intent_allowed_actions() if str(a).strip()}
+        return bool({"write_file", "write_file_block"} & allowed)
+
+    def _full_rewrite_allowed(self, stop_info: dict | None) -> bool:
+        ctx = self._recovery_context(stop_info)
+        if ctx.full_rewrite_allowed is not None:
+            return bool(ctx.full_rewrite_allowed)
+        details = ctx.error_details or {}
+        path = self._stop_info_path(stop_info)
+        if not self._is_existing_source_file(path, stop_info):
+            return True
+        fresh_full_read = bool(
+            details.get("fresh_full_read_after_last_modification")
+            or details.get("fresh_full_read")
+            or details.get("fresh_read_after_last_modification")
+        )
+        targeted_edit_impractical = bool(
+            details.get("targeted_edit_impractical")
+            or details.get("edit_file_failed_deterministically")
+            or details.get("deterministic_edit_failure")
+        )
+        mismatch_type = str(details.get("mismatch_type") or "").strip()
+        if mismatch_type in {
+            "multiple_similar_blocks",
+            "search_text_stale_or_block_modified",
+            "whitespace_mismatch",
+            "no_similar_block_found",
+        }:
+            targeted_edit_impractical = True
+        return self._active_intent_allows_full_rewrite() and fresh_full_read and targeted_edit_impractical
+
+    def _compose_failure_context(self, stop_info: dict | None, *, safe_recovery_action: str = "") -> RecoveryContext:
+        ctx = self._recovery_context(stop_info)
+        ctx.failed_tool = ctx.failed_tool or self._short_failed_tool(stop_info)
+        ctx.failed_error_code = ctx.failed_error_code or str(ctx.error_code or "").strip()
+        ctx.failed_error_message_short = ctx.failed_error_message_short or self._short_failed_error(stop_info)
+        ctx.safe_recovery_action = safe_recovery_action or ctx.safe_recovery_action
+        ctx.full_rewrite_allowed = self._full_rewrite_allowed(stop_info)
+        ctx.recovery_protocol = ctx.recovery_protocol or self._recovery_protocol_name()
+        return ctx
+
+    def _render_failure_checkpoint(self, *, fact: str, gap: str, next_step: str) -> str:
+        protocol = self._recovery_protocol_name()
+        if protocol == "op":
+            safe = {
+                "fact": fact.replace('"', "'"),
+                "gap": gap.replace('"', "'"),
+                "next": next_step.replace('"', "'"),
+            }
+            return f'<op fact="{safe["fact"]}" gap="{safe["gap"]}" next="{safe["next"]}" />'
+        return "\n".join([
+            "<think>",
+            f"! {fact}",
+            f"? {gap}",
+            f"→ {next_step}",
+            "</think>",
+        ])
+
+    def _render_strict_failure_recovery(
+        self,
+        stop_info: dict | None,
+        *,
+        fact: str,
+        gap: str,
+        next_step: str,
+        action_block: str,
+        trailing_blocks: list[str] | None = None,
+        safe_recovery_action: str = "",
+    ) -> str:
+        ctx = self._compose_failure_context(stop_info, safe_recovery_action=safe_recovery_action)
+        checkpoint = self._render_failure_checkpoint(
+            fact=fact,
+            gap=gap,
+            next_step=next_step,
+        )
+        blocks = [checkpoint, "<memory_update_done />", action_block]
+        for block in list(trailing_blocks or []):
+            if str(block or "").strip():
+                blocks.append(block)
+        ctx.raw.update(
+            {
+                "failed_tool": ctx.failed_tool,
+                "failed_error_code": ctx.failed_error_code,
+                "failed_error_message_short": ctx.failed_error_message_short,
+                "safe_recovery_action": ctx.safe_recovery_action,
+                "full_rewrite_allowed": ctx.full_rewrite_allowed,
+                "recovery_protocol": ctx.recovery_protocol,
+            }
+        )
+        return "\n".join(blocks)
+
+    def _default_action_block(self, action_type: str) -> str:
+        return f'<action>{{"type":"{action_type}"}}</action>'
 
     def _action_hints_from_stop_info(self, stop_info: dict | None) -> tuple[list[str], list[str], str]:
         ctx = self._recovery_context(stop_info)
@@ -719,6 +879,99 @@ class OrchestratorPromptBuilder:
             "Return the required <intent> block first, then the next valid step if needed."
         )
 
+    def build_intent_action_not_allowed_prompt(
+        self,
+        *,
+        blocked_action: str,
+        intent_id: str,
+        intent_type: str = "",
+        allowed_actions: list[str] | None = None,
+        repeated: bool = False,
+    ) -> str:
+        allowed = [str(action).strip() for action in (allowed_actions or []) if str(action).strip()]
+        allowed_line = ", ".join(allowed) if allowed else "none"
+        alternative = "edit_file" if "edit_file" in allowed else (allowed[0] if allowed else "<allowed action>")
+        normalized_type = str(intent_type or "").strip().upper()
+        normalized_blocked = str(blocked_action or "").strip().lower()
+        if normalized_type == "INVESTIGATE" and normalized_blocked in {
+            "edit_file",
+            "write_file",
+            "write_file_block",
+            "append_file_block",
+            "create_file",
+            "delete_file",
+            "replace",
+        }:
+            header = (
+                "SYSTEM: You repeated the same disallowed modifying action under the current INVESTIGATE intent.\n"
+                if repeated
+                else "SYSTEM: The current intent is INVESTIGATE and cannot modify files.\n"
+            )
+            return (
+                f"{header}"
+                f"Blocked action type: {blocked_action or 'unknown'}.\n"
+                f"Current active intent id: {intent_id or '<active_intent_id>'}.\n"
+                f"Current allowed_actions: {allowed_line}.\n"
+                "Emit EXACTLY ONE <intent mode=\"reuse\"> block to switch this same goal to MODIFY.\n"
+                "Use switch_reason=\"work_type_changed\".\n"
+                "Do not emit edit_file until reuse is accepted.\n"
+                "If this disallowed edit repeats again, do not suggest more actions; return only the reuse block."
+            )
+        if normalized_blocked == "write_file_block":
+            return (
+                f"{'SYSTEM: You repeated the same disallowed action under the current intent contract.\\n' if repeated else 'SYSTEM: Tool `write_file_block` is not allowed by the current intent contract.\\n'}"
+                f"Blocked action type: {blocked_action or 'unknown'}.\n"
+                f"Current active intent id: {intent_id or '<active_intent_id>'}.\n"
+                f"Current allowed_actions: {allowed_line}.\n"
+                "Either:\n"
+                "1. emit <intent mode=\"reuse\"> with allowed_actions including write_file_block;\n"
+                "2. use edit_file;\n"
+                "3. stop and ask the user.\n"
+                "Do not repeat write_file_block until the intent is updated."
+            )
+        header = (
+            "SYSTEM: You repeated the same disallowed action under the current intent contract.\n"
+            if repeated
+            else "SYSTEM: Your last action is not allowed under the current intent contract.\n"
+        )
+        return (
+            f"{header}"
+            f"Blocked action type: {blocked_action or 'unknown'}.\n"
+            f"Current active intent id: {intent_id or '<active_intent_id>'}.\n"
+            f"Current allowed_actions: {allowed_line}.\n"
+            "Do not repeat the same disallowed action until the intent is updated.\n"
+            "Choose EXACTLY ONE of these paths:\n"
+            f"1. Use an allowed action now, for example `{alternative}` if it fits the current file state.\n"
+            "2. Emit <intent mode=\"reuse\"> to expand allowed_actions before using the blocked tool.\n"
+            "If you use reuse, do not emit the blocked action in the same reply unless the updated intent is accepted first."
+        )
+
+    def build_intent_payload_inside_action_prompt(self) -> str:
+        return (
+            "SYSTEM: Intent is not a tool.\n"
+            "Return <intent mode=\"...\">...</intent> as a top-level block, not inside <action>.\n"
+            "Do not wrap an intent payload inside action JSON with type=\"intent\"."
+        )
+
+    def build_noop_edit_prompt(self) -> str:
+        return (
+            "SYSTEM: This edit would not change the file.\n"
+            "If no change is needed, answer.\n"
+            "Otherwise return a replacement that differs from search_text."
+        )
+
+    def build_edit_retry_requires_fresh_read_prompt(self, *, path: str, allowed_actions: list[str] | None = None) -> str:
+        allowed = [str(action).strip() for action in (allowed_actions or []) if str(action).strip()]
+        allowed_line = ", ".join(allowed) if allowed else "read_chunk, read_file, search_content"
+        return (
+            "SYSTEM: Your search_text does not match current file. Read exact current block first.\n"
+            f"Target path: {path or '<path>'}.\n"
+            f"Allowed actions now: {allowed_line}.\n"
+            "Do not retry edit_file from memory.\n"
+            "Use read_chunk, read_file, or search_content to retrieve the exact current target block, then retry one targeted edit.\n"
+            "Use write_file only if the full current file was freshly read and the active intent explicitly allows it."
+        )
+
     def build_invalid_intent_contract_prompt(self, reason: str, allowed_actions: list[str] | None = None) -> str:
         next_hint = ""
         if allowed_actions:
@@ -1148,10 +1401,65 @@ class OrchestratorPromptBuilder:
             "SYSTEM: Your last response was truncated inside <think>.\n"
             "That is internal control text and cannot be forwarded to the user.\n"
             "Return a complete valid response from the beginning.\n"
-            "<think>...</think>\n"
-            "<memory_update_done />\n"
+            "If you need a <think> block, keep it compact and exact:\n"
+            "<think>\n"
+            "! one verified state\n"
+            "? one exact gap, if any\n"
+            "→ one next operation\n"
+            "</think>\n"
+            "No plans, no prose paragraphs, no nested <think>, no code fences.\n"
+            "Then emit any needed memory/subgoal tags and end the checkpoint with <memory_update_done />.\n"
             "Then return either exactly one <action>...</action> or a plain final answer.\n"
             "Do not continue the previous incomplete sentence."
+        )
+
+    def build_malformed_verbose_or_nested_think_prompt(self) -> str:
+        return (
+            "SYSTEM: Your <think> block was too long, nested, or malformed.\n"
+            "Return EXACTLY ONE compact operational review only:\n"
+            "<think>\n"
+            "! one verified state\n"
+            "? one exact gap, if any\n"
+            "→ one next operation\n"
+            "</think>\n"
+            "Use at most 3 short lines inside <think>.\n"
+            "Then emit memory/subgoal tags, <memory_update_done />, and exactly one action if needed.\n"
+            "Do not include plans, numbered steps, prose paragraphs, code fences, or another <think> inside <think>."
+        )
+
+    def build_strict_compact_think_prompt(self) -> str:
+        return (
+            "SYSTEM: Your malformed <think> repeated.\n"
+            "Return EXACTLY this compact shape and nothing more inside the think block:\n"
+            "<think>\n"
+            "! one verified state\n"
+            "? one exact gap, if any\n"
+            "→ one next operation\n"
+            "</think>\n"
+            "Then emit only needed durable tags, then <memory_update_done />, then at most one action.\n"
+            "No plans, no paragraphs, no markdown, no nested tags inside <think>."
+        )
+
+    def build_exact_think_skeleton_prompt(self) -> str:
+        return (
+            "SYSTEM: Malformed <think> repeated again.\n"
+            "Return EXACTLY this skeleton with no extra prose:\n"
+            "<think>\n"
+            "! ...\n"
+            "? ...\n"
+            "→ ...\n"
+            "</think>\n"
+            "<memory_update_done />\n"
+            "<action>...</action>\n"
+            "If durable tags are needed, place them between </think> and <memory_update_done />.\n"
+            "Do not add any plans, explanations, numbered steps, or nested <think>."
+        )
+
+    def build_malformed_think_limit_prompt(self) -> str:
+        return (
+            "SYSTEM: Malformed <think> repeated too many times in the same intent.\n"
+            "Do not produce another long planning block.\n"
+            "Either return one safe, compact, fully valid step now, or return a plain-text diagnostic that the runtime needs a smaller deterministic move."
         )
 
     def build_incomplete_action_recovery_prompt(self) -> str:
@@ -1175,6 +1483,32 @@ class OrchestratorPromptBuilder:
             "Return the entire action package again, or split the file into smaller append_file_block chunks.\n"
             "A block file write must include a complete <action>...</action> plus a complete <file_content>...</file_content> block.\n"
             "Do not continue the previous incomplete file body."
+        )
+
+    def build_file_content_must_follow_action_prompt(self, stop_info: dict | None = None) -> str:
+        path = self._stop_info_path(stop_info) or "..."
+        action_block = (
+            '<action>\n'
+            '{\n'
+            '  "type": "write_file_block",\n'
+            f'  "path": "{path}",\n'
+            '  "overwrite": true\n'
+            '}\n'
+            '</action>'
+        )
+        file_block = "<file_content>\nraw content\n</file_content>"
+        gap = (
+            "The <file_content> block must appear immediately after </action>; "
+            "do not put <file_content> inside <action>, before <action>, or repeat the same malformed shape."
+        )
+        return self._render_strict_failure_recovery(
+            stop_info,
+            fact="write_file_block failed: file_content_must_follow_action",
+            gap=gap,
+            next_step="return action first, then the raw file_content block in the required order",
+            action_block=action_block,
+            trailing_blocks=[file_block],
+            safe_recovery_action="write_file_block_with_immediate_file_content",
         )
 
     def build_truncated_internal_response_prompt(self) -> str:
@@ -1272,6 +1606,86 @@ class OrchestratorPromptBuilder:
             f"Detected defect: {str(defect_kind or '').strip() or 'checkpoint_contradiction'}.\n"
             "Do not repeat the same checkpoint ritual again.\n"
             "Either return one materially corrected full step with complete <think>, durable tags, <memory_update_done />, and one action, or return a plain-text diagnostic explaining that runtime verification is internally contradictory."
+        )
+
+    def build_terminal_recovery_loop_handoff_text(
+        self,
+        *,
+        defect_kind: str,
+        blocked_action: str = "",
+        path_or_action: str = "",
+    ) -> str:
+        normalized = str(defect_kind or "").strip() or "recovery_loop_detected"
+        active = self._current_active_intent()
+        intent_id = str(getattr(active, "intent_id", "") or "<active_intent>").strip() or "<active_intent>"
+        goal = str(getattr(active, "goal", "") or "").strip() or "unknown goal"
+        blocked = str(blocked_action or "").strip() or "unknown action"
+        path_hint = str(path_or_action or "").strip() or blocked
+        return (
+            "Я застряг у recovery loop.\n\n"
+            "Що сталося:\n"
+            f"- кілька разів намагався виконати дію `{blocked}`;\n"
+            f"- runtime відхиляв її з причиною `{normalized}`;\n"
+            "- після recovery я знову повертався до схожого кроку;\n"
+            "- без втручання користувача є ризик далі витрачати токени без прогресу.\n\n"
+            "Поточний стан:\n"
+            f"- active intent: `{intent_id}`;\n"
+            f"- остання ціль: `{goal}`;\n"
+            f"- остання проблемна дія/файл: `{path_hint}`.\n\n"
+            "Рекомендація:\n"
+            "1. або дозволь потрібний tool через intent reuse;\n"
+            "2. або попроси мене перейти на інший інструмент;\n"
+            "3. або дай команду на безпечний verify/rollback, наприклад `git diff`, `read exact block`, `git restore`."
+        )
+
+    def build_terminal_repeated_disallowed_action_handoff_text(
+        self,
+        *,
+        blocked_action: str,
+        intent_id: str,
+        intent_type: str = "",
+        allowed_actions: list[str] | None = None,
+    ) -> str:
+        allowed = [str(action).strip() for action in (allowed_actions or []) if str(action).strip()]
+        allowed_line = ", ".join(allowed) if allowed else "none"
+        normalized_type = str(intent_type or "").strip().upper()
+        type_suffix = f" ({normalized_type})" if normalized_type else ""
+        return (
+            "Я зупиняюся: кілька разів була спроба використати "
+            f"`{str(blocked_action or 'unknown').strip() or 'unknown'}`, але цей tool не дозволений поточним intent contract.\n\n"
+            f"Поточний intent: `{str(intent_id or '<active_intent>').strip() or '<active_intent>'}`{type_suffix}\n"
+            f"Дозволені tools: {allowed_line}\n"
+            f"Заблокований tool: {str(blocked_action or 'unknown').strip() or 'unknown'}\n\n"
+            "Щоб продовжити:\n"
+            "1. дозволь цей tool через intent reuse;\n"
+            "2. або скажи використовувати тільки дозволений tool, наприклад `edit_file`, якщо він підходить;\n"
+            "3. або попроси показати `git diff` і поточний стан файлів."
+        )
+
+    def build_terminal_large_malformed_response_handoff_text(
+        self,
+        *,
+        invalid_kind: str,
+        raw_chars: int,
+        blocked_action: str = "",
+        path_or_action: str = "",
+    ) -> str:
+        active = self._current_active_intent()
+        intent_id = str(getattr(active, "intent_id", "") or "<active_intent>").strip() or "<active_intent>"
+        goal = str(getattr(active, "goal", "") or "").strip() or "unknown goal"
+        action_hint = str(blocked_action or "").strip() or str(path_or_action or "").strip() or "unknown action"
+        return (
+            "Зупинився: модель кілька разів повернула занадто велику й невалідну internal response.\n\n"
+            f"- invalid kind: `{str(invalid_kind or '').strip() or 'malformed_response'}`\n"
+            f"- raw size: {int(raw_chars or 0)} chars\n"
+            f"- active intent: `{intent_id}`\n"
+            f"- goal: `{goal}`\n"
+            f"- problem action/file: `{action_hint}`\n\n"
+            "Runtime відхилив відповідь до dispatch. Продовження таким самим шляхом, ймовірно, лише спалить токени.\n"
+            "Оберіть наступне:\n"
+            "1. targeted edit;\n"
+            "2. дозволений full rewrite через `write_file_block`;\n"
+            "3. manual verify/read exact block."
         )
 
     def build_checkpoint_defect_prompt(self, invalid_kind: str) -> str:
@@ -1454,10 +1868,17 @@ class OrchestratorPromptBuilder:
         registry_rendered = render_intent_message(message_key, next_hint=next_hint, default="")
         if registry_rendered:
             return registry_rendered
+        if reason in {
+            "reread_after_summary",
+            "reread_already_in_history",
+            "reread_already_in_history_use_existing_content",
+        } and ctx.message:
+            return str(ctx.message).strip() + next_hint
 
         headers = {
             "reread_after_summary": "You just summarized context and then tried to re-read a file already in history without a specific reason. Use existing context instead.",
             "reread_already_in_history": "You tried to re-read a file that is already available in history without a specific reason.",
+            "reread_already_in_history_use_existing_content": "File content is already available in history. Use that content now. Do not call read_file again.",
             "observe_budget_exhausted": "Read-only exploration budget is exhausted. Move to a more concrete next step now.",
             "action_not_allowed_in_phase": "A legacy recovery suggestion conflicted with the current execution contract.",
             "root_listing_budget_exhausted": "Root-level directory listing budget is exhausted for this turn.",
@@ -1704,19 +2125,18 @@ class OrchestratorPromptBuilder:
 
     def build_retry_recovery_query(self, recovery_actions: list[str] | None = None) -> str:
         recovery_actions = recovery_actions or []
-        if recovery_actions:
-            return (
-                "SYSTEM: Retry with recovery strategy.\n"
-                f"Preferred actions: {', '.join(recovery_actions)}.\n"
-                "Return exactly one materially different next step.\n"
-                "Do not emit a new <intent> block unless runtime explicitly requires a real contract transition.\n"
-                "Do not repeat the previous action with the same arguments."
-            )
-        return (
-            "SYSTEM: Retry with a different strategy and different arguments.\n"
-            "Return exactly one materially different next step.\n"
-            "Do not emit a new <intent> block unless runtime explicitly requires a real contract transition.\n"
-            "Do not repeat the previous action call."
+        preferred = str((recovery_actions or ["action"])[0] or "action").strip()
+        return self._render_strict_failure_recovery(
+            {
+                "error_code": "",
+                "failed_tool": "action",
+                "failed_error_message_short": "recoverable failure",
+            },
+            fact="action failed: recoverable failure",
+            gap="do not repeat the same invalid shape or identical arguments",
+            next_step=f"use one materially different safe next operation: {preferred}",
+            action_block=self._default_action_block(preferred),
+            safe_recovery_action=preferred,
         )
 
     def build_current_intent_retry_recovery_query(
@@ -1725,96 +2145,150 @@ class OrchestratorPromptBuilder:
         *,
         error_code: str = "",
         error_details: dict | None = None,
+        command: dict | None = None,
     ) -> str:
         recovery_actions = [str(a) for a in (recovery_actions or []) if str(a or "").strip()]
-        allowed_line = (
-            f"Allowed actions under the CURRENT intent contract: {', '.join(recovery_actions)}.\n"
-            if recovery_actions
-            else ""
-        )
-        lines = [
-            "SYSTEM: Retry inside the SAME current intent contract.",
-            allowed_line.rstrip(),
-            "Do not emit a new <intent> block.",
-            "Do not reactivate, replace, relabel, or restart this work.",
-            "Return exactly one next valid <action>, or a plain-text answer if the goal is already achieved.",
-        ]
-
+        stop_info = {
+            "reason": "retry_or_continuation_after_failure",
+            "recoverable": True,
+            "error_code": error_code,
+            "error_details": dict(error_details or {}),
+            "command": dict(command or {}),
+            "next_actions": list(recovery_actions),
+            "intent_allowed_actions": list(recovery_actions),
+            "next_actions_source": "intent",
+        }
         code = str(error_code or "").strip().upper()
         details = error_details or {}
         mismatch_type = str(details.get("mismatch_type") or "")
+        path = str((command or {}).get("path") or details.get("path") or "..." or "").strip() or "..."
+        if code in {"MISSING_FILE_CONTENT_BLOCK", "FILE_CONTENT_MUST_FOLLOW_ACTION"}:
+            full_rewrite_allowed = self._full_rewrite_allowed(stop_info)
+            if not full_rewrite_allowed and self._is_existing_source_file(path, stop_info):
+                return self._render_strict_failure_recovery(
+                    stop_info,
+                    fact=f"write_file_block failed: {self._short_failed_error(stop_info)}",
+                    gap=(
+                        "Do not retry full-file rewrite yet. Use git_diff/fresh exact read and targeted edit_file unless full rewrite policy is satisfied. "
+                        "Required order if a block rewrite later becomes valid: <action>...</action> immediately followed by <file_content>...</file_content>."
+                    ),
+                    next_step="use git_diff or fresh exact read of the current file, then targeted edit_file",
+                    action_block='<action>{"type":"git_diff","path":"' + path + '"}</action>',
+                    safe_recovery_action="git_diff_then_targeted_edit_file",
+                )
+            action_block = (
+                '<action>\n'
+                '{\n'
+                '  "type": "write_file_block",\n'
+                f'  "path": "{path}",\n'
+                '  "overwrite": true\n'
+                '}\n'
+                '</action>'
+            )
+            return self._render_strict_failure_recovery(
+                stop_info,
+                fact=f"write_file_block failed: {self._short_failed_error(stop_info)}",
+                gap=(
+                    "The <file_content> block must appear immediately after </action>; do not put <file_content> inside <action>, "
+                    "before <action>, or repeat the same malformed shape."
+                ),
+                next_step="repeat write_file_block with action first and raw file_content immediately after",
+                action_block=action_block,
+                trailing_blocks=["<file_content>\nraw content\n</file_content>"],
+                safe_recovery_action="write_file_block_with_immediate_file_content",
+            )
+        if code == "MALFORMED_READ_CHUNK_PAYLOAD":
+            return self._render_strict_failure_recovery(
+                stop_info,
+                fact=f"read_chunk failed: {self._short_failed_error(stop_info)}",
+                gap=(
+                    "Use top-level path plus start_line/end_line integers or start_byte/end_byte integers; "
+                    "do not nest payload under command or repeat the same malformed shape."
+                ),
+                next_step="send one corrected read_chunk payload",
+                action_block=(
+                    '<action>{"type":"read_chunk","path":"'
+                    + path
+                    + '","start_line":1304,"end_line":1500}</action>'
+                ),
+                safe_recovery_action="corrected_read_chunk",
+            )
         if code == "CONTENT_TOO_LARGE_FOR_JSON_FILE_ACTION":
-            lines.extend(
-                [
-                    "Do not retry the same large JSON file payload.",
-                    "Return exactly one write_file_block action with only metadata in JSON.",
-                    "Immediately after </action>, place the real raw file body in <file_content>...</file_content>.",
-                    "If the file body is too large for one reply, split the remaining body into append_file_block chunks.",
-                ]
+            action_block = (
+                '<action>{"type":"write_file_block","path":"'
+                + path
+                + '","overwrite":true}</action>'
             )
-        if code == "MISSING_FILE_CONTENT_BLOCK":
-            lines.extend(
-                [
-                    "write_file_block requires a complete <file_content>...</file_content> block immediately after </action>.",
-                    "Do not move the file body into escaped JSON content.",
-                    "If the body is too large for one reply, send it in append_file_block chunks.",
-                ]
+            return self._render_strict_failure_recovery(
+                stop_info,
+                fact=f"{self._short_failed_tool(stop_info)} failed: {self._short_failed_error(stop_info)}",
+                gap="Use write_file_block metadata in action JSON and place raw file content immediately after </action>.",
+                next_step="switch to write_file_block and, if needed, append_file_block chunks",
+                action_block=action_block,
+                trailing_blocks=["<file_content>\nraw content\n</file_content>"],
+                safe_recovery_action="write_file_block_with_followup_file_content",
             )
+        if code == "CONTENT_TOO_LARGE_FOR_JSON_FILE_ACTION":
+            pass
         if code == "VALIDATION_ERROR":
-            lines.extend(
-                [
-                    "Use one deterministic recovery step, not renewed exploration.",
-                    "If the last edit failed because the anchor did not match exactly, retrieve the exact current target block from file content and then retry edit_file immediately.",
-                    "For edit_file, copy search_text verbatim from the most recent exact file-content tool result.",
-                    "Do not reconstruct the signature, indentation, or whitespace from memory.",
-                ]
+            gap = (
+                "Retrieve the exact current target block from file content, copy search_text verbatim, and do not reconstruct whitespace from memory."
             )
-            if mismatch_type:
-                lines.append(f"Last recoverable failure detail: {mismatch_type}.")
+            next_step = "read exact current block, then targeted edit_file"
+            if mismatch_type == "noop_edit":
+                gap = "The previous edit would not change the file; do not repeat a no-op replacement."
+                next_step = "answer if no change is needed, or send an edit_file replacement that actually differs"
+            elif mismatch_type in {"no_similar_block_found", "search_text_stale_or_block_modified", "whitespace_mismatch"}:
+                gap = "Your search_text does not match current file; do not retry edit_file from memory."
+                next_step = "use read_chunk or read_file to fetch the exact current target block, then targeted edit_file"
+            elif mismatch_type == "edit_file_full_rewrite_disallowed":
+                gap = "Do not simulate a full rewrite via edit_file on an existing source file."
+                next_step = "read the exact smaller target block and perform one surgical edit"
+            elif mismatch_type == "edit_file_crosses_import_boundary":
+                gap = "Do not inject imports by replacing a class or function anchor."
+                next_step = "read the current package/import header and edit that exact header block separately"
+            return self._render_strict_failure_recovery(
+                stop_info,
+                fact=f"{self._short_failed_tool(stop_info)} failed: {self._short_failed_error(stop_info)}",
+                gap=gap,
+                next_step=next_step,
+                action_block=f'<action>{{"type":"read_chunk","path":"{path}","start_line":1,"end_line":80}}</action>',
+                safe_recovery_action="fresh_exact_read_then_targeted_edit_file",
+            )
         if code == "MISSING_EXECUTABLE":
             missing_exec = str(details.get("missing_executable") or "")
-            if missing_exec:
-                lines.append(
-                    f"The last shell command failed because executable `{missing_exec}` is not installed or not in PATH."
-                )
-            lines.extend(
-                [
-                    "Do not retry the same shell command.",
-                    "Either find an available wrapper/tool, use an alternative installed tool, or report verification blocked.",
-                ]
-            )
+            gap = "Do not retry the same shell command; use an available alternative or report verification blocked."
+            next_step = "choose a different available tool or plain-text handoff"
             if missing_exec in {"gradle", "gradlew"}:
-                lines.extend(
-                    [
-                        "For Gradle verification, do not keep trying to build if both `gradle` and `gradlew` are unavailable.",
-                        "If the code change itself is already complete, you may return a plain-text handoff stating build/tests were not run because Gradle is unavailable.",
-                    ]
-                )
+                gap = "Gradle verification is unavailable here; do not keep retrying build commands."
+                next_step = "report build/tests blocked or use another installed verification tool"
+            return self._render_strict_failure_recovery(
+                stop_info,
+                fact=f"run_shell failed: {self._short_failed_error(stop_info)}",
+                gap=gap,
+                next_step=next_step,
+                action_block=self._default_action_block(recovery_actions[0] if recovery_actions else "run_shell"),
+                safe_recovery_action=recovery_actions[0] if recovery_actions else "run_shell",
+            )
 
-        return "\n".join(line for line in lines if line)
+        preferred = recovery_actions[0] if recovery_actions else "action"
+        return self._render_strict_failure_recovery(
+            stop_info,
+            fact=f"{self._short_failed_tool(stop_info)} failed: {self._short_failed_error(stop_info)}",
+            gap="do not repeat the same invalid shape or identical failing arguments",
+            next_step=f"use one materially different safe next operation: {preferred}",
+            action_block=self._default_action_block(preferred),
+            safe_recovery_action=preferred,
+        )
 
     def build_missing_executable_prompt(self, stop_info: dict | None) -> str:
         ctx = self._recovery_context(stop_info)
-        missing_exec = str(ctx.error_details.get("missing_executable") or "").strip() or "<unknown>"
-        lines = [
-            f"SYSTEM: The command failed because executable `{missing_exec}` is not installed or not in PATH.",
-            "Do not retry the same command.",
-            "Either find an available wrapper/tool, use an alternative installed tool, or report build verification blocked.",
-        ]
-        if missing_exec in {"gradle", "gradlew"}:
-            lines.extend(
-                [
-                    "For Gradle specifically: if `gradlew` is missing and `gradle` is unavailable, stop retrying build commands.",
-                    "If the code generation/change is already complete, you may return a final plain-text handoff saying files were generated but build/tests were not run because Gradle is unavailable.",
-                ]
-            )
-        lines.extend(
-            [
-                "Return either one materially different next step or a plain-text answer if verification is blocked and no safe alternative remains.",
-                "Do not emit the same failing shell command again.",
-            ]
+        return self.build_current_intent_retry_recovery_query(
+            self._current_intent_allowed_actions() or ["run_shell"],
+            error_code="MISSING_EXECUTABLE",
+            error_details=ctx.error_details,
+            command=ctx.command,
         )
-        return "\n".join(lines)
 
     def build_open_search_recovery_query(self, error_details: str) -> str:
         return (
@@ -1846,15 +2320,11 @@ class OrchestratorPromptBuilder:
         )
 
     def build_malformed_read_chunk_payload_prompt(self) -> str:
-        return (
-            "SYSTEM: Your last read_chunk call used invalid payload.\n"
-            "Return EXACTLY ONE valid read_chunk action now.\n"
-            "Preferred format:\n"
-            '<action type="read_chunk">{"path":"relative/or/absolute/path","start_line":1304,"end_line":1500}</action>\n'
-            "Use top-level `path`, `start_line`, and `end_line` fields.\n"
-            "Do not nest JSON under `command`.\n"
-            "Do not add any other action in this reply.\n"
-            "Do not switch back to guessed byte offsets unless they are explicitly required."
+        return self.build_current_intent_retry_recovery_query(
+            ["read_chunk"],
+            error_code="MALFORMED_READ_CHUNK_PAYLOAD",
+            error_details={"path": "relative/or/absolute/path"},
+            command={"type": "read_chunk", "path": "relative/or/absolute/path"},
         )
 
     def build_repeated_malformed_read_chunk_payload_prompt(self, allowed_actions=None, goal: str = "") -> str:
@@ -1882,6 +2352,18 @@ class OrchestratorPromptBuilder:
         stop_info = ctx.to_stop_info()
         reason = ctx.reason
         universe = self._intent_universe()
+
+        if (
+            reason == "retry_or_continuation_after_failure"
+            and bool(stop_info.get("recoverable"))
+            and str(stop_info.get("error_code") or "").strip()
+        ):
+            return self.build_current_intent_retry_recovery_query(
+                self._current_intent_allowed_actions() or stop_info.get("next_actions") or [],
+                error_code=str(stop_info.get("error_code") or ""),
+                error_details=stop_info.get("error_details") or {},
+                command=stop_info.get("command") or {},
+            )
 
         if self._should_prefer_current_intent_recovery(stop_info):
             return self.build_keep_current_intent_recovery_prompt(stop_info)

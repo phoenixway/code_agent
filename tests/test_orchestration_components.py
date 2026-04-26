@@ -439,7 +439,8 @@ class RecoveryCoordinatorTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(decision.handled)
         self.assertTrue(decision.clear_pending_stop)
-        self.assertIn("Retry with recovery strategy.", decision.next_query)
+        self.assertIn("<memory_update_done />", decision.next_query)
+        self.assertIn('"type":"search_content"', decision.next_query.replace(" ", ""))
 
 
 class DispatchPipelineTests(unittest.IsolatedAsyncioTestCase):
@@ -601,7 +602,8 @@ class ActionPolicyHandlerTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(decision.handled)
         self.assertEqual("intent_action_not_allowed", decision.reason)
-        self.assertIn("formal intent transition/update is required", decision.next_query.lower())
+        self.assertIn("blocked action type: edit_file", decision.next_query.lower())
+        self.assertIn("current allowed_actions: read_chunk, create_file", decision.next_query.lower())
 
 
 class ResponsePipelineForcePlaintextGateTests(unittest.IsolatedAsyncioTestCase):

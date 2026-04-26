@@ -7,6 +7,35 @@ from modules.types import ChangeProposal
 from modules.code_parser import CodeParser
 
 
+SOURCE_FILE_SUFFIXES = {
+    ".py",
+    ".kt",
+    ".kts",
+    ".java",
+    ".xml",
+    ".gradle",
+    ".js",
+    ".ts",
+    ".tsx",
+    ".jsx",
+    ".swift",
+    ".go",
+    ".rs",
+    ".rb",
+    ".php",
+    ".c",
+    ".cc",
+    ".cpp",
+    ".h",
+    ".hpp",
+}
+
+_GENERIC_UI_ANCHOR_RE = re.compile(
+    r"^\s*(Spacer|Row|Column|Text|Box|Divider)\s*\(",
+    re.IGNORECASE,
+)
+
+
 def _detect_line_endings(text: str) -> str:
     has_crlf = "\r\n" in text
     has_lf = "\n" in text
@@ -117,6 +146,155 @@ def _validate_no_compact_markers(path: str, new_content: str, previous_content: 
             "marker_count_previous": prev_count,
         },
     }
+
+
+def _is_existing_source_file(path: str) -> bool:
+    lowered = str(path or "").strip().lower()
+    if not lowered:
+        return False
+    if lowered.endswith(".gradle.kts"):
+        return True
+    return any(lowered.endswith(suffix) for suffix in SOURCE_FILE_SUFFIXES)
+
+
+def _looks_like_compose_ui_file(path: str) -> bool:
+    lowered = str(path or "").strip().lower()
+    return lowered.endswith(".kt") and any(token in lowered for token in ("ui", "screen", "view", "composable", "bookmark"))
+
+
+def _coverage_ratio(content: str, search_text: str) -> float:
+    if not content:
+        return 0.0
+    return float(len(search_text or "")) / float(max(1, len(content)))
+
+
+def _build_edit_file_guard_error(
+    path: str,
+    mismatch_type: str,
+    output: str,
+    *,
+    search_text: str,
+    replace_text: str,
+    content: str,
+    next_actions: list[str] | None = None,
+) -> dict:
+    return {
+        "status": "error",
+        "error_code": "VALIDATION_ERROR",
+        "recoverable": True,
+        "next_actions": next_actions or ["read_chunk", "extract_symbol", "search_content", "edit_file", "write_file"],
+        "output": output,
+        "error_details": {
+            "path": path,
+            "mismatch_type": mismatch_type,
+            "search_text_length": len(search_text),
+            "replace_text_length": len(replace_text),
+            "file_length": len(content),
+            "coverage_ratio": round(_coverage_ratio(content, search_text), 4),
+        },
+    }
+
+
+def _validate_edit_file_scope(path: str, content: str, search_text: str, replace_text: str) -> dict | None:
+    if search_text == replace_text:
+        return {
+            "status": "error",
+            "error_code": "VALIDATION_ERROR",
+            "recoverable": True,
+            "next_actions": ["read_chunk", "read_file", "search_content", "edit_file"],
+            "output": (
+                "This edit would not change the file. "
+                "If no change is needed, answer; otherwise provide a replacement that differs."
+            ),
+            "error_details": {
+                "path": path,
+                "mismatch_type": "noop_edit",
+                "search_text_length": len(search_text),
+                "replace_text_length": len(replace_text),
+            },
+        }
+
+    if not _is_existing_source_file(path):
+        return None
+
+    stripped_content = str(content or "").strip()
+    stripped_search = str(search_text or "").strip()
+    coverage = _coverage_ratio(content, search_text)
+    search_lines = str(search_text or "").count("\n") + 1 if search_text else 0
+
+    if (
+        _looks_like_compose_ui_file(path)
+        and search_lines == 1
+        and len(replace_text or "") > 500
+        and _GENERIC_UI_ANCHOR_RE.match(str(search_text or "").strip())
+    ):
+        return _build_edit_file_guard_error(
+            path,
+            "bad_edit_anchor_too_generic",
+            (
+                "This edit anchor is too generic for a large UI insertion. "
+                "Read the exact current composable block first and use a semantically bounded multi-line anchor."
+            ),
+            search_text=search_text,
+            replace_text=replace_text,
+            content=content,
+            next_actions=["read_chunk", "read_file", "extract_symbol", "search_content", "edit_file"],
+        )
+
+    if (
+        stripped_search
+        and stripped_content
+        and stripped_search == stripped_content
+        and len(search_text) >= 400
+    ):
+        return _build_edit_file_guard_error(
+            path,
+            "edit_file_full_rewrite_disallowed",
+            (
+                "edit_file is for targeted edits, not a whole-file rewrite of an existing source file. "
+                "Read the exact smaller target block and edit only that block. "
+                "If a full rewrite is truly required, reread the full current file and use write_file only if the active intent allows it."
+            ),
+            search_text=search_text,
+            replace_text=replace_text,
+            content=content,
+        )
+
+    if len(search_text) >= 1200 and coverage >= 0.6 and search_lines >= 25:
+        return _build_edit_file_guard_error(
+            path,
+            "edit_file_full_rewrite_disallowed",
+            (
+                "This edit_file request targets most of an existing source file. "
+                "Use edit_file only for a smaller exact block. "
+                "If targeted edit is impractical, reread the full current file and use write_file only when the intent contract explicitly allows it."
+            ),
+            search_text=search_text,
+            replace_text=replace_text,
+            content=content,
+        )
+
+    if (
+        "import " in replace_text
+        and "import " not in search_text
+        and ("class " in replace_text or "interface " in replace_text or "object " in replace_text or "fun " in replace_text)
+        and search_lines <= 3
+    ):
+        return _build_edit_file_guard_error(
+            path,
+            "edit_file_crosses_import_boundary",
+            (
+                "Do not inject import statements by replacing a class/function anchor with edit_file. "
+                "Read the current package/import header and edit that exact header block separately, "
+                "then apply a separate targeted edit for the class or function body if still needed."
+            ),
+            search_text=search_text,
+            replace_text=replace_text,
+            content=content,
+            next_actions=["read_chunk", "read_file", "extract_symbol", "edit_file"],
+        )
+
+    return None
 
 
 def _safe_int(value, default=None):
@@ -620,6 +798,9 @@ class EditFileTool(BaseTool):
             }
         try:
             content = p.read_text(encoding="utf-8")
+            guard_error = _validate_edit_file_scope(path, content, search_text, replace_text)
+            if guard_error:
+                return guard_error
             if search_text not in content:
                 mismatch_type, mismatch_details = _classify_search_mismatch(content, search_text)
                 first_diff = _build_first_diff(search_text, content)

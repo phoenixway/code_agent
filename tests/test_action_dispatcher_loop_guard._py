@@ -16,6 +16,7 @@ class TestActionDispatcherLoopGuard(unittest.IsolatedAsyncioTestCase):
             start_action=AsyncMock(),
             update_edit_file_result=AsyncMock(),
             print_tool_call=AsyncMock(),
+            update_tool_call=AsyncMock(),
             print_plan=AsyncMock(),
             print_command_result=AsyncMock(),
             print_confirmation=AsyncMock(),
@@ -83,6 +84,7 @@ class TestActionDispatcherLoopGuard(unittest.IsolatedAsyncioTestCase):
             start_action=AsyncMock(),
             update_edit_file_result=AsyncMock(),
             print_tool_call=AsyncMock(),
+            update_tool_call=AsyncMock(),
             print_plan=AsyncMock(),
             print_command_result=AsyncMock(),
             print_confirmation=AsyncMock(),
@@ -127,6 +129,7 @@ class TestActionDispatcherLoopGuard(unittest.IsolatedAsyncioTestCase):
             start_action=AsyncMock(),
             update_edit_file_result=AsyncMock(),
             print_tool_call=AsyncMock(),
+            update_tool_call=AsyncMock(),
             print_plan=AsyncMock(),
             print_command_result=AsyncMock(),
             print_confirmation=AsyncMock(),
@@ -773,6 +776,52 @@ class TestActionDispatcherLoopGuard(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(safe.get("content_redacted"))
         self.assertEqual(safe.get("content_size"), 500)
         self.assertEqual(safe.get("content_blob_hash"), "blob123")
+
+    async def test_execution_failure_transcript_does_not_request_analysis_in_think(self):
+        ui = SimpleNamespace(
+            print_edit_file_start=AsyncMock(return_value=object()),
+            start_action=AsyncMock(),
+            update_edit_file_result=AsyncMock(),
+            print_tool_call=AsyncMock(),
+            update_tool_call=AsyncMock(),
+            print_plan=AsyncMock(),
+            print_command_result=AsyncMock(),
+            print_confirmation=AsyncMock(),
+            print_shell_start=AsyncMock(return_value=object()),
+            update_shell_result=AsyncMock(),
+            print_read_file_start=AsyncMock(return_value=object()),
+            update_read_file_result=AsyncMock(),
+        )
+        processor = SimpleNamespace(
+            process_single_action=AsyncMock(
+                return_value={
+                    "status": "failed",
+                    "error_code": "NOT_FOUND",
+                    "recoverable": True,
+                    "next_actions": ["list_directory", "search_files", "read_file"],
+                    "output": "File not found: missing.py",
+                }
+            )
+        )
+        config = SimpleNamespace(
+            STATE_CHANGING_OPS={"edit_file", "create_file", "run_shell"},
+            LOOP_ERROR_REPEAT_THRESHOLD=2,
+            READ_ONLY_REPEAT_THRESHOLD=3,
+            RECOVERABLE_ERROR_RETRY_BUDGET=2,
+            CRITICAL_ERROR_RETRY_BUDGET=1,
+        )
+        agent = SimpleNamespace(ui=ui, processor=processor, config=config, log=None)
+        dispatcher = ActionDispatcher(agent)
+        state = AgentState()
+
+        command = {"type": "read_file_skeleton", "path": "missing.py"}
+        _cmd_copy, result_text, should_stop = await dispatcher._execute_action(command, state)
+
+        self.assertFalse(should_stop)
+        self.assertIn("Action failed. Use the runtime recovery payload below.", result_text)
+        self.assertIn("Do not add analysis/prose in <think>", result_text)
+        self.assertNotIn("Analyze the error in <think>", result_text)
+        self.assertNotIn("think about", result_text)
 
 
 if __name__ == "__main__":

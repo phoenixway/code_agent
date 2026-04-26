@@ -42,6 +42,9 @@ class PreActionPolicyInput:
     already_read_current_version: bool = False
     reread_reason_ok: bool = False
     reread_after_summary: bool = False
+    history_version: int | None = None
+    fresh_read_after_edit_mismatch_allowed: bool = False
+    reread_repeat_count: int = 0
     active_intent_type: str | None = None
     active_intent_step_count: int = 0
     active_intent_safe_steps_limit: int = 0
@@ -86,6 +89,15 @@ class PolicyEngine:
         if (
             ctx.cmd_type == "read_file"
             and bool(ctx.path)
+            and bool(ctx.fresh_read_after_edit_mismatch_allowed)
+        ):
+            return EnginePreActionDecision(allow=True)
+
+        version_hint = f" version v{int(ctx.history_version)}" if ctx.history_version else " current history version"
+
+        if (
+            ctx.cmd_type == "read_file"
+            and bool(ctx.path)
             and ctx.already_read_current_version
             and not ctx.reread_reason_ok
             and ctx.reread_after_summary
@@ -94,8 +106,8 @@ class PolicyEngine:
                 allow=False,
                 stop_reason="reread_after_summary",
                 recovery_prompt=(
-                    "SYSTEM: This file is already available in history at the current version, and you just summarized context. "
-                    "Re-reading it without a specific reason is blocked."
+                    f"SYSTEM: File content is already available as history{version_hint}, and you just summarized context. "
+                    "Use that content now. Do not call read_file again."
                 ),
                 required_next_action_types=["search_content", "edit_file", "write_file"],
                 required_next_action_source="recommended",
@@ -107,12 +119,23 @@ class PolicyEngine:
             and ctx.already_read_current_version
             and not ctx.reread_reason_ok
         ):
+            if int(ctx.reread_repeat_count or 0) >= 2:
+                return EnginePreActionDecision(
+                    allow=False,
+                    stop_reason="reread_already_in_history_use_existing_content",
+                    recovery_prompt=(
+                        f"SYSTEM: File content is already available as history{version_hint}. "
+                        "Use that content now. Do not call read_file again."
+                    ),
+                    required_next_action_types=["search_content", "edit_file", "write_file"],
+                    required_next_action_source="recommended",
+                )
             return EnginePreActionDecision(
                 allow=False,
                 stop_reason="reread_already_in_history",
                 recovery_prompt=(
-                    "SYSTEM: This file is already available in history at the current version. "
-                    "Re-reading it without a specific reason is blocked."
+                    f"SYSTEM: File content is already available as history{version_hint}. "
+                    "Use that content now. Do not call read_file again."
                 ),
                 required_next_action_types=["search_content", "edit_file", "write_file"],
                 required_next_action_source="recommended",

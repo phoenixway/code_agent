@@ -379,6 +379,12 @@ class RecoveryContext:
     policy_keep_current_intent: bool = False
     policy_metadata: dict[str, Any] = field(default_factory=dict)
     error_details: dict[str, Any] = field(default_factory=dict)
+    failed_tool: str = ""
+    failed_error_code: str = ""
+    failed_error_message_short: str = ""
+    safe_recovery_action: str = ""
+    full_rewrite_allowed: bool | None = None
+    recovery_protocol: str = ""
     suspicion: dict[str, Any] = field(default_factory=dict)
     command: dict[str, Any] = field(default_factory=dict)
     raw: dict[str, Any] = field(default_factory=dict)
@@ -404,6 +410,12 @@ class RecoveryContext:
             policy_keep_current_intent=bool(data.get("policy_keep_current_intent", False)),
             policy_metadata=dict(data.get("policy_metadata") or {}),
             error_details=dict(data.get("error_details") or {}),
+            failed_tool=str(data.get("failed_tool") or ""),
+            failed_error_code=str(data.get("failed_error_code") or ""),
+            failed_error_message_short=str(data.get("failed_error_message_short") or ""),
+            safe_recovery_action=str(data.get("safe_recovery_action") or ""),
+            full_rewrite_allowed=data.get("full_rewrite_allowed"),
+            recovery_protocol=str(data.get("recovery_protocol") or ""),
             suspicion=dict(data.get("suspicion") or {}),
             command=dict(data.get("command") or {}),
             raw=dict(data),
@@ -430,6 +442,12 @@ class RecoveryContext:
                 "policy_keep_current_intent": self.policy_keep_current_intent,
                 "policy_metadata": dict(self.policy_metadata),
                 "error_details": dict(self.error_details),
+                "failed_tool": self.failed_tool,
+                "failed_error_code": self.failed_error_code,
+                "failed_error_message_short": self.failed_error_message_short,
+                "safe_recovery_action": self.safe_recovery_action,
+                "full_rewrite_allowed": self.full_rewrite_allowed,
+                "recovery_protocol": self.recovery_protocol,
                 "suspicion": dict(self.suspicion),
                 "command": dict(self.command),
             }

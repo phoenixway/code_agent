@@ -232,6 +232,8 @@ class ModelOutputRecoveryHandler:
             return ""
         if bool(getattr(parsed_output, "operational_checkpoint_satisfied", False)):
             return ""
+        if self.semantics.has_malformed_state_changing_think_before_action(text):
+            return "malformed_verbose_or_nested_think"
 
         has_plain_think = self.semantics.has_plain_think_prefix(text)
         has_tagged_think = bool(
@@ -283,6 +285,178 @@ class ModelOutputRecoveryHandler:
         except Exception:
             pass
 
+    def _note_malformed_think_count(self, defect_kind: str) -> int:
+        normalized = str(defect_kind or "").strip()
+        if not normalized:
+            return 0
+        intent_id = self._current_active_intent_id()
+        current_intent_id = str(getattr(self.state, "malformed_think_intent_id", "") or "").strip()
+        current_count = int(getattr(self.state, "malformed_think_count", 0) or 0)
+        if not intent_id or current_intent_id != intent_id:
+            current_count = 0
+        current_count += 1
+        try:
+            setattr(self.state, "malformed_think_intent_id", intent_id)
+            setattr(self.state, "malformed_think_count", current_count)
+        except Exception:
+            pass
+        return current_count
+
+    def _decay_malformed_think_count(self) -> int:
+        intent_id = self._current_active_intent_id()
+        current_intent_id = str(getattr(self.state, "malformed_think_intent_id", "") or "").strip()
+        current_count = int(getattr(self.state, "malformed_think_count", 0) or 0)
+        if not intent_id or current_intent_id != intent_id or current_count <= 0:
+            return 0
+        current_count = max(0, current_count - 1)
+        try:
+            setattr(self.state, "malformed_think_count", current_count)
+        except Exception:
+            pass
+        return current_count
+
+    def _note_recovery_loop_handoff_repeat(self, defect_kind: str) -> int:
+        intent_id = self._current_active_intent_id()
+        current_intent_id = str(getattr(self.state, "recovery_loop_handoff_intent_id", "") or "").strip()
+        current_count = int(getattr(self.state, "recovery_loop_handoff_count", 0) or 0)
+        if not intent_id or current_intent_id != intent_id:
+            current_count = 0
+        current_count += 1
+        try:
+            setattr(self.state, "recovery_loop_handoff_intent_id", intent_id)
+            setattr(self.state, "recovery_loop_handoff_count", current_count)
+            setattr(self.state, "recovery_loop_handoff_defect_kind", str(defect_kind or "").strip())
+        except Exception:
+            pass
+        return current_count
+
+    def _clear_recovery_loop_handoff_repeat(self) -> None:
+        try:
+            setattr(self.state, "recovery_loop_handoff_intent_id", "")
+            setattr(self.state, "recovery_loop_handoff_count", 0)
+            setattr(self.state, "recovery_loop_handoff_defect_kind", "")
+        except Exception:
+            pass
+
+    def _note_large_malformed_response(self, defect_kind: str) -> int:
+        intent_id = self._current_active_intent_id()
+        current_intent_id = str(getattr(self.state, "large_malformed_response_intent_id", "") or "").strip()
+        current_count = int(getattr(self.state, "large_malformed_response_count", 0) or 0)
+        if not intent_id or current_intent_id != intent_id:
+            current_count = 0
+        current_count += 1
+        try:
+            setattr(self.state, "large_malformed_response_intent_id", intent_id)
+            setattr(self.state, "large_malformed_response_count", current_count)
+            setattr(self.state, "large_malformed_response_kind", str(defect_kind or "").strip())
+        except Exception:
+            pass
+        return current_count
+
+    def _clear_large_malformed_response(self) -> None:
+        try:
+            setattr(self.state, "large_malformed_response_intent_id", "")
+            setattr(self.state, "large_malformed_response_count", 0)
+            setattr(self.state, "large_malformed_response_kind", "")
+        except Exception:
+            pass
+
+    def _mark_terminal_plaintext_handoff(self, text: str, reason: str) -> None:
+        normalized_text = str(text or "").strip()
+        if not normalized_text:
+            return
+        try:
+            setattr(self.state, "terminal_plaintext_completion_pending", True)
+            setattr(self.state, "terminal_plaintext_completion_text", normalized_text)
+        except Exception:
+            pass
+        marker = getattr(self.state, "mark_pending_forced_plaintext_completion_close", None)
+        if callable(marker):
+            try:
+                marker(str(reason or "terminal_plaintext_completion").strip(), "output_recovery")
+            except Exception:
+                pass
+
+    def _action_context_from_parsed_output(self, parsed_output: ParsedModelOutput) -> tuple[str, str]:
+        segments = list(getattr(parsed_output, "segments", []) or [])
+        for seg in segments:
+            if getattr(seg, "type", "") != "action":
+                continue
+            content = getattr(seg, "content", None)
+            if not isinstance(content, dict):
+                continue
+            action_type = str(content.get("type") or content.get("action") or "").strip()
+            path = str(content.get("path") or "").strip()
+            if action_type or path:
+                return action_type, path
+        blocked_action = str(getattr(self.state, "last_blocked_action_type", "") or "").strip()
+        blocked_path = str(getattr(self.state, "last_blocked_action_path", "") or "").strip()
+        return blocked_action, blocked_path
+
+    def _terminal_recovery_loop_decision(self, defect_kind: str) -> OutputRecoveryDecision:
+        blocked_action, path_or_action = self._action_context_from_parsed_output(self._last_parsed_output_for_handoff)
+        self._mark_terminal_plaintext_handoff(
+            self.prompt_builder.build_terminal_recovery_loop_handoff_text(
+                defect_kind=defect_kind,
+                blocked_action=blocked_action,
+                path_or_action=path_or_action,
+            ),
+            "terminal_recovery_loop_handoff",
+        )
+        self.stage_logger.log(
+            "output_recovery",
+            "stop",
+            reason="terminal_recovery_loop_handoff",
+            universe=self._intent_universe_label(),
+            defect_kind=str(defect_kind or "").strip() or "recovery_loop_detected",
+        )
+        return OutputRecoveryDecision(
+            handled=True,
+            continue_loop=False,
+            stop_loop=True,
+            next_query=None,
+            malformed_action_retries=0,
+            audit_marker_retries=0,
+            reason="terminal_recovery_loop_handoff",
+            source="output_recovery",
+        )
+
+    def _terminal_large_malformed_response_decision(
+        self,
+        *,
+        invalid_kind: str,
+        raw_chars: int,
+        parsed_output: ParsedModelOutput,
+    ) -> OutputRecoveryDecision:
+        blocked_action, path_or_action = self._action_context_from_parsed_output(parsed_output)
+        self._mark_terminal_plaintext_handoff(
+            self.prompt_builder.build_terminal_large_malformed_response_handoff_text(
+                invalid_kind=invalid_kind,
+                raw_chars=raw_chars,
+                blocked_action=blocked_action,
+                path_or_action=path_or_action,
+            ),
+            "terminal_large_malformed_response_handoff",
+        )
+        self.stage_logger.log(
+            "output_recovery",
+            "stop",
+            reason="terminal_large_malformed_response_handoff",
+            universe=self._intent_universe_label(),
+            invalid_kind=str(invalid_kind or "").strip() or "malformed_response",
+            raw_chars=int(raw_chars or 0),
+        )
+        return OutputRecoveryDecision(
+            handled=True,
+            continue_loop=False,
+            stop_loop=True,
+            next_query=None,
+            malformed_action_retries=0,
+            audit_marker_retries=0,
+            reason="terminal_large_malformed_response_handoff",
+            source="output_recovery",
+        )
+
     def _is_checkpoint_defect_kind(self, invalid_kind: str) -> bool:
         return str(invalid_kind or "").strip() in {
             "missing_think",
@@ -291,6 +465,14 @@ class ModelOutputRecoveryHandler:
             "malformed_plain_think_requires_tagged_think",
             "malformed_checkpoint",
             "state_changing_action_requires_think_reflection",
+        }
+
+    def _is_malformed_think_defect_kind(self, invalid_kind: str) -> bool:
+        return str(invalid_kind or "").strip() in {
+            "malformed_incomplete_think",
+            "malformed_verbose_or_nested_think",
+            "nested_think",
+            "action_inside_think",
         }
 
     def _is_unproven_modify_completion_claim(self, parsed_output: ParsedModelOutput) -> bool:
@@ -339,9 +521,11 @@ class ModelOutputRecoveryHandler:
         malformed_action_retries: int,
         audit_marker_retries: int,
     ) -> OutputRecoveryDecision:
+        self._last_parsed_output_for_handoff = parsed_output
         invalid_kind = str(parsed_output.invalid_kind or "").strip()
         missing_durable_checkpoint = self._is_missing_durable_state_checkpoint(parsed_output)
         state_changing_without_reflection = False
+        raw_chars = len(str(getattr(parsed_output, "response", "") or ""))
 
         if not missing_durable_checkpoint and not self._state_changing_action_missing_operational_review(parsed_output):
             self._clear_missing_think_reflection_warning()
@@ -408,7 +592,13 @@ class ModelOutputRecoveryHandler:
         if not invalid_kind and self._is_missing_memory_update_done(parsed_output):
             invalid_kind = "missing_memory_update_done"
         if not invalid_kind:
+            if bool(getattr(parsed_output, "has_action_segment", False)) and self.semantics.has_complete_think_before_action(
+                str(getattr(parsed_output, "response", "") or "")
+            ):
+                self._decay_malformed_think_count()
             self._clear_architecture_defect_repeat()
+            self._clear_recovery_loop_handoff_repeat()
+            self._clear_large_malformed_response()
             self.stage_logger.log("output_recovery", "pass")
             return OutputRecoveryDecision.pass_through(
                 reason="no_invalid_kind",
@@ -416,6 +606,19 @@ class ModelOutputRecoveryHandler:
                 malformed_action_retries=0,
                 audit_marker_retries=0,
             )
+
+        if invalid_kind in {
+            "malformed_incomplete_think",
+            "malformed_verbose_or_nested_think",
+            "malformed_incomplete_file_content",
+        } and raw_chars > 10000:
+            large_count = self._note_large_malformed_response(invalid_kind)
+            if large_count >= 2:
+                return self._terminal_large_malformed_response_decision(
+                    invalid_kind=invalid_kind,
+                    raw_chars=raw_chars,
+                    parsed_output=parsed_output,
+                )
 
         if invalid_kind == "malformed_action":
             next_retries = malformed_action_retries + 1
@@ -454,15 +657,84 @@ class ModelOutputRecoveryHandler:
                 audit_marker_retries=0,
             )
 
-        if invalid_kind == "malformed_incomplete_think":
+        if invalid_kind in {"malformed_incomplete_think", "nested_think", "action_inside_think"}:
+            repeat_count = self._note_malformed_think_count(invalid_kind)
+            if repeat_count >= 5:
+                loop_count = self._note_recovery_loop_handoff_repeat(invalid_kind)
+                if loop_count >= 3:
+                    return self._terminal_recovery_loop_decision(invalid_kind)
+                self.stage_logger.log(
+                    "output_recovery",
+                    "continue",
+                    reason="recovery_loop_detected",
+                    universe=self._intent_universe_label(),
+                    repeat_count=repeat_count,
+                    loop_count=loop_count,
+                )
+                return OutputRecoveryDecision.continue_with(
+                    self.prompt_builder.build_malformed_think_limit_prompt(),
+                    reason="recovery_loop_detected",
+                    source="output_recovery",
+                    malformed_action_retries=0,
+                    audit_marker_retries=0,
+                )
+            if repeat_count >= 3:
+                prompt = self.prompt_builder.build_exact_think_skeleton_prompt()
+            elif repeat_count >= 2:
+                prompt = self.prompt_builder.build_strict_compact_think_prompt()
+            else:
+                prompt = self.prompt_builder.build_incomplete_think_recovery_prompt()
             self.stage_logger.log(
                 "output_recovery",
                 "continue",
                 reason=invalid_kind,
                 universe=self._intent_universe_label(),
+                repeat_count=repeat_count,
             )
             return OutputRecoveryDecision.continue_with(
-                self.prompt_builder.build_incomplete_think_recovery_prompt(),
+                prompt,
+                reason=invalid_kind,
+                source="output_recovery",
+                malformed_action_retries=0,
+                audit_marker_retries=0,
+            )
+
+        if invalid_kind == "malformed_verbose_or_nested_think":
+            repeat_count = self._note_malformed_think_count(invalid_kind)
+            if repeat_count >= 5:
+                loop_count = self._note_recovery_loop_handoff_repeat(invalid_kind)
+                if loop_count >= 3:
+                    return self._terminal_recovery_loop_decision(invalid_kind)
+                self.stage_logger.log(
+                    "output_recovery",
+                    "continue",
+                    reason="recovery_loop_detected",
+                    universe=self._intent_universe_label(),
+                    repeat_count=repeat_count,
+                    loop_count=loop_count,
+                )
+                return OutputRecoveryDecision.continue_with(
+                    self.prompt_builder.build_malformed_think_limit_prompt(),
+                    reason="recovery_loop_detected",
+                    source="output_recovery",
+                    malformed_action_retries=0,
+                    audit_marker_retries=0,
+                )
+            if repeat_count >= 3:
+                prompt = self.prompt_builder.build_exact_think_skeleton_prompt()
+            elif repeat_count >= 2:
+                prompt = self.prompt_builder.build_strict_compact_think_prompt()
+            else:
+                prompt = self.prompt_builder.build_malformed_verbose_or_nested_think_prompt()
+            self.stage_logger.log(
+                "output_recovery",
+                "continue",
+                reason=invalid_kind,
+                universe=self._intent_universe_label(),
+                repeat_count=repeat_count,
+            )
+            return OutputRecoveryDecision.continue_with(
+                prompt,
                 reason=invalid_kind,
                 source="output_recovery",
                 malformed_action_retries=0,
@@ -508,6 +780,21 @@ class ModelOutputRecoveryHandler:
             )
             return OutputRecoveryDecision.continue_with(
                 self.prompt_builder.build_incomplete_file_content_recovery_prompt(),
+                reason=invalid_kind,
+                source="output_recovery",
+                malformed_action_retries=0,
+                audit_marker_retries=0,
+            )
+
+        if invalid_kind == "file_content_must_follow_action":
+            self.stage_logger.log(
+                "output_recovery",
+                "continue",
+                reason=invalid_kind,
+                universe=self._intent_universe_label(),
+            )
+            return OutputRecoveryDecision.continue_with(
+                self.prompt_builder.build_file_content_must_follow_action_prompt(),
                 reason=invalid_kind,
                 source="output_recovery",
                 malformed_action_retries=0,
@@ -638,12 +925,16 @@ class ModelOutputRecoveryHandler:
                         malformed_action_retries=0,
                         audit_marker_retries=0,
                     )
+                loop_count = self._note_recovery_loop_handoff_repeat(invalid_kind)
+                if loop_count >= 3:
+                    return self._terminal_recovery_loop_decision(invalid_kind)
                 self.stage_logger.log_architecture_defect(
                     invalid_kind,
                     "loop_breaker_triggered",
                     source_stage="output_recovery",
                     universe=self._intent_universe_label(),
                     repeat_count=repeat_count,
+                    loop_count=loop_count,
                 )
                 self.stage_logger.log(
                     "output_recovery",
@@ -651,6 +942,7 @@ class ModelOutputRecoveryHandler:
                     reason="recovery_loop_detected",
                     universe=self._intent_universe_label(),
                     repeat_count=repeat_count,
+                    loop_count=loop_count,
                 )
                 return OutputRecoveryDecision.continue_with(
                     self.prompt_builder.build_recovery_loop_detected_prompt(invalid_kind),

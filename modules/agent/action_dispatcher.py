@@ -960,7 +960,7 @@ class ActionDispatcher:
 
         elif execution_failed:
             output_text += (
-                "\n[SYSTEM: Action failed. Analyze the error in <think> and retry.]"
+                "\n[SYSTEM: Action failed. Use the runtime recovery payload below. Do not add analysis/prose in <think>. Return only a corrected compact recovery step.]"
             )
             error_details = result.get("error_details") or {}
             same_error_repeats = state_metrics.get("same_error_repeats", 0)

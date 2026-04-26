@@ -34,6 +34,68 @@ class RecoveryPromptBuilder(PromptBuilderSharedMixin):
             "Return the required <intent> block first, then the next valid step if needed."
         )
 
+    def build_intent_action_not_allowed_prompt(
+        self,
+        *,
+        blocked_action: str,
+        intent_id: str,
+        intent_type: str = "",
+        allowed_actions: list[str] | None = None,
+        repeated: bool = False,
+    ) -> str:
+        allowed = [str(action).strip() for action in (allowed_actions or []) if str(action).strip()]
+        allowed_line = ", ".join(allowed) if allowed else "none"
+        alternative = "edit_file" if "edit_file" in allowed else (allowed[0] if allowed else "<allowed action>")
+        normalized_type = str(intent_type or "").strip().upper()
+        normalized_blocked = str(blocked_action or "").strip().lower()
+        if normalized_type == "INVESTIGATE" and normalized_blocked in {
+            "edit_file",
+            "write_file",
+            "write_file_block",
+            "append_file_block",
+            "create_file",
+            "delete_file",
+            "replace",
+        }:
+            header = (
+                "SYSTEM: You repeated the same disallowed modifying action under the current INVESTIGATE intent.\n"
+                if repeated
+                else "SYSTEM: The current intent is INVESTIGATE and cannot modify files.\n"
+            )
+            return (
+                f"{header}"
+                f"Blocked action type: {blocked_action or 'unknown'}.\n"
+                f"Current active intent id: {intent_id or '<active_intent_id>'}.\n"
+                f"Current allowed_actions: {allowed_line}.\n"
+                "Emit EXACTLY ONE <intent mode=\"reuse\"> block to switch this same goal to MODIFY.\n"
+                "Use switch_reason=\"work_type_changed\".\n"
+                "Do not emit edit_file until reuse is accepted.\n"
+                "If this disallowed edit repeats again, do not suggest more actions; return only the reuse block."
+            )
+        header = (
+            "SYSTEM: You repeated the same disallowed action under the current intent contract.\n"
+            if repeated
+            else "SYSTEM: Your last action is not allowed under the current intent contract.\n"
+        )
+        return (
+            f"{header}"
+            f"Blocked action type: {blocked_action or 'unknown'}.\n"
+            f"Current active intent id: {intent_id or '<active_intent_id>'}.\n"
+            f"Current allowed_actions: {allowed_line}.\n"
+            "Do not repeat the same disallowed action until the intent is updated.\n"
+            "Choose EXACTLY ONE of these paths:\n"
+            f"1. Use an allowed action now, for example `{alternative}` if it fits the current file state.\n"
+            "2. Emit <intent mode=\"reuse\"> to expand allowed_actions before using the blocked tool.\n"
+            "If you use reuse, do not emit the blocked action in the same reply unless the updated intent is accepted first."
+        )
+
+    def build_intent_payload_inside_action_prompt(self) -> str:
+        return (
+            "SYSTEM: Intent is not a tool.\n"
+            "Return <intent mode=\"...\">...</intent> as a top-level block, not inside <action>.\n"
+            "Do not wrap an intent payload inside action JSON with type=\"intent\"."
+        )
+
     def build_invalid_intent_contract_prompt(self, reason: str, allowed_actions: list[str] | None = None) -> str:
         next_hint = ""
         if allowed_actions:

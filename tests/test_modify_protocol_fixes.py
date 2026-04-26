@@ -169,7 +169,7 @@ class MissingThinkReflectionEscalationTests(unittest.IsolatedAsyncioTestCase):
 
         decision = await handler.decide(
             ParsedModelOutput(
-                response="<think>one two three four five six</think><action>{\"type\":\"edit_file\",\"path\":\"a.py\"}</action>",
+                response="<think>! Verified target file. ? Missing accepted checkpoint tag. → emit checkpoint.</think><action>{\"type\":\"edit_file\",\"path\":\"a.py\"}</action>",
                 segments=[_Segment("action", {"type": "edit_file", "path": "a.py"})],
                 has_action_segment=True,
                 visible_text="",
@@ -190,7 +190,7 @@ class MissingThinkReflectionEscalationTests(unittest.IsolatedAsyncioTestCase):
         decision = await handler.decide(
             ParsedModelOutput(
                 response=(
-                    "<think>Verified generator path and decided the next shell step.</think>"
+                    "<think>! Generator path verified. ? Need one shell run. → execute generator.</think>"
                     "<subgoal action=\"mark_done\" id=\"sg_1\" reason=\"Path verified\" />"
                     "<subgoal action=\"create\" id=\"sg_2\" status=\"in_progress\">Run generator script</subgoal>"
                     "<progress scope=\"intent\">Generator path confirmed; ready to execute scaffold generation.</progress>"
@@ -214,7 +214,7 @@ class MissingThinkReflectionEscalationTests(unittest.IsolatedAsyncioTestCase):
 
         decision = await handler.decide(
             ParsedModelOutput(
-                response="<think>one two three four five six</think><action>{\"type\":\"run_shell\",\"command\":\"python generate.py\"}</action>",
+                response="<think>! Generator path verified. ? Need one shell run. → execute generator.</think><action>{\"type\":\"run_shell\",\"command\":\"python generate.py\"}</action>",
                 segments=[_Segment("action", {"type": "run_shell", "command": "python generate.py"})],
                 has_action_segment=True,
                 visible_text="",
@@ -237,7 +237,7 @@ class MissingThinkReflectionEscalationTests(unittest.IsolatedAsyncioTestCase):
         decision = await handler.decide(
             ParsedModelOutput(
                 response=(
-                    "<think>one two three four five six</think>"
+                    "<think>! Target file located. ? No durable change beyond review. → perform edit.</think>"
                     "<memory_review status=\"no_change\" scope=\"intent\" />"
                     "<memory_update_done />"
                     "<action>{\"type\":\"edit_file\",\"path\":\"a.py\"}</action>"
@@ -283,7 +283,7 @@ class MissingThinkReflectionEscalationTests(unittest.IsolatedAsyncioTestCase):
         decision = await handler.decide(
             ParsedModelOutput(
                 response=(
-                    "<think>Verified edit target and reviewed current state.</think>"
+                    "<think>! Edit target verified. ? Need checkpoint close. → emit marker.</think>"
                     "<memory_review status=\"no_change\" scope=\"intent\" />"
                     "<action>{\"type\":\"edit_file\",\"path\":\"a.py\"}</action>"
                 ),
@@ -346,7 +346,7 @@ class MissingThinkReflectionEscalationTests(unittest.IsolatedAsyncioTestCase):
         handler = self._handler(state)
         parsed = ParsedModelOutput(
             response=(
-                "<think>Verified target and prepared edit.</think>"
+                "<think>! Verified target file. ? Missing accepted checkpoint tag. → emit proper checkpoint.</think>"
                 "<action>{\"type\":\"edit_file\",\"path\":\"AndroidManifest.xml\"}</action>"
             ),
             segments=[_Segment("action", {"type": "edit_file", "path": "AndroidManifest.xml"})],

@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from modules.agent.orchestration.decision_models import ParsedModelOutput
 from modules.agent.orchestration.output_recovery import ModelOutputRecoveryHandler
+from modules.agent.orchestration.parsing import IntentResponseParser
 from modules.agent.orchestration.prompting import OrchestratorPromptBuilder
 from modules.agent.orchestration.response_semantics import ResponseSemantics
 from modules.agent.orchestration.visible_text import extract_visible_text_for_user
@@ -186,6 +187,17 @@ class FileBlockProcessorTests(unittest.IsolatedAsyncioTestCase):
             result["output"],
         )
 
+    def test_file_content_before_action_is_classified_as_wrong_order(self):
+        response = (
+            "<file_content>body</file_content>\n"
+            '<action>{"type":"write_file_block","path":"a.py","overwrite":true}</action>'
+        )
+
+        adapter = IntentResponseParser()
+        classified = adapter.classify(response, self.parser.parse(response))
+
+        self.assertEqual("file_content_must_follow_action", classified.invalid_kind)
+
     async def test_generate_app_py_can_be_written_via_block_markup(self):
         path = Path(self.tmpdir) / "generate_app.py"
         response = (
@@ -310,7 +322,25 @@ class FileBlockPromptTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(decision.handled)
         self.assertEqual("malformed_incomplete_file_content", decision.reason)
         self.assertIn("truncated inside <file_content>", decision.next_query)
-        self.assertIn("append_file_block chunks", decision.next_query)
+
+    async def test_file_content_wrong_order_recovery_shows_correct_order(self):
+        handler = self._handler()
+
+        decision = await handler.decide(
+            ParsedModelOutput(
+                response="<file_content>body</file_content><action>{\"type\":\"write_file_block\",\"path\":\"a.py\",\"overwrite\":true}</action>",
+                invalid_kind="file_content_must_follow_action",
+                has_action_segment=True,
+                visible_text="",
+            ),
+            malformed_action_retries=0,
+            audit_marker_retries=0,
+        )
+
+        self.assertEqual("file_content_must_follow_action", decision.reason)
+        self.assertIn('"type": "write_file_block"', decision.next_query)
+        self.assertIn("The <file_content> block must appear immediately after </action>", decision.next_query)
+        self.assertIn("<file_content>\nraw content\n</file_content>", decision.next_query)
 
     def test_default_system_prompt_mentions_raw_block_file_writes(self):
         self.assertIn("write_file_block", DEFAULT_SYSTEM_PROMPT)
@@ -340,7 +370,7 @@ class FileBlockPromptTests(unittest.IsolatedAsyncioTestCase):
         decision = await handler.decide(
             ParsedModelOutput(
                 response=(
-                    "<think>one two three four five six</think>"
+                    "<think>\n! file path chosen\n? need one raw file write\n→ write_file_block a.py\n</think>"
                     "<memory_review status=\"no_change\" scope=\"intent\" />"
                     "<memory_update_done />"
                     '<action>{"type":"write_file_block","path":"a.py","overwrite":true}</action>'

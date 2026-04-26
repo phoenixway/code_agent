@@ -6,7 +6,12 @@ import json
 import re
 
 from .decision_models import ParsedModelOutput
-from .visible_text import detect_incomplete_control_markup, extract_visible_text_for_user, strip_plain_think_prefix_artifacts
+from .visible_text import (
+    detect_incomplete_control_markup,
+    detect_invalid_think_markup,
+    extract_visible_text_for_user,
+    strip_plain_think_prefix_artifacts,
+)
 
 
 class IntentResponseParser:
@@ -277,6 +282,20 @@ class IntentResponseParser:
         action_count = sum(1 for seg in segments if getattr(seg, "type", "") == "action")
         return action_count >= 2
 
+    def has_file_content_before_action(self, segments) -> bool:
+        saw_file_content = False
+        for seg in list(segments or []):
+            seg_type = getattr(seg, "type", "")
+            if seg_type == "file_content":
+                saw_file_content = True
+                continue
+            if seg_type == "text":
+                if str(getattr(seg, "content", "") or "").strip():
+                    continue
+            if seg_type == "action" and saw_file_content:
+                return True
+        return False
+
     def classify(self, response: str, segments) -> ParsedModelOutput:
         safe_response = response if isinstance(response, str) else ""
         safe_segments = list(segments or [])
@@ -287,12 +306,17 @@ class IntentResponseParser:
         invalid_kind = ""
         has_plain_think_prefix = self.has_plain_think_prefix(safe_response)
         incomplete_control_kind = detect_incomplete_control_markup(safe_response)
+        invalid_think_kind = detect_invalid_think_markup(safe_response)
 
         if has_plain_think_prefix and self.logger is not None and (has_action_segment or has_intent_segment or bool(visible_text)):
             self.logger.warning("response_parser_fallback=plain_think_prefix_ignored")
 
         if incomplete_control_kind:
             invalid_kind = incomplete_control_kind
+        elif invalid_think_kind:
+            invalid_kind = invalid_think_kind
+        elif self.has_file_content_before_action(safe_segments):
+            invalid_kind = "file_content_must_follow_action"
         elif has_action_tag and not has_action_segment:
             invalid_kind = "malformed_action"
         elif self.has_conflicting_intent_transitions(safe_segments):

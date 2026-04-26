@@ -878,7 +878,22 @@ class HistoryManager:
         return self.count_tokens()
 
     def has_current_file_version(self, filename: str) -> bool:
-        return bool(self.files.get(filename) or [])
+        versions = self.files.get(filename) or []
+        if not versions:
+            return False
+        latest = versions[-1]
+        blob_hash = str(latest.get("blob_hash") or "").strip()
+        if not blob_hash:
+            return False
+        try:
+            path = Path(filename)
+            if not path.exists() or not path.is_file():
+                return False
+            current_bytes = path.read_bytes()
+        except Exception:
+            return False
+        current_hash = hashlib.sha256(current_bytes).hexdigest()
+        return current_hash == blob_hash
 
     def was_recently_summarized(self, window_sec: int = 90) -> bool:
         return self._last_summary_at > 0 and (time.time() - self._last_summary_at) <= max(1, int(window_sec))

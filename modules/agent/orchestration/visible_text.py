@@ -31,6 +31,7 @@ UNPAIRED_OPERATIONAL_OPEN_RE = re.compile(
     r"<(fact|finding|decision|preference|progress|path|subgoal)\b",
     re.IGNORECASE,
 )
+THINK_VERBOSE_CHAR_LIMIT = 800
 
 
 def _mask_complete_control_blocks(response: str) -> str:
@@ -85,11 +86,36 @@ def strip_plain_think_prefix_artifacts(response: str) -> tuple[str, bool]:
     return "", True
 
 
+def detect_invalid_think_markup(response: str) -> str:
+    if not isinstance(response, str) or not response.strip():
+        return ""
+    lowered = response.lower()
+    if "<think" not in lowered:
+        return ""
+
+    for match in THINK_TAG_RE.finditer(response):
+        body = str(match.group(0) or "")
+        inner_match = re.match(r"<think(?:\s+[^>]*)?>(.*)</think>", body, re.IGNORECASE | re.DOTALL)
+        think_body = (inner_match.group(1) if inner_match else "").strip()
+        think_body_lower = think_body.lower()
+        if "<think" in think_body_lower:
+            return "malformed_verbose_or_nested_think"
+        if "<action" in think_body_lower:
+            return "malformed_verbose_or_nested_think"
+        if "```" in think_body:
+            return "malformed_verbose_or_nested_think"
+        if len(think_body) > THINK_VERBOSE_CHAR_LIMIT:
+            return "malformed_verbose_or_nested_think"
+    return ""
+
+
 def extract_visible_text_for_user(response: str) -> str:
     if not isinstance(response, str):
         return ""
     text = response
     if not text.strip():
+        return ""
+    if detect_invalid_think_markup(text):
         return ""
 
     text, _ = strip_plain_think_prefix_artifacts(text)
