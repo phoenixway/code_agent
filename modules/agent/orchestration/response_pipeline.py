@@ -46,8 +46,84 @@ class ModelResponsePipeline:
     def ui(self):
         return self.agent.ui
 
+    def _classify_response_for_prevalidation(self, response: str):
+        segments = self.parser.parse(response)
+        parsed_output = self.intent_response_parser.classify(response, segments)
+        checkpoint_has_think = self.semantics.has_complete_think_before_action(response)
+        checkpoint_has_marker = self.semantics.has_memory_update_done_before_action(response)
+        checkpoint_has_tags = self.semantics.has_checkpoint_before_action(response)
+        checkpoint_has_board_commit = False
+        checkpoint_source_satisfied = bool(
+            checkpoint_has_board_commit
+            or checkpoint_has_marker
+        )
+        parsed_output.operational_checkpoint_has_think = checkpoint_has_think
+        parsed_output.operational_checkpoint_has_marker = checkpoint_has_marker
+        parsed_output.operational_checkpoint_has_board_commit = checkpoint_has_board_commit
+        parsed_output.operational_checkpoint_has_tags = checkpoint_has_tags
+        parsed_output.operational_checkpoint_satisfied = bool(
+            checkpoint_has_think and checkpoint_source_satisfied
+        )
+        return segments, parsed_output
+
+    async def _reject_invalid_intent_followup_before_transition(self, ctx, raw_response: str, step):
+        """Reject malformed intent+followup bundles before committing intent state.
+
+        The model may legally send a top-level intent transition followed by an
+        action/plain-text continuation. That is only safe if the continuation
+        bundle is syntactically valid. If it is malformed, do not apply the
+        intent transition yet; otherwise the runtime can half-commit the intent
+        while rejecting the follow-up action.
+        """
+        if getattr(step, "intent_payload", None) is None:
+            return None
+
+        response = str(raw_response or "").strip()
+        if not response:
+            return None
+
+        segments, parsed_output = self._classify_response_for_prevalidation(response)
+        parsed_output.model_stop_reason = str(getattr(step, "model_stop_reason", "") or "").strip()
+
+        if not str(getattr(parsed_output, "invalid_kind", "") or "").strip():
+            return None
+
+        self.stage_logger.log(
+            "response_pipeline",
+            "continue",
+            reason="intent_followup_prevalidation_failed",
+            invalid_kind=parsed_output.invalid_kind,
+            source="intent_atomicity_guard",
+        )
+        recovery_decision = await self.output_recovery.decide(
+            parsed_output,
+            malformed_action_retries=ctx.malformed_action_retries,
+            audit_marker_retries=ctx.audit_marker_retries,
+        )
+        if recovery_decision.handled:
+            return ResponsePipelineOutcome(
+                handled=True,
+                continue_loop=bool(recovery_decision.continue_loop),
+                next_query=recovery_decision.next_query,
+                stop_loop=bool(recovery_decision.stop_loop),
+                response_text=response,
+                segments=segments,
+                parsed_output=parsed_output,
+                parsed_action_count=sum(1 for seg in segments if getattr(seg, "type", "") == "action"),
+                malformed_action_retries=recovery_decision.malformed_action_retries,
+                audit_marker_retries=recovery_decision.audit_marker_retries,
+                reason=recovery_decision.reason,
+                source=recovery_decision.source,
+            )
+
+        return None
+
     async def run_step(self, ctx, step) -> ResponsePipelineOutcome:
         raw_response = str(step.response or "")
+
+        atomicity_decision = await self._reject_invalid_intent_followup_before_transition(ctx, raw_response, step)
+        if atomicity_decision is not None:
+            return atomicity_decision
 
         intent_decision = await self.intent_transitions.handle_model_step(
             intent_payload=step.intent_payload,

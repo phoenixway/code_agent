@@ -830,6 +830,7 @@ class ActionDispatcher:
         handler = self._handlers.get(cmd_type, self._handle_default)
         result = await handler(command)
 
+        self._refresh_current_file_state_after_success(command, result)
         self._capture_turn_working_material(command, result, state)
 
         output_text = result.get("output", "")
@@ -1470,6 +1471,72 @@ class ActionDispatcher:
         if cmd_type in {"create_file", "write_file", "write_file_block", "append_file_block", "edit_file", "replace"}:
             return self._sanitize_file_write_payload(command)
         return command.copy()
+
+    def _refresh_current_file_state_after_success(self, command: dict, result: dict) -> None:
+        """Refresh canonical CURRENT FILE STATE after successful file tools.
+
+        This is intentionally not an edit_file gate. It only prevents the model
+        from being misled by stale working material after the runtime knows a
+        target file has changed.
+        """
+        if not isinstance(command, dict) or not isinstance(result, dict):
+            return
+        status = str(result.get("status") or "").strip().lower()
+        if status != "success":
+            return
+
+        cmd_type = str(command.get("type") or command.get("action") or "").strip()
+        path = command.get("path") if isinstance(command.get("path"), str) else ""
+        if not path:
+            return
+
+        history = getattr(self.agent, "history", None)
+        if history is None:
+            return
+
+        if cmd_type == "read_file":
+            content = (
+                result.get("file_content")
+                or result.get("raw_output")
+                or result.get("output")
+            )
+            updater = getattr(history, "update_file_state", None)
+            if callable(updater) and isinstance(content, str) and content:
+                try:
+                    updater(
+                        path,
+                        content,
+                        source_tool="read_file",
+                        invalidate_stale=False,
+                        metadata={"status": status},
+                    )
+                except Exception:
+                    if self.agent.log:
+                        self.agent.log.debug("FileState.refresh read_file failed path=%s", path, exc_info=True)
+            return
+
+        if cmd_type in {"edit_file", "create_file", "write_file", "write_file_block", "append_file_block", "replace"}:
+            updater = getattr(history, "update_file_state_from_disk", None)
+            if callable(updater):
+                try:
+                    meta = updater(
+                        path,
+                        source_tool=cmd_type,
+                        invalidate_stale=True,
+                        metadata={"status": status},
+                    )
+                    if self.agent.log:
+                        self.agent.log.debug(
+                            "FileState.refresh mutation type=%s path=%s version=%s invalidated=%s error=%s",
+                            cmd_type,
+                            path,
+                            (meta or {}).get("version") if isinstance(meta, dict) else "",
+                            (meta or {}).get("stale_working_material_invalidated") if isinstance(meta, dict) else "",
+                            (meta or {}).get("error") if isinstance(meta, dict) else "",
+                        )
+                except Exception:
+                    if self.agent.log:
+                        self.agent.log.debug("FileState.refresh mutation failed type=%s path=%s", cmd_type, path, exc_info=True)
 
     async def _handle_default(self, command):
         widget = await self.ui.print_tool_call(command)

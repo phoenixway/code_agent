@@ -21,6 +21,14 @@ class IntentResponseParser:
     )
     THINK_TAG_RE = re.compile(r"<think(?:\s+[^>]*)?>.*?</think>", re.IGNORECASE | re.DOTALL)
     ACTION_TAG_RE = re.compile(r"<action(?:\s+[^>]*)?>.*?</action>", re.IGNORECASE | re.DOTALL)
+    ACTION_BLOCK_RE = re.compile(
+        r"<action(?:\s+[^>]*)?>(?P<body>.*?)</action>",
+        re.IGNORECASE | re.DOTALL,
+    )
+    ACTION_XML_PAYLOAD_TAG_RE = re.compile(
+        r"<\s*(type|path|command|tool_code|intent|think|file_content)\b",
+        re.IGNORECASE,
+    )
     TOOL_HISTORY_RE = re.compile(r"(?im)^\s*tool_history\s+\{.*?$")
     HISTORY_TOOL_ACTION_RE = re.compile(r'(?is)<action[^>]*\btype\s*=\s*"history_tool"[^>]*>.*?</action>')
     HISTORY_TOOL_TAG_RE = re.compile(r"(?is)<history_tool\b[^>]*>.*?</history_tool>")
@@ -46,6 +54,17 @@ class IntentResponseParser:
             return " " * (match.end() - match.start())
 
         return self.THINK_TAG_RE.sub(_mask, response_text)
+
+    def _spans_for_action_blocks(self, response_text: str) -> list[tuple[int, int]]:
+        if not isinstance(response_text, str) or not response_text:
+            return []
+        return [match.span(0) for match in self.ACTION_TAG_RE.finditer(response_text)]
+
+    def _span_inside_any(self, start: int, end: int, spans: list[tuple[int, int]]) -> bool:
+        for span_start, span_end in spans:
+            if start >= span_start and end <= span_end:
+                return True
+        return False
 
     def _parse_attrs(self, attrs_raw: str) -> dict[str, str]:
         attrs: dict[str, str] = {}
@@ -149,11 +168,19 @@ class IntentResponseParser:
             return response_text, None, None
 
         masked_response = self._mask_think_blocks(response_text)
-        matches = list(self.INTENT_TAG_RE.finditer(masked_response))
+        action_spans = self._spans_for_action_blocks(masked_response)
+        all_matches = list(self.INTENT_TAG_RE.finditer(masked_response))
+        matches = [
+            match
+            for match in all_matches
+            if not self._span_inside_any(match.start(0), match.end(0), action_spans)
+        ]
         if not matches:
             self._debug(
-                "IntentParser.extract no_intent_match response_chars=%s preview=%r",
+                "IntentParser.extract no_top_level_intent_match response_chars=%s intent_matches=%s action_blocks=%s preview=%r",
                 len(response_text),
+                len(all_matches),
+                len(action_spans),
                 response_text[:400],
             )
             return response_text, None, None
@@ -296,6 +323,61 @@ class IntentResponseParser:
                 return True
         return False
 
+    def malformed_action_payload_kind(self, response: str) -> str:
+        """Return a protocol error kind for malformed <action> payloads.
+
+        Contract:
+        - <action> must contain exactly one JSON object.
+        - XML-style tool fields such as <type> or <path> inside <action> are invalid.
+        - Control tags such as <intent>, <think>, <file_content>, or <tool_code>
+          inside <action> are invalid when they are raw markup, not JSON string
+          content.
+
+        Important: validate JSON first. A valid JSON action may legitimately
+        contain strings with XML-like text, code snippets, examples, or quoted
+        protocol fragments. Those strings are data, not control markup. The
+        production bug this guard targets is raw XML-style tool payload inside
+        <action>, especially lower-level parser recovery turning it into a
+        partial command.
+        """
+        text = str(response or "")
+        if not text:
+            return ""
+
+        for match in self.ACTION_BLOCK_RE.finditer(text):
+            body = str(match.group("body") or "").strip()
+            if not body:
+                return "malformed_action"
+
+            try:
+                payload = json.loads(body)
+            except json.JSONDecodeError:
+                payload = None
+
+            if payload is not None:
+                if not isinstance(payload, dict):
+                    return "malformed_action"
+
+                action_type = str(payload.get("type") or payload.get("action") or payload.get("command") or "").strip()
+                if not action_type:
+                    return "malformed_action"
+
+                # A successfully parsed JSON object is the canonical action
+                # payload. Do not reject it just because a string value contains
+                # text such as "<intent>" or "<type>"; those are data.
+                continue
+
+            # JSON did not parse. Now raw XML/control tags inside <action> are
+            # definitely protocol markup, not string data.
+            if self.ACTION_XML_PAYLOAD_TAG_RE.search(body):
+                return "malformed_action"
+
+            # Non-JSON action body without recognizable XML tags is still not a
+            # dispatchable action payload.
+            return "malformed_action"
+
+        return ""
+
     def classify(self, response: str, segments) -> ParsedModelOutput:
         safe_response = response if isinstance(response, str) else ""
         safe_segments = list(segments or [])
@@ -307,6 +389,7 @@ class IntentResponseParser:
         has_plain_think_prefix = self.has_plain_think_prefix(safe_response)
         incomplete_control_kind = detect_incomplete_control_markup(safe_response)
         invalid_think_kind = detect_invalid_think_markup(safe_response)
+        malformed_action_kind = self.malformed_action_payload_kind(safe_response)
 
         if has_plain_think_prefix and self.logger is not None and (has_action_segment or has_intent_segment or bool(visible_text)):
             self.logger.warning("response_parser_fallback=plain_think_prefix_ignored")
@@ -315,6 +398,8 @@ class IntentResponseParser:
             invalid_kind = incomplete_control_kind
         elif invalid_think_kind:
             invalid_kind = invalid_think_kind
+        elif malformed_action_kind:
+            invalid_kind = malformed_action_kind
         elif self.has_file_content_before_action(safe_segments):
             invalid_kind = "file_content_must_follow_action"
         elif has_action_tag and not has_action_segment:

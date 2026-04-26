@@ -87,7 +87,7 @@ class ActionPolicyHandler:
         ]
         parsed_action_count = len(action_segments)
 
-        if not action_segments or intent_payload is not None:
+        if not action_segments:
             self._clear_disallowed_action_repeat()
             self.stage_logger.log(
                 "action_policy",

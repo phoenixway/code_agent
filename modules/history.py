@@ -687,6 +687,190 @@ class HistoryManager:
         latest = versions[-1]
         return latest.get("version")
 
+    def get_current_file_state(self, filename: str) -> dict | None:
+        """Return canonical latest file state metadata plus loaded content.
+
+        This is the source of truth used by CURRENT FILE STATE. It is updated by
+        read_file and by successful state-changing file tools. Older
+        turn-working-material reads/chunks are not authoritative once this state
+        advances.
+        """
+        path = str(filename or "").strip()
+        if not path:
+            return None
+        versions = self.files.get(path) or []
+        if not versions:
+            return None
+        latest = dict(versions[-1])
+        content = self._load_blob(str(latest.get("blob_hash") or ""))
+        latest["path"] = path
+        latest["filename"] = path
+        latest["content"] = content
+        latest["file_content"] = content
+        return latest
+
+    def invalidate_working_material_for_file(
+        self,
+        filename: str,
+        *,
+        current_version=None,
+        reason: str = "file_state_changed",
+    ) -> int:
+        """Remove stale file-derived working material for a changed file.
+
+        We keep ordinary history records for auditability, but they stop being
+        protected working material once the file has a newer canonical state.
+        This prevents the model from seeing old read_file/read_chunk/search
+        results as current working context after an edit.
+        """
+        path = str(filename or "").strip()
+        if not path:
+            return 0
+
+        stale_tools = {
+            "read_file",
+            "read_chunk",
+            "read_file_skeleton",
+            "extract_symbol",
+            "extract_kotlin_function",
+            "search_content",
+            "search_files",
+            "git_diff",
+        }
+        current_version_text = str(current_version or "").strip()
+        invalidated = 0
+
+        for idx, msg in enumerate(list(self.messages)):
+            if not msg.get("turn_working_material"):
+                continue
+            payload = msg.get("content")
+            if not isinstance(payload, dict):
+                continue
+
+            tool = str(payload.get("tool") or "")
+            if tool not in stale_tools:
+                continue
+
+            payload_path = str(payload.get("path") or payload.get("filename") or "")
+            output_text = self._preferred_working_material_text(payload)
+            mentions_path = bool(path and isinstance(output_text, str) and path in output_text)
+
+            if payload_path != path and not mentions_path:
+                continue
+
+            payload_version = str(payload.get("version") or payload.get("file_version") or "").strip()
+            if current_version_text and payload_path == path and payload_version == current_version_text:
+                continue
+
+            updated_payload = dict(payload)
+            updated_payload["stale"] = True
+            updated_payload["stale_reason"] = str(reason or "file_state_changed")
+            if current_version_text:
+                updated_payload["superseded_by_file_version"] = current_version
+
+            updated = dict(msg)
+            updated["content"] = updated_payload
+            updated["turn_working_material"] = False
+            updated["protection_hops_remaining"] = 0
+            updated["type"] = "tool_result_history"
+            updated.setdefault("history_material_kind", self.material_tools.material_kind(updated_payload))
+            updated.setdefault("history_degrade_stage", 0)
+            updated.setdefault("history_added_seq", self._next_wm_seq())
+            self.messages[idx] = updated
+            invalidated += 1
+
+        if invalidated and self.logger:
+            self.logger.info(
+                "WorkingMaterial.invalidate_file path=%s current_version=%s count=%s reason=%s",
+                path,
+                current_version_text or "-",
+                invalidated,
+                reason,
+            )
+        return invalidated
+
+    def update_file_state(
+        self,
+        filename: str,
+        content: str,
+        *,
+        source_tool: str = "",
+        invalidate_stale: bool = True,
+        metadata: dict | None = None,
+    ) -> dict:
+        """Update canonical CURRENT FILE STATE for a path.
+
+        Returns add_file_version-style metadata with an added
+        stale_working_material_invalidated count.
+        """
+        path = str(filename or "").strip()
+        if not path:
+            return {
+                "version": None,
+                "is_new_version": False,
+                "blob_hash": None,
+                "stale_working_material_invalidated": 0,
+            }
+
+        meta = self.add_file_version(path, content, return_metadata=True)
+        if not isinstance(meta, dict):
+            meta = {"version": meta, "is_new_version": False, "blob_hash": None}
+
+        versions = self.files.get(path) or []
+        if versions:
+            latest = versions[-1]
+            latest["source_tool"] = str(source_tool or "").strip()
+            latest["updated_at"] = time.time()
+            if isinstance(metadata, dict):
+                latest["metadata"] = dict(metadata)
+
+        invalidated = 0
+        if invalidate_stale:
+            invalidated = self.invalidate_working_material_for_file(
+                path,
+                current_version=meta.get("version"),
+                reason=f"{str(source_tool or 'file_state_update').strip()}_updated_file_state",
+            )
+        meta["stale_working_material_invalidated"] = invalidated
+        return meta
+
+    def update_file_state_from_disk(
+        self,
+        filename: str,
+        *,
+        source_tool: str = "",
+        invalidate_stale: bool = True,
+        metadata: dict | None = None,
+    ) -> dict:
+        path = str(filename or "").strip()
+        if not path:
+            return {
+                "version": None,
+                "is_new_version": False,
+                "blob_hash": None,
+                "stale_working_material_invalidated": 0,
+                "error": "missing_path",
+            }
+        try:
+            content = Path(path).read_text(encoding="utf-8")
+        except Exception as exc:
+            if self.logger:
+                self.logger.warning("FileState.update_from_disk failed path=%s error=%s", path, exc)
+            return {
+                "version": None,
+                "is_new_version": False,
+                "blob_hash": None,
+                "stale_working_material_invalidated": 0,
+                "error": str(exc),
+            }
+        return self.update_file_state(
+            path,
+            content,
+            source_tool=source_tool,
+            invalidate_stale=invalidate_stale,
+            metadata=metadata,
+        )
+
     def _current_turn_readfile_keys(self, turn_id=None) -> set[tuple[str, str]]:
         keys: set[tuple[str, str]] = set()
         for msg in self.messages:
