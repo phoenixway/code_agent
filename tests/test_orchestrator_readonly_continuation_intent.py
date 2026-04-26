@@ -101,7 +101,7 @@ class OrchestratorReadOnlyContinuationIntentTests(unittest.TestCase):
         self.assertTrue(required)
         self.assertEqual("investigation_task_requires_formal_intent", reason)
 
-    def test_incompatible_active_intent_does_not_force_new_intent_just_for_readonly_continuation(self):
+    def test_incompatible_active_intent_blocks_disallowed_readonly_action(self):
         active_intent = SimpleNamespace(
             intent_id="search_only_intent",
             intent_type="INVESTIGATE",
@@ -122,8 +122,8 @@ class OrchestratorReadOnlyContinuationIntentTests(unittest.TestCase):
             current_user_input="Continue the same investigation.",
         )
 
-        self.assertFalse(required)
-        self.assertEqual("", reason)
+        self.assertTrue(required)
+        self.assertEqual("intent_action_not_allowed", reason)
 
 
 if __name__ == "__main__":

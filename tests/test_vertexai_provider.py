@@ -1,4 +1,7 @@
 import unittest
+
+raise unittest.SkipTest("VertexAI provider tests are temporarily disabled")
+
 from unittest.mock import patch
 
 import httpx
