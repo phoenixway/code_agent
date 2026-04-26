@@ -240,7 +240,7 @@ class ModelResponsePipeline:
         checkpoint_has_board_commit = bool(memory_checkpoint_and_action or plan_checkpoint_and_action)
         checkpoint_source_satisfied = bool(
             checkpoint_has_board_commit
-            or (checkpoint_has_tags and checkpoint_has_marker)
+            or checkpoint_has_marker
         )
         checkpoint_satisfied = bool(
             checkpoint_has_think

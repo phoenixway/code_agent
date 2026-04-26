@@ -59,44 +59,43 @@ class ResponseSemantics:
     def has_memory_update_done(self, raw_response: str) -> bool:
         return bool(self.MEMORY_UPDATE_DONE_RE.search(str(raw_response or "")))
 
-    def has_complete_think_before_action(self, raw_response: str) -> bool:
+    def _control_prefix_before_action_or_text(self, raw_response: str) -> str:
+        """Return the response prefix where control/checkpoint tags are valid.
+
+        For action responses, checkpoint tags must appear before the first <action>.
+        For plain-text responses without <action>, the whole response is the relevant
+        surface because the checkpoint precedes user-visible text.
+        """
         text = str(raw_response or "")
         if not text:
-            return False
+            return ""
 
         action_match = self.ACTION_OPEN_RE.search(text)
-        if not action_match:
+        if action_match:
+            return text[: action_match.start()]
+
+        return text
+
+    def has_complete_think_before_action(self, raw_response: str) -> bool:
+        prefix = self._control_prefix_before_action_or_text(raw_response)
+        if not prefix:
             return False
 
-        action_start = action_match.start()
-        for match in self.THINK_BLOCK_RE.finditer(text):
-            if match.end() <= action_start:
-                return True
-        return False
+        return bool(self.THINK_BLOCK_RE.search(prefix))
 
     def has_checkpoint_before_action(self, raw_response: str) -> bool:
-        text = str(raw_response or "")
-        if not text:
+        prefix = self._control_prefix_before_action_or_text(raw_response)
+        if not prefix:
             return False
 
-        action_match = self.ACTION_OPEN_RE.search(text)
-        if not action_match:
-            return False
-
-        before_action = text[: action_match.start()]
-        return self.has_checkpoint_tags(before_action)
+        return self.has_checkpoint_tags(prefix)
 
     def has_memory_update_done_before_action(self, raw_response: str) -> bool:
-        text = str(raw_response or "")
-        if not text:
+        prefix = self._control_prefix_before_action_or_text(raw_response)
+        if not prefix:
             return False
 
-        action_match = self.ACTION_OPEN_RE.search(text)
-        if not action_match:
-            return False
-
-        before_action = text[: action_match.start()]
-        return self.has_memory_update_done(before_action)
+        return self.has_memory_update_done(prefix)
 
     def has_valid_state_changing_review_before_action(self, raw_response: str) -> bool:
         text = str(raw_response or "")
