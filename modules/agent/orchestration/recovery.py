@@ -131,6 +131,40 @@ class RecoveryCoordinator:
                 return "stop_and_answer"
         return "stop_and_answer"
 
+
+    def _disallowed_action_fingerprint(self, stop_info: dict | None, active_intent) -> str:
+        command = {}
+        if isinstance(stop_info, dict):
+            command = stop_info.get("command") or {}
+        if not isinstance(command, dict):
+            command = {}
+        action_type = str(command.get("type") or command.get("action") or "").strip()
+        path = str(command.get("path") or "").strip()
+        intent_id = str(getattr(active_intent, "intent_id", "") or "").strip()
+        return "|".join([intent_id, action_type, path])
+
+    def _note_repeated_disallowed_action(self, stop_info: dict | None, active_intent) -> tuple[int, str, str]:
+        command = {}
+        if isinstance(stop_info, dict):
+            command = stop_info.get("command") or {}
+        if not isinstance(command, dict):
+            command = {}
+        blocked_action = str(command.get("type") or command.get("action") or "").strip() or "action"
+        fingerprint = self._disallowed_action_fingerprint(stop_info, active_intent)
+        current_fingerprint = str(getattr(self.state, "last_disallowed_action_fingerprint", "") or "").strip()
+        current_count = int(getattr(self.state, "last_disallowed_action_repeat_count", 0) or 0)
+        if fingerprint and fingerprint == current_fingerprint:
+            current_count += 1
+        else:
+            current_count = 1
+        try:
+            setattr(self.state, "last_disallowed_action_fingerprint", fingerprint)
+            setattr(self.state, "last_disallowed_action_repeat_count", current_count)
+            setattr(self.state, "last_disallowed_action_type", blocked_action)
+        except Exception:
+            pass
+        return current_count, blocked_action, fingerprint
+
     async def handle_defect_detector_stop(self, stop_info: dict | None) -> RecoveryDecision:
         ctx = self._recovery_context(stop_info)
         stop_info = ctx.to_stop_info()
@@ -153,6 +187,50 @@ class RecoveryCoordinator:
         }:
             active_intent = getattr(self.state, "active_intent", None)
             allowed = self._intent_actions_from_stop_info(stop_info, active_intent)
+            if reason == "intent_action_not_allowed":
+                repeat_count, blocked_action, _fingerprint = self._note_repeated_disallowed_action(stop_info, active_intent)
+                intent_id = str(getattr(active_intent, "intent_id", "") or "").strip()
+                intent_type = str(getattr(active_intent, "intent_type", "") or "").strip()
+                if repeat_count >= 3:
+                    diagnostic = self.prompt_builder.build_repeated_disallowed_action_stop_diagnostic(
+                        blocked_action=blocked_action,
+                        intent_id=intent_id,
+                        intent_type=intent_type,
+                        allowed_actions=allowed,
+                    )
+                    try:
+                        setattr(self.state, "last_repeated_disallowed_action_diagnostic", diagnostic)
+                    except Exception:
+                        pass
+                    printer = getattr(self.ui, "print_system", None)
+                    if callable(printer):
+                        try:
+                            await printer(diagnostic)
+                        except Exception:
+                            pass
+                    self.stage_logger.log(
+                        "dispatch_recovery",
+                        "stop",
+                        reason="repeated_disallowed_action_loop",
+                        source="defect_detector",
+                        blocked_action=blocked_action,
+                        repeat_count=repeat_count,
+                    )
+                    return RecoveryDecision.stop(
+                        reason="repeated_disallowed_action_loop",
+                        source="defect_detector",
+                    )
+                return RecoveryDecision.continue_with(
+                    self.prompt_builder.build_intent_action_not_allowed_prompt(
+                        blocked_action=blocked_action,
+                        intent_id=intent_id,
+                        intent_type=intent_type,
+                        allowed_actions=allowed,
+                        repeated=repeat_count >= 2,
+                    ),
+                    reason=reason,
+                    source="defect_detector",
+                )
             if reason == "intent_step_limit_soft_exceeded":
                 return RecoveryDecision.continue_with(
                     self.prompt_builder.build_keep_current_intent_recovery_prompt(

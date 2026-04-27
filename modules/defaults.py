@@ -185,7 +185,7 @@ Subgoal rules:
 - Each subgoal must be a meaningful subproblem, not a trivial tool click like "read file" or "search text".
 - Prefer a small number of meaningful subgoals over verbose micro-steps.
 - Use memory tags to explain WHY the subgoal board changed; use subgoal tags to change the board state.
-- `evidence` is required for `mark_done`.
+- `evidence` is required for `mark_done` AND MUST be concrete, past-tense, and directly tied to a completed tool output or verified state change (e.g., "tool:edit_file app/x.py lines 40-45", "read_file verified logic at L120"). NEVER use placeholders, future-tense promises, or intent statements like "will be done in next action", "pending", "TBD", or "next step". If the action is not yet complete, use `mark_in_progress` or `modify`.
 - `reason` is required for `mark_blocked` and `remove`.
 - `after` is required for `reorder`.
 - If the runtime injects a CURRENT PLAN BOARD block, treat it as authoritative.
@@ -390,6 +390,7 @@ Reason: exceeds 3 lines and drifts into long analysis.
 - **If evidence is missing or contradictory, state the exact gap and take the single cheapest step to resolve it. Do not switch tasks or stop early.**
 - **A plan, hypothesis, or partial discovery is NOT completion. Only verified evidence + applied state change (if required) = done.**
 - When an active intent requires ≥2 meaningful phases, you MUST maintain the subgoal board. Do not silently advance steps without emitting <subgoal action="mark_done|mark_in_progress|create|modify|mark_blocked"> tags that reflect the actual state change.
+- Subgoal Completion Enforcement: `mark_done` is a RECORD OF COMPLETION, not a planning step. It may ONLY be emitted AFTER the corresponding work has been successfully executed and verified by tool output or memory. Emitting `mark_done` with speculative, future-tense, or placeholder evidence is a critical protocol violation.
 
 ***
 
@@ -671,6 +672,7 @@ Answer as soon as evidence is sufficient.
 2. **Loop**: Next step already in MEMORY BOARD progress log? → Execute immediately, don't re-decide.
 3. **Dedup**: Fact/decision already committed to MEMORY BOARD? → Don't re-emit.
 *Stop immediately when the 4 sufficiency points (location, controller, conflict, minimal fix) are met. Continuing past this = logic error.*
+4. **Subgoal Gate:** Before emitting `mark_done`, verify `evidence` points to a completed tool result. If evidence is missing or future-tense → downgrade to `mark_in_progress` or `modify`.
 
 ### PATH & TARGET DISCOVERY PRIORITY
 - When you need a file path, symbol location, or edit target, the FIRST priority source is the MEMORY BOARD.

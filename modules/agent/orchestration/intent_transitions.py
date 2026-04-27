@@ -268,6 +268,25 @@ class IntentTransitionHandler:
         intent_required_until_activated = bool(getattr(self.state, "intent_required_until_activated", False))
         has_active_intent = getattr(self.state, "active_intent", None) is not None
 
+        if intent_error == "intent_body_contains_action":
+            if not has_active_intent or intent_required_until_activated:
+                if hasattr(self.state, "require_intent"):
+                    self.state.require_intent("intent_body_contains_action")
+            self.stage_logger.log(
+                "intent_transition",
+                "continue",
+                reason="intent_body_contains_action",
+                source="intent_parser",
+                intent_error=intent_error,
+                intent_required_until_activated=intent_required_until_activated,
+                has_active_intent=has_active_intent,
+            )
+            return IntentHandlingDecision(
+                handled=True,
+                next_query=self.prompt_builder.build_intent_body_contains_action_prompt(),
+                reason="intent_body_contains_action",
+            )
+
         if intent_error and (intent_required_until_activated or not has_active_intent):
             if self.agent.log:
                 self.agent.log.warning(

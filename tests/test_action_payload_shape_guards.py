@@ -199,4 +199,4 @@ def test_json_array_action_payload_is_rejected():
 
     parsed = IntentResponseParser().classify(response, segments)
 
-    assert parsed.invalid_kind == "malformed_action"
+    assert parsed.invalid_kind == "action_payload_array"

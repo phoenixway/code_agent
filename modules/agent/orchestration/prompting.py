@@ -879,6 +879,67 @@ class OrchestratorPromptBuilder:
             "Return the required <intent> block first, then the next valid step if needed."
         )
 
+    def build_repeated_disallowed_action_reuse_only_prompt(
+        self,
+        *,
+        blocked_action: str,
+        intent_id: str,
+        intent_type: str = "",
+        goal: str = "",
+        allowed_actions: list[str] | None = None,
+    ) -> str:
+        blocked = str(blocked_action or "action").strip() or "action"
+        active_intent = self._current_active_intent()
+        resolved_intent_id = str(intent_id or getattr(active_intent, "intent_id", "") or "<active_intent_id>").strip()
+        resolved_intent_type = str(intent_type or getattr(active_intent, "intent_type", "") or "").strip() or "<intent_type>"
+        resolved_goal = str(goal or getattr(active_intent, "goal", "") or "").strip() or "<same goal>"
+        allowed = [str(action).strip() for action in (allowed_actions or []) if str(action).strip()]
+        expanded_allowed = list(allowed)
+        if blocked not in expanded_allowed:
+            expanded_allowed.append(blocked)
+        allowed_json = json.dumps(expanded_allowed or [blocked], ensure_ascii=False)
+        return (
+            "SYSTEM: You repeated the same disallowed action under the current intent contract.\n"
+            f"Blocked action type: {blocked}.\n"
+            f"Current active intent id: {resolved_intent_id}.\n"
+            f"Current allowed_actions: {', '.join(allowed) if allowed else 'none'}.\n"
+            "Return only a top-level <intent mode=\"reuse\">...</intent>.\n"
+            "Do not include <action> until intent reuse is accepted.\n"
+            f"Do not repeat {blocked} until reuse is accepted.\n"
+            "Use this shape:\n"
+            "<intent mode=\"reuse\">\n"
+            "{\n"
+            f"  \"intent_id\": \"{resolved_intent_id}\",\n"
+            f"  \"intent_type\": \"{resolved_intent_type}\",\n"
+            f"  \"goal\": {json.dumps(resolved_goal, ensure_ascii=False)},\n"
+            f"  \"allowed_actions\": {allowed_json},\n"
+            "  \"mode\": \"reuse\",\n"
+            "  \"requested_steps\": 5,\n"
+            "  \"switch_reason\": \"work_type_changed\",\n"
+            f"  \"switch_explanation\": \"The current goal requires `{blocked}`, but the current accepted intent contract does not allow that tool.\"\n"
+            "}\n"
+            "</intent>"
+        )
+
+    def build_repeated_disallowed_action_stop_diagnostic(
+        self,
+        *,
+        blocked_action: str,
+        intent_id: str,
+        intent_type: str = "",
+        allowed_actions: list[str] | None = None,
+    ) -> str:
+        blocked = str(blocked_action or "action").strip() or "action"
+        allowed = [str(action).strip() for action in (allowed_actions or []) if str(action).strip()]
+        return (
+            "Execution stopped: repeated disallowed action loop.\n"
+            f"The model repeatedly attempted `{blocked}` outside the active intent contract instead of reusing the intent or choosing an allowed action.\n"
+            f"Current active intent id: {intent_id or '<active_intent_id>'}.\n"
+            f"Current active intent type: {intent_type or '<intent_type>'}.\n"
+            f"Current allowed_actions: {', '.join(allowed) if allowed else 'none'}.\n"
+            "Required next decision: expand allowed_actions via a valid top-level <intent mode=\"reuse\"> block, choose an allowed action, or stop the task."
+        )
+
     def build_intent_action_not_allowed_prompt(
         self,
         *,
@@ -893,6 +954,16 @@ class OrchestratorPromptBuilder:
         alternative = "edit_file" if "edit_file" in allowed else (allowed[0] if allowed else "<allowed action>")
         normalized_type = str(intent_type or "").strip().upper()
         normalized_blocked = str(blocked_action or "").strip().lower()
+        display_blocked = normalized_blocked or str(blocked_action or "unknown").strip() or "unknown"
+
+        if repeated:
+            return self.build_repeated_disallowed_action_reuse_only_prompt(
+                blocked_action=display_blocked,
+                intent_id=intent_id,
+                intent_type=intent_type,
+                allowed_actions=allowed,
+            )
+
         if normalized_type == "INVESTIGATE" and normalized_blocked in {
             "edit_file",
             "write_file",
@@ -902,48 +973,48 @@ class OrchestratorPromptBuilder:
             "delete_file",
             "replace",
         }:
-            header = (
-                "SYSTEM: You repeated the same disallowed modifying action under the current INVESTIGATE intent.\n"
-                if repeated
-                else "SYSTEM: The current intent is INVESTIGATE and cannot modify files.\n"
-            )
             return (
-                f"{header}"
-                f"Blocked action type: {blocked_action or 'unknown'}.\n"
+                "SYSTEM: The current intent is INVESTIGATE and cannot modify files.\n"
+                f"Blocked action type: {display_blocked}.\n"
                 f"Current active intent id: {intent_id or '<active_intent_id>'}.\n"
                 f"Current allowed_actions: {allowed_line}.\n"
-                "Emit EXACTLY ONE <intent mode=\"reuse\"> block to switch this same goal to MODIFY.\n"
-                "Use switch_reason=\"work_type_changed\".\n"
+                "Either:\n"
+                "1. emit <intent mode=\"reuse\"> to switch this same goal to MODIFY with the required modifying tool in allowed_actions;\n"
+                f"2. use an already allowed action now, for example `{alternative}`, if it genuinely advances the same goal;\n"
+                "3. stop and ask the user.\n"
+                "Use switch_reason=\"work_type_changed\" if choosing reuse.\n"
                 "Do not emit edit_file until reuse is accepted.\n"
-                "If this disallowed edit repeats again, do not suggest more actions; return only the reuse block."
+                f"Do not include <action> with `{display_blocked}` until intent reuse is accepted.\n"
+                f"Do not repeat {display_blocked} until reuse is accepted."
             )
+
         if normalized_blocked == "write_file_block":
             return (
-                f"{'SYSTEM: You repeated the same disallowed action under the current intent contract.\\n' if repeated else 'SYSTEM: Tool `write_file_block` is not allowed by the current intent contract.\\n'}"
-                f"Blocked action type: {blocked_action or 'unknown'}.\n"
+                "SYSTEM: Tool `write_file_block` is not allowed by the current intent contract.\n"
+                f"Blocked action type: {display_blocked}.\n"
                 f"Current active intent id: {intent_id or '<active_intent_id>'}.\n"
                 f"Current allowed_actions: {allowed_line}.\n"
                 "Either:\n"
                 "1. emit <intent mode=\"reuse\"> with allowed_actions including write_file_block;\n"
-                "2. use edit_file;\n"
+                f"2. use an already allowed action now, for example `{alternative}`, if it genuinely advances the same goal;\n"
                 "3. stop and ask the user.\n"
-                "Do not repeat write_file_block until the intent is updated."
+                "Do not repeat the same disallowed action until the intent is updated.\n"
+                "Do not include <action> with `write_file_block` until intent reuse is accepted.\n"
+                "Do not repeat write_file_block until reuse is accepted."
             )
-        header = (
-            "SYSTEM: You repeated the same disallowed action under the current intent contract.\n"
-            if repeated
-            else "SYSTEM: Your last action is not allowed under the current intent contract.\n"
-        )
+
         return (
-            f"{header}"
-            f"Blocked action type: {blocked_action or 'unknown'}.\n"
+            "SYSTEM: Your last action is not allowed under the current intent contract.\n"
+            f"Blocked action type: {display_blocked}.\n"
             f"Current active intent id: {intent_id or '<active_intent_id>'}.\n"
             f"Current allowed_actions: {allowed_line}.\n"
+            "Either:\n"
+            "1. emit <intent mode=\"reuse\"> to expand allowed_actions before using the blocked tool;\n"
+            f"2. use an already allowed action now, for example `{alternative}`, if it genuinely advances the same goal;\n"
+            "3. stop and ask the user.\n"
             "Do not repeat the same disallowed action until the intent is updated.\n"
-            "Choose EXACTLY ONE of these paths:\n"
-            f"1. Use an allowed action now, for example `{alternative}` if it fits the current file state.\n"
-            "2. Emit <intent mode=\"reuse\"> to expand allowed_actions before using the blocked tool.\n"
-            "If you use reuse, do not emit the blocked action in the same reply unless the updated intent is accepted first."
+            f"Do not include <action> with `{display_blocked}` until intent reuse is accepted.\n"
+            f"Do not repeat {display_blocked} until reuse is accepted."
         )
 
     def build_intent_payload_inside_action_prompt(self) -> str:
@@ -972,7 +1043,30 @@ class OrchestratorPromptBuilder:
             "Use write_file only if the full current file was freshly read and the active intent explicitly allows it."
         )
 
+    def build_intent_body_contains_action_prompt(self) -> str:
+        return (
+            "SYSTEM: Your last <intent> block contained an <action> wrapper inside the intent body.\n"
+            "That intent transition was not accepted by runtime.\n"
+            "The body of <intent> must be exactly one JSON object for the intent transition.\n"
+            "Do not put <action> inside <intent>.\n"
+            "Correct format:\n"
+            "<intent mode=\"complete\">\n"
+            "{\n"
+            "  \"intent_id\": \"...\",\n"
+            "  \"mode\": \"complete\",\n"
+            "  \"completion_reason\": \"goal_completed\",\n"
+            "  \"completion_explanation\": \"...\"\n"
+            "}\n"
+            "</intent>\n"
+            "If a tool action is also needed, put it after the accepted top-level <intent> block, not inside it.\n"
+            "Return the corrected output now."
+        )
+
+
     def build_invalid_intent_contract_prompt(self, reason: str, allowed_actions: list[str] | None = None) -> str:
+        if str(reason or "").strip() == "intent_body_contains_action":
+            return self.build_intent_body_contains_action_prompt()
+
         next_hint = ""
         if allowed_actions:
             next_hint = f"\nAllowed actions for the next intent contract: {', '.join(allowed_actions)}."
@@ -1813,6 +1907,16 @@ class OrchestratorPromptBuilder:
             "If a contract is already active, do not emit another <intent> block unless a real transition is required.\n"
             "If tool use is needed, return EXACTLY ONE valid <action>...</action> block.\n"
             "If no tool is needed, return a plain-text answer."
+        )
+
+    def build_action_payload_array_prompt(self) -> str:
+        return (
+            "SYSTEM: Your last <action> block contained a JSON array, not a single action object.\n"
+            "Return EXACTLY ONE valid <action>...</action> block now.\n"
+            "Inside <action>, include exactly ONE JSON object for exactly ONE next action.\n"
+            "Do not wrap actions in [...].\n"
+            "Do not return multiple <action> blocks.\n"
+            "If several read-only steps seem useful, choose the single best next step."
         )
 
     def build_multiple_actions_prompt(self) -> str:

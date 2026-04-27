@@ -10,6 +10,7 @@ BAD_THINK_RECOVERY_PHRASES = (
     "analyze the error in <think>",
     "analyze in <think>",
     "Do not add analysis/prose in <think>",
+    "analysis/prose in <think>",
     "think about",
 )
 
@@ -18,6 +19,18 @@ def _assert_no_think_analysis_prompt(text: str) -> None:
     lowered = str(text or "").lower()
     for phrase in BAD_THINK_RECOVERY_PHRASES:
         assert phrase.lower() not in lowered
+
+
+def _assert_generic_failure_feedback_has_no_think_tag(text: str) -> None:
+    """Generic tool-failure feedback must not mention <think> at all.
+
+    Strict recovery prompts may still contain a compact legacy <think> skeleton.
+    Generic tool failure system-results are different: mentioning <think> there
+    re-primes the exact malformed-think loop we are trying to avoid.
+    """
+    _assert_no_think_analysis_prompt(text)
+    assert "<think>" not in str(text or "").lower()
+    assert "</think>" not in str(text or "").lower()
 
 
 class DummyState:
@@ -36,8 +49,31 @@ class DummyState:
     last_resumable_intent_completion_reason = ""
     last_resumable_intent_allowed_actions = []
     last_resumable_intent_lineage_id = ""
+    pending_loop_stop_info = None
+    state_machine = None
 
     def has_hard_exhausted_active_intent(self):
+        return False
+
+    def record_action_result(self, command, result, config):
+        self.last_action_status = str(result.get("status") or "")
+        return {
+            "same_action_repeats": 0,
+            "same_error_repeats": 0,
+            "defect_info": None,
+        }
+
+    def reset_retry_budgets(self, recoverable_budget, critical_budget):
+        self.recoverable_retry_budget_remaining = recoverable_budget
+        self.critical_retry_budget_remaining = critical_budget
+
+    def consume_malformed_grace(self):
+        return False
+
+    def consume_retry_budget(self, recoverable):
+        return True
+
+    def consume_forbidden_action_if_matches(self, command):
         return False
 
 
@@ -46,6 +82,22 @@ class DummyConfig:
     OPERATIONAL_RECOVERY_PROTOCOL = "legacy_think"
     INTENT_COMPLETION_ALLOWANCE = 1
     INTENTLESS_SHORT_MODE_MAX_STEPS = 2
+    LOOP_ERROR_REPEAT_THRESHOLD = 2
+    READ_ONLY_REPEAT_THRESHOLD = 3
+    RECOVERABLE_ERROR_RETRY_BUDGET = 2
+    CRITICAL_ERROR_RETRY_BUDGET = 1
+    STATE_CHANGING_OPS = {
+        "create_file",
+        "write_file",
+        "write_file_block",
+        "append_file_block",
+        "edit_file",
+        "replace",
+        "delete_file",
+        "git_add",
+        "git_commit",
+        "git_checkout",
+    }
 
 
 class DummyRecoveryPolicyResolver:
@@ -62,6 +114,7 @@ class DummyAgent:
         self.recovery_policy_resolver = DummyRecoveryPolicyResolver()
         self.allowed_actions_resolver = None
         self.memory_board_store = None
+        self.history = None
         self.log = None
 
         async def noop(*args, **kwargs):
@@ -142,7 +195,7 @@ def test_missing_file_content_block_recovery_uses_strict_block_order_without_thi
 
 
 @pytest.mark.asyncio
-async def test_action_dispatcher_failure_feedback_does_not_request_think_analysis():
+async def test_action_dispatcher_specialized_failure_feedback_does_not_request_think_analysis():
     agent = DummyAgent()
     dispatcher = ActionDispatcher(agent)
 
@@ -173,14 +226,49 @@ async def test_action_dispatcher_failure_feedback_does_not_request_think_analysi
     assert command_for_history["type"] == "read_file"
     assert "SYSTEM RESULT for `read_file`" in system_result
 
-    # Some malformed payloads are caught by a specialized preflight recovery
-    # before the generic "Action failed" branch. Both are acceptable. The
-    # invariant is that neither branch asks for think/prose analysis.
-    assert (
-        "Action failed" in system_result
-        or "Invalid read_file payload" in system_result
-        or "SYSTEM:" in system_result
-    )
-
+    # This malformed payload is caught by a specialized preflight recovery before
+    # the generic "Action failed" branch. It still must not ask for think/prose
+    # analysis.
+    assert "Invalid read_file payload" in system_result or "SYSTEM:" in system_result
     _assert_no_think_analysis_prompt(system_result)
     assert should_stop is True or should_stop is False
+
+
+@pytest.mark.asyncio
+async def test_action_dispatcher_generic_failure_feedback_does_not_mention_think_tag():
+    agent = DummyAgent()
+    dispatcher = ActionDispatcher(agent)
+
+    async def failing_read_chunk(command):
+        return {
+            "status": "failed",
+            "output": "File not found: modules/agent/missing.py",
+            "error_code": "NOT_FOUND",
+            "recoverable": True,
+            "next_actions": ["list_directory", "search_files", "read_file"],
+        }
+
+    dispatcher._handlers["read_chunk"] = failing_read_chunk
+
+    command = {
+        "type": "read_chunk",
+        "path": "modules/agent/missing.py",
+        "start_line": 1,
+        "end_line": 5,
+        "before_execution": "Reading chunk",
+        "during_execution": "Reading...",
+        "after_execution": "Read chunk",
+    }
+
+    command_for_history, system_result, should_stop = await dispatcher._execute_action(
+        command,
+        agent.state,
+    )
+
+    assert command_for_history["type"] == "read_chunk"
+    assert "SYSTEM RESULT for `read_chunk`" in system_result
+    assert "Action failed" in system_result
+
+    _assert_generic_failure_feedback_has_no_think_tag(system_result)
+    assert "Use the runtime recovery payload below" in system_result
+    assert should_stop is False

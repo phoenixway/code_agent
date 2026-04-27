@@ -214,6 +214,13 @@ class IntentResponseParser:
         try:
             payload = json.loads(last_block)
         except json.JSONDecodeError as exc:
+            if self.ACTION_TAG_RE.search(last_block):
+                self._debug(
+                    "IntentParser.extract intent_body_contains_action raw_block_chars=%s",
+                    len(last_block or ""),
+                )
+                return clean_text, None, "intent_body_contains_action"
+
             self._debug(
                 "IntentParser.extract invalid_intent_json msg=%s line=%s col=%s pos=%s",
                 exc.msg,
@@ -323,6 +330,44 @@ class IntentResponseParser:
                 return True
         return False
 
+    def malformed_intent_payload_kind(self, response: str) -> str:
+        """Return a protocol error kind for malformed top-level <intent> bodies.
+
+        Contract:
+        - <intent> must contain JSON intent payload data, or be a valid
+          attribute-only fallback handled by extract_intent_update_and_strip.
+        - Raw <action>...</action> inside <intent> is never a valid intent body.
+        - A JSON string value may mention "<action>" as data; that is valid when
+          the whole intent body parses as JSON.
+        """
+        text = str(response or "")
+        if not text:
+            return ""
+
+        masked_response = self._mask_think_blocks(text)
+        action_spans = self._spans_for_action_blocks(masked_response)
+
+        for match in self.INTENT_TAG_RE.finditer(masked_response):
+            if self._span_inside_any(match.start(0), match.end(0), action_spans):
+                # This is an intent nested inside an action, which is handled by
+                # the malformed action guard. Do not mislabel it here.
+                continue
+
+            body = str(match.group("body") or "").strip()
+            if not body:
+                continue
+
+            try:
+                json.loads(body)
+                continue
+            except json.JSONDecodeError:
+                pass
+
+            if self.ACTION_TAG_RE.search(body):
+                return "intent_body_contains_action"
+
+        return ""
+
     def malformed_action_payload_kind(self, response: str) -> str:
         """Return a protocol error kind for malformed <action> payloads.
 
@@ -355,6 +400,9 @@ class IntentResponseParser:
                 payload = None
 
             if payload is not None:
+                if isinstance(payload, list):
+                    return "action_payload_array"
+
                 if not isinstance(payload, dict):
                     return "malformed_action"
 
@@ -389,6 +437,7 @@ class IntentResponseParser:
         has_plain_think_prefix = self.has_plain_think_prefix(safe_response)
         incomplete_control_kind = detect_incomplete_control_markup(safe_response)
         invalid_think_kind = detect_invalid_think_markup(safe_response)
+        malformed_intent_kind = self.malformed_intent_payload_kind(safe_response)
         malformed_action_kind = self.malformed_action_payload_kind(safe_response)
 
         if has_plain_think_prefix and self.logger is not None and (has_action_segment or has_intent_segment or bool(visible_text)):
@@ -398,6 +447,8 @@ class IntentResponseParser:
             invalid_kind = incomplete_control_kind
         elif invalid_think_kind:
             invalid_kind = invalid_think_kind
+        elif malformed_intent_kind:
+            invalid_kind = malformed_intent_kind
         elif malformed_action_kind:
             invalid_kind = malformed_action_kind
         elif self.has_file_content_before_action(safe_segments):

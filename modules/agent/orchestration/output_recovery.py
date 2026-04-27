@@ -1049,6 +1049,26 @@ class ModelOutputRecoveryHandler:
                 audit_marker_retries=0,
             )
 
+        if invalid_kind == "action_payload_array":
+            self.stage_logger.log("output_recovery", "continue", reason=invalid_kind, universe=self._intent_universe_label())
+            return OutputRecoveryDecision.continue_with(
+                self.prompt_builder.build_action_payload_array_prompt(),
+                reason=invalid_kind,
+                source="output_recovery",
+                malformed_action_retries=0,
+                audit_marker_retries=0,
+            )
+
+        if invalid_kind == "intent_body_contains_action":
+            self.stage_logger.log("output_recovery", "continue", reason=invalid_kind, universe="transition_in_progress")
+            return OutputRecoveryDecision.continue_with(
+                self.prompt_builder.build_intent_body_contains_action_prompt(),
+                reason=invalid_kind,
+                source="output_recovery",
+                malformed_action_retries=0,
+                audit_marker_retries=0,
+            )
+
         if invalid_kind == "multiple_actions":
             self.stage_logger.log("output_recovery", "continue", reason=invalid_kind, universe=self._intent_universe_label())
             return OutputRecoveryDecision.continue_with(

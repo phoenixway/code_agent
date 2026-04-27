@@ -165,3 +165,52 @@ def detect_incomplete_control_markup(response: str) -> str:
     if UNPAIRED_OPERATIONAL_OPEN_RE.search(masked):
         return "truncated_internal_response"
     return ""
+
+
+_TERMINAL_DANGLING_WORDS = {
+    "i", "i'm", "im", "i’ll", "ill", "the", "a", "an", "and", "or", "but",
+    "to", "for", "with", "that", "this", "it", "is", "are", "was", "were",
+    "я", "мені", "ми", "він", "вона", "це", "цей", "ця", "що", "як", "і", "та",
+    "але", "для", "у", "в", "на", "з", "із", "до", "про",
+}
+
+_TERMINAL_END_PUNCT_RE = re.compile(r"[.!?…։。！？»”\"')\]`]+$")
+
+
+def terminal_plaintext_completion_status(response: str) -> tuple[bool, str, str]:
+    """Validate user-visible text for an intent-completion final answer.
+
+    Returns (is_valid, reason, visible_text).
+
+    This is deliberately lightweight. It is not a quality evaluator. It only
+    blocks obvious transport/model truncation cases such as:
+        <intent mode="complete">...</intent>
+        Готово. Я
+
+    The guard should prevent half-committing an intent completion when the
+    accompanying final user-facing answer is missing or visibly cut off.
+    """
+    visible = extract_visible_text_for_user(response)
+    text = str(visible or "").strip()
+    if not text:
+        return False, "terminal_plaintext_missing", text
+
+    compact = re.sub(r"\s+", " ", text).strip()
+    if len(compact) < 20:
+        return False, "terminal_plaintext_too_short", text
+
+    words = re.findall(r"[A-Za-zА-Яа-яІіЇїЄєҐґ0-9_`./-]+", compact)
+    if len(words) < 3:
+        return False, "terminal_plaintext_too_few_words", text
+
+    last_word = words[-1].strip("`'\"“”‘’()[]{}.,!?…:;").lower() if words else ""
+    if last_word in _TERMINAL_DANGLING_WORDS:
+        return False, "terminal_plaintext_dangling_word", text
+
+    # A very short answer without terminal punctuation is suspicious. Longer
+    # final answers can be valid without punctuation because they may end with a
+    # path, command, or markdown fragment.
+    if len(compact) < 80 and not _TERMINAL_END_PUNCT_RE.search(compact):
+        return False, "terminal_plaintext_no_terminal_punctuation", text
+
+    return True, "", text

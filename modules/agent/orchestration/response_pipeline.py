@@ -6,6 +6,7 @@ from .decision_models import ResponsePipelineOutcome
 from .response_guards import ResponseGuardPolicy
 from .response_semantics import ResponseSemantics
 from .stage_logging import OrchestrationStageLogger
+from .visible_text import terminal_plaintext_completion_status
 
 
 class ModelResponsePipeline:
@@ -45,6 +46,75 @@ class ModelResponsePipeline:
     @property
     def ui(self):
         return self.agent.ui
+
+    def _clear_terminal_plaintext_completion_state(self) -> None:
+        try:
+            setattr(self.state, "terminal_plaintext_completion_pending", False)
+            setattr(self.state, "terminal_plaintext_completion_text", "")
+        except Exception:
+            pass
+
+    def _terminal_completion_recovery_prompt(self, *, visible_text: str, reason: str) -> str:
+        builder = getattr(self.prompt_builder, "build_plain_text_completion_prompt", None)
+        stop_info = {
+            "reason": "truncated_terminal_plaintext_answer",
+            "recoverable": True,
+            "error_code": "TRUNCATED_TERMINAL_PLAINTEXT_ANSWER",
+            "message": (
+                "The intent completion was not accepted because the user-visible final answer "
+                "was missing or looked truncated."
+            ),
+            "error_details": {
+                "visible_text": visible_text,
+                "terminal_plaintext_reason": reason,
+            },
+            "next_actions": [],
+            "intent_allowed_actions": [],
+            "next_actions_source": "terminal_plaintext_guard",
+        }
+        if callable(builder):
+            try:
+                return builder(None, stop_info)
+            except TypeError:
+                try:
+                    return builder(stop_info)
+                except TypeError:
+                    pass
+            except Exception:
+                pass
+        return (
+            "SYSTEM: The final answer after intent completion was missing or looked truncated.\n"
+            "Do not emit another <intent> block. Do not emit <action>.\n"
+            "Return only a complete concise plain-text final answer for the user."
+        )
+
+    def _reject_truncated_terminal_completion_before_transition(self, raw_response: str, step):
+        payload = getattr(step, "intent_payload", None)
+        if not isinstance(payload, dict):
+            return None
+        payload_mode = str(payload.get("mode") or "").strip().lower()
+        if payload_mode != "complete":
+            return None
+
+        valid, reason, visible_text = terminal_plaintext_completion_status(raw_response)
+        if valid:
+            return None
+
+        self._clear_terminal_plaintext_completion_state()
+        self.stage_logger.log(
+            "response_pipeline",
+            "continue",
+            reason="truncated_terminal_plaintext_answer",
+            source="intent_completion_atomicity_guard",
+            visible_text_chars=len(str(visible_text or "")),
+            terminal_plaintext_reason=reason,
+        )
+        return ResponsePipelineOutcome.continue_with(
+            self._terminal_completion_recovery_prompt(visible_text=visible_text, reason=reason),
+            response_text=raw_response,
+            reason="truncated_terminal_plaintext_answer",
+            source="intent_completion_atomicity_guard",
+        )
 
     def _classify_response_for_prevalidation(self, response: str):
         segments = self.parser.parse(response)
@@ -120,6 +190,10 @@ class ModelResponsePipeline:
 
     async def run_step(self, ctx, step) -> ResponsePipelineOutcome:
         raw_response = str(step.response or "")
+
+        terminal_completion_decision = self._reject_truncated_terminal_completion_before_transition(raw_response, step)
+        if terminal_completion_decision is not None:
+            return terminal_completion_decision
 
         atomicity_decision = await self._reject_invalid_intent_followup_before_transition(ctx, raw_response, step)
         if atomicity_decision is not None:
