@@ -1,20 +1,20 @@
 import unittest
 from types import SimpleNamespace
 
-from modules.agent.orchestration.intent_transition_apply import IntentTransitionApplyMixin
-from modules.agent.orchestration.intent_transition_routing import IntentTransitionRoutingMixin
-from modules.agent.orchestration.intent_transitions import IntentTransitionHandler
-from modules.agent.orchestration.output_recovery import ModelOutputRecoveryHandler
-from modules.agent.orchestration.output_recovery_routing import OutputRecoveryRoutingMixin
-from modules.agent.orchestration.output_recovery_terminal import OutputRecoveryTerminalMixin
-from modules.agent.orchestration.parsing import IntentResponseParser
-from modules.agent.orchestration.parsing_actions import ParsingActionsMixin
-from modules.agent.orchestration.parsing_intent import ParsingIntentMixin
-from modules.agent.orchestration.parsing_normalization import ParsingNormalizationMixin
-from modules.agent.orchestration.prompting import OrchestratorPromptBuilder
-from modules.agent.orchestration.response_pipeline import ModelResponsePipeline
-from modules.agent.orchestration.response_pipeline_prevalidation import ResponsePipelinePrevalidationMixin
-from modules.agent.orchestration.response_pipeline_stages import ResponsePipelineStagesMixin
+from modules.agent.orchestration.transitions.intent_transition_apply import IntentTransitionApplyMixin
+from modules.agent.orchestration.transitions.intent_transition_routing import IntentTransitionRoutingMixin
+from modules.agent.orchestration.transitions import IntentTransitionHandler
+from modules.agent.orchestration.responses import ModelOutputRecoveryHandler
+from modules.agent.orchestration.responses.output_recovery_routing import OutputRecoveryRoutingMixin
+from modules.agent.orchestration.responses.output_recovery_terminal import OutputRecoveryTerminalMixin
+from modules.agent.orchestration.parsers import IntentResponseParser
+from modules.agent.orchestration.parsers.parsing_actions import ParsingActionsMixin
+from modules.agent.orchestration.parsers.parsing_intent import ParsingIntentMixin
+from modules.agent.orchestration.parsers.parsing_normalization import ParsingNormalizationMixin
+from modules.agent.orchestration.prompts import OrchestratorPromptBuilder
+from modules.agent.orchestration.responses import ModelResponsePipeline
+from modules.agent.orchestration.responses.response_pipeline_prevalidation import ResponsePipelinePrevalidationMixin
+from modules.agent.orchestration.responses.response_pipeline_stages import ResponsePipelineStagesMixin
 
 
 class _DummyLogger:

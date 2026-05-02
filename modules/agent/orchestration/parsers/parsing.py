@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 
-from ..decision_models import NormalizedModelResponse, ParsedModelOutput
+from ..shared.decision_models import NormalizedModelResponse, ParsedModelOutput
 from .parsing_actions import ParsingActionsMixin
 from .parsing_intent import ParsingIntentMixin
 from .parsing_normalization import ParsingNormalizationMixin

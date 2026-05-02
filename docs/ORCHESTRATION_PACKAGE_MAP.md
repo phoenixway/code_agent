@@ -52,24 +52,50 @@ Formal intent transition handling:
 - transition routing and apply helpers
 - intent universe helpers
 
+### `shared`
+
+Shared orchestration contracts and policy normalization:
+
+- typed decision/result dataclasses
+- recovery context model
+- recovery policy normalization
+- reusable contract-level helpers needed by multiple semantic packages
+
+### `runtime`
+
+Runtime coordinators for the orchestration loop:
+
+- `core`
+- `pipeline`
+- `recovery`
+- `action_policy`
+- `dispatch_pipeline`
+- `dispatch_outcome`
+- `loop_gate`
+- `memory_board_stage`
+- `plan_board_stage`
+- `lifecycle`
+- `policy`
+
 ## Root-Level Cross-Cutting Modules
 
-Some orchestration modules stay at the root because they coordinate multiple semantic areas:
+Top-level orchestration files are now mostly compatibility wrappers plus a few true cross-cutting modules:
 
-- `core.py`
-- `pipeline.py`
-- `recovery.py`
-- `action_policy.py`
-- `dispatch_pipeline.py`
-- `dispatch_outcome.py`
-- `loop_gate.py`
-- `memory_board_stage.py`
-- `plan_board_stage.py`
-- `decision_models.py`
+- `trace_export.py`
+- compatibility wrappers for `runtime`, `shared`, `prompts`, `parsers`, `responses`, and `transitions`
 
 ## Compatibility Wrappers
 
-Several legacy top-level modules remain as thin wrappers around semantic subpackages so existing imports do not break immediately.
+Several legacy top-level modules remain as thin wrappers so existing imports do not break immediately.
+
+Important wrappers now include:
+
+- `decision_models.py` -> `shared.decision_models`
+- `recovery_policy.py` -> `shared.recovery_policy`
+
+Root runtime-named wrappers were removed after repo usage dropped to zero. Use `runtime.*` directly.
+
+Most old helper wrappers were removed after internal imports moved to semantic package paths.
 
 Policy:
 

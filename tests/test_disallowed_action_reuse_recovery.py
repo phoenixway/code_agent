@@ -1,8 +1,8 @@
 import pytest
 from types import SimpleNamespace
 
-from modules.agent.orchestration.prompting import OrchestratorPromptBuilder
-from modules.agent.orchestration.recovery import RecoveryCoordinator
+from modules.agent.orchestration.prompts import OrchestratorPromptBuilder
+from modules.agent.orchestration.runtime.recovery import RecoveryCoordinator
 
 
 class DummyConfig:
@@ -34,7 +34,7 @@ class DummyState:
 
 class DummyRecoveryPolicyResolver:
     def normalize_context(self, stop_info, *, active_intent=None):
-        from modules.agent.orchestration.decision_models import RecoveryContext
+        from modules.agent.orchestration.shared.decision_models import RecoveryContext
 
         return RecoveryContext.from_stop_info(stop_info)
 

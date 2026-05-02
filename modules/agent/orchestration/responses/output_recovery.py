@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from ..decision_models import ParsedModelOutput
+from ..shared.decision_models import ParsedModelOutput
 from .output_recovery_routing import OutputRecoveryRoutingMixin
 from .output_recovery_terminal import OutputRecoveryTerminalMixin
 from .response_semantics import ResponseSemantics

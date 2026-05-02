@@ -7,22 +7,22 @@ from modules.agent.model_client import ModelTechnicalInterruption, ModelTechnica
 from modules.agent.core import AngelicaAgent
 from modules.agent.intent_runtime import IntentContract
 from modules.agent.technical_interruptions import TechnicalInterruption
-from modules.agent.orchestration.action_policy import ActionPolicyHandler
-from modules.agent.orchestration.decision_models import DispatchHandlingDecision, MemoryBoardDecision, ModelStepResult, OrchestrationTraceEntry, ParsedModelOutput, RecoveryDecision
-from modules.agent.orchestration.loop_gate import LoopGateHandler
-from modules.agent.orchestration.lifecycle import TurnLifecycle
-from modules.agent.orchestration.core import LoopContext, Orchestrator
-from modules.agent.orchestration.dispatch_pipeline import DispatchPipeline
-from modules.agent.orchestration.dispatch_outcome import DispatchOutcomeHandler
-from modules.agent.orchestration.intent_transitions import IntentTransitionHandler
-from modules.agent.orchestration.memory_board_stage import MemoryBoardStageHandler
-from modules.agent.orchestration.output_recovery import ModelOutputRecoveryHandler
-from modules.agent.orchestration.parsing import IntentResponseParser
-from modules.agent.orchestration.pipeline import OrchestrationPipeline
-from modules.agent.orchestration.policy import IntentGuard
-from modules.agent.orchestration.prompting import OrchestratorPromptBuilder
-from modules.agent.orchestration.response_pipeline import ModelResponsePipeline
-from modules.agent.orchestration.recovery import RecoveryCoordinator, StopHandlingDecision
+from modules.agent.orchestration.runtime.action_policy import ActionPolicyHandler
+from modules.agent.orchestration.shared.decision_models import DispatchHandlingDecision, MemoryBoardDecision, ModelStepResult, OrchestrationTraceEntry, ParsedModelOutput, RecoveryDecision
+from modules.agent.orchestration.runtime.loop_gate import LoopGateHandler
+from modules.agent.orchestration.runtime.lifecycle import TurnLifecycle
+from modules.agent.orchestration.runtime.core import LoopContext, Orchestrator
+from modules.agent.orchestration.runtime.dispatch_pipeline import DispatchPipeline
+from modules.agent.orchestration.runtime.dispatch_outcome import DispatchOutcomeHandler
+from modules.agent.orchestration.transitions import IntentTransitionHandler
+from modules.agent.orchestration.runtime.memory_board_stage import MemoryBoardStageHandler
+from modules.agent.orchestration.responses import ModelOutputRecoveryHandler
+from modules.agent.orchestration.parsers import IntentResponseParser
+from modules.agent.orchestration.runtime.pipeline import OrchestrationPipeline
+from modules.agent.orchestration.runtime.policy import IntentGuard
+from modules.agent.orchestration.prompts import OrchestratorPromptBuilder
+from modules.agent.orchestration.responses import ModelResponsePipeline
+from modules.agent.orchestration.runtime.recovery import RecoveryCoordinator, StopHandlingDecision
 from modules.agent.orchestration.trace_export import OrchestrationTraceExporter
 from modules.command_handler import CommandHandler
 from modules.memory_board_engine import MemoryBoardEngine

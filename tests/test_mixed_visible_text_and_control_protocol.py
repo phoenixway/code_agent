@@ -2,11 +2,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from modules.agent.orchestration.output_recovery import ModelOutputRecoveryHandler
-from modules.agent.orchestration.parsing import IntentResponseParser
-from modules.agent.orchestration.prompting import OrchestratorPromptBuilder
-from modules.agent.orchestration.response_pipeline import ModelResponsePipeline
-from modules.agent.orchestration.decision_models import ActionPolicyDecision, OutputRecoveryDecision
+from modules.agent.orchestration.responses import ModelOutputRecoveryHandler
+from modules.agent.orchestration.parsers import IntentResponseParser
+from modules.agent.orchestration.prompts import OrchestratorPromptBuilder
+from modules.agent.orchestration.responses import ModelResponsePipeline
+from modules.agent.orchestration.shared.decision_models import ActionPolicyDecision, OutputRecoveryDecision
 from modules.parser import ResponseParser
 
 

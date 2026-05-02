@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..decision_models import NormalizedModelResponse, ResponsePipelineOutcome
+from ..shared.decision_models import NormalizedModelResponse, ResponsePipelineOutcome
 from ..parsers.visible_text import sanitize_visible_text_for_user, terminal_plaintext_completion_status
 
 

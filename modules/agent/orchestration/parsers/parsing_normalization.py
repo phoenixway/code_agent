@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..decision_models import NormalizedModelResponse
+from ..shared.decision_models import NormalizedModelResponse
 from .think_repair import ThinkAutoRepairResult
 
 

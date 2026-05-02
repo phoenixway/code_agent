@@ -2,10 +2,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from modules.agent.orchestration.decision_models import ActionPolicyDecision, OutputRecoveryDecision
-from modules.agent.orchestration.parsing import IntentResponseParser
-from modules.agent.orchestration.response_pipeline import ModelResponsePipeline
-from modules.agent.orchestration.visible_text import (
+from modules.agent.orchestration.shared.decision_models import ActionPolicyDecision, OutputRecoveryDecision
+from modules.agent.orchestration.parsers import IntentResponseParser
+from modules.agent.orchestration.responses import ModelResponsePipeline
+from modules.agent.orchestration.parsers.visible_text import (
     extract_visible_text_for_user,
     terminal_plaintext_completion_status,
     visible_text_has_control_tag_leak,

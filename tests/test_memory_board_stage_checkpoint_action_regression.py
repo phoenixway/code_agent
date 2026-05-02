@@ -1,7 +1,7 @@
 import unittest
 from types import SimpleNamespace
 
-from modules.agent.orchestration.memory_board_stage import MemoryBoardStageHandler
+from modules.agent.orchestration.runtime.memory_board_stage import MemoryBoardStageHandler
 
 
 class _DummyLogger:

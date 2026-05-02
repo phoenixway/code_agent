@@ -1,7 +1,7 @@
 import unittest
 from types import SimpleNamespace
 
-from modules.agent.orchestration.response_pipeline import ModelResponsePipeline
+from modules.agent.orchestration.responses import ModelResponsePipeline
 
 
 class DummyUI:

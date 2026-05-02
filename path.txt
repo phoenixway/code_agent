@@ -1,8 +1,0 @@
-agent.py
-modules/context.py
-modules/defaults.py
-modules/history.py
-modules/processor.py
-modules/project.py
-tui.py
-tui.css

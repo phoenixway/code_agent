@@ -2,8 +2,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from modules.agent.orchestration.intent_transitions import IntentTransitionHandler
-from modules.agent.orchestration.prompting import OrchestratorPromptBuilder
+from modules.agent.orchestration.transitions import IntentTransitionHandler
+from modules.agent.orchestration.prompts import OrchestratorPromptBuilder
 from modules.agent.state_manager import AgentState
 
 

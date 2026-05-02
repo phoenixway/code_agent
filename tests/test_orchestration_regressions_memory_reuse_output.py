@@ -1,10 +1,10 @@
 import types
 import unittest
 
-from modules.agent.orchestration.decision_models import ParsedModelOutput
-from modules.agent.orchestration.memory_board_stage import MemoryBoardStageHandler
-from modules.agent.orchestration.output_recovery import ModelOutputRecoveryHandler
-from modules.agent.orchestration.intent_transitions import IntentTransitionHandler
+from modules.agent.orchestration.shared.decision_models import ParsedModelOutput
+from modules.agent.orchestration.runtime.memory_board_stage import MemoryBoardStageHandler
+from modules.agent.orchestration.responses import ModelOutputRecoveryHandler
+from modules.agent.orchestration.transitions import IntentTransitionHandler
 
 
 class _DummyLog:

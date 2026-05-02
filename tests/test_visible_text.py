@@ -1,6 +1,6 @@
 import unittest
 
-from modules.agent.orchestration.visible_text import extract_visible_text_for_user
+from modules.agent.orchestration.parsers.visible_text import extract_visible_text_for_user
 
 
 class VisibleTextTests(unittest.TestCase):

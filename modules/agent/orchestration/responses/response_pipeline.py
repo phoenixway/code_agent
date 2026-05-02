@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..decision_models import ResponsePipelineOutcome
+from ..shared.decision_models import ResponsePipelineOutcome
 from .response_pipeline_prevalidation import ResponsePipelinePrevalidationMixin
 from .response_pipeline_stages import ResponsePipelineStagesMixin
 from .response_guards import ResponseGuardPolicy

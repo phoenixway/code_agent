@@ -222,7 +222,7 @@ class Segment(SimpleNamespace):
 
 class MemoryCheckpointAndTextTests(unittest.IsolatedAsyncioTestCase):
     async def test_memory_board_stage_distinguishes_checkpoint_and_text(self):
-        from modules.agent.orchestration.memory_board_stage import MemoryBoardStageHandler
+        from modules.agent.orchestration.runtime.memory_board_stage import MemoryBoardStageHandler
 
         agent = DummyAgent()
         agent.memory_board_engine = DummyMemoryBoardEngine(
@@ -245,7 +245,7 @@ class MemoryCheckpointAndTextTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(agent.state.consecutive_memory_checkpoint_only_count, 0)
 
     async def test_response_pipeline_does_not_loop_on_memory_checkpoint_and_text(self):
-        from modules.agent.orchestration.response_pipeline import ModelResponsePipeline
+        from modules.agent.orchestration.responses import ModelResponsePipeline
 
         agent = DummyAgent()
         parsed_output = SimpleNamespace(
@@ -304,7 +304,7 @@ class MemoryCheckpointAndTextTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(outcome.segments), 1)
 
     async def test_dispatch_outcome_text_only_renders_once_and_stops(self):
-        from modules.agent.orchestration.dispatch_outcome import DispatchOutcomeHandler
+        from modules.agent.orchestration.runtime.dispatch_outcome import DispatchOutcomeHandler
 
         agent = DummyAgent()
         parser = DummyParser(reconstructed_text="Final answer.")
@@ -336,7 +336,7 @@ class MemoryCheckpointAndTextTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(should_stop)
 
     async def test_memory_checkpoint_only_still_continues(self):
-        from modules.agent.orchestration.memory_board_stage import MemoryBoardStageHandler
+        from modules.agent.orchestration.runtime.memory_board_stage import MemoryBoardStageHandler
 
         agent = DummyAgent()
         agent.memory_board_engine = DummyMemoryBoardEngine(

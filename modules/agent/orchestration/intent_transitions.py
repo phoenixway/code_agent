@@ -1,4 +1,4 @@
-"""Compatibility facade for orchestration intent transitions."""
+"""Deprecated compatibility facade for orchestration intent transitions."""
 
 from .transitions.intent_transitions import IntentTransitionHandler
 

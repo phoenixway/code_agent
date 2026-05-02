@@ -1,7 +1,7 @@
 import unittest
 from types import SimpleNamespace
 
-from modules.agent.orchestration.stage_logging import OrchestrationStageLogger
+from modules.agent.orchestration.responses.stage_logging import OrchestrationStageLogger
 
 
 class _DummyLogger:

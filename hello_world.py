@@ -1,7 +1,0 @@
-print('Hello World!\n')
-print('Привет мир!')
-print('Bonjour le monde!')
-print('¡Hola Mundo!')
-print('Hallo Welt!')
-print('Ciao mondo!')
-print('Olá Mundo!')

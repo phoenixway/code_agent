@@ -1,8 +1,8 @@
 import unittest
 from types import SimpleNamespace
 
-from modules.agent.orchestrator import Orchestrator
-from modules.agent.orchestration.policy import IntentGuard
+from modules.agent.orchestration.runtime.core import Orchestrator
+from modules.agent.orchestration.runtime.policy import IntentGuard
 
 
 def _make_orchestrator(active_intent=None, readonly_steps_this_turn=0):

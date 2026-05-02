@@ -2,16 +2,16 @@ from types import SimpleNamespace
 
 import pytest
 
-from modules.agent.orchestration.decision_models import (
+from modules.agent.orchestration.shared.decision_models import (
     ActionPolicyDecision,
     IntentHandlingDecision,
     MemoryBoardDecision,
     PlanBoardDecision,
 )
-from modules.agent.orchestration.intent_transitions import IntentTransitionHandler
-from modules.agent.orchestration.prompting import OrchestratorPromptBuilder
-from modules.agent.orchestration.response_pipeline import ModelResponsePipeline
-from modules.agent.orchestration.parsing import IntentResponseParser
+from modules.agent.orchestration.transitions import IntentTransitionHandler
+from modules.agent.orchestration.prompts import OrchestratorPromptBuilder
+from modules.agent.orchestration.responses import ModelResponsePipeline
+from modules.agent.orchestration.parsers import IntentResponseParser
 
 
 class DummyParser:

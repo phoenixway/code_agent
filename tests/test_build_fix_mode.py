@@ -2,10 +2,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from modules.agent.orchestration.action_policy import ActionPolicyHandler
-from modules.agent.orchestration.decision_models import ParsedModelOutput
-from modules.agent.orchestration.output_recovery import ModelOutputRecoveryHandler
-from modules.agent.orchestration.prompting import OrchestratorPromptBuilder
+from modules.agent.orchestration.runtime.action_policy import ActionPolicyHandler
+from modules.agent.orchestration.shared.decision_models import ParsedModelOutput
+from modules.agent.orchestration.responses import ModelOutputRecoveryHandler
+from modules.agent.orchestration.prompts import OrchestratorPromptBuilder
 from modules.agent.state_manager import AgentState
 
 

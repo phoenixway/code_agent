@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..decision_models import OrchestrationTraceEntry
+from ..shared.decision_models import OrchestrationTraceEntry
 
 
 class OrchestrationStageLogger:

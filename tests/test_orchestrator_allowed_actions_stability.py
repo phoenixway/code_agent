@@ -2,8 +2,8 @@ import unittest
 from types import SimpleNamespace
 
 from modules.agent.allowed_actions_resolver import AllowedActionsContext, AllowedActionsResolver
-from modules.agent.orchestrator import Orchestrator
-from modules.agent.orchestration.prompting import OrchestratorPromptBuilder
+from modules.agent.orchestration.runtime.core import Orchestrator
+from modules.agent.orchestration.prompts import OrchestratorPromptBuilder
 
 
 def _make_orchestrator(active_intent):

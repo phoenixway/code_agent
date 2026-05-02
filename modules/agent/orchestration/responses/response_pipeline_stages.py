@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..decision_models import ResponsePipelineOutcome
+from ..shared.decision_models import ResponsePipelineOutcome
 
 
 @dataclass

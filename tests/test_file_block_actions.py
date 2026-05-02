@@ -5,12 +5,12 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
-from modules.agent.orchestration.decision_models import ParsedModelOutput
-from modules.agent.orchestration.output_recovery import ModelOutputRecoveryHandler
-from modules.agent.orchestration.parsing import IntentResponseParser
-from modules.agent.orchestration.prompting import OrchestratorPromptBuilder
-from modules.agent.orchestration.response_semantics import ResponseSemantics
-from modules.agent.orchestration.visible_text import extract_visible_text_for_user
+from modules.agent.orchestration.shared.decision_models import ParsedModelOutput
+from modules.agent.orchestration.responses import ModelOutputRecoveryHandler
+from modules.agent.orchestration.parsers import IntentResponseParser
+from modules.agent.orchestration.prompts import OrchestratorPromptBuilder
+from modules.agent.orchestration.responses.response_semantics import ResponseSemantics
+from modules.agent.orchestration.parsers.visible_text import extract_visible_text_for_user
 from modules.defaults import DEFAULT_SYSTEM_PROMPT
 from modules.parser import ResponseParser
 from modules.policy import PermissionPolicy

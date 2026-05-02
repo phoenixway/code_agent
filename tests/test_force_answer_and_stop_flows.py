@@ -1,8 +1,8 @@
 import unittest
 from types import SimpleNamespace
 
-from modules.agent.orchestration.recovery import RecoveryCoordinator
-from modules.agent.orchestration.core import Orchestrator
+from modules.agent.orchestration.runtime.recovery import RecoveryCoordinator
+from modules.agent.orchestration.runtime.core import Orchestrator
 from modules.agent.state_manager import AgentState
 
 

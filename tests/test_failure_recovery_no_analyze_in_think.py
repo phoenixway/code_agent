@@ -2,7 +2,7 @@ import pytest
 from types import SimpleNamespace
 
 from modules.agent.action_dispatcher import ActionDispatcher
-from modules.agent.orchestration.prompting import OrchestratorPromptBuilder
+from modules.agent.orchestration.prompts import OrchestratorPromptBuilder
 
 
 BAD_THINK_RECOVERY_PHRASES = (
@@ -102,7 +102,7 @@ class DummyConfig:
 
 class DummyRecoveryPolicyResolver:
     def normalize_context(self, stop_info, *, active_intent=None):
-        from modules.agent.orchestration.decision_models import RecoveryContext
+        from modules.agent.orchestration.shared.decision_models import RecoveryContext
 
         return RecoveryContext.from_stop_info(stop_info)
 

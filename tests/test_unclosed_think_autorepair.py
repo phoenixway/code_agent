@@ -2,8 +2,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from modules.agent.orchestration.parsing import IntentResponseParser
-from modules.agent.orchestration.response_pipeline import ModelResponsePipeline
+from modules.agent.orchestration.parsers import IntentResponseParser
+from modules.agent.orchestration.responses import ModelResponsePipeline
 from modules.parser import ResponseParser
 
 

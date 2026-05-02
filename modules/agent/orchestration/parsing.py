@@ -1,4 +1,4 @@
-"""Compatibility facade for orchestration response parser."""
+"""Deprecated compatibility facade for orchestration response parser."""
 
 from .parsers.parsing import IntentResponseParser
 

@@ -2,7 +2,7 @@ import unittest
 from types import SimpleNamespace
 
 from modules.agent.intent_runtime import IntentRuntime, IntentContract
-from modules.agent.orchestration.prompting import OrchestratorPromptBuilder
+from modules.agent.orchestration.prompts import OrchestratorPromptBuilder
 
 
 class DummyDecision:

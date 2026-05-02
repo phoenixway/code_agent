@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..decision_models import OutputRecoveryDecision, ParsedModelOutput
+from ..shared.decision_models import OutputRecoveryDecision, ParsedModelOutput
 
 
 class OutputRecoveryRoutingMixin:

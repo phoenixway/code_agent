@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 import unittest
 
-from modules.agent.orchestration.policy import IntentGuard
+from modules.agent.orchestration.runtime.policy import IntentGuard
 
 
 class IntentGuardRetryRecoveryTests(unittest.TestCase):

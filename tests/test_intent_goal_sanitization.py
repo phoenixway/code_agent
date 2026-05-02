@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from modules.agent.orchestration.prompting import OrchestratorPromptBuilder
+from modules.agent.orchestration.prompts import OrchestratorPromptBuilder
 
 
 def _builder():

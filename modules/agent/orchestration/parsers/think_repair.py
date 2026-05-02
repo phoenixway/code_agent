@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from ..decision_models import NormalizedModelResponse
+from ..shared.decision_models import NormalizedModelResponse
 
 @dataclass
 class ThinkAutoRepairResult:

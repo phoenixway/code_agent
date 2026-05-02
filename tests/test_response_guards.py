@@ -1,8 +1,8 @@
 import unittest
 from types import SimpleNamespace
 
-from modules.agent.orchestration.response_guards import ResponseGuardPolicy
-from modules.agent.orchestration.response_semantics import ResponseSemantics
+from modules.agent.orchestration.responses.response_guards import ResponseGuardPolicy
+from modules.agent.orchestration.responses.response_semantics import ResponseSemantics
 
 
 class ResponseGuardPolicyTests(unittest.TestCase):

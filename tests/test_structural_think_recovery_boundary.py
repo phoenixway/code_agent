@@ -2,10 +2,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from modules.agent.orchestration.decision_models import ParsedModelOutput
-from modules.agent.orchestration.output_recovery import ModelOutputRecoveryHandler
-from modules.agent.orchestration.parsing import IntentResponseParser
-from modules.agent.orchestration.prompting import OrchestratorPromptBuilder
+from modules.agent.orchestration.shared.decision_models import ParsedModelOutput
+from modules.agent.orchestration.responses import ModelOutputRecoveryHandler
+from modules.agent.orchestration.parsers import IntentResponseParser
+from modules.agent.orchestration.prompts import OrchestratorPromptBuilder
 
 
 class _Agent:

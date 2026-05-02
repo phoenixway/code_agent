@@ -1,8 +1,8 @@
 from types import SimpleNamespace
 import unittest
 
-from modules.agent.orchestration.prompting import OrchestratorPromptBuilder
-from modules.agent.orchestration.intent_universe import IntentUniverseResolver
+from modules.agent.orchestration.prompts import OrchestratorPromptBuilder
+from modules.agent.orchestration.transitions.intent_universe import IntentUniverseResolver
 from modules.memory_board_store import MemoryBoardStore
 
 

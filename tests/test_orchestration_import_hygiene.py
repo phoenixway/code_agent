@@ -19,6 +19,8 @@ from modules.agent.orchestration.responses import (
     ModelOutputRecoveryHandler as ResponseRecoveryFacade,
     ModelResponsePipeline as ResponsePipelineFacade,
 )
+from modules.agent.orchestration.shared import RecoveryPolicyResolver
+from modules.agent.orchestration.shared import RecoveryContext
 from modules.agent.orchestration.transitions import IntentTransitionHandler as TransitionFacade
 
 
@@ -38,6 +40,8 @@ def test_semantic_subpackages_export_expected_entry_points():
     assert ResponseRecoveryFacade is ModelOutputRecoveryHandler
     assert ResponsePipelineFacade is ModelResponsePipeline
     assert TransitionFacade is IntentTransitionHandler
+    assert RecoveryPolicyResolver is not None
+    assert RecoveryContext is not None
 
 
 def test_legacy_wrapper_modules_still_resolve_to_same_facades():
@@ -46,3 +50,11 @@ def test_legacy_wrapper_modules_still_resolve_to_same_facades():
     assert LegacyOutputRecoveryHandler is ModelOutputRecoveryHandler
     assert LegacyResponsePipeline is ModelResponsePipeline
     assert LegacyIntentTransitionHandler is IntentTransitionHandler
+
+
+def test_shared_wrappers_still_resolve_to_shared_exports():
+    from modules.agent.orchestration.decision_models import RecoveryContext as LegacyRecoveryContext
+    from modules.agent.orchestration.recovery_policy import RecoveryPolicyResolver as LegacyRecoveryPolicyResolver
+
+    assert LegacyRecoveryContext is RecoveryContext
+    assert LegacyRecoveryPolicyResolver is RecoveryPolicyResolver

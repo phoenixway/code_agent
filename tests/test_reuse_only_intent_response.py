@@ -2,15 +2,15 @@ from types import SimpleNamespace
 
 import pytest
 
-from modules.agent.orchestration.decision_models import (
+from modules.agent.orchestration.shared.decision_models import (
     ActionPolicyDecision,
     IntentHandlingDecision,
     MemoryBoardDecision,
     PlanBoardDecision,
 )
-from modules.agent.orchestration.intent_transitions import IntentTransitionHandler
-from modules.agent.orchestration.parsing import IntentResponseParser
-from modules.agent.orchestration.response_pipeline import ModelResponsePipeline
+from modules.agent.orchestration.transitions import IntentTransitionHandler
+from modules.agent.orchestration.parsers import IntentResponseParser
+from modules.agent.orchestration.responses import ModelResponsePipeline
 
 
 class DummyPromptBuilder:
@@ -284,7 +284,7 @@ async def test_reuse_only_recovery_rejects_reuse_plus_action():
 
 def test_strict_reuse_recovery_prompt_says_no_think_and_no_action():
     prompt = DummyPromptBuilder()  # shape check comes from real builder below
-    from modules.agent.orchestration.prompting import OrchestratorPromptBuilder
+    from modules.agent.orchestration.prompts import OrchestratorPromptBuilder
 
     real_prompt = OrchestratorPromptBuilder(
         SimpleNamespace(

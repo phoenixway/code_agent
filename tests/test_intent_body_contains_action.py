@@ -1,10 +1,10 @@
 import pytest
 from types import SimpleNamespace
 
-from modules.agent.orchestration.decision_models import ParsedModelOutput
-from modules.agent.orchestration.intent_transitions import IntentTransitionHandler
-from modules.agent.orchestration.output_recovery import ModelOutputRecoveryHandler
-from modules.agent.orchestration.parsing import IntentResponseParser
+from modules.agent.orchestration.shared.decision_models import ParsedModelOutput
+from modules.agent.orchestration.transitions import IntentTransitionHandler
+from modules.agent.orchestration.responses import ModelOutputRecoveryHandler
+from modules.agent.orchestration.parsers import IntentResponseParser
 
 
 class DummySegment:

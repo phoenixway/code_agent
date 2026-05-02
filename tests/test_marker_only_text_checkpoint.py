@@ -1,14 +1,14 @@
 import pytest
 from types import SimpleNamespace
 
-from modules.agent.orchestration.decision_models import (
+from modules.agent.orchestration.shared.decision_models import (
     ActionPolicyDecision,
     IntentHandlingDecision,
     MemoryBoardDecision,
     PlanBoardDecision,
 )
-from modules.agent.orchestration.parsing import IntentResponseParser
-from modules.agent.orchestration.response_pipeline import ModelResponsePipeline
+from modules.agent.orchestration.parsers import IntentResponseParser
+from modules.agent.orchestration.responses import ModelResponsePipeline
 
 
 class DummySegment:

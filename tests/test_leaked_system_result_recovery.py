@@ -1,9 +1,9 @@
 import unittest
 from types import SimpleNamespace
 
-from modules.agent.orchestration.dispatch_outcome import DispatchOutcomeHandler
-from modules.agent.orchestration.response_pipeline import ModelResponsePipeline
-from modules.agent.orchestration.response_semantics import ResponseSemantics
+from modules.agent.orchestration.runtime.dispatch_outcome import DispatchOutcomeHandler
+from modules.agent.orchestration.responses import ModelResponsePipeline
+from modules.agent.orchestration.responses.response_semantics import ResponseSemantics
 
 
 class LeakedSystemResultSemanticsTests(unittest.TestCase):

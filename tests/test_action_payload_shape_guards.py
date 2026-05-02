@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from modules.agent.orchestration.parsing import IntentResponseParser
+from modules.agent.orchestration.parsers import IntentResponseParser
 
 
 def _segment(type_, content=None):

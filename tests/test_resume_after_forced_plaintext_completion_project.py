@@ -7,17 +7,17 @@ from types import SimpleNamespace
 
 
 def _import_recovery_coordinator():
-    from modules.agent.orchestration.recovery import RecoveryCoordinator
+    from modules.agent.orchestration.runtime.recovery import RecoveryCoordinator
     return RecoveryCoordinator
 
 
 def _import_orchestrator():
-    from modules.agent.orchestration.core import Orchestrator
+    from modules.agent.orchestration.runtime.core import Orchestrator
     return Orchestrator
 
 
 def _import_prompt_builder():
-    from modules.agent.orchestration.prompting import OrchestratorPromptBuilder
+    from modules.agent.orchestration.prompts import OrchestratorPromptBuilder
     return OrchestratorPromptBuilder
 
 

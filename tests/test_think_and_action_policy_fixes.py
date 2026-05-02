@@ -2,13 +2,13 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from modules.agent.orchestration.action_policy import ActionPolicyHandler
-from modules.agent.orchestration.output_recovery import ModelOutputRecoveryHandler
-from modules.agent.orchestration.prompting import OrchestratorPromptBuilder
-from modules.agent.orchestration.decision_models import ParsedModelOutput
-from modules.agent.orchestration.visible_text import extract_visible_text_for_user
+from modules.agent.orchestration.runtime.action_policy import ActionPolicyHandler
+from modules.agent.orchestration.responses import ModelOutputRecoveryHandler
+from modules.agent.orchestration.prompts import OrchestratorPromptBuilder
+from modules.agent.orchestration.shared.decision_models import ParsedModelOutput
+from modules.agent.orchestration.parsers.visible_text import extract_visible_text_for_user
 from modules.policy import PermissionPolicy
-from modules.agent.intent_guard import IntentGuard
+from modules.agent.orchestration.runtime.policy import IntentGuard
 
 
 class _Segment:

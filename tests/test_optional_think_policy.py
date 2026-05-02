@@ -1,5 +1,5 @@
-from modules.agent.orchestration.parsing import IntentResponseParser
-from modules.agent.orchestration.prompting import OrchestratorPromptBuilder
+from modules.agent.orchestration.parsers import IntentResponseParser
+from modules.agent.orchestration.prompts import OrchestratorPromptBuilder
 from modules.defaults import DEFAULT_SYSTEM_PROMPT
 from modules.parser import ResponseParser
 from types import SimpleNamespace

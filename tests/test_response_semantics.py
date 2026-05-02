@@ -1,7 +1,7 @@
 import unittest
 from types import SimpleNamespace
 
-from modules.agent.orchestration.response_semantics import ResponseSemantics
+from modules.agent.orchestration.responses.response_semantics import ResponseSemantics
 
 
 class ResponseSemanticsTests(unittest.TestCase):

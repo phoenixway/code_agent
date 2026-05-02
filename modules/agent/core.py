@@ -1,7 +1,7 @@
 """Ядро агента - ініціалізація компонентів."""
 
 import asyncio
-from modules.agent.orchestration.core import Orchestrator
+from modules.agent.orchestration.runtime.core import Orchestrator
 from modules.tools.manager import ToolManager
 from modules.context import ContextManager
 from modules.history import HistoryManager

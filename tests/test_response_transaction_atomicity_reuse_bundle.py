@@ -4,15 +4,15 @@ from types import SimpleNamespace
 
 import pytest
 
-from modules.agent.orchestration.action_policy import ActionPolicyHandler
-from modules.agent.orchestration.decision_models import (
+from modules.agent.orchestration.runtime.action_policy import ActionPolicyHandler
+from modules.agent.orchestration.shared.decision_models import (
     MemoryBoardDecision,
     OutputRecoveryDecision,
     PlanBoardDecision,
 )
-from modules.agent.orchestration.intent_transitions import IntentTransitionHandler
-from modules.agent.orchestration.parsing import IntentResponseParser
-from modules.agent.orchestration.response_pipeline import ModelResponsePipeline
+from modules.agent.orchestration.transitions import IntentTransitionHandler
+from modules.agent.orchestration.parsers import IntentResponseParser
+from modules.agent.orchestration.responses import ModelResponsePipeline
 
 
 class DummySegment:

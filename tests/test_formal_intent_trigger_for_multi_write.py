@@ -2,10 +2,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from modules.agent.orchestration.action_policy import ActionPolicyHandler
-from modules.agent.orchestration.decision_models import ActionPolicyDecision
-from modules.agent.orchestration.prompting import OrchestratorPromptBuilder
-from modules.agent.orchestration.policy import IntentGuard
+from modules.agent.orchestration.runtime.action_policy import ActionPolicyHandler
+from modules.agent.orchestration.shared.decision_models import ActionPolicyDecision
+from modules.agent.orchestration.prompts import OrchestratorPromptBuilder
+from modules.agent.orchestration.runtime.policy import IntentGuard
 
 
 class _Segment:

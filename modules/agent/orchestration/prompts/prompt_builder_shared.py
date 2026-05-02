@@ -10,8 +10,8 @@ from modules.defaults import DEFAULT_SYSTEM_PROMPT
 
 from ...intent_message_resolver import resolve_intent_message_key
 from ...intent_messages import render_intent_message
-from ..decision_models import RecoveryContext
-from ..recovery_policy import RecoveryPolicyResolver
+from ..shared.decision_models import RecoveryContext
+from ..shared.recovery_policy import RecoveryPolicyResolver
 from ..transitions.intent_universe import IntentUniverseResolver
 
 

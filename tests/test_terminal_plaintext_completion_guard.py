@@ -2,16 +2,16 @@
 import pytest
 from types import SimpleNamespace
 
-from modules.agent.orchestration.decision_models import (
+from modules.agent.orchestration.shared.decision_models import (
     ActionPolicyDecision,
     IntentHandlingDecision,
     MemoryBoardDecision,
     OutputRecoveryDecision,
     PlanBoardDecision,
 )
-from modules.agent.orchestration.parsing import IntentResponseParser
-from modules.agent.orchestration.response_pipeline import ModelResponsePipeline
-from modules.agent.orchestration.visible_text import (
+from modules.agent.orchestration.parsers import IntentResponseParser
+from modules.agent.orchestration.responses import ModelResponsePipeline
+from modules.agent.orchestration.parsers.visible_text import (
     extract_visible_text_for_user,
     terminal_plaintext_completion_status,
 )

@@ -1,8 +1,8 @@
 import pytest
 from types import SimpleNamespace
 
-from modules.agent.orchestration.decision_models import ParsedModelOutput
-from modules.agent.orchestration.output_recovery import ModelOutputRecoveryHandler
+from modules.agent.orchestration.shared.decision_models import ParsedModelOutput
+from modules.agent.orchestration.responses import ModelOutputRecoveryHandler
 
 
 class DummyUI:

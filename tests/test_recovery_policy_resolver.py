@@ -1,8 +1,8 @@
 from types import SimpleNamespace
 import unittest
 
-from modules.agent.orchestration.decision_models import RecoveryContext
-from modules.agent.orchestration.recovery_policy import RecoveryPolicyResolver
+from modules.agent.orchestration.shared.decision_models import RecoveryContext
+from modules.agent.orchestration.shared.recovery_policy import RecoveryPolicyResolver
 
 
 class RecoveryPolicyResolverTests(unittest.TestCase):
