@@ -1,8 +1,17 @@
-"""
-Agent package.
+"""Public orchestration runtime surface."""
 
-Keep this package initializer lightweight.
-Import heavy runtime classes explicitly from their modules.
-"""
+from .core import LoopContext, Orchestrator
+from .parsers import IntentResponseParser
+from .prompts import OrchestratorPromptBuilder
+from .responses import ModelOutputRecoveryHandler, ModelResponsePipeline
+from .transitions import IntentTransitionHandler
 
-__all__ = []
+__all__ = [
+    "IntentResponseParser",
+    "IntentTransitionHandler",
+    "LoopContext",
+    "ModelOutputRecoveryHandler",
+    "ModelResponsePipeline",
+    "Orchestrator",
+    "OrchestratorPromptBuilder",
+]

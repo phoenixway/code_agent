@@ -5,24 +5,22 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 
-from modules.agent.orchestration.recovery import RecoveryCoordinator
-
 from ..allowed_actions_resolver import AllowedActionsResolver
 from .action_policy import ActionPolicyHandler
 from .dispatch_pipeline import DispatchPipeline
 from .dispatch_outcome import DispatchOutcomeHandler
-from .intent_transitions import IntentTransitionHandler
 from .lifecycle import TurnLifecycle
 from .loop_gate import LoopGateHandler
 from .memory_board_stage import MemoryBoardStageHandler
-from .output_recovery import ModelOutputRecoveryHandler
-from .parsing import IntentResponseParser
+from .parsers import IntentResponseParser
 from .plan_board_stage import PlanBoardStageHandler
 from .policy import IntentGuard
-from .prompting import OrchestratorPromptBuilder
+from .prompts import OrchestratorPromptBuilder
 from .pipeline import OrchestrationPipeline
 from .recovery_policy import RecoveryPolicyResolver
-from .response_pipeline import ModelResponsePipeline
+from .recovery import RecoveryCoordinator
+from .responses import ModelOutputRecoveryHandler, ModelResponsePipeline
+from .transitions import IntentTransitionHandler
 
 
 @dataclass

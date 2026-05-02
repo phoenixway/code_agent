@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 
-from .stage_logging import OrchestrationStageLogger
+from .responses.stage_logging import OrchestrationStageLogger
 
 
 class DispatchPipeline:

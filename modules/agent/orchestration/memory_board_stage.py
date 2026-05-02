@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 
 from .decision_models import MemoryBoardDecision
-from .stage_logging import OrchestrationStageLogger
+from .responses.stage_logging import OrchestrationStageLogger
 
 
 class MemoryBoardStageHandler:

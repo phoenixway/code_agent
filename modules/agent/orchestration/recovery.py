@@ -5,7 +5,7 @@ from __future__ import annotations
 from .decision_models import RecoveryDecision
 from .decision_models import RecoveryContext
 from .recovery_policy import RecoveryPolicyResolver
-from .stage_logging import OrchestrationStageLogger
+from .responses.stage_logging import OrchestrationStageLogger
 from ..intent_messages import render_intent_message
 
 StopHandlingDecision = RecoveryDecision

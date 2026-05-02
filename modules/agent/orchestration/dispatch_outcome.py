@@ -5,8 +5,12 @@ from __future__ import annotations
 import re
 
 from .decision_models import DispatchHandlingDecision
-from .stage_logging import OrchestrationStageLogger
-from .visible_text import contains_control_markup, detect_incomplete_control_markup, extract_visible_text_for_user
+from .parsers.visible_text import (
+    contains_control_markup,
+    detect_incomplete_control_markup,
+    extract_visible_text_for_user,
+)
+from .responses.stage_logging import OrchestrationStageLogger
 from ..technical_interruptions import detect_technical_interruption
 
 

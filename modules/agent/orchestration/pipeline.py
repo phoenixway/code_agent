@@ -5,8 +5,8 @@ from __future__ import annotations
 import asyncio
 
 from .decision_models import ModelStepResult, PipelineIterationDecision
-from .stage_logging import OrchestrationStageLogger
-from .visible_text import sanitize_visible_text_for_user
+from .parsers.visible_text import sanitize_visible_text_for_user
+from .responses.stage_logging import OrchestrationStageLogger
 from ..model_client import ModelTechnicalInterruptionError
 from ..technical_interruptions import TechnicalInterruption
 

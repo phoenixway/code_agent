@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 
 from .decision_models import LoopGateDecision
-from .stage_logging import OrchestrationStageLogger
+from .responses.stage_logging import OrchestrationStageLogger
 
 
 class LoopGateHandler:
