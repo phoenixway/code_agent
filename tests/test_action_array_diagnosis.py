@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from modules.agent.orchestration.decision_models import ParsedModelOutput
 from modules.agent.orchestration.output_recovery import ModelOutputRecoveryHandler
 from modules.agent.orchestration.parsing import IntentResponseParser
+from modules.agent.orchestration.prompting import OrchestratorPromptBuilder
 
 
 class DummySegment:
@@ -71,9 +72,26 @@ def test_single_action_block_with_json_array_gets_specific_invalid_kind():
     assert parsed.invalid_kind != "malformed_action"
 
 
-def test_multiple_top_level_action_blocks_still_get_multiple_actions():
+def test_multiple_top_level_state_changing_action_blocks_still_get_multiple_actions():
     response = """
-<think>! Need two reads. ? Must choose one. → incorrectly emit two actions.</think>
+<think>! Need two edits. ? Must choose one. → incorrectly emit two actions.</think>
+<memory_update_done />
+<action>{"type": "edit_file", "path": "modules/a.py", "search_text": "old", "replace_text": "new"}</action>
+<action>{"type": "edit_file", "path": "modules/b.py", "search_text": "old", "replace_text": "new"}</action>
+""".strip()
+    segments = [
+        DummySegment("action", {"type": "edit_file", "path": "modules/a.py", "search_text": "old", "replace_text": "new"}),
+        DummySegment("action", {"type": "edit_file", "path": "modules/b.py", "search_text": "old", "replace_text": "new"}),
+    ]
+
+    parsed = IntentResponseParser().classify(response, segments)
+
+    assert parsed.invalid_kind == "multiple_actions"
+
+
+def test_multiple_top_level_read_only_action_blocks_are_not_multiple_actions():
+    response = """
+<think>! Need two reads. ? Need current file states. → read both files.</think>
 <memory_update_done />
 <action>{"type": "read_file_skeleton", "path": "modules/agent/state_manager.py"}</action>
 <action>{"type": "read_file_skeleton", "path": "modules/history.py"}</action>
@@ -85,7 +103,7 @@ def test_multiple_top_level_action_blocks_still_get_multiple_actions():
 
     parsed = IntentResponseParser().classify(response, segments)
 
-    assert parsed.invalid_kind == "multiple_actions"
+    assert parsed.invalid_kind == ""
 
 
 @pytest.mark.asyncio
@@ -113,3 +131,19 @@ async def test_output_recovery_uses_action_array_prompt_not_multiple_action_prom
     assert decision.next_query == "ARRAY PAYLOAD PROMPT"
     assert decision.reason == "action_payload_array"
     assert decision.next_query != "MULTIPLE ACTIONS PROMPT"
+
+
+def test_action_array_prompt_mentions_separate_read_only_batch_rule():
+    prompt = OrchestratorPromptBuilder(
+        SimpleNamespace(
+            state=SimpleNamespace(active_intent=None),
+            config=SimpleNamespace(),
+            planner=None,
+            memory_board_store=None,
+        )
+    ).build_action_payload_array_prompt()
+
+    assert "one JSON object" in prompt
+    assert "2-4 separate top-level <action> blocks" in prompt
+    assert "allowed only when every action is read-only and already narrowed" in prompt
+    assert "State-changing actions must remain single." in prompt

@@ -53,6 +53,7 @@ class HistoryManager:
 
         self.SKELETON_THRESHOLD = 2000
         self.MAX_ACTIVE_FILES = 5
+        self.MAX_CANONICAL_FILE_CACHE_BYTES = 256 * 1024
 
         self.SUMMARY_PROMPT_RATIO = 0.82
         self.SUMMARY_PROMPT_COOLDOWN_MIN = 200
@@ -792,11 +793,13 @@ class HistoryManager:
     def update_file_state(
         self,
         filename: str,
-        content: str,
+        content: str | None,
         *,
         source_tool: str = "",
         invalidate_stale: bool = True,
         metadata: dict | None = None,
+        size_bytes: int | None = None,
+        content_hash: str = "",
     ) -> dict:
         """Update canonical CURRENT FILE STATE for a path.
 
@@ -812,7 +815,27 @@ class HistoryManager:
                 "stale_working_material_invalidated": 0,
             }
 
-        meta = self.add_file_version(path, content, return_metadata=True)
+        if content is not None:
+            meta = self.add_file_version(path, content, return_metadata=True)
+        else:
+            versions = self.files.setdefault(path, [])
+            previous = versions[-1] if versions else {}
+            version_number = (previous.get("version", 0) or 0) + 1
+            meta = {
+                "version": version_number,
+                "is_new_version": True,
+                "blob_hash": None,
+            }
+            versions.append(
+                {
+                    "version": version_number,
+                    "blob_hash": None,
+                    "timestamp": time.time(),
+                    "size": int(size_bytes or 0),
+                    "content_elided": True,
+                    "content_hash": str(content_hash or "").strip(),
+                }
+            )
         if not isinstance(meta, dict):
             meta = {"version": meta, "is_new_version": False, "blob_hash": None}
 
@@ -821,8 +844,14 @@ class HistoryManager:
             latest = versions[-1]
             latest["source_tool"] = str(source_tool or "").strip()
             latest["updated_at"] = time.time()
+            if size_bytes is not None:
+                latest["size"] = int(size_bytes or 0)
+            if content_hash:
+                latest["content_hash"] = str(content_hash)
             if isinstance(metadata, dict):
-                latest["metadata"] = dict(metadata)
+                latest_meta = dict(latest.get("metadata") or {})
+                latest_meta.update(metadata)
+                latest["metadata"] = latest_meta
 
         invalidated = 0
         if invalidate_stale:
@@ -852,7 +881,10 @@ class HistoryManager:
                 "error": "missing_path",
             }
         try:
-            content = Path(path).read_text(encoding="utf-8")
+            file_path = Path(path)
+            raw_bytes = file_path.read_bytes()
+            size_bytes = len(raw_bytes)
+            content_hash = hashlib.sha256(raw_bytes).hexdigest()
         except Exception as exc:
             if self.logger:
                 self.logger.warning("FileState.update_from_disk failed path=%s error=%s", path, exc)
@@ -863,12 +895,39 @@ class HistoryManager:
                 "stale_working_material_invalidated": 0,
                 "error": str(exc),
             }
+        cache_limit = max(1024, int(getattr(self, "MAX_CANONICAL_FILE_CACHE_BYTES", 256 * 1024) or 256 * 1024))
+        if size_bytes <= cache_limit:
+            try:
+                content = raw_bytes.decode("utf-8")
+            except Exception:
+                content = raw_bytes.decode("utf-8", errors="replace")
+            return self.update_file_state(
+                path,
+                content,
+                source_tool=source_tool,
+                invalidate_stale=invalidate_stale,
+                metadata=metadata,
+                size_bytes=size_bytes,
+                content_hash=content_hash,
+            )
+
+        large_meta = dict(metadata or {})
+        large_meta.update(
+            {
+                "content_elided": True,
+                "cache_strategy": "metadata_only",
+                "size_bytes": size_bytes,
+                "content_hash": content_hash,
+            }
+        )
         return self.update_file_state(
             path,
-            content,
+            None,
             source_tool=source_tool,
             invalidate_stale=invalidate_stale,
-            metadata=metadata,
+            metadata=large_meta,
+            size_bytes=size_bytes,
+            content_hash=content_hash,
         )
 
     def _current_turn_readfile_keys(self, turn_id=None) -> set[tuple[str, str]]:
@@ -919,7 +978,16 @@ class HistoryManager:
             is_active = filename in active_set
             small_threshold = self.SKELETON_THRESHOLD if not over_limit_pressure else min(self.SKELETON_THRESHOLD, 400)
             is_small = len(content) < small_threshold
-            if is_active or is_small:
+            metadata = latest.get("metadata") if isinstance(latest.get("metadata"), dict) else {}
+            if latest.get("content_elided") or metadata.get("content_elided"):
+                workspace_parts.append(
+                    f"<file_state path='{filename}' version='{version}' size_bytes='{int(latest.get('size') or 0)}' "
+                    f"content_cached='false' hash='{str(latest.get('content_hash') or metadata.get('content_hash') or '')}'>"
+                    "latest file state recorded; previous snippets are stale"
+                    "</file_state>"
+                )
+                workspace_emitted.append((filename, version_str, "metadata_only"))
+            elif is_active or is_small:
                 workspace_parts.append(f"<file_content path='{filename}' version='{version}'>\n{content}\n</file_content>")
                 workspace_emitted.append((filename, version_str, "full"))
             else:
@@ -1066,8 +1134,8 @@ class HistoryManager:
         if not versions:
             return False
         latest = versions[-1]
-        blob_hash = str(latest.get("blob_hash") or "").strip()
-        if not blob_hash:
+        expected_hash = str(latest.get("content_hash") or latest.get("blob_hash") or "").strip()
+        if not expected_hash:
             return False
         try:
             path = Path(filename)
@@ -1077,7 +1145,7 @@ class HistoryManager:
         except Exception:
             return False
         current_hash = hashlib.sha256(current_bytes).hexdigest()
-        return current_hash == blob_hash
+        return current_hash == expected_hash
 
     def was_recently_summarized(self, window_sec: int = 90) -> bool:
         return self._last_summary_at > 0 and (time.time() - self._last_summary_at) <= max(1, int(window_sec))

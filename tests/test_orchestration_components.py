@@ -332,7 +332,7 @@ class IntentResponseParserTests(unittest.TestCase):
 
         self.assertEqual("", parsed.visible_text)
         self.assertTrue(parsed.has_intent_segment)
-        self.assertEqual("intent_only_without_next_step", parsed.invalid_kind)
+        self.assertEqual("", parsed.invalid_kind)
 
 
 class TurnLifecycleTests(unittest.TestCase):
@@ -1070,7 +1070,7 @@ class ModelOutputRecoveryHandlerTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertFalse(decision.handled)
-        self.assertEqual("missing_think_reflection_detected_non_blocking", decision.reason)
+        self.assertEqual("no_invalid_kind", decision.reason)
         self.assertFalse(state.think_reflection_repair_pending)
 
     async def test_missing_memory_update_done_triggers_repair_prompt_and_pending_state(self):

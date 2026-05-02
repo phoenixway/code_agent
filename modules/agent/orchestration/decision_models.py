@@ -18,11 +18,29 @@ class ParsedModelOutput:
     visible_text: str = ""
     invalid_kind: str = ""
     model_stop_reason: str = ""
+    auto_closed_think: bool = False
+    auto_closed_think_reason: str = ""
+    auto_closed_think_tag: str = ""
     operational_checkpoint_satisfied: bool = False
     operational_checkpoint_has_think: bool = False
     operational_checkpoint_has_marker: bool = False
     operational_checkpoint_has_board_commit: bool = False
     operational_checkpoint_has_tags: bool = False
+
+
+@dataclass
+class NormalizedModelResponse:
+    raw_response: str
+    normalized_response: str
+    repairs_applied: tuple[str, ...] = ()
+    repair_blocked_reason: str = ""
+    think_repair_applied: bool = False
+    think_repair_reason: str = ""
+    think_repair_confidence: str = ""
+    think_repair_tag: str = ""
+    think_repair_insert_at: int = -1
+    think_repair_blocked_by_atomicity: bool = False
+    diagnostics: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

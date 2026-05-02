@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, is_dataclass
 
 from .defect_detector import DefectDetector
@@ -21,6 +22,26 @@ READ_ONLY_RECOVERY_ACTIONS = {
     "find_files",
     "git_diff",
 }
+
+INTENTLESS_STATE_CHANGING_FILE_ACTIONS = {
+    "write_file",
+    "write_file_block",
+    "append_file_block",
+    "create_file",
+    "edit_file",
+    "delete_file",
+    "replace",
+}
+
+BUILD_FAILURE_RE = re.compile(
+    r"(?im)(?:^> Task .* FAILED$|compile(?:Debug|Release)?Kotlin FAILED|ksp\w*Kotlin|"
+    r"Unresolved reference:|Compilation error|^e:\s+file://|FAILURE: Build failed)"
+)
+COMPILER_FILE_RE = re.compile(r"(?im)(?:file://)?(?P<path>[\w./-]+\.(?:kt|kts|java|groovy|xml))(?::\d+(?::\d+)?)?")
+BUILD_STATUS_RE = re.compile(
+    r"(?is)\b(build (?:was|is)?\s*(?:run|not run|passed|failed|green|red)|"
+    r"ran\s+\.?/gradlew|assembledebug|compiledebugkotlin|build\s+(?:passed|failed|did not pass))\b"
+)
 
 
 class AgentState:
@@ -85,6 +106,15 @@ class AgentState:
         self.memory_tag_expected_intent_id = ""
         self.current_turn_state_change_count = 0
         self.current_turn_state_change_tools = []
+        self.intentless_state_changing_file_write_count = 0
+        self.last_plan_subgoal_create_count = 0
+        self.reuse_only_intent_required = False
+        self.reuse_only_blocked_action = ""
+        self.transition_only_intent_required = False
+        self.transition_only_blocked_action = ""
+        self.intent_transition_defect_reason = ""
+        self.intent_transition_defect_universe = ""
+        self.intent_transition_defect_count = 0
         self.consecutive_nonproductive_thinking_count = 0
         self.last_nonproductive_thinking_reason = ""
         self.missing_think_reflection_warning_count = 0
@@ -131,6 +161,13 @@ class AgentState:
         self.pending_resume_query = ""
         self.consecutive_nonproductive_thinking_count = 0
         self.last_nonproductive_thinking_reason = ""
+        self.build_fix_mode_active = False
+        self.build_fix_mode_reason = ""
+        self.build_fix_error_summary = ""
+        self.build_fix_compiler_mentioned_files = []
+        self.build_fix_last_build_ran = False
+        self.build_fix_last_build_passed = False
+        self.build_fix_last_build_command = ""
 
         # Critical: this must advance across real user turns.
         # Working-material protection/degradation depends on it.
@@ -207,12 +244,24 @@ class AgentState:
         self.memory_tag_expected_intent_id = ""
         self.current_turn_state_change_count = 0
         self.current_turn_state_change_tools = []
+        self.intentless_state_changing_file_write_count = 0
+        self.last_plan_subgoal_create_count = 0
+        self.reuse_only_intent_required = False
+        self.reuse_only_blocked_action = ""
+        self.transition_only_intent_required = False
+        self.transition_only_blocked_action = ""
+        self.intent_transition_defect_reason = ""
+        self.intent_transition_defect_universe = ""
+        self.intent_transition_defect_count = 0
         self.think_reflection_repair_kind = ""
         # FIXME:
         # This is a secondary/fallback signal only. When an active accepted
         # intent exists, downstream policy must prefer the active contract type
         # over last_completed_intent_type.
         self.last_completed_intent_type = ""
+        self.build_fix_last_build_ran = False
+        self.build_fix_last_build_passed = False
+        self.build_fix_last_build_command = ""
 
         # Forced plain-text completion is a recovery latch for the previous
         # turn. A fresh user turn must not inherit an exhausted contract that
@@ -306,6 +355,68 @@ class AgentState:
 
     def note_intent_only_response(self):
         self.intent_only_response_count += 1
+
+    def _extract_build_failure_files(self, text: str) -> list[str]:
+        files: list[str] = []
+        for match in BUILD_FAILURE_RE.finditer(str(text or "")):
+            _ = match
+        for match in COMPILER_FILE_RE.finditer(str(text or "")):
+            path = str(match.group("path") or "").strip()
+            if not path:
+                continue
+            if path.startswith("/"):
+                marker = "/app/"
+                if marker in path:
+                    path = path[path.index(marker) + 1 :]
+            if path not in files:
+                files.append(path)
+        return files
+
+    def note_build_failure_from_text(self, text: str, *, reason: str = "build_failure_requires_formal_intent") -> bool:
+        raw = str(text or "")
+        if not raw or not BUILD_FAILURE_RE.search(raw):
+            return False
+        files = self._extract_build_failure_files(raw)
+        self.build_fix_mode_active = True
+        self.build_fix_mode_reason = str(reason or "build_failure_requires_formal_intent").strip()
+        self.build_fix_error_summary = "Fix current Android compile errors."
+        self.build_fix_compiler_mentioned_files = files
+        self.build_fix_last_build_ran = True
+        self.build_fix_last_build_passed = False
+        self.build_fix_last_build_command = "./gradlew :app:assembleDebug"
+        return True
+
+    def clear_build_fix_mode(self) -> None:
+        self.build_fix_mode_active = False
+        self.build_fix_mode_reason = ""
+        self.build_fix_error_summary = ""
+        self.build_fix_compiler_mentioned_files = []
+        self.build_fix_last_build_ran = False
+        self.build_fix_last_build_passed = False
+        self.build_fix_last_build_command = ""
+
+    def build_fix_mode_requires_intent(self) -> bool:
+        return bool(self.build_fix_mode_active and self.active_intent is None)
+
+    def is_build_fix_intent_active(self) -> bool:
+        active = self.active_intent
+        if active is None:
+            return False
+        if not self.build_fix_mode_active:
+            return False
+        goal = str(getattr(active, "goal", "") or "").lower()
+        intent_type = str(getattr(active, "intent_type", "") or "").strip().upper()
+        return intent_type == "MODIFY" and ("build" in goal or "compile" in goal or "ksp" in goal)
+
+    def compiler_mentioned_file_allowed(self, path: str) -> bool:
+        normalized = str(path or "").strip()
+        if not normalized:
+            return False
+        files = [str(item or "").strip() for item in (self.build_fix_compiler_mentioned_files or []) if str(item or "").strip()]
+        return normalized in files
+
+    def build_fix_final_answer_has_build_status(self, text: str) -> bool:
+        return bool(BUILD_STATUS_RE.search(str(text or "")))
 
     def note_technical_interruption(self, interruption: TechnicalInterruption | dict | str | None, current_query: str = "") -> None:
         detected = detect_technical_interruption(interruption)
@@ -492,9 +603,22 @@ class AgentState:
         self.attach_config(config)
         if not self.intent_runtime:
             return False, "intent_runtime_unavailable"
+        try:
+            self.intent_runtime.last_apply_warning = ""
+            self.intent_runtime.last_transition_info = {}
+        except Exception:
+            pass
 
         contract, transition_info, error = self.intent_runtime.inspect_transition(payload)
         if error:
+            try:
+                self.intent_runtime.last_transition_info = {
+                    "transition": "rejected",
+                    "transition_applied": False,
+                    "reason": error,
+                }
+            except Exception:
+                pass
             return False, error
 
         should_skip_suspicion = bool(
@@ -549,6 +673,15 @@ class AgentState:
                         "recent_problem_output": recent.get("output_preview", ""),
                     },
                 }
+                try:
+                    self.intent_runtime.last_transition_info = {
+                        "transition": "rejected",
+                        "transition_applied": False,
+                        "reason": "suspect_intent_goal_drift" if goal_core_loss else "suspect_intent_relabel_repeat",
+                        "same_lineage": bool(transition_info.get("same_lineage")),
+                    }
+                except Exception:
+                    pass
                 return False, "suspect_intent_goal_drift" if goal_core_loss else "suspect_intent_relabel_repeat"
 
         ok, msg = self.intent_runtime.apply_payload(payload)
@@ -726,6 +859,22 @@ class AgentState:
         if state_change_confirmed:
             self.current_turn_state_change_count += 1
             self.current_turn_state_change_tools.append(cmd_type)
+            if self.active_intent is None and cmd_type in INTENTLESS_STATE_CHANGING_FILE_ACTIONS:
+                self.intentless_state_changing_file_write_count += 1
+
+        if cmd_type == "run_shell":
+            command_text = str(command.get("command") or "").strip()
+            output_text = " ".join(
+                str(result.get(key) or "")
+                for key in ("output", "stdout", "stdout_full", "raw_output")
+            )
+            if BUILD_FAILURE_RE.search(output_text):
+                self.note_build_failure_from_text(output_text)
+                self.build_fix_last_build_command = command_text or "./gradlew :app:assembleDebug"
+            elif "gradlew" in command_text and "assembleDebug" in command_text and str(status or "").strip().lower() == "success":
+                self.build_fix_last_build_ran = True
+                self.build_fix_last_build_passed = True
+                self.build_fix_last_build_command = command_text
 
         if status in {"failed", "error"}:
             self.last_turn_had_failure = True

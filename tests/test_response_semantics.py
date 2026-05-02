@@ -103,6 +103,34 @@ class ResponseSemanticsTests(unittest.TestCase):
         self.assertTrue(self.s.has_plain_think_prefix("Thinking:\nNeed next step"))
         self.assertFalse(self.s.has_plain_think_prefix("<think>Need next step</think>"))
 
+    def test_malformed_state_changing_think_allows_reasonably_long_compact_block(self):
+        think_lines = "\n".join(
+            [
+                "! verified target file and current function boundary",
+                "? need exact replacement span for the state update",
+                "! existing tests already cover the happy path",
+                "? need one guard for the empty branch",
+                "→ edit the exact block and then run the focused test",
+            ]
+        )
+        text = (
+            f"<think>{think_lines}</think>"
+            "<decision scope=\"intent\">Use one targeted edit.</decision>"
+            "<memory_update_done />"
+            "<action>{\"type\":\"edit_file\",\"path\":\"a.py\"}</action>"
+        )
+        self.assertFalse(self.s.has_malformed_state_changing_think_before_action(text))
+
+    def test_malformed_state_changing_think_accepts_long_prose_block(self):
+        think_text = "! verified state\n? gap\n→ " + ("A" * 1700)
+        text = (
+            f"<think>{think_text}</think>"
+            "<decision scope=\"intent\">Still too large.</decision>"
+            "<memory_update_done />"
+            "<action>{\"type\":\"edit_file\",\"path\":\"a.py\"}</action>"
+        )
+        self.assertFalse(self.s.has_malformed_state_changing_think_before_action(text))
+
 
 if __name__ == "__main__":
     unittest.main()

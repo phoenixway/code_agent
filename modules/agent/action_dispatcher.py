@@ -1515,7 +1515,7 @@ class ActionDispatcher:
                         self.agent.log.debug("FileState.refresh read_file failed path=%s", path, exc_info=True)
             return
 
-        if cmd_type in {"edit_file", "create_file", "write_file", "write_file_block", "append_file_block", "replace"}:
+        if cmd_type in {"edit_file", "create_file", "write_file", "write_file_block", "append_file_block", "replace", "delete_file"}:
             updater = getattr(history, "update_file_state_from_disk", None)
             if callable(updater):
                 try:

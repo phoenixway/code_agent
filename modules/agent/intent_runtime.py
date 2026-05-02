@@ -742,7 +742,10 @@ class IntentRuntime:
                 return None, "intent_reuse_requested_steps_invalid"
             requested_steps = max(1, min(requested_steps, int(getattr(self.config, "INTENT_MAX_SAFE_STEPS", 8))))
 
-            switch_reason = self._normalize_transition_reason(payload.get("switch_reason") or "current_intent_exhausted")
+            raw_switch_reason = str(payload.get("switch_reason") or "").strip()
+            if active is not None and not raw_switch_reason:
+                return None, "intent_switch_reason_required"
+            switch_reason = self._normalize_transition_reason(raw_switch_reason or "current_intent_exhausted")
             switch_explanation = str(payload.get("switch_explanation") or "").strip()
             base_type = active.intent_type if active is not None else str(recent_meta.get("intent_type") or "")
             requested_type = str(payload.get("intent_type") or base_type).strip().upper() or base_type
@@ -840,7 +843,9 @@ class IntentRuntime:
         if not allowed_actions:
             return None, "intent_allowed_actions_empty"
 
-        if active is not None and mode in {"activate", "replace"} and not self._is_legitimate_switch_reason(switch_reason):
+        if active is not None and mode == "replace" and not self._is_legitimate_switch_reason(switch_reason):
+            return None, "intent_switch_reason_required"
+        if active is not None and mode == "activate" and not self._is_legitimate_switch_reason(switch_reason):
             if self._same_lineage(IntentContract(intent_id=intent_id, intent_type=intent_type, goal=goal[:240], allowed_actions=allowed_actions[:], original_allowed_actions=allowed_actions[:], safe_steps_limit=1, retry_limit=1)):
                 return None, "intent_switch_reason_required"
 
@@ -873,18 +878,24 @@ class IntentRuntime:
         ), None
 
     def apply_payload(self, payload: dict) -> tuple[bool, str]:
-        contract, info, error = self.inspect_transition(payload)
-        if error:
-            return False, error
-
         self.last_apply_warning = ""
         self.last_transition_info = {}
+        contract, info, error = self.inspect_transition(payload)
+        if error:
+            self.last_transition_info = {
+                "transition": "rejected",
+                "transition_applied": False,
+                "reason": error,
+                "same_lineage": bool((info or {}).get("same_lineage")) if isinstance(info, dict) else False,
+            }
+            return False, error
 
         policy_ctx = self._build_policy_context(contract, info)
         decision = self.policy_engine.evaluate_transition(policy_ctx)
         if not decision.allowed:
             self.last_transition_info = {
                 "transition": "policy_rejected",
+                "transition_applied": False,
                 "reason": decision.reason,
                 "error_code": decision.error_code,
                 "message_key": decision.message_key,
@@ -914,6 +925,7 @@ class IntentRuntime:
                     pass
                 self.last_transition_info = {
                     "transition": "intent_reused_with_step_refresh",
+                    "transition_applied": True,
                     "same_lineage": True,
                     "switch_reason": contract.switch_reason,
                     "granted_steps": grant,
@@ -935,6 +947,7 @@ class IntentRuntime:
             self.clear_requirement()
             self.last_transition_info = {
                 "transition": "intent_reused_with_step_refresh",
+                "transition_applied": True,
                 "same_lineage": True,
                 "switch_reason": contract.switch_reason,
                 "granted_steps": grant,
@@ -950,6 +963,7 @@ class IntentRuntime:
                 return False, "intent_complete_wrong_active_id"
             self.last_transition_info = {
                 "transition": "intent_completed",
+                "transition_applied": True,
                 "same_lineage": True,
                 "completion_reason": contract.completion_reason,
                 "completion_explanation": contract.completion_explanation,
@@ -996,6 +1010,7 @@ class IntentRuntime:
                 self.clear_requirement()
                 self.last_transition_info = {
                     "transition": "intent_retried",
+                    "transition_applied": True,
                     "same_lineage": True,
                     "switch_reason": contract.switch_reason,
                     "policy_message_key": decision.message_key,
@@ -1027,6 +1042,7 @@ class IntentRuntime:
                     contract.step_count = min(active.step_count, contract.safe_steps_limit + max(0, contract.user_step_extension))
                 self.last_transition_info = {
                     "transition": "intent_replaced",
+                    "transition_applied": True,
                     "same_lineage": True,
                     "switch_reason": contract.switch_reason,
                     "policy_message_key": decision.message_key,
@@ -1038,6 +1054,7 @@ class IntentRuntime:
                 contract.force_plaintext_completion = False
                 self.last_transition_info = {
                     "transition": "intent_activated",
+                    "transition_applied": True,
                     "same_lineage": False,
                     "switch_reason": contract.switch_reason,
                     "policy_message_key": decision.message_key,
@@ -1074,6 +1091,7 @@ class IntentRuntime:
         self.clear_requirement()
         self.last_transition_info = {
             "transition": "intent_refreshed",
+            "transition_applied": True,
             "same_lineage": same_lineage,
             "switch_reason": contract.switch_reason,
             "policy_message_key": decision.message_key,

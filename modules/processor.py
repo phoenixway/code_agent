@@ -76,6 +76,13 @@ class ResponseProcessor:
         if normalize_error:
             return normalize_error
 
+        if (
+            action_type == "create_file"
+            and not isinstance(args.get("content"), str)
+            and isinstance(args.get("file_content"), str)
+        ):
+            args["content"] = args.get("file_content")
+
         read_payload_error = self._validate_read_tool_payload(action_type, args)
         if read_payload_error:
             return read_payload_error
@@ -362,8 +369,15 @@ class ResponseProcessor:
                     "status": "failed",
                     "error_code": "VALIDATION_ERROR",
                     "recoverable": True,
-                    "output": f"{action_type} requires 'content' (string) with full file text.",
-                    "next_actions": ["read_file", "write_file"],
+                    "output": (
+                        f"{action_type} requires file body.\n"
+                        "Either:\n"
+                        f"1. put \"content\" as a JSON string inside {action_type}, or\n"
+                        "2. use:\n"
+                        f"<action>{{\"type\":\"{action_type}\",\"path\":\"...\"}}</action>\n"
+                        "<file_content>raw file text</file_content>"
+                    ),
+                    "next_actions": ["read_file", action_type, "write_file_block"],
                 }
             if len(args.get("content", "")) > self.JSON_FILE_ACTION_CONTENT_LIMIT:
                 return {

@@ -68,7 +68,7 @@ class ThinkStrictnessTests(unittest.IsolatedAsyncioTestCase):
         decision = await handler.decide(
             ParsedModelOutput(
                 response=response,
-                invalid_kind="malformed_verbose_or_nested_think",
+                invalid_kind="nested_think",
                 segments=[_Segment("action", {"type": "edit_file", "path": "a.py"})],
                 has_action_segment=True,
                 visible_text="",
@@ -77,7 +77,7 @@ class ThinkStrictnessTests(unittest.IsolatedAsyncioTestCase):
             audit_marker_retries=0,
         )
         self.assertTrue(decision.handled)
-        self.assertEqual("malformed_verbose_or_nested_think", decision.reason)
+        self.assertEqual("nested_think", decision.reason)
 
     async def test_action_inside_think_is_rejected(self):
         handler = self._handler()
@@ -92,7 +92,7 @@ class ThinkStrictnessTests(unittest.IsolatedAsyncioTestCase):
         decision = await handler.decide(
             ParsedModelOutput(
                 response=response,
-                invalid_kind="malformed_verbose_or_nested_think",
+                invalid_kind="action_inside_think",
                 segments=[_Segment("action", {"type": "edit_file", "path": "a.py"})],
                 has_action_segment=True,
                 visible_text="",
@@ -101,11 +101,11 @@ class ThinkStrictnessTests(unittest.IsolatedAsyncioTestCase):
             audit_marker_retries=0,
         )
         self.assertTrue(decision.handled)
-        self.assertEqual("malformed_verbose_or_nested_think", decision.reason)
+        self.assertEqual("action_inside_think", decision.reason)
 
-    async def test_verbose_think_over_threshold_is_rejected(self):
+    async def test_verbose_think_over_threshold_is_accepted(self):
         handler = self._handler()
-        long_body = "Here is the plan. " + ("A" * 900)
+        long_body = "Here is the plan. " + ("A" * 1700)
         response = (
             f"<think>{long_body}</think>"
             "<memory_review status=\"no_change\" scope=\"intent\" />"
@@ -122,20 +122,19 @@ class ThinkStrictnessTests(unittest.IsolatedAsyncioTestCase):
             malformed_action_retries=0,
             audit_marker_retries=0,
         )
-        self.assertTrue(decision.handled)
-        self.assertEqual("malformed_verbose_or_nested_think", decision.reason)
+        self.assertFalse(decision.handled)
+        self.assertEqual("no_invalid_kind", decision.reason)
 
-    async def test_repeated_malformed_verbose_think_triggers_loop_breaker(self):
+    async def test_repeated_nested_think_triggers_loop_breaker(self):
         handler = self._handler()
         response = (
-            "<think>Here is the plan. 1. inspect. 2. change. 3. verify. "
-            + ("A" * 900)
-            + "</think>"
+            "<think>outer <think>nested</think></think>"
             "<memory_update_done />"
             "<action>{\"type\":\"edit_file\",\"path\":\"a.py\"}</action>"
         )
         parsed = ParsedModelOutput(
             response=response,
+            invalid_kind="nested_think",
             segments=[_Segment("action", {"type": "edit_file", "path": "a.py"})],
             has_action_segment=True,
             visible_text="",
@@ -145,19 +144,22 @@ class ThinkStrictnessTests(unittest.IsolatedAsyncioTestCase):
         second = await handler.decide(parsed, malformed_action_retries=0, audit_marker_retries=0)
         third = await handler.decide(parsed, malformed_action_retries=0, audit_marker_retries=0)
 
-        self.assertEqual("malformed_verbose_or_nested_think", first.reason)
-        self.assertEqual("malformed_verbose_or_nested_think", second.reason)
-        self.assertEqual("malformed_verbose_or_nested_think", third.reason)
-        self.assertIn("exactly this skeleton", third.next_query.lower())
+        self.assertEqual("nested_think", first.reason)
+        self.assertIn("closed with </think> before any memory tag", first.next_query.lower())
+        self.assertIn("do not put protocol tags or actions inside <think>", first.next_query.lower())
+
+        self.assertEqual("nested_think", second.reason)
+        self.assertIn("return the corrected response from the beginning", second.next_query.lower())
+
+        self.assertEqual("terminal_malformed_think_handoff", third.reason)
+        self.assertTrue(third.stop_loop)
+        self.assertIsNone(third.next_query)
 
     async def test_malformed_think_count_accumulates_across_kinds_per_intent(self):
         handler = self._handler()
-        verbose = ParsedModelOutput(
-            response=(
-                "<think>Here is the plan. " + ("A" * 900) + "</think>"
-                "<memory_update_done />"
-                "<action>{\"type\":\"edit_file\",\"path\":\"a.py\"}</action>"
-            ),
+        nested_first = ParsedModelOutput(
+            response="<think>outer <think>nested</think></think><memory_update_done /><action>{\"type\":\"edit_file\",\"path\":\"a.py\"}</action>",
+            invalid_kind="nested_think",
             segments=[_Segment("action", {"type": "edit_file", "path": "a.py"})],
             has_action_segment=True,
             visible_text="",
@@ -176,95 +178,72 @@ class ThinkStrictnessTests(unittest.IsolatedAsyncioTestCase):
             has_action_segment=True,
             visible_text="",
         )
-        action_inside = ParsedModelOutput(
-            response="<think><action>{\"type\":\"read_file\",\"path\":\"a.py\"}</action></think>",
-            invalid_kind="action_inside_think",
-            segments=[_Segment("action", {"type": "edit_file", "path": "a.py"})],
-            has_action_segment=True,
-            visible_text="",
-        )
-        fifth_verbose = ParsedModelOutput(
-            response=(
-                "<think>Here is the plan. " + ("B" * 900) + "</think>"
-                "<memory_update_done />"
-                "<action>{\"type\":\"edit_file\",\"path\":\"a.py\"}</action>"
-            ),
-            segments=[_Segment("action", {"type": "edit_file", "path": "a.py"})],
-            has_action_segment=True,
-            visible_text="",
-        )
 
-        first = await handler.decide(verbose, malformed_action_retries=0, audit_marker_retries=0)
+        first = await handler.decide(nested_first, malformed_action_retries=0, audit_marker_retries=0)
         second = await handler.decide(incomplete, malformed_action_retries=0, audit_marker_retries=0)
         third = await handler.decide(nested, malformed_action_retries=0, audit_marker_retries=0)
-        fourth = await handler.decide(action_inside, malformed_action_retries=0, audit_marker_retries=0)
-        fifth = await handler.decide(fifth_verbose, malformed_action_retries=0, audit_marker_retries=0)
 
-        self.assertEqual("malformed_verbose_or_nested_think", first.reason)
-        self.assertIn("compact operational review", first.next_query.lower())
+        self.assertEqual("nested_think", first.reason)
+        self.assertIn("closed with </think> before any memory tag", first.next_query.lower())
+        self.assertIn("do not put protocol tags or actions inside <think>", first.next_query.lower())
+
         self.assertEqual("malformed_incomplete_think", second.reason)
-        self.assertIn("exactly this compact shape", second.next_query.lower())
-        self.assertEqual("nested_think", third.reason)
-        self.assertIn("exactly this skeleton", third.next_query.lower())
-        self.assertEqual("action_inside_think", fourth.reason)
-        self.assertIn("exactly this skeleton", fourth.next_query.lower())
-        self.assertEqual("recovery_loop_detected", fifth.reason)
+        self.assertIn("return the corrected response from the beginning", second.next_query.lower())
+
+        # Different malformed-think kinds accumulate under the same active intent.
+        # The 3rd malformed-think violation stops instead of issuing another retry.
+        self.assertEqual("terminal_malformed_think_handoff", third.reason)
+        self.assertTrue(third.stop_loop)
+        self.assertIsNone(third.next_query)
+
 
     async def test_repeated_recovery_loop_detected_escalates_to_terminal_handoff(self):
         handler = self._handler()
         malformed = ParsedModelOutput(
-            response=(
-                "<think>Here is the plan. " + ("A" * 900) + "</think>"
-                "<memory_update_done />"
-                "<action>{\"type\":\"edit_file\",\"path\":\"a.py\"}</action>"
-            ),
+            response="<think>outer <think>nested</think></think><memory_update_done /><action>{\"type\":\"edit_file\",\"path\":\"a.py\"}</action>",
+            invalid_kind="nested_think",
             segments=[_Segment("action", {"type": "edit_file", "path": "a.py"})],
             has_action_segment=True,
             visible_text="",
         )
 
         reasons = []
+        decisions = []
         for _ in range(7):
             decision = await handler.decide(malformed, malformed_action_retries=0, audit_marker_retries=0)
             reasons.append(decision.reason)
+            decisions.append(decision)
+            if decision.stop_loop:
+                break
 
-        self.assertEqual("recovery_loop_detected", reasons[4])
-        self.assertEqual("recovery_loop_detected", reasons[5])
-        self.assertEqual("terminal_recovery_loop_handoff", reasons[6])
-        self.assertTrue(handler.state.terminal_plaintext_completion_pending)
-        self.assertIn("recovery loop", handler.state.terminal_plaintext_completion_text.lower())
-        self.assertIn("intent_modify", handler.state.terminal_plaintext_completion_text)
-        self.assertIn("edit_file", handler.state.terminal_plaintext_completion_text)
+        self.assertIn("terminal_malformed_think_handoff", reasons)
+        self.assertLessEqual(reasons.index("terminal_malformed_think_handoff"), 2)
+        self.assertEqual("terminal_malformed_think_handoff", reasons[-1])
+        self.assertTrue(decisions[-1].stop_loop)
 
     async def test_large_repeated_malformed_response_triggers_terminal_large_handoff(self):
         handler = self._handler()
         huge = ParsedModelOutput(
-            response=(
-                "<think>" + ("A" * 11050) + "</think>"
-                "<memory_update_done />"
-                "<action>{\"type\":\"write_file_block\",\"path\":\"BookmarksViewModel.kt\"}</action>"
-            ),
-            invalid_kind="malformed_verbose_or_nested_think",
+            response="<think>" + ("A" * 11050) + "<action>{\"type\":\"write_file_block\",\"path\":\"BookmarksViewModel.kt\"}</action>",
+            invalid_kind="action_inside_think",
             segments=[_Segment("action", {"type": "write_file_block", "path": "BookmarksViewModel.kt"})],
             has_action_segment=True,
             visible_text="",
         )
         first = await handler.decide(huge, malformed_action_retries=0, audit_marker_retries=0)
         second = await handler.decide(huge, malformed_action_retries=0, audit_marker_retries=0)
-        self.assertEqual("malformed_verbose_or_nested_think", first.reason)
+        self.assertEqual("action_inside_think", first.reason)
         self.assertEqual("terminal_large_malformed_response_handoff", second.reason)
         self.assertTrue(handler.state.terminal_plaintext_completion_pending)
         self.assertIn("raw size", handler.state.terminal_plaintext_completion_text)
         self.assertIn("write_file_block", handler.state.terminal_plaintext_completion_text)
 
-    async def test_valid_compact_think_reduces_malformed_counter_slowly(self):
+
+    async def test_valid_compact_think_clears_malformed_counter(self):
         handler = self._handler()
         malformed = ParsedModelOutput(
-            response=(
-                "<think>Here is the plan. " + ("A" * 900) + "</think>"
-                "<memory_update_done />"
-                "<action>{\"type\":\"edit_file\",\"path\":\"a.py\"}</action>"
-            ),
+            response="<think>outer <think>nested</think></think><memory_update_done /><action>{\"type\":\"edit_file\",\"path\":\"a.py\"}</action>",
+            invalid_kind="nested_think",
             segments=[_Segment("action", {"type": "edit_file", "path": "a.py"})],
             has_action_segment=True,
             visible_text="",
@@ -285,14 +264,29 @@ class ThinkStrictnessTests(unittest.IsolatedAsyncioTestCase):
             operational_checkpoint_has_marker=True,
         )
 
-        await handler.decide(malformed, malformed_action_retries=0, audit_marker_retries=0)
-        await handler.decide(malformed, malformed_action_retries=0, audit_marker_retries=0)
+        first = await handler.decide(malformed, malformed_action_retries=0, audit_marker_retries=0)
+        second = await handler.decide(malformed, malformed_action_retries=0, audit_marker_retries=0)
+
+        assert first.reason == "nested_think"
+        assert second.reason == "nested_think"
+        assert "return the corrected response from the beginning" in second.next_query.lower()
+
         ok = await handler.decide(valid, malformed_action_retries=0, audit_marker_retries=0)
-        again = await handler.decide(malformed, malformed_action_retries=0, audit_marker_retries=0)
 
         self.assertEqual("no_invalid_kind", ok.reason)
-        self.assertEqual("malformed_verbose_or_nested_think", again.reason)
-        self.assertIn("exactly this compact shape", again.next_query.lower())
+        self.assertEqual(0, getattr(handler.state, "malformed_think_count", 0))
+
+        again = await handler.decide(malformed, malformed_action_retries=0, audit_marker_retries=0)
+
+        self.assertEqual("nested_think", again.reason)
+        self.assertFalse(again.stop_loop)
+
+        # Because valid compact think clears the counter, this malformed output is
+        # treated as the first malformed-think occurrence again, not as the second
+        # strict-skeleton occurrence.
+        self.assertIn("closed with </think> before any memory tag", again.next_query.lower())
+        self.assertIn("do not put protocol tags or actions inside <think>", again.next_query.lower())
+        self.assertIn("return the corrected response from the beginning", again.next_query.lower())
 
     async def test_valid_compact_operational_think_passes(self):
         handler = self._handler()
@@ -359,7 +353,7 @@ class DisallowedActionRecoveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("intent_action_not_allowed", decision.reason)
         self.assertIn("Blocked action type: write_file", decision.next_query)
         self.assertIn("Current allowed_actions: edit_file, read_chunk", decision.next_query)
-        self.assertIn("Do not repeat the same disallowed action", decision.next_query)
+        self.assertIn("return only a minimal intent transition", decision.next_query)
 
     async def test_disallowed_write_file_block_recovery_is_specific(self):
         handler, _state = self._handler(["edit_file", "read_chunk"])
@@ -369,9 +363,9 @@ class DisallowedActionRecoveryTests(unittest.IsolatedAsyncioTestCase):
             intent_payload=None,
         )
         self.assertEqual("intent_action_not_allowed", decision.reason)
-        self.assertIn("Tool `write_file_block` is not allowed", decision.next_query)
-        self.assertIn('allowed_actions including write_file_block', decision.next_query)
-        self.assertIn("Do not repeat write_file_block", decision.next_query)
+        self.assertIn("This action is outside the current intent contract", decision.next_query)
+        self.assertIn('mode="replace"', decision.next_query)
+        self.assertIn('"switch_reason": "save_requested"', decision.next_query)
 
     async def test_blocked_edit_file_under_investigate_forces_reuse_prompt(self):
         handler, state = self._handler(["read_chunk", "search_content", "read_file_skeleton"])
@@ -383,10 +377,10 @@ class DisallowedActionRecoveryTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertTrue(decision.handled)
         self.assertEqual("intent_action_not_allowed", decision.reason)
-        self.assertIn("current intent is investigate and cannot modify files", decision.next_query.lower())
+        self.assertIn("this action is outside the current intent contract", decision.next_query.lower())
         self.assertIn('mode="reuse"', decision.next_query)
-        self.assertIn('switch_reason="work_type_changed"', decision.next_query)
-        self.assertIn("do not emit edit_file until reuse is accepted", decision.next_query.lower())
+        self.assertIn('"switch_reason": "work_type_changed"', decision.next_query)
+        self.assertIn("do not include <think>, <memory_update_done />, <action>, <file_content>, or final answer", decision.next_query.lower())
 
     async def test_repeated_disallowed_action_triggers_specific_reason(self):
         handler, _state = self._handler(["edit_file", "read_chunk"])

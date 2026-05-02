@@ -63,7 +63,7 @@ def _builder():
     return OrchestratorPromptBuilder(DummyAgent())
 
 
-def test_first_write_file_block_disallowed_prompt_keeps_menu_and_legacy_phrases():
+def test_first_write_file_block_disallowed_prompt_requests_minimal_transition_only():
     builder = _builder()
 
     prompt = builder.build_intent_action_not_allowed_prompt(
@@ -74,15 +74,15 @@ def test_first_write_file_block_disallowed_prompt_keeps_menu_and_legacy_phrases(
         repeated=False,
     )
 
-    assert "Tool `write_file_block` is not allowed" in prompt
-    assert "Either:" in prompt
-    assert "allowed_actions including write_file_block" in prompt
-    assert "Do not repeat the same disallowed action" in prompt
-    assert "Do not include <action> with `write_file_block` until intent reuse is accepted." in prompt
-    assert "Do not repeat write_file_block until reuse is accepted." in prompt
+    assert "This action is outside the current intent contract." in prompt
+    assert "return only a minimal intent transition" in prompt
+    assert 'mode="reuse"' in prompt
+    assert 'mode="replace"' in prompt
+    assert "Do not include <think>, <memory_update_done />, <action>, <file_content>, or final answer" in prompt
+    assert "Either:" not in prompt
 
 
-def test_investigate_edit_file_disallowed_prompt_keeps_work_type_hint_and_no_emit_phrase():
+def test_investigate_edit_file_disallowed_prompt_keeps_minimal_transition_guidance():
     builder = _builder()
 
     prompt = builder.build_intent_action_not_allowed_prompt(
@@ -93,11 +93,11 @@ def test_investigate_edit_file_disallowed_prompt_keeps_work_type_hint_and_no_emi
         repeated=False,
     )
 
-    assert "current intent is INVESTIGATE and cannot modify files" in prompt
+    assert "This action is outside the current intent contract." in prompt
     assert 'mode="reuse"' in prompt
-    assert 'switch_reason="work_type_changed"' in prompt
-    assert "Do not emit edit_file until reuse is accepted." in prompt
-    assert "Do not include <action> with `edit_file` until intent reuse is accepted." in prompt
+    assert '"switch_reason": "work_type_changed"' in prompt
+    assert '"intent_type": "MODIFY"' in prompt
+    assert "Do not include <think>, <memory_update_done />, <action>, <file_content>, or final answer" in prompt
 
 
 def test_repeated_disallowed_action_prompt_is_strict_reuse_only():
@@ -112,6 +112,7 @@ def test_repeated_disallowed_action_prompt_is_strict_reuse_only():
     )
 
     assert "Return only a top-level <intent mode=\"reuse\">...</intent>." in prompt
+    assert "Do not include <think> or <action>." in prompt
     assert "Do not include <action> until intent reuse is accepted." in prompt
     assert "Do not repeat create_file until reuse is accepted." in prompt
     assert "Either:" not in prompt
@@ -134,8 +135,8 @@ async def test_recovery_repeated_disallowed_action_escalates_to_strict_then_stop
     first = await recovery.handle_defect_detector_stop(stop_info)
     assert first.continue_loop is True
     assert first.reason == "intent_action_not_allowed"
-    assert "Either:" in first.next_query
-    assert "Tool `write_file_block` is not allowed" in first.next_query
+    assert "return only a minimal intent transition" in first.next_query
+    assert 'mode="replace"' in first.next_query
 
     second = await recovery.handle_defect_detector_stop(stop_info)
     assert second.continue_loop is True

@@ -26,12 +26,16 @@ CONTROL_MARKUP_RE = re.compile(
     r"<\s*(think|intent|action|file_content|fact|finding|decision|preference|progress|path|subgoal|memory_review|memory_update_done|history_tool|previously_performed_action)\b",
     re.IGNORECASE,
 )
+RAW_CONTROL_TAG_FRAGMENT_RE = re.compile(
+    r"</?\s*(think|intent|action|file_content|fact|finding|decision|preference|progress|path|subgoal)\b"
+    r"|<\s*(memory_review|memory_update_done)\b",
+    re.IGNORECASE,
+)
 PLAIN_THINK_PREFIX_RE = re.compile(r"^\s*(think|thinking)\s*:?\s*(?:\n+|$)", re.IGNORECASE)
 UNPAIRED_OPERATIONAL_OPEN_RE = re.compile(
     r"<(fact|finding|decision|preference|progress|path|subgoal)\b",
     re.IGNORECASE,
 )
-THINK_VERBOSE_CHAR_LIMIT = 800
 
 
 def _mask_complete_control_blocks(response: str) -> str:
@@ -99,24 +103,22 @@ def detect_invalid_think_markup(response: str) -> str:
         think_body = (inner_match.group(1) if inner_match else "").strip()
         think_body_lower = think_body.lower()
         if "<think" in think_body_lower:
-            return "malformed_verbose_or_nested_think"
+            return "nested_think"
         if "<action" in think_body_lower:
-            return "malformed_verbose_or_nested_think"
-        if "```" in think_body:
-            return "malformed_verbose_or_nested_think"
-        if len(think_body) > THINK_VERBOSE_CHAR_LIMIT:
-            return "malformed_verbose_or_nested_think"
+            return "action_inside_think"
+        if "<file_content" in think_body_lower:
+            return "file_content_inside_think"
+        if "<intent" in think_body_lower:
+            return "intent_inside_think"
     return ""
 
 
-def extract_visible_text_for_user(response: str) -> str:
+def sanitize_visible_text_for_user(response: str) -> tuple[str, bool]:
     if not isinstance(response, str):
-        return ""
+        return "", False
     text = response
     if not text.strip():
-        return ""
-    if detect_invalid_think_markup(text):
-        return ""
+        return "", False
 
     text, _ = strip_plain_think_prefix_artifacts(text)
     text = text.replace("\r\n", "\n").replace("\r", "\n")
@@ -134,11 +136,22 @@ def extract_visible_text_for_user(response: str) -> str:
     text = TOOL_HISTORY_LINE_RE.sub("\n", text)
     text = HISTORY_TOOL_ACTION_RE.sub("\n", text)
     text = HISTORY_TOOL_TAG_RE.sub("\n", text)
+    leak_detected = bool(RAW_CONTROL_TAG_FRAGMENT_RE.search(text))
     text = GENERIC_TAG_RE.sub(" ", text)
     text = re.sub(r"[^\S\n]+", " ", text)
     text = re.sub(r" *\n *", "\n", text)
     text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    return text, leak_detected
+
+
+def extract_visible_text_for_user(response: str) -> str:
+    text, _ = sanitize_visible_text_for_user(response)
     return text
+
+
+def visible_text_has_control_tag_leak(response: str) -> bool:
+    _text, leak_detected = sanitize_visible_text_for_user(response)
+    return leak_detected
 
 
 def contains_control_markup(response: str) -> bool:
@@ -155,6 +168,14 @@ def detect_incomplete_control_markup(response: str) -> str:
     lowered = masked.lower()
 
     if lowered.rfind("<think") > lowered.rfind("</think>"):
+        think_start = lowered.rfind("<think")
+        trailing = lowered[think_start:] if think_start >= 0 else lowered
+        if "<action" in trailing:
+            return "action_inside_think"
+        if "<file_content" in trailing:
+            return "file_content_inside_think"
+        if "<intent" in trailing:
+            return "intent_inside_think"
         return "malformed_incomplete_think"
     if lowered.rfind("<action") > lowered.rfind("</action>"):
         return "malformed_incomplete_action"
@@ -190,8 +211,10 @@ def terminal_plaintext_completion_status(response: str) -> tuple[bool, str, str]
     The guard should prevent half-committing an intent completion when the
     accompanying final user-facing answer is missing or visibly cut off.
     """
-    visible = extract_visible_text_for_user(response)
+    visible, leak_detected = sanitize_visible_text_for_user(response)
     text = str(visible or "").strip()
+    if leak_detected:
+        return False, "control_tag_leak_in_visible_text", text
     if not text:
         return False, "terminal_plaintext_missing", text
 

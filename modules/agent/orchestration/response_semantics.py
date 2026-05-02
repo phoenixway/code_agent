@@ -33,9 +33,6 @@ class ResponseSemantics:
         r"\bSYSTEM\s+RESULT\b(?:\s*\([^)]*\)|\s+for\b|\s*:)",
         re.IGNORECASE,
     )
-    THINK_NON_OPERATIONAL_RE = re.compile(
-        r"(?is)\b(here\s+is\s+the\s+plan|plan\s*:|implementation\s+plan|markdown\s+plan|step\s+1\b|1\.\s+.+2\.)"
-    )
 
     def has_plain_think_prefix(self, raw_response: str) -> bool:
         _cleaned, stripped = strip_plain_think_prefix_artifacts(str(raw_response or ""))
@@ -126,13 +123,14 @@ class ResponseSemantics:
             think_text = str(match.group(1) or "").strip()
             if not think_text:
                 return True
-            if "```" in think_text:
+            lowered = think_text.lower()
+            if "<think" in lowered:
                 return True
-            if len(think_text) > 800:
+            if "<action" in lowered:
                 return True
-            if self.THINK_NON_OPERATIONAL_RE.search(think_text):
+            if "<file_content" in lowered:
                 return True
-            if "!" not in think_text or "→" not in think_text:
+            if "<intent" in lowered:
                 return True
             return False
         return False

@@ -91,6 +91,67 @@ The system now:
 
 This prevents malformed intent activation from silently falling back into bare action execution.
 
+## Response Normalization And Unclosed `<think>` Repair
+
+Before normal response classification, orchestration now runs a narrow response-normalization step.
+
+The normalization contract is:
+
+- `raw_response`
+- `normalized_response`
+- `repairs_applied`
+- `repair_blocked_reason`
+- think-repair diagnostics
+
+The only structural auto-repair currently allowed in this step is conservative boundary repair for an unclosed `<think>` block.
+
+### What May Be Auto-Repaired
+
+Runtime may insert `</think>` automatically only when confidence is high that the model already switched from private reasoning into real protocol output.
+
+Examples:
+
+- open `<think>` followed by a valid top-level `<action>{...}</action>`
+- open `<think>` followed by a canonical sequence such as:
+  - `<finding ...>...</finding>`
+  - `<memory_update_done />`
+  - `<action>{...}</action>`
+
+### What Must Not Be Auto-Repaired
+
+Ambiguous cases must stay invalid and go through normal recovery, not auto-repair.
+
+Examples:
+
+- tags mentioned inside prose such as `I may use <action> later`
+- tags inside backticks or fenced code
+- escaped tags such as `&lt;action>`
+- quoted protocol examples
+- malformed or incomplete `<action>` payloads
+- open `<think>` followed by `<intent ...>` in the intent-transition atomicity path
+
+### Atomicity Rule
+
+Intent-transition prevalidation is stricter than ordinary no-intent action classification.
+
+If a response is being checked for intent-transition atomicity:
+
+- think auto-repair is blocked
+- the original malformed bundle is validated as-is
+- runtime must not auto-close `<think>` in a way that could partially legitimize a malformed intent+follow-up bundle
+
+### Trace Fields
+
+The normalization stage now emits stable trace fields for dump analysis:
+
+- `think_repair_applied`
+- `think_repair_reason`
+- `think_repair_confidence`
+- `think_repair_tag`
+- `think_repair_insert_at`
+- `think_repair_blocked_by_atomicity`
+- `repair_blocked_reason`
+
 ## Practical Consequence For Modification Tasks
 
 The state machine may classify the task as `MODIFICATION` while the current phase is still `OBSERVE`.
@@ -110,4 +171,3 @@ Primary implementation points:
 - `modules/agent/orchestration/prompting.py`
 - `modules/agent/orchestration/intent_transitions.py`
 - `modules/agent/intent_runtime.py`
-

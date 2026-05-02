@@ -1,0 +1,42 @@
+diff --git a/tests/test_action_array_diagnosis.py b/tests/test_action_array_diagnosis.py
+--- a/tests/test_action_array_diagnosis.py
++++ b/tests/test_action_array_diagnosis.py
+@@
+-def test_multiple_top_level_action_blocks_still_get_multiple_actions():
++def test_multiple_top_level_state_changing_action_blocks_still_get_multiple_actions():
+     response = """
+-<think>! Need two reads. ? Must choose one. → incorrectly emit two actions.</think>
++<think>! Need two edits. ? Must choose one. → incorrectly emit two actions.</think>
+ <memory_update_done />
+-<action>{"type": "read_file_skeleton", "path": "modules/agent/state_manager.py"}</action>
+-<action>{"type": "read_file_skeleton", "path": "modules/history.py"}</action>
++<action>{"type": "edit_file", "path": "modules/a.py", "search_text": "old", "replace_text": "new"}</action>
++<action>{"type": "edit_file", "path": "modules/b.py", "search_text": "old", "replace_text": "new"}</action>
+ """.strip()
+     segments = [
+-        DummySegment("action", {"type": "read_file_skeleton", "path": "modules/agent/state_manager.py"}),
+-        DummySegment("action", {"type": "read_file_skeleton", "path": "modules/history.py"}),
++        DummySegment("action", {"type": "edit_file", "path": "modules/a.py", "search_text": "old", "replace_text": "new"}),
++        DummySegment("action", {"type": "edit_file", "path": "modules/b.py", "search_text": "old", "replace_text": "new"}),
+     ]
+
+     parsed = IntentResponseParser().classify(response, segments)
+
+     assert parsed.invalid_kind == "multiple_actions"
++
++
++def test_multiple_top_level_read_only_action_blocks_are_not_multiple_actions():
++    response = """
++<think>! Need two reads. ? Need current file states. → read both files.</think>
++<memory_update_done />
++<action>{"type": "read_file_skeleton", "path": "modules/agent/state_manager.py"}</action>
++<action>{"type": "read_file_skeleton", "path": "modules/history.py"}</action>
++""".strip()
++    segments = [
++        DummySegment("action", {"type": "read_file_skeleton", "path": "modules/agent/state_manager.py"}),
++        DummySegment("action", {"type": "read_file_skeleton", "path": "modules/history.py"}),
++    ]
++
++    parsed = IntentResponseParser().classify(response, segments)
++
++    assert parsed.invalid_kind == ""

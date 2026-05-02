@@ -302,7 +302,8 @@ class FileBlockPromptTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(decision.handled)
         self.assertEqual("malformed_incomplete_think", decision.reason)
-        self.assertIn("truncated inside <think>", decision.next_query)
+        self.assertIn("closed with </think> before any memory tag", decision.next_query)
+        self.assertIn("Do not put protocol tags or actions inside <think>", decision.next_query)
         self.assertIn("Do not continue the previous incomplete sentence", decision.next_query)
 
     async def test_incomplete_file_content_uses_special_recovery_prompt(self):
@@ -347,7 +348,7 @@ class FileBlockPromptTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("append_file_block", DEFAULT_SYSTEM_PROMPT)
         self.assertIn("<file_content>", DEFAULT_SYSTEM_PROMPT)
 
-    async def test_write_file_block_under_modify_without_think_is_blocked_by_runtime(self):
+    async def test_write_file_block_under_modify_without_think_is_allowed(self):
         handler = self._handler(intent_type="MODIFY")
 
         decision = await handler.decide(
@@ -361,8 +362,8 @@ class FileBlockPromptTests(unittest.IsolatedAsyncioTestCase):
             audit_marker_retries=0,
         )
 
-        self.assertTrue(decision.handled)
-        self.assertEqual("missing_think", decision.reason)
+        self.assertFalse(decision.handled)
+        self.assertEqual("no_invalid_kind", decision.reason)
 
     async def test_write_file_block_under_modify_with_checkpoint_passes(self):
         handler = self._handler(intent_type="MODIFY")

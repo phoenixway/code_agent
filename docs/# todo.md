@@ -154,3 +154,10 @@ model тепер у новому active contract;
  ▎                                                                                                                    
  ▎  --------------------------------------------------------------------------------------------------------------    
  ▎     
+
+*****
+
+If last completed intent goal overlaps current user request or next model intent:
+- do not activate a new similar intent silently;
+- require mode="reuse" for same lineage, or explicit replace with strong reason;
+- if previous final answer contained unresolved “next step”, completion_reason must not be goal_completed.

@@ -217,3 +217,70 @@ def test_write_file_block_refreshes_current_file_state_from_disk(tmp_path):
     assert current is not None
     assert current["file_content"] == "created = True\n"
     assert current["source_tool"] == "write_file_block"
+
+
+def test_append_file_block_refreshes_current_file_state_from_disk(tmp_path):
+    history = _history(tmp_path)
+    target = tmp_path / "sample.py"
+    target.write_text("head = 1\n", encoding="utf-8")
+
+    history.update_file_state(
+        str(target),
+        "head = 1\n",
+        source_tool="read_file",
+        invalidate_stale=False,
+    )
+
+    agent = SimpleNamespace(
+        ui=DummyUI(),
+        processor=SimpleNamespace(),
+        config=SimpleNamespace(),
+        history=history,
+        log=None,
+    )
+    dispatcher = ActionDispatcher(agent)
+
+    target.write_text("head = 1\ntail = 2\n", encoding="utf-8")
+    dispatcher._refresh_current_file_state_after_success(
+        {"type": "append_file_block", "path": str(target)},
+        {"status": "success", "output": "Appended file"},
+    )
+
+    current = history.get_current_file_state(str(target))
+    assert current is not None
+    assert current["file_content"] == "head = 1\ntail = 2\n"
+    assert "tail = 2" in current["file_content"]
+    assert current["source_tool"] == "append_file_block"
+
+
+def test_large_file_mutation_invalidates_old_snippets_without_blocking(tmp_path):
+    history = _history(tmp_path)
+    history.MAX_CANONICAL_FILE_CACHE_BYTES = 64
+    history.current_turn_id = 1
+
+    target = str(tmp_path / "large.py")
+    Path(target).write_text("x = 1\n", encoding="utf-8")
+    initial = history.update_file_state(target, "x = 1\n", source_tool="read_file", invalidate_stale=False)
+    history.add_transient_file_content(target, initial["version"], "x = 1\n")
+
+    large_body = "value = 1\n" + ("A" * 2048)
+    Path(target).write_text(large_body, encoding="utf-8")
+    refreshed = history.update_file_state_from_disk(
+        target,
+        source_tool="write_file_block",
+        invalidate_stale=True,
+    )
+
+    assert refreshed["version"] == initial["version"] + 1
+    assert refreshed["stale_working_material_invalidated"] == 1
+
+    current = history.get_current_file_state(target)
+    assert current is not None
+    assert current["version"] == initial["version"] + 1
+    assert current["file_content"] == ""
+    assert current.get("content_elided") is True
+    assert current.get("content_hash")
+
+    stale_payloads = _all_payloads_for_path(history, target)
+    assert stale_payloads
+    assert any(payload.get("stale") is True for payload in stale_payloads)

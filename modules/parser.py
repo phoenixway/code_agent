@@ -13,7 +13,7 @@ class Segment:
 
 class ResponseParser:
     ACTION_KEYS = ("type", "command", "action")
-    FILE_BLOCK_ACTION_TYPES = {"write_file_block", "append_file_block"}
+    FILE_BLOCK_ACTION_TYPES = {"create_file", "write_file_block", "append_file_block"}
     ACTION_TAG_RE = re.compile(
         r"<action[^>]*>.*?</action>",
         re.DOTALL | re.IGNORECASE,
@@ -176,7 +176,11 @@ class ResponseParser:
             ):
                 next_segment = segments[i + 1]
                 action_type = str(segment.content.get("type") or segment.content.get("action") or "").strip().lower()
-                if action_type in self.FILE_BLOCK_ACTION_TYPES and getattr(next_segment, "type", "") == "file_content":
+                if (
+                    action_type in self.FILE_BLOCK_ACTION_TYPES
+                    and getattr(next_segment, "type", "") == "file_content"
+                    and not (action_type == "create_file" and isinstance(segment.content.get("content"), str))
+                ):
                     action_payload = dict(segment.content)
                     body = str(getattr(next_segment, "content", "") or "")
                     if body.startswith("\r\n"):

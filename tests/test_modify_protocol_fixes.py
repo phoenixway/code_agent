@@ -124,7 +124,7 @@ class MissingThinkReflectionEscalationTests(unittest.IsolatedAsyncioTestCase):
         )
         return ModelOutputRecoveryHandler(agent, self._prompt_builder(state))
 
-    async def test_first_missing_reflection_under_modify_is_non_blocking_warning(self):
+    async def test_first_missing_reflection_under_modify_is_allowed(self):
         state = self._state("MODIFY")
         handler = self._handler(state)
 
@@ -140,11 +140,11 @@ class MissingThinkReflectionEscalationTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertFalse(decision.handled)
-        self.assertEqual("missing_think_reflection_detected_non_blocking", decision.reason)
-        self.assertEqual(1, state.missing_think_reflection_warning_count)
+        self.assertEqual("no_invalid_kind", decision.reason)
+        self.assertEqual(0, state.missing_think_reflection_warning_count)
         self.assertFalse(state.think_reflection_repair_pending)
 
-    async def test_second_missing_reflection_under_same_modify_escalates_to_repair(self):
+    async def test_second_missing_reflection_under_same_modify_stays_allowed(self):
         state = self._state("MODIFY")
         handler = self._handler(state)
         parsed = ParsedModelOutput(
@@ -158,12 +158,11 @@ class MissingThinkReflectionEscalationTests(unittest.IsolatedAsyncioTestCase):
         second = await handler.decide(parsed, malformed_action_retries=0, audit_marker_retries=0)
 
         self.assertFalse(first.handled)
-        self.assertTrue(second.handled)
-        self.assertEqual("missing_think_reflection", second.reason)
-        self.assertTrue(state.think_reflection_repair_pending)
-        self.assertEqual("missing_think_reflection", state.think_reflection_repair_kind)
+        self.assertFalse(second.handled)
+        self.assertEqual("no_invalid_kind", second.reason)
+        self.assertFalse(state.think_reflection_repair_pending)
 
-    async def test_state_changing_modify_action_without_review_is_blocked_immediately(self):
+    async def test_state_changing_modify_action_without_review_is_allowed(self):
         state = self._state("MODIFY")
         handler = self._handler(state)
 
@@ -178,10 +177,8 @@ class MissingThinkReflectionEscalationTests(unittest.IsolatedAsyncioTestCase):
             audit_marker_retries=0,
         )
 
-        self.assertTrue(decision.handled)
-        self.assertEqual("no_accepted_checkpoint_tags", decision.reason)
-        self.assertIn("accepted durable tag", decision.next_query)
-        self.assertIn("EXACTLY ONE allowed state-changing <action>", decision.next_query)
+        self.assertFalse(decision.handled)
+        self.assertEqual("no_invalid_kind", decision.reason)
 
     async def test_state_changing_modify_action_with_subgoal_progress_and_marker_is_allowed(self):
         state = self._state("MODIFY")
@@ -253,7 +250,7 @@ class MissingThinkReflectionEscalationTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(decision.handled)
         self.assertEqual("no_invalid_kind", decision.reason)
 
-    async def test_state_changing_modify_action_without_think_is_blocked(self):
+    async def test_state_changing_modify_action_without_think_is_allowed(self):
         state = self._state("MODIFY")
         handler = self._handler(state)
 
@@ -272,9 +269,8 @@ class MissingThinkReflectionEscalationTests(unittest.IsolatedAsyncioTestCase):
             audit_marker_retries=0,
         )
 
-        self.assertTrue(decision.handled)
-        self.assertEqual("missing_think", decision.reason)
-        self.assertIn("complete tagged <think>...</think>", decision.next_query)
+        self.assertFalse(decision.handled)
+        self.assertEqual("no_invalid_kind", decision.reason)
 
     async def test_state_changing_modify_action_with_missing_memory_update_done_is_blocked(self):
         state = self._state("MODIFY")
@@ -317,7 +313,7 @@ class MissingThinkReflectionEscalationTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(decision.handled)
         self.assertEqual("malformed_incomplete_think", decision.reason)
 
-    async def test_plain_think_in_strict_state_changing_recovery_gets_specific_reason(self):
+    async def test_plain_think_in_state_changing_flow_is_not_rejected_for_missing_tagged_think(self):
         state = self._state("MODIFY")
         handler = self._handler(state)
 
@@ -337,9 +333,8 @@ class MissingThinkReflectionEscalationTests(unittest.IsolatedAsyncioTestCase):
             audit_marker_retries=0,
         )
 
-        self.assertTrue(decision.handled)
-        self.assertEqual("malformed_plain_think_requires_tagged_think", decision.reason)
-        self.assertIn("plain `think` text is invalid", decision.next_query)
+        self.assertFalse(decision.handled)
+        self.assertEqual("no_invalid_kind", decision.reason)
 
     async def test_repeated_checkpoint_recovery_triggers_loop_breaker(self):
         state = self._state("MODIFY")
@@ -358,15 +353,14 @@ class MissingThinkReflectionEscalationTests(unittest.IsolatedAsyncioTestCase):
         second = await handler.decide(parsed, malformed_action_retries=0, audit_marker_retries=0)
         third = await handler.decide(parsed, malformed_action_retries=0, audit_marker_retries=0)
 
-        self.assertTrue(first.handled)
-        self.assertEqual("no_accepted_checkpoint_tags", first.reason)
-        self.assertTrue(second.handled)
-        self.assertEqual("no_accepted_checkpoint_tags", second.reason)
-        self.assertTrue(third.handled)
-        self.assertEqual("recovery_loop_detected", third.reason)
-        self.assertIn("same checkpoint recovery defect repeated", third.next_query)
+        self.assertFalse(first.handled)
+        self.assertFalse(second.handled)
+        self.assertFalse(third.handled)
+        self.assertEqual("no_invalid_kind", first.reason)
+        self.assertEqual("no_invalid_kind", second.reason)
+        self.assertEqual("no_invalid_kind", third.reason)
 
-    async def test_non_modify_read_only_missing_reflection_stays_non_blocking(self):
+    async def test_non_modify_read_only_missing_reflection_is_allowed(self):
         state = self._state("INVESTIGATE")
         handler = self._handler(state)
 
@@ -382,7 +376,7 @@ class MissingThinkReflectionEscalationTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertFalse(decision.handled)
-        self.assertEqual("missing_think_reflection_detected_non_blocking", decision.reason)
+        self.assertEqual("no_invalid_kind", decision.reason)
 
 
 class PromptAndSemanticsTests(unittest.TestCase):

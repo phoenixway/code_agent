@@ -71,6 +71,10 @@ class PlanBoardStageHandler:
             )
 
         if not update_ops:
+            try:
+                setattr(self.state, "last_plan_subgoal_create_count", 0)
+            except Exception:
+                pass
             self.stage_logger.log(
                 "plan_board",
                 "pass",
@@ -84,6 +88,11 @@ class PlanBoardStageHandler:
             )
 
         applied, summary = self.planner.apply_update(self.state, update_ops)
+        try:
+            create_count = sum(1 for op in update_ops if str(op.get("op") or "").strip().lower() == "create")
+            setattr(self.state, "last_plan_subgoal_create_count", create_count)
+        except Exception:
+            pass
         if applied and summary:
             printer = getattr(self.agent.ui, "print_plan", None)
             if callable(printer):

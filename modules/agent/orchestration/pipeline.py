@@ -6,6 +6,7 @@ import asyncio
 
 from .decision_models import ModelStepResult, PipelineIterationDecision
 from .stage_logging import OrchestrationStageLogger
+from .visible_text import sanitize_visible_text_for_user
 from ..model_client import ModelTechnicalInterruptionError
 from ..technical_interruptions import TechnicalInterruption
 
@@ -215,12 +216,14 @@ class OrchestrationPipeline:
             ctx.audit_marker_retries = outcome.audit_marker_retries
 
         if bool(getattr(self.state, "terminal_plaintext_completion_pending", False)):
-            terminal_text = str(
+            terminal_source = str(
                 getattr(self.state, "terminal_plaintext_completion_text", "")
                 or getattr(outcome, "response_text", "")
                 or step.response
                 or ""
-            ).strip()
+            )
+            terminal_text, leak_detected = sanitize_visible_text_for_user(terminal_source)
+            terminal_text = "" if leak_detected else str(terminal_text or "").strip()
 
             # Keep the terminal text in state until core.py flushes it to the UI.
             if terminal_text:
