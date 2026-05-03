@@ -15,7 +15,6 @@
 
 codex resume 019de4e4-fc1a-7e81-9826-95de1e7ddc52
 
-
 ***
 
  Тепер, після підпапок, я б уже не робив великі механічні переноси. Наступні покращення мають бути про чистоту меж і
@@ -145,3 +144,131 @@ codex resume 019de4e4-fc1a-7e81-9826-95de1e7ddc52
   Найкращий наступний практичний крок, на мій погляд: зафіксувати dependency boundaries між prompts/parsers/responses/
   transitions і додати тести на ці правила. Це дасть найбільший захист від повзучої деградації структури.
 
+***
+
+• Тепер я б уже не чіпав package structure великими рухами. Вона стала достатньо чистою. Далі найбільшу користь дадуть
+  не нові переноси, а зменшення зв’язності й ясність контрактів усередині вже створених шарів.
+
+  Мій пріоритет був би такий.
+
+  1. Почистити modules/agent/orchestration/runtime/ по відповідальностях.
+     Зараз це правильний шар, але всередині нього ще є великі вузли:
+
+  - runtime/recovery.py
+  - runtime/core.py
+  - runtime/action_policy.py
+    Я б не дробив їх механічно, а добивав через локальні seams:
+  - окремі policy families
+  - окремі state-transition helpers
+  - менше knowledge leakage між runtime і prompt/recovery logic
+
+  2. Зробити явні typed contracts для runtime collaborators.
+     Зараз багато чого передається як agent, state, prompt_builder, intent_transitions. Я б поступово вводив більш
+     явні protocol-like контракти або dataclass dependencies для:
+
+  - what runtime expects from state
+  - what response pipeline expects from parser/output recovery
+  - what recovery expects from prompt builder
+    Це сильно спростить подальший refactor.
+
+  3. Уніфікувати state access.
+     У коді багато getattr/setattr на state. Частина цього виправдана, але місцями це вже masking real dependencies. Я
+     б ввів:
+
+  - кілька small state helper APIs
+  - grouped state views for intent/runtime/recovery
+    Тоді orchestration логіка стане менш “stringly-typed”.
+
+  4. Винести orchestration trace/diagnostics в окремий маленький subsystem.
+     Зараз trace_export.py і stage_logging уже ок, але я б добив:
+
+  - один canonical trace schema doc
+  - one place for trace field defaults
+  - one place for serialization/export
+    Щоб нові діагностичні поля не розповзалися.
+
+  5. Почистити старі назви в modules/agent/ верхнього рівня.
+     Там ще видно історичні нашарування:
+
+  - policy_engine
+  - intent_policy_engine
+  - defect_detector
+  - intent_response_parser уже прибраний як shim, але семантично схожі overlap-и ще є
+    Я б зробив короткий naming audit: які модулі є справді актуальними owners, а які лише історичний багаж.
+
+  6. Зробити один architecture index doc для всього modules/agent.
+     Не тільки orchestration, а:
+
+  - core
+  - state
+  - intent runtime
+  - orchestration
+  - dispatch
+  - technical interruptions
+  - history/context
+    Коротка мапа сильно знизить вартість будь-яких наступних змін.
+
+  Якщо вибрати один найкращий наступний крок, я б взяв:
+
+  - runtime/action_policy.py cleanup
+    або
+  - state access cleanup around orchestration/runtime.
+
+  Саме там зараз найбільше залишкової складності, не в package layout.
+
+***
+
+Тепер я б уже не робив нові structural splits. Організація коду стала достатньо чистою. Найкращий наступний крок, на
+  мій погляд, уже не про layout, а про контракти і state discipline.
+
+  Пріоритет такий.
+
+  1. Почистити доступ до AgentState по всьому orchestration/runtime шару.
+     Ми вже зробили це локально для action_policy, recovery, core, pipeline, dispatch_outcome, але pattern ще не
+     закритий системно. Я б:
+
+  - переглянув решту runtime/response/transitions модулів;
+  - добив явні state adapters там, де ще є багато getattr/setattr;
+  - зафіксував правило, що новий orchestration code не лізе в state напряму без причини.
+
+  2. Ввести явні collaborator protocols або dependency bundles.
+     Зараз багато фасадів усе ще приймають “широкі” agent objects. Це вже краще, ніж було, але наступний крок —
+     зробити менше implicit dependencies:
+
+  - що саме потрібно prompt_builder;
+  - що саме потрібно response_pipeline;
+  - що саме потрібно recovery/transitions;
+  - окремі typed bundles замість “весь agent”.
+
+  3. Зробити короткий audit state_manager.py.
+     Не переписувати його весь, а:
+
+  - позначити orchestration-owned fields;
+  - позначити dispatch-owned fields;
+  - позначити resumable-intent/terminal-completion fields;
+  - зафіксувати lifecycle кожного критичного поля.
+    Зараз це найбільше місце, де архітектурна ясність ще відстає від cleanup модулів.
+
+  4. Додати architecture tests на “no new direct state mutation”.
+     Не абсолютно жорсткі, але хоча б guardrails:
+
+  - runtime adapters allowed;
+  - direct setattr(self.state, ...) у певних зонах або заборонити, або трекати;
+  - нові trace/schema owners не дублюються.
+
+  5. Після цього вже можна думати про deeper semantic cleanup:
+
+  - intent_runtime.py
+  - state_manager.py
+  - можливо action_dispatcher.py
+    Але це вже суттєво ризикованіша робота.
+
+  Якщо вибрати один найкращий наступний крок, я б взяв:
+
+  state_manager.py ownership audit + docs/tests around orchestration-owned state fields.`
+
+  Бо зараз package/module structure уже хороша, а найбільша залишкова складність сидить саме в shared mutable state,
+  не в розкладанні файлів.
+
+ 
+› Explain this codebase

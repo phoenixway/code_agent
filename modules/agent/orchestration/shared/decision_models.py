@@ -26,6 +26,9 @@ class ParsedModelOutput:
     operational_checkpoint_has_marker: bool = False
     operational_checkpoint_has_board_commit: bool = False
     operational_checkpoint_has_tags: bool = False
+    compiler_shape: str = ""
+    compiler_error_code: str = ""
+    compiler_recovery_id: str = ""
 
 
 @dataclass

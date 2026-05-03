@@ -166,8 +166,8 @@ Without that contract, runtime remains in the no-contract universe and should no
 
 Primary implementation points:
 
-- `modules/agent/orchestration/policy.py`
-- `modules/agent/orchestration/action_policy.py`
-- `modules/agent/orchestration/prompting.py`
-- `modules/agent/orchestration/intent_transitions.py`
+- `modules/agent/orchestration/runtime/policy.py`
+- `modules/agent/orchestration/runtime/action_policy.py`
+- `modules/agent/orchestration/prompts/prompting.py`
+- `modules/agent/orchestration/transitions/intent_transitions.py`
 - `modules/agent/intent_runtime.py`

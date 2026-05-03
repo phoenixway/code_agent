@@ -1,0 +1,11 @@
+raw: |
+  <action>{"type":"write_file_block","path":"docs/sample.xml"}</action>
+  <file_content>
+  if (a < b && c > d) {
+    println("<action>literal</action>")
+  }
+  </file_content>
+shape: ACTION_ONLY
+valid: true
+transition_applied: false
+action_dispatched: false

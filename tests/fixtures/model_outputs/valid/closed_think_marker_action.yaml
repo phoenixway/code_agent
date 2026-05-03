@@ -1,0 +1,10 @@
+raw: |
+  <think>
+  Need exact file shape first.
+  </think>
+  <memory_update_done />
+  <action>{"type":"read_file","path":"modules/agent/orchestration/response_pipeline.py"}</action>
+shape: ACTION_ONLY
+valid: true
+transition_applied: false
+action_dispatched: false

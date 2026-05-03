@@ -1,3 +1,11 @@
+# План split для prompting.py (Historical Draft)
+
+> Status: Historical Draft.
+> The semantic prompt split has already been completed under
+> `modules/agent/orchestration/prompts/`.
+> Keep this note only as historical rationale; do not treat it as an active
+> refactoring plan.
+
 Я б ділив цей файл не “по довжині”, а по **ролях побудови prompt-ів**. Зараз `prompting.py` одночасно робить 4 різні роботи:
 
 1. читає runtime state
@@ -208,4 +216,3 @@
 А `OrchestratorPromptBuilder` лишити тонким фасадом, який усе це збирає докупи. 
 
 Якщо хочеш, я можу дати вже **конкретний план класів і методів: що саме в який новий файл переносити 1-в-1**.
-

@@ -57,6 +57,12 @@ Disallowed:
 - `transitions`
 - runtime coordinators
 
+Special rule:
+
+- `responses/stage_logging.py` may format runtime log lines, but canonical trace schema ownership belongs to `shared/trace.py`.
+- response modules must not introduce alternate trace-entry defaults or a competing trace snapshot format.
+- response handlers should prefer `ResponseLayerCollaborators` for stable constructor-time dependencies instead of broad direct `agent` coupling where practical.
+
 ### `transitions`
 
 Purpose: validate/apply/reject formal intent transitions.
@@ -74,6 +80,10 @@ Disallowed:
 - response pipeline/recovery internals other than stage logging
 - runtime coordinators
 
+Preferred dependency pattern:
+
+- transition handlers should prefer `TransitionLayerCollaborators` for `state/config/ui/logger` instead of reaching through a wide `agent` object after initialization.
+
 ### `shared`
 
 Purpose: cross-package contracts and policy normalization.
@@ -82,6 +92,12 @@ Allowed:
 
 - local shared modules
 - non-orchestration helper dependencies
+
+Includes:
+
+- typed decision/result dataclasses
+- recovery policy normalization
+- canonical trace schema, append helpers, snapshot helpers, and text rendering
 
 Disallowed:
 
@@ -109,22 +125,12 @@ Disallowed:
 
 - helper wrappers in the orchestration root
 
-## Compatibility Wrappers
+Preferred dependency pattern:
 
-Legacy wrapper modules are still allowed for external compatibility, but internal orchestration code should import from semantic subpackages directly.
-
-Important wrappers now include:
-
-- `decision_models.py`
-- `recovery_policy.py`
-- `prompting.py`
-- `parsing.py`
-- `response_pipeline.py`
-- `output_recovery.py`
-- `intent_transitions.py`
+- runtime coordinators should prefer `RuntimeCollaborators` when a handler only needs a stable subset such as `state/history/config/ui/logger/dispatcher`.
 
 ## Runtime Layer
 
 The canonical coordinator implementation now lives under `modules.agent.orchestration.runtime`.
 
-Top-level runtime-named files in `modules.agent.orchestration` were removed after migration to `runtime/`.
+Top-level wrapper modules in `modules.agent.orchestration` were removed after migration to semantic subpackages.

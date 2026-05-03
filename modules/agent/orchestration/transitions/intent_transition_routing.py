@@ -37,8 +37,8 @@ class IntentTransitionRoutingMixin:
             )
 
         if intent_error and (intent_required_until_activated or not has_active_intent):
-            if self.agent.log:
-                self.agent.log.warning(
+            if self.logger:
+                self.logger.warning(
                     "Intent.parse_error intent_error=%s intent_required_until_activated=%s has_active_intent=%s response_preview=%r",
                     intent_error,
                     intent_required_until_activated,
@@ -109,16 +109,16 @@ class IntentTransitionRoutingMixin:
             return IntentHandlingDecision(handled=False)
 
         intent_decision = self.apply_payload_decision(intent_payload)
-        if self.agent.log:
-            self.agent.log.debug(
+        if self.logger:
+            self.logger.debug(
                 "Intent.apply ok=%s msg=%s warning=%s summary=%s",
                 intent_decision.applied,
                 intent_decision.message,
                 intent_decision.warning,
                 getattr(self.state, "active_intent_summary", lambda: "")(),
             )
-            self.agent.log.debug("Intent.apply.payload=%s", intent_payload)
-            self.agent.log.debug("Intent.apply.transition_info=%s", intent_decision.transition_info)
+            self.logger.debug("Intent.apply.payload=%s", intent_payload)
+            self.logger.debug("Intent.apply.transition_info=%s", intent_decision.transition_info)
 
         if not intent_decision.applied:
             defect_count = self._note_transition_defect(intent_decision.message)
@@ -223,9 +223,9 @@ class IntentTransitionRoutingMixin:
         if state_machine is not None:
             state_machine.intent_runtime = getattr(self.state, "intent_runtime", None)
 
-        if self.agent.log:
+        if self.logger:
             active = intent_decision.active_intent
-            self.agent.log.info(
+            self.logger.info(
                 "Intent.active accepted=%s intent_id=%s intent_type=%s goal=%s allowed_actions=%s",
                 True,
                 getattr(active, "intent_id", "") if active is not None else "",
@@ -334,7 +334,7 @@ class IntentTransitionRoutingMixin:
                     reason="intent_complete_with_action_not_allowed",
                 )
 
-            followup_conflict = self._remaining_followup_conflict_reason(response_text)
+            followup_conflict = self._followup_conflict_reason_after_current_transition(intent_payload, response_text)
             if followup_conflict:
                 self.stage_logger.log(
                     "intent_transition",
@@ -393,7 +393,7 @@ class IntentTransitionRoutingMixin:
             )
             return IntentHandlingDecision(handled=False)
 
-        if self._remaining_has_action_only(response_text):
+        if self._current_transition_has_inline_action_only(intent_payload, response_text):
             self.stage_logger.log(
                 "intent_transition",
                 "pass",
@@ -406,7 +406,7 @@ class IntentTransitionRoutingMixin:
             )
             return IntentHandlingDecision(handled=False)
 
-        followup_conflict = self._remaining_followup_conflict_reason(response_text)
+        followup_conflict = self._followup_conflict_reason_after_current_transition(intent_payload, response_text)
         if followup_conflict:
             self.stage_logger.log(
                 "intent_transition",

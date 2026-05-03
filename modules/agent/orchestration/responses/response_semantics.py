@@ -4,7 +4,14 @@ from __future__ import annotations
 
 import re
 
-from ..parsers.visible_text import strip_plain_think_prefix_artifacts
+from ..parsers.visible_text import (
+    ESCAPED_TAG_RE,
+    FENCED_CODE_RE,
+    INLINE_CODE_RE,
+    XML_COMMENT_RE,
+    _mask_with_spaces,
+    strip_plain_think_prefix_artifacts,
+)
 
 
 class ResponseSemantics:
@@ -34,18 +41,29 @@ class ResponseSemantics:
         re.IGNORECASE,
     )
 
+    def _mask_textual_control_contexts(self, raw_response: str) -> str:
+        text = str(raw_response or "")
+        for regex in (
+            XML_COMMENT_RE,
+            FENCED_CODE_RE,
+            INLINE_CODE_RE,
+            ESCAPED_TAG_RE,
+        ):
+            text = _mask_with_spaces(text, regex)
+        return text
+
     def has_plain_think_prefix(self, raw_response: str) -> bool:
         _cleaned, stripped = strip_plain_think_prefix_artifacts(str(raw_response or ""))
         return stripped
 
     def reflection_tag_count(self, raw_response: str) -> int:
-        text = str(raw_response or "")
+        text = self._mask_textual_control_contexts(raw_response)
         if not text:
             return 0
         return len(list(self.REFLECTION_TAG_RE.finditer(text)))
 
     def checkpoint_tag_count(self, raw_response: str) -> int:
-        text = str(raw_response or "")
+        text = self._mask_textual_control_contexts(raw_response)
         if not text:
             return 0
         return len(list(self.CHECKPOINT_TAG_RE.finditer(text)))
@@ -54,7 +72,7 @@ class ResponseSemantics:
         return self.checkpoint_tag_count(raw_response) > 0
 
     def has_memory_update_done(self, raw_response: str) -> bool:
-        return bool(self.MEMORY_UPDATE_DONE_RE.search(str(raw_response or "")))
+        return bool(self.MEMORY_UPDATE_DONE_RE.search(self._mask_textual_control_contexts(raw_response)))
 
     def _control_prefix_before_action_or_text(self, raw_response: str) -> str:
         """Return the response prefix where control/checkpoint tags are valid.
@@ -63,7 +81,7 @@ class ResponseSemantics:
         For plain-text responses without <action>, the whole response is the relevant
         surface because the checkpoint precedes user-visible text.
         """
-        text = str(raw_response or "")
+        text = self._mask_textual_control_contexts(raw_response)
         if not text:
             return ""
 
@@ -95,7 +113,7 @@ class ResponseSemantics:
         return self.has_memory_update_done(prefix)
 
     def has_valid_state_changing_review_before_action(self, raw_response: str) -> bool:
-        text = str(raw_response or "")
+        text = self._mask_textual_control_contexts(raw_response)
         if not text:
             return False
 
@@ -108,7 +126,7 @@ class ResponseSemantics:
         return True
 
     def has_malformed_state_changing_think_before_action(self, raw_response: str) -> bool:
-        text = str(raw_response or "")
+        text = self._mask_textual_control_contexts(raw_response)
         if not text:
             return False
 
@@ -136,7 +154,7 @@ class ResponseSemantics:
         return False
 
     def has_substantial_think(self, raw_response: str) -> bool:
-        text = str(raw_response or "")
+        text = self._mask_textual_control_contexts(raw_response)
         if not text:
             return False
 
@@ -152,7 +170,7 @@ class ResponseSemantics:
         return False
 
     def substantial_think_without_reflection(self, raw_response: str) -> bool:
-        text = str(raw_response or "")
+        text = self._mask_textual_control_contexts(raw_response)
         if not text:
             return False
 
@@ -197,7 +215,7 @@ class ResponseSemantics:
         Important: memory tag content is useful for memory, but it is not a
         final user-facing plain-text answer by itself.
         """
-        cleaned = str(text or "")
+        cleaned = self._mask_textual_control_contexts(text)
         cleaned, _ = strip_plain_think_prefix_artifacts(cleaned)
         cleaned = self.THINK_BLOCK_RE.sub(" ", cleaned)
         cleaned = self.MEMORY_TAG_BLOCK_RE.sub(" ", cleaned)

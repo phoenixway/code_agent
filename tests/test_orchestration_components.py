@@ -442,6 +442,33 @@ class RecoveryCoordinatorTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("<memory_update_done />", decision.next_query)
         self.assertIn('"type":"search_content"', decision.next_query.replace(" ", ""))
 
+    async def test_handle_defect_detector_stop_without_ui_defaults_to_stop(self):
+        state = SimpleNamespace(
+            last_error_code=None,
+            last_error_message=None,
+            set_retry_budgets=MagicMock(),
+        )
+        config = SimpleNamespace(
+            RECOVERABLE_ERROR_RETRY_BUDGET=2,
+            CRITICAL_ERROR_RETRY_BUDGET=1,
+        )
+        agent = SimpleNamespace(ui=None, state=state, config=config)
+        prompt_builder = OrchestratorPromptBuilder(
+            SimpleNamespace(
+                state=SimpleNamespace(active_intent=None),
+                config=SimpleNamespace(),
+                memory_board_store=None,
+                log=None,
+            )
+        )
+
+        coordinator = RecoveryCoordinator(agent, prompt_builder)
+        decision = await coordinator.handle_defect_detector_stop({"reason": "defect_same_action_repeat"})
+
+        self.assertTrue(decision.handled)
+        self.assertTrue(decision.stop_loop)
+        self.assertEqual("defect_same_action_repeat", decision.reason)
+
 
 class DispatchPipelineTests(unittest.IsolatedAsyncioTestCase):
     async def test_run_iteration_handles_no_results_stop(self):
@@ -764,6 +791,58 @@ class LoopGateHandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("exhausted_intent_requires_reuse_or_completion", decision.reason)
         self.assertEqual(["exhausted_intent_requires_reuse_or_completion"], required_reasons)
         self.assertEqual([], cleared)
+
+    async def test_proceeds_without_ui_when_start_thinking_is_unavailable(self):
+        history = SimpleNamespace(
+            check_and_summarize=AsyncMock(),
+            current_token_count=0,
+            max_tokens=4096,
+        )
+        state = SimpleNamespace(
+            consecutive_same_error_count=0,
+            suppress_step_limit_warning=False,
+        )
+        agent = SimpleNamespace(
+            ui=None,
+            state=state,
+            history=history,
+            config=SimpleNamespace(MAX_SESSION_SECONDS=100, MAX_CONSECUTIVE_CALLS=10, LOOP_ERROR_REPEAT_THRESHOLD=2),
+            log=None,
+        )
+        handler = LoopGateHandler(agent)
+        ctx = SimpleNamespace(active_loop=True, consecutive_calls=0, session_started_at=asyncio.get_running_loop().time())
+
+        decision = await handler.run(ctx)
+
+        self.assertTrue(decision.proceed)
+        self.assertEqual("step_ready", decision.reason)
+        self.assertEqual(1, ctx.consecutive_calls)
+
+    async def test_late_attached_ui_is_used_for_start_thinking(self):
+        history = SimpleNamespace(
+            check_and_summarize=AsyncMock(),
+            current_token_count=0,
+            max_tokens=4096,
+        )
+        state = SimpleNamespace(
+            consecutive_same_error_count=0,
+            suppress_step_limit_warning=False,
+        )
+        agent = SimpleNamespace(
+            ui=None,
+            state=state,
+            history=history,
+            config=SimpleNamespace(MAX_SESSION_SECONDS=100, MAX_CONSECUTIVE_CALLS=10, LOOP_ERROR_REPEAT_THRESHOLD=2),
+            log=None,
+        )
+        handler = LoopGateHandler(agent)
+        agent.ui = SimpleNamespace(start_thinking=AsyncMock())
+        ctx = SimpleNamespace(active_loop=True, consecutive_calls=0, session_started_at=asyncio.get_running_loop().time())
+
+        decision = await handler.run(ctx)
+
+        self.assertTrue(decision.proceed)
+        agent.ui.start_thinking.assert_awaited_once()
 
 
 class MemoryBoardStageHandlerTests(unittest.IsolatedAsyncioTestCase):
@@ -1703,6 +1782,33 @@ class DispatchOutcomeHandlerTests(unittest.IsolatedAsyncioTestCase):
         agent.ui.print_message.assert_not_called()
         agent.ui.print_error.assert_called_once()
 
+    async def test_no_ui_does_not_crash_for_zero_result_stop(self):
+        history = SimpleNamespace(add_message=MagicMock())
+        agent = SimpleNamespace(
+            ui=None,
+            state=SimpleNamespace(
+                orchestration_trace=[],
+                orchestration_trace_sequence=0,
+            ),
+            history=history,
+            log=None,
+        )
+        parser = SimpleNamespace(reconstruct=MagicMock(return_value=""))
+        recovery = SimpleNamespace(handle_dispatch_stop=AsyncMock())
+        handler = DispatchOutcomeHandler(agent, parser, recovery)
+        ctx = SimpleNamespace(active_loop=True, current_query="", state_machine=None)
+
+        decision = await handler.handle(
+            ctx,
+            processed_segs=[],
+            sys_results=[],
+            should_stop=False,
+        )
+
+        self.assertTrue(decision.handled)
+        self.assertEqual("invalid_zero_action_dispatch_path", decision.reason)
+        self.assertFalse(ctx.active_loop)
+
 
 class OrchestrationPipelineTechnicalInterruptionTests(unittest.IsolatedAsyncioTestCase):
     async def test_model_provider_interruption_stops_without_dispatch(self):
@@ -1855,6 +1961,74 @@ class OrchestrationPipelineTechnicalInterruptionTests(unittest.IsolatedAsyncioTe
         self.assertEqual("intent_resume", state.last_resumable_intent_id)
         self.assertEqual("technical_interruption", state.last_resumable_intent_completion_reason)
         self.assertTrue(getattr(state.last_technical_interruption, "resumable", False))
+        response_pipeline.run_step.assert_not_called()
+
+    async def test_model_provider_interruption_without_ui_does_not_crash(self):
+        loop_gate = SimpleNamespace(
+            run=AsyncMock(return_value=SimpleNamespace(proceed=True, reason="step_ready", source="loop_gate"))
+        )
+        response_pipeline = SimpleNamespace(run_step=AsyncMock())
+        state = SimpleNamespace(
+            current_task=None,
+            orchestration_trace=[],
+            orchestration_trace_sequence=0,
+            note_technical_interruption=MagicMock(),
+            clear_technical_interruption=MagicMock(),
+        )
+
+        class FailingModel:
+            async def get_streaming_response(self, *args, **kwargs):
+                raise ModelTechnicalInterruptionError(
+                    ModelTechnicalInterruption(
+                        provider="gemini",
+                        message="Gemini API temporarily unavailable",
+                        status_code=503,
+                        recoverable=True,
+                        retryable=True,
+                    )
+                )
+
+        agent = SimpleNamespace(
+            ui=None,
+            state=state,
+            history=SimpleNamespace(),
+            model_client=FailingModel(),
+            config=SimpleNamespace(MAX_STEP_SECONDS=30),
+            log=None,
+        )
+        prompt_builder = SimpleNamespace(
+            build_system_message=MagicMock(return_value="SYSTEM"),
+            build_memory_board_context_message=MagicMock(return_value=None),
+            _intent_universe=MagicMock(return_value=SimpleNamespace(
+                kind="intentless_short_mode",
+                has_active_contract=False,
+                intent_required_now=False,
+                active_intent_type="",
+                intentless_steps_used=0,
+            )),
+        )
+        pipeline = OrchestrationPipeline(
+            agent,
+            prompt_builder=prompt_builder,
+            intent_response_parser=SimpleNamespace(),
+            loop_gate=loop_gate,
+            response_pipeline=response_pipeline,
+        )
+        ctx = SimpleNamespace(
+            current_query="continue work",
+            malformed_action_retries=0,
+            audit_marker_retries=0,
+            consecutive_calls=1,
+            active_loop=True,
+            tools_prompt="TOOLS",
+            ctx_prompt="CTX",
+        )
+
+        decision = await pipeline.run_iteration(ctx)
+
+        self.assertTrue(decision.stop_loop)
+        self.assertEqual("model_step_unavailable", decision.reason)
+        state.note_technical_interruption.assert_called_once()
         response_pipeline.run_step.assert_not_called()
 
 

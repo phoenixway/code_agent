@@ -1,0 +1,9 @@
+raw: |
+  ```xml
+  <intent mode="activate">{"intent_id":"x"}</intent>
+  <action>{"type":"read_file","path":"x.py"}</action>
+  ```
+shape: PLAINTEXT_ONLY
+valid: true
+transition_applied: false
+action_dispatched: false

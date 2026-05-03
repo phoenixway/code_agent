@@ -14,12 +14,12 @@ The application is structured around a central **Agent** class that coordinates 
     -   Handles high-level error catching and session management.
 
 2.  **Orchestration Runtime (`modules/agent/orchestration/`)**
-    -   **`core.py` / `Orchestrator`**: Thin runtime coordinator for the main Think -> Act -> Loop cycle.
-    -   **`lifecycle.py` / `TurnLifecycle`**: Bootstraps a user turn by updating history, state runtime, and state machine references.
-    -   **`policy.py` / `IntentGuard`**: Decides when a formal intent is required before additional tool use.
-    -   **`parsing.py` / `IntentResponseParser`**: Extracts `<intent>` blocks and detects malformed or dead-end model replies.
-    -   **`prompting.py` / `OrchestratorPromptBuilder`**: Owns wording for system prompts, recovery prompts, and completion prompts.
-    -   **`recovery.py` / `RecoveryCoordinator`**: Chooses recovery actions and stop/continue transitions from runtime stop reasons.
+    -   **`runtime/core.py` / `Orchestrator`**: Thin runtime coordinator for the main Think -> Act -> Loop cycle.
+    -   **`runtime/lifecycle.py` / `TurnLifecycle`**: Bootstraps a user turn by updating history, state runtime, and state machine references.
+    -   **`runtime/policy.py` / `IntentGuard`**: Decides when a formal intent is required before additional tool use.
+    -   **`parsers/parsing.py` / `IntentResponseParser`**: Extracts `<intent>` blocks and detects malformed or dead-end model replies.
+    -   **`prompts/prompting.py` / `OrchestratorPromptBuilder`**: Owns wording for system prompts, recovery prompts, and completion prompts.
+    -   **`runtime/recovery.py` / `RecoveryCoordinator`**: Chooses recovery actions and stop/continue transitions from runtime stop reasons.
 
 3.  **Response Processing (`modules/parser.py` & `modules/processor.py`)**
     -   **Parser (`ResponseParser`)**:

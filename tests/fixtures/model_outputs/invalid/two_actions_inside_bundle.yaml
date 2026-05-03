@@ -1,0 +1,11 @@
+raw: |
+  <intent mode="activate">{"intent_id":"save_doc","intent_type":"MODIFY","goal":"Save analysis","allowed_actions":["write_file_block"],"mode":"activate","switch_reason":"user_requested_save"}</intent>
+  <action>{"type":"read_file","path":"a.py"}</action>
+  <action>{"type":"read_file","path":"b.py"}</action>
+shape: INVALID
+valid: false
+error_code: E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION
+recovery_id: atomic_bundle_exactly_one_action
+invalid_part: action
+transition_applied: false
+action_dispatched: false

@@ -7,7 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from .allowed_actions_resolver import AllowedActionsResolver
-from .orchestration.decision_models import RecoveryContext
+from .orchestration.shared.decision_models import RecoveryContext
 
 
 class ActionDispatcher:

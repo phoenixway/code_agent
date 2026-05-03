@@ -12,6 +12,8 @@ from ..parsers.visible_text import (
 from ..responses.stage_logging import OrchestrationStageLogger
 from ..shared.decision_models import DispatchHandlingDecision
 from ...technical_interruptions import detect_technical_interruption
+from .dispatch_outcome_history import DispatchOutcomeHistoryAdapter
+from .dispatch_outcome_state import DispatchOutcomeStateAdapter
 
 
 class DispatchOutcomeHandler:
@@ -35,13 +37,20 @@ class DispatchOutcomeHandler:
         self.agent = agent
         self.state = agent.state
         self.history = agent.history
+        self.log = getattr(agent, "log", None)
         self.parser = parser
         self.recovery = recovery
+        self.state_view = DispatchOutcomeStateAdapter(self.state)
+        self.history_view = DispatchOutcomeHistoryAdapter(self.history)
         self.stage_logger = OrchestrationStageLogger(getattr(agent, "log", None), self.state)
 
     @property
     def ui(self):
         return self.agent.ui
+
+    @property
+    def logger(self):
+        return self.log or getattr(self.agent, "log", None)
 
     def _completed_actions(self, processed_segs) -> list[dict]:
         actions = []
@@ -56,6 +65,33 @@ class DispatchOutcomeHandler:
     def _extract_visible_text(self, text: str) -> str:
         return extract_visible_text_for_user(text)
 
+    async def _print_error_if_present(self, message: str) -> None:
+        ui = self.ui
+        printer = getattr(ui, "print_error", None)
+        if callable(printer):
+            await printer(message)
+
+    async def _print_system_if_present(self, message: str) -> None:
+        ui = self.ui
+        printer = getattr(ui, "print_system", None)
+        if callable(printer):
+            await printer(message)
+
+    async def _confirm_loop_recovery_if_present(self, message: str):
+        ui = self.ui
+        confirmer = getattr(ui, "confirm_loop_recovery", None)
+        if callable(confirmer):
+            return await confirmer(message)
+        return None
+
+    async def _print_technical_interruption_if_present(self, technical_interruption) -> bool:
+        ui = self.ui
+        printer = getattr(ui, "print_technical_interruption", None)
+        if callable(printer):
+            await printer(self.state_view.technical_interruption_snapshot(technical_interruption))
+            return True
+        return False
+
     async def _render_text_reply(self, text: str) -> bool:
         rendered = str(text or "").strip()
         if not rendered:
@@ -69,8 +105,8 @@ class DispatchOutcomeHandler:
                 await print_message(rendered, role="assistant")
                 return True
             except Exception:
-                if self.agent.log:
-                    self.agent.log.warning("Failed to render dispatch text-only reply via print_message", exc_info=True)
+                if self.logger:
+                    self.logger.warning("Failed to render dispatch text-only reply via print_message", exc_info=True)
 
         candidate_calls = [
             ("print_assistant", (rendered,), {}),
@@ -90,8 +126,8 @@ class DispatchOutcomeHandler:
             except TypeError:
                 continue
             except Exception:
-                if self.agent.log:
-                    self.agent.log.warning(
+                if self.logger:
+                    self.logger.warning(
                         "Failed to render dispatch text-only reply via %s",
                         method_name,
                         exc_info=True,
@@ -103,43 +139,23 @@ class DispatchOutcomeHandler:
         return detect_technical_interruption(text) is not None
 
     def _clear_terminal_plaintext_completion(self) -> None:
-        try:
-            setattr(self.state, "terminal_plaintext_completion_pending", False)
-            setattr(self.state, "terminal_plaintext_completion_text", "")
-        except Exception:
-            pass
+        self.state_view.clear_terminal_plaintext_completion()
 
     def _close_active_intent_if_terminal_stop(self, completion_reason: str) -> bool:
-        closer = getattr(self.state, "close_active_intent_as_resumable", None)
-        if not callable(closer):
-            return False
-        try:
-            return bool(closer(completion_reason))
-        except Exception:
-            return False
+        return self.state_view.close_active_intent_as_resumable(completion_reason)
 
     def _maybe_close_active_intent_for_text_only_stop(self) -> None:
-        active_intent = getattr(self.state, "active_intent", None)
+        active_intent = self.state_view.active_intent()
         if active_intent is None:
             return
 
-        stop_info = getattr(self.state, "pending_loop_stop_info", None) or {}
+        stop_info = self.state_view.pending_loop_stop_info() or {}
         stop_reason = str(stop_info.get("reason") or "").strip()
         force_plaintext = bool(getattr(active_intent, "force_plaintext_completion", False))
-        exhausted = False
-        exhausted_checker = getattr(self.state, "has_exhausted_active_intent", None)
-        if callable(exhausted_checker):
-            try:
-                exhausted = bool(exhausted_checker())
-            except Exception:
-                exhausted = False
+        exhausted = self.state_view.has_exhausted_active_intent()
 
         if force_plaintext:
-            completion_reason = (
-                str(getattr(self.state, "pending_finalize_completion_reason", "") or "").strip()
-                or stop_reason
-                or "forced_plaintext_completion"
-            )
+            completion_reason = self.state_view.force_plaintext_completion_reason(stop_reason)
             self._close_active_intent_if_terminal_stop(completion_reason)
             return
 
@@ -173,7 +189,7 @@ class DispatchOutcomeHandler:
             incomplete_control_kind = detect_incomplete_control_markup(recon_msg)
             if incomplete_control_kind:
                 try:
-                    await self.ui.print_error("Execution stopped: truncated internal model response was suppressed.")
+                    await self._print_error_if_present("Execution stopped: truncated internal model response was suppressed.")
                 except Exception:
                     pass
                 self.stage_logger.log(
@@ -190,8 +206,8 @@ class DispatchOutcomeHandler:
                 )
 
             visible_text = self._extract_visible_text(recon_msg)
-            if recon_msg and contains_control_markup(recon_msg) and self.agent.log:
-                self.agent.log.info("DispatchOutcome.ui_text_sanitized control_markup_removed=True")
+            if recon_msg and contains_control_markup(recon_msg) and self.logger:
+                self.logger.info("DispatchOutcome.ui_text_sanitized control_markup_removed=True")
             visible_text, leaked_system_result_removed = self._strip_leaked_system_results_from_ui_text(visible_text)
             if leaked_system_result_removed:
                 self.stage_logger.log(
@@ -199,17 +215,12 @@ class DispatchOutcomeHandler:
                     "sanitize",
                     reason="leaked_system_result_removed_from_ui_text",
                     source="dispatch",
-                )
+            )
             technical_interruption = detect_technical_interruption(visible_text or recon_msg)
             if technical_interruption is not None:
-                note = getattr(self.state, "note_technical_interruption", None)
-                if callable(note):
-                    note(technical_interruption, current_query=ctx.current_query)
-                printer = getattr(self.ui, "print_technical_interruption", None)
-                if callable(printer):
-                    await printer(getattr(self.state, "last_technical_interruption", None) or technical_interruption)
-                else:
-                    await self.ui.print_error(str(visible_text or recon_msg).strip())
+                self.state_view.note_technical_interruption(technical_interruption, current_query=ctx.current_query)
+                if not await self._print_technical_interruption_if_present(technical_interruption):
+                    await self._print_error_if_present(str(visible_text or recon_msg).strip())
                 self._close_active_intent_if_terminal_stop("technical_interruption")
                 self._clear_terminal_plaintext_completion()
                 ctx.active_loop = False
@@ -218,10 +229,10 @@ class DispatchOutcomeHandler:
                     source="dispatch",
                 )
             if visible_text:
-                self.history.add_message("assistant", visible_text)
+                self.history_view.add_assistant_message(visible_text)
                 rendered = await self._render_text_reply(visible_text)
-                if not rendered and self.agent.log:
-                    self.agent.log.warning("Text-only response was reconstructed but could not be rendered in UI.")
+                if not rendered and self.logger:
+                    self.logger.warning("Text-only response was reconstructed but could not be rendered in UI.")
 
                 # This reply has already been rendered to the user-facing UI.
                 # Clear any pending terminal plaintext completion so the outer
@@ -234,7 +245,7 @@ class DispatchOutcomeHandler:
                     source="dispatch",
                 )
 
-            await self.ui.print_system("Execution finished: no further actions returned by the model.")
+            await self._print_system_if_present("Execution finished: no further actions returned by the model.")
             self._clear_terminal_plaintext_completion()
             ctx.active_loop = False
             return DispatchHandlingDecision.stop(
@@ -255,17 +266,17 @@ class DispatchOutcomeHandler:
                     source="dispatch",
                 )
             if visible_recon_msg:
-                self.history.add_message("assistant", visible_recon_msg)
+                self.history_view.add_assistant_message(visible_recon_msg)
 
         for res in sys_results:
-            self.history.add_message("system", res)
+            self.history_view.add_system_message(res)
 
         if should_stop:
-            stop_info = getattr(self.state, "pending_loop_stop_info", None)
+            stop_info = self.state_view.pending_loop_stop_info()
             decision = await self.recovery.handle_dispatch_stop(stop_info, ctx.state_machine)
             if decision.handled:
                 if decision.clear_pending_stop:
-                    self.state.pending_loop_stop_info = None
+                    self.state_view.clear_pending_loop_stop_info()
                 if decision.next_query:
                     ctx.current_query = decision.next_query
                 if decision.stop_loop:
@@ -287,7 +298,7 @@ class DispatchOutcomeHandler:
                     source=decision.source or "dispatch_recovery",
                 )
 
-            await self.ui.print_system(
+            await self._print_system_if_present(
                 "Execution stopped by control policy (for example, denied action)."
             )
             ctx.active_loop = False
@@ -306,7 +317,7 @@ class DispatchOutcomeHandler:
                     source="state_machine",
                 )
             if sm_decision.decision.name == "USER_HANDOFF":
-                decision = await self.ui.confirm_loop_recovery(
+                decision = await self._confirm_loop_recovery_if_present(
                     "Detected repeated read-only stagnation. Choose next step."
                 )
                 if decision in {"retry_recovery", "continue_diagnosis"}:
@@ -341,7 +352,7 @@ class DispatchOutcomeHandler:
                             reason="pin_target_edit",
                             source="state_machine",
                         )
-                await self.ui.print_system("Execution stopped by user after stagnation warning.")
+                await self._print_system_if_present("Execution stopped by user after stagnation warning.")
                 ctx.active_loop = False
                 return DispatchHandlingDecision.stop(
                     reason="user_stopped_after_stagnation_warning",
@@ -354,15 +365,13 @@ class DispatchOutcomeHandler:
             already_had_memory_tag = self._previous_response_already_had_memory_tag(ctx)
 
             if already_had_memory_tag:
-                self.state.memory_tag_expected_next_step = False
-                self.state.memory_tag_reason = ""
-                self.state.memory_tag_expected_intent_id = ""
+                self.state_view.set_memory_tag_followup(expected=False, reason="", intent_id="")
             else:
-                self.state.memory_tag_expected_next_step = True
-                self.state.memory_tag_reason = "meaningful_evidence_gain"
-                active_intent = getattr(self.state, "active_intent", None)
-                self.state.memory_tag_expected_intent_id = str(
-                    getattr(active_intent, "intent_id", "") or ""
+                active_intent = self.state_view.active_intent()
+                self.state_view.set_memory_tag_followup(
+                    expected=True,
+                    reason="meaningful_evidence_gain",
+                    intent_id=str(getattr(active_intent, "intent_id", "") or ""),
                 )
         except Exception:
             pass
@@ -373,13 +382,8 @@ class DispatchOutcomeHandler:
         )
 
     def _previous_response_already_had_memory_tag(self, ctx=None) -> bool:
-        try:
-            if int(getattr(self.state, "last_memory_board_accepted_count", 0) or 0) > 0:
-                return True
-            if int(getattr(self.state, "last_memory_board_parsed_count", 0) or 0) > 0:
-                return True
-        except Exception:
-            pass
+        if self.state_view.last_memory_board_counts_indicate_tag():
+            return True
 
         candidates = []
         for obj in (ctx, self.state):

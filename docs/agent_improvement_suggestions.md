@@ -1,4 +1,13 @@
-# Пропозиції щодо покращення архітектури агента
+# Пропозиції щодо покращення архітектури агента (Historical Draft)
+
+> Status: Historical Draft.
+> This document predates the orchestration semantic package split and still
+> references removed top-level paths such as `modules/agent/orchestration/core.py`
+> and `response_pipeline.py`.
+> Use current architecture docs for implementation guidance:
+> `docs/ORCHESTRATION_PACKAGE_MAP.md`,
+> `docs/ORCHESTRATION_PHASE_ARCHITECTURE.md`,
+> `docs/AGENT_STATE_OWNERSHIP.md`.
 
 На основі проведеного аналізу коду, особливо в `modules/agent/orchestration/` та `modules/agent/`, було визначено наступну архітектуру та потенційні зони для покращення.
 

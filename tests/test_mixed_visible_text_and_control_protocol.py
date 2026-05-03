@@ -173,6 +173,9 @@ class DummyPromptBuilder:
     def build_mixed_visible_text_and_control_protocol_prompt(self):
         return "mixed visible text and control protocol"
 
+    def build_mixed_intent_transition_and_visible_answer_prompt(self):
+        return "mixed intent transition and visible answer"
+
 
 @pytest.mark.asyncio
 async def test_mixed_visible_text_recovery_happens_before_action_policy():
@@ -223,3 +226,65 @@ async def test_mixed_visible_text_recovery_happens_before_action_policy():
     assert outcome.reason == "mixed_visible_text_and_control_protocol"
     assert output_recovery.calls == ["mixed_visible_text_and_control_protocol"]
     assert action_policy.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_intent_followup_visible_text_is_not_treated_as_malformed_action():
+    state = SimpleNamespace(
+        active_intent=None,
+        intent_required_until_activated=True,
+        reuse_only_intent_required=False,
+        transition_only_intent_required=False,
+        last_memory_update_done=False,
+        orchestration_trace_sequence=0,
+        orchestration_trace=[],
+    )
+    agent = SimpleNamespace(
+        state=state,
+        log=None,
+        ui=SimpleNamespace(print_error=None),
+        config=SimpleNamespace(
+            MEMORY_CHECKPOINT_ONLY_HARD_STOP_STREAK=4,
+            REPEATED_THINKING_WITHOUT_VALID_OUTPUT_STREAK=2,
+        ),
+    )
+    output_recovery = RecordingOutputRecovery()
+    action_policy = RecordingActionPolicy()
+    pipeline = ModelResponsePipeline(
+        agent,
+        ResponseParser(),
+        IntentResponseParser(),
+        DummyPromptBuilder(),
+        DummyIntentTransitions(),
+        output_recovery,
+        action_policy,
+        DummyPlanBoardStage(),
+        DummyMemoryBoardStage(),
+    )
+    ctx = SimpleNamespace(state_machine=None, malformed_action_retries=0, audit_marker_retries=0)
+    response = (
+        "<think>\nReady to inspect the codebase.\n</think>\n"
+        '<intent mode="activate">{"intent_id":"save_run_step_refactor_plan","intent_type":"MODIFY","goal":"Save run_step refactoring plan to docs.","allowed_actions":["write_file_block"],"mode":"activate"}</intent>\n'
+        "Гаразд, я готовий розпочати аналіз і спочатку зберу правила.\n"
+        "### 1. Поточний protocol\n"
+    )
+    step = SimpleNamespace(
+        response=response,
+        intent_payload={
+            "intent_id": "save_run_step_refactor_plan",
+            "intent_type": "MODIFY",
+            "goal": "Save run_step refactoring plan to docs.",
+            "allowed_actions": ["write_file_block"],
+            "mode": "activate",
+        },
+        intent_error=None,
+        model_stop_reason="",
+    )
+
+    outcome = await pipeline.run_step(ctx, step)
+
+    assert outcome.continue_loop is True
+    assert outcome.reason == "mixed_intent_transition_and_visible_answer"
+    assert output_recovery.calls == ["mixed_intent_transition_and_visible_answer"]
+    assert action_policy.calls == 0
+    assert "malformed <action>" not in (outcome.next_query or "")

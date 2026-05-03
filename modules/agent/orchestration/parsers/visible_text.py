@@ -36,10 +36,41 @@ UNPAIRED_OPERATIONAL_OPEN_RE = re.compile(
     r"<(fact|finding|decision|preference|progress|path|subgoal)\b",
     re.IGNORECASE,
 )
+FENCED_CODE_RE = re.compile(r"```.*?```", re.DOTALL)
+INLINE_CODE_RE = re.compile(r"`[^`\n]+`")
+XML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+QUOTED_TAG_RE = re.compile(
+    r"""(["'])[^"'\\\n]*(?:\\.[^"'\\\n]*)*<(?:think|intent|action|file_content|fact|finding|decision|preference|progress|path|subgoal|memory_review|memory_update_done)\b[^"'\\\n>]*>[^"'\\\n]*\1""",
+    re.IGNORECASE,
+)
+ESCAPED_TAG_RE = re.compile(
+    r"(?:&lt;|\\<)\s*(?:think|intent|action|file_content|fact|finding|decision|preference|progress|path|subgoal|memory_review|memory_update_done)\b",
+    re.IGNORECASE,
+)
+
+
+def _mask_with_spaces(text: str, regex: re.Pattern[str]) -> str:
+    def _mask(match: re.Match) -> str:
+        return " " * (match.end() - match.start())
+
+    return regex.sub(_mask, text)
+
+
+def _mask_textual_control_contexts(response: str) -> str:
+    text = str(response or "")
+    for regex in (
+        XML_COMMENT_RE,
+        FENCED_CODE_RE,
+        INLINE_CODE_RE,
+        QUOTED_TAG_RE,
+        ESCAPED_TAG_RE,
+    ):
+        text = _mask_with_spaces(text, regex)
+    return text
 
 
 def _mask_complete_control_blocks(response: str) -> str:
-    text = str(response or "")
+    text = _mask_textual_control_contexts(response)
 
     def _mask(match: re.Match) -> str:
         return " " * (match.end() - match.start())
@@ -93,11 +124,12 @@ def strip_plain_think_prefix_artifacts(response: str) -> tuple[str, bool]:
 def detect_invalid_think_markup(response: str) -> str:
     if not isinstance(response, str) or not response.strip():
         return ""
-    lowered = response.lower()
+    masked_response = _mask_textual_control_contexts(response)
+    lowered = masked_response.lower()
     if "<think" not in lowered:
         return ""
 
-    for match in THINK_TAG_RE.finditer(response):
+    for match in THINK_TAG_RE.finditer(masked_response):
         body = str(match.group(0) or "")
         inner_match = re.match(r"<think(?:\s+[^>]*)?>(.*)</think>", body, re.IGNORECASE | re.DOTALL)
         think_body = (inner_match.group(1) if inner_match else "").strip()
@@ -120,7 +152,9 @@ def sanitize_visible_text_for_user(response: str) -> tuple[str, bool]:
     if not text.strip():
         return "", False
 
+    masked_for_detection = _mask_textual_control_contexts(text)
     text, _ = strip_plain_think_prefix_artifacts(text)
+    masked_for_detection, _ = strip_plain_think_prefix_artifacts(masked_for_detection)
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     text = THINK_TAG_RE.sub("\n", text)
     text = INTENT_TAG_RE.sub("\n", text)
@@ -136,7 +170,22 @@ def sanitize_visible_text_for_user(response: str) -> tuple[str, bool]:
     text = TOOL_HISTORY_LINE_RE.sub("\n", text)
     text = HISTORY_TOOL_ACTION_RE.sub("\n", text)
     text = HISTORY_TOOL_TAG_RE.sub("\n", text)
-    leak_detected = bool(RAW_CONTROL_TAG_FRAGMENT_RE.search(text))
+    masked_for_detection = masked_for_detection.replace("\r\n", "\n").replace("\r", "\n")
+    masked_for_detection = THINK_TAG_RE.sub("\n", masked_for_detection)
+    masked_for_detection = INTENT_TAG_RE.sub("\n", masked_for_detection)
+    masked_for_detection = ACTION_TAG_RE.sub("\n", masked_for_detection)
+    masked_for_detection = FILE_CONTENT_TAG_RE.sub("\n", masked_for_detection)
+    masked_for_detection = MEMORY_BLOCK_TAG_RE.sub("\n", masked_for_detection)
+    masked_for_detection = MEMORY_INLINE_TAG_RE.sub("\n", masked_for_detection)
+    masked_for_detection = MEMORY_REVIEW_RE.sub("\n", masked_for_detection)
+    masked_for_detection = SUBGOAL_TAG_RE.sub("\n", masked_for_detection)
+    masked_for_detection = MEMORY_UPDATE_DONE_RE.sub("\n", masked_for_detection)
+    masked_for_detection = PREVIOUSLY_PERFORMED_ACTION_RE.sub("\n", masked_for_detection)
+    masked_for_detection = SYSTEM_AUDIT_LINE_RE.sub("\n", masked_for_detection)
+    masked_for_detection = TOOL_HISTORY_LINE_RE.sub("\n", masked_for_detection)
+    masked_for_detection = HISTORY_TOOL_ACTION_RE.sub("\n", masked_for_detection)
+    masked_for_detection = HISTORY_TOOL_TAG_RE.sub("\n", masked_for_detection)
+    leak_detected = bool(RAW_CONTROL_TAG_FRAGMENT_RE.search(masked_for_detection))
     text = GENERIC_TAG_RE.sub(" ", text)
     text = re.sub(r"[^\S\n]+", " ", text)
     text = re.sub(r" *\n *", "\n", text)
@@ -157,7 +206,8 @@ def visible_text_has_control_tag_leak(response: str) -> bool:
 def contains_control_markup(response: str) -> bool:
     if not isinstance(response, str) or not response:
         return False
-    return bool(CONTROL_MARKUP_RE.search(response) or MEMORY_REVIEW_RE.search(response) or FILE_CONTENT_TAG_RE.search(response))
+    masked = _mask_textual_control_contexts(response)
+    return bool(CONTROL_MARKUP_RE.search(masked) or MEMORY_REVIEW_RE.search(masked) or FILE_CONTENT_TAG_RE.search(masked))
 
 
 def detect_incomplete_control_markup(response: str) -> str:

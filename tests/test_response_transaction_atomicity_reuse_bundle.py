@@ -13,6 +13,7 @@ from modules.agent.orchestration.shared.decision_models import (
 from modules.agent.orchestration.transitions import IntentTransitionHandler
 from modules.agent.orchestration.parsers import IntentResponseParser
 from modules.agent.orchestration.responses import ModelResponsePipeline
+from modules.parser import ResponseParser
 
 
 class DummySegment:
@@ -168,6 +169,9 @@ class DummyPromptBuilder:
     def build_malformed_think_limit_prompt(self):
         return "malformed think limit"
 
+    def build_atomic_bundle_rejected_prompt(self, *, invalid_part, reason, blocked_action="", proposed_allowed_actions=None, goal=""):
+        return f"bundle invalid: {invalid_part}: {reason}: {blocked_action}"
+
 
 class DummyState:
     def __init__(self, *, allowed_actions=None, hard_exhausted=True):
@@ -181,9 +185,14 @@ class DummyState:
             intent_type="INVESTIGATE",
             goal="Continue same investigation",
             allowed_actions=list(allowed_actions or ["read_chunk"]),
+            original_allowed_actions=list(allowed_actions or ["read_chunk"]),
             step_count=99 if hard_exhausted else 0,
             safe_steps_limit=1,
             retry_limit=1,
+            force_plaintext_completion=False,
+            action_constraints={},
+            blocked_action_signatures=set(),
+            blocked_action_reasons={},
         )
         self.intent_runtime = SimpleNamespace(
             last_apply_warning="",
@@ -211,21 +220,28 @@ class DummyState:
     def apply_intent_contract(self, payload, config):
         self.apply_called = True
         mode = str(payload.get("mode") or "").strip().lower()
-        if mode != "reuse":
+        if mode == "reuse" and not str(payload.get("switch_reason") or "").strip():
+            return False, "intent_switch_reason_required"
+        if mode not in {"reuse", "activate"}:
             return False, "unsupported_test_intent_mode"
         allowed = payload.get("allowed_actions") or getattr(self.active_intent, "allowed_actions", [])
         self.active_intent = SimpleNamespace(
             intent_id=payload.get("intent_id") or "current_intent",
-            intent_type=payload.get("intent_type") or "INVESTIGATE",
-            goal=payload.get("goal") or "Continue same investigation",
+            intent_type=payload.get("intent_type") or ("INVESTIGATE" if mode == "reuse" else "MODIFY"),
+            goal=payload.get("goal") or ("Continue same investigation" if mode == "reuse" else "Save requested document."),
             allowed_actions=list(allowed),
+            original_allowed_actions=list(allowed),
             step_count=0,
-            safe_steps_limit=4,
-            retry_limit=1,
+            safe_steps_limit=int(payload.get("safe_steps_limit") or 4),
+            retry_limit=int(payload.get("retry_limit") or 1),
+            force_plaintext_completion=False,
+            action_constraints={},
+            blocked_action_signatures=set(),
+            blocked_action_reasons={},
         )
         self.intent_required_until_activated = False
         self.intent_required_reason = ""
-        return True, "intent_reused"
+        return True, "intent_reused" if mode == "reuse" else "intent_activated"
 
     def has_hard_exhausted_active_intent(self):
         return bool(self.intent_required_until_activated)
@@ -265,12 +281,12 @@ class DummyAgent:
         )
 
 
-def make_pipeline(state, output_recovery=None):
+def make_pipeline(state, output_recovery=None, parser=None):
     agent = DummyAgent(state)
     prompt_builder = DummyPromptBuilder()
     return ModelResponsePipeline(
         agent=agent,
-        parser=DummyParser(),
+        parser=parser or DummyParser(),
         intent_response_parser=IntentResponseParser(),
         prompt_builder=prompt_builder,
         intent_transitions=IntentTransitionHandler(agent, prompt_builder, DummyRecovery()),
@@ -364,6 +380,49 @@ async def test_valid_reuse_plus_allowed_action_bundle_is_dispatch_ready():
 
 
 @pytest.mark.asyncio
+async def test_valid_activate_write_bundle_is_dispatch_ready():
+    state = DummyState(allowed_actions=["read_chunk"], hard_exhausted=False)
+    state.active_intent = None
+    state.intent_required_until_activated = False
+    state.intent_required_reason = ""
+    pipeline = make_pipeline(state, parser=ResponseParser())
+
+    step = SimpleNamespace(
+        intent_payload={
+            "mode": "activate",
+            "intent_id": "save_requested_document",
+            "intent_type": "MODIFY",
+            "goal": "Save requested document.",
+            "allowed_actions": ["write_file_block"],
+            "safe_steps_limit": 2,
+            "retry_limit": 1,
+        },
+        intent_error=None,
+        model_stop_reason="",
+        response=(
+            '<intent mode="activate">{"mode":"activate","intent_id":"save_requested_document","intent_type":"MODIFY","goal":"Save requested document.","allowed_actions":["write_file_block"],"safe_steps_limit":2,"retry_limit":1}</intent>\n'
+            '<action>{"type":"write_file_block","path":"docs/x.md","overwrite":true}</action>\n'
+            "<file_content>body</file_content>"
+        ),
+    )
+    ctx = SimpleNamespace(
+        state_machine=None,
+        malformed_action_retries=0,
+        audit_marker_retries=0,
+        user_input="save the requested document",
+    )
+
+    outcome = await pipeline.run_step(ctx, step)
+
+    assert state.apply_called is True
+    assert state.intent_required_until_activated is False
+    assert outcome.continue_loop is False
+    assert outcome.stop_loop is False
+    assert outcome.parsed_action_count == 1
+    assert any(getattr(seg, "type", "") == "action" for seg in outcome.segments)
+
+
+@pytest.mark.asyncio
 async def test_valid_reuse_plus_disallowed_action_is_checked_after_reuse():
     state = DummyState(allowed_actions=["read_chunk"], hard_exhausted=True)
     pipeline = make_pipeline(state)
@@ -387,8 +446,95 @@ async def test_valid_reuse_plus_disallowed_action_is_checked_after_reuse():
 
     outcome = await pipeline.run_step(ctx, step)
 
-    assert state.apply_called is True
-    assert state.intent_required_until_activated is False
+    assert state.apply_called is False
+    assert state.intent_required_until_activated is True
     assert outcome.continue_loop is True
-    assert outcome.reason == "intent_action_not_allowed"
-    assert outcome.parsed_action_count == 1
+    assert outcome.reason == "atomic_bundle_action_invalid"
+    assert outcome.parsed_action_count == 0
+
+
+@pytest.mark.asyncio
+async def test_invalid_reuse_bundle_missing_switch_reason_rejects_whole_bundle():
+    state = DummyState(allowed_actions=["read_chunk"], hard_exhausted=False)
+    state.active_intent = SimpleNamespace(
+        intent_id="current_intent",
+        intent_type="INVESTIGATE",
+        goal="Continue same investigation",
+        allowed_actions=["read_chunk"],
+        original_allowed_actions=["read_chunk"],
+        step_count=0,
+        safe_steps_limit=4,
+        retry_limit=1,
+        force_plaintext_completion=False,
+        action_constraints={},
+        blocked_action_signatures=set(),
+        blocked_action_reasons={},
+    )
+    pipeline = make_pipeline(state)
+
+    step = SimpleNamespace(
+        intent_payload={
+            "mode": "reuse",
+            "intent_id": "current_intent",
+            "intent_type": "MODIFY",
+            "goal": "Continue same investigation",
+            "allowed_actions": ["read_chunk"],
+        },
+        intent_error=None,
+        model_stop_reason="",
+        response=(
+            '<intent mode="reuse">{"mode":"reuse","intent_id":"current_intent","intent_type":"MODIFY","goal":"Continue same investigation","allowed_actions":["read_chunk"]}</intent>\n'
+            '<action>{"type":"read_chunk","path":"x.py","start_line":1,"end_line":5}</action>'
+        ),
+    )
+    ctx = SimpleNamespace(
+        state_machine=None,
+        malformed_action_retries=0,
+        audit_marker_retries=0,
+        user_input="continue",
+    )
+
+    outcome = await pipeline.run_step(ctx, step)
+
+    assert state.apply_called is False
+    assert outcome.continue_loop is True
+    assert outcome.reason == "atomic_bundle_intent_invalid"
+
+
+@pytest.mark.asyncio
+async def test_missing_file_content_rejects_whole_bundle():
+    state = DummyState(allowed_actions=["read_chunk"], hard_exhausted=False)
+    state.active_intent = None
+    state.intent_required_until_activated = False
+    state.intent_required_reason = ""
+    pipeline = make_pipeline(state)
+
+    step = SimpleNamespace(
+        intent_payload={
+            "mode": "activate",
+            "intent_id": "save_requested_document",
+            "intent_type": "MODIFY",
+            "goal": "Save requested document.",
+            "allowed_actions": ["write_file_block"],
+            "safe_steps_limit": 2,
+            "retry_limit": 1,
+        },
+        intent_error=None,
+        model_stop_reason="",
+        response=(
+            '<intent mode="activate">{"mode":"activate","intent_id":"save_requested_document","intent_type":"MODIFY","goal":"Save requested document.","allowed_actions":["write_file_block"],"safe_steps_limit":2,"retry_limit":1}</intent>\n'
+            '<action>{"type":"write_file_block","path":"docs/x.md","overwrite":true}</action>'
+        ),
+    )
+    ctx = SimpleNamespace(
+        state_machine=None,
+        malformed_action_retries=0,
+        audit_marker_retries=0,
+        user_input="save the document",
+    )
+
+    outcome = await pipeline.run_step(ctx, step)
+
+    assert state.apply_called is False
+    assert outcome.continue_loop is True
+    assert outcome.reason == "atomic_bundle_file_content_invalid"

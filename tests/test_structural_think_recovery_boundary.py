@@ -116,8 +116,8 @@ def test_long_closed_prose_think_is_valid():
 
 
 def test_strict_intent_only_recovery_still_says_no_think():
-    prompt = _builder().build_formal_intent_required_for_multi_step_state_change_prompt(
-        goal="Save orchestration analysis to docs."
+    prompt = _builder().build_build_fix_intent_required_prompt(
+        goal="Fix current Android compile errors."
     )
 
     assert "Return only one top-level <intent" in prompt

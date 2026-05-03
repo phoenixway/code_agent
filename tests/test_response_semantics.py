@@ -34,6 +34,14 @@ class ResponseSemanticsTests(unittest.TestCase):
         self.assertTrue(self.s.has_checkpoint_tags(text))
         self.assertTrue(self.s.has_memory_update_done(text))
 
+    def test_literal_backticked_checkpoint_tags_do_not_count_as_real_checkpoint_tags(self):
+        text = (
+            "Пояснення про теги `"
+            "<fact>` і `<finding>` у відповіді користувачу."
+        )
+        self.assertFalse(self.s.has_checkpoint_tags(text))
+        self.assertFalse(self.s.has_memory_update_done("Literal `<memory_update_done />` mention only."))
+
     def test_valid_state_changing_review_before_action_accepts_subgoal_and_progress_bundle(self):
         text = (
             "<think>Verified generator path and planned the next command.</think>"

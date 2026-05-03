@@ -6,6 +6,8 @@ from modules.agent.orchestration.shared.decision_models import ActionPolicyDecis
 from modules.agent.orchestration.parsers import IntentResponseParser
 from modules.agent.orchestration.responses import ModelResponsePipeline
 from modules.agent.orchestration.parsers.visible_text import (
+    detect_incomplete_control_markup,
+    detect_invalid_think_markup,
     extract_visible_text_for_user,
     terminal_plaintext_completion_status,
     visible_text_has_control_tag_leak,
@@ -194,6 +196,35 @@ def test_raw_control_tags_remaining_after_sanitize_are_rejected():
     assert reason == "control_tag_leak_in_visible_text"
     assert visible == "Фінал"
     assert visible_text_has_control_tag_leak(response) is True
+
+
+def test_backticked_tag_mentions_do_not_trigger_structural_think_invalids():
+    response = (
+        "<think>\n"
+        "I will describe the protocol tags like `<action>` and `<intent mode=\"activate\">`.\n"
+        "</think>\n"
+        "<memory_update_done />\n"
+        "Visible explanation that mentions `<think>` and `<memory_update_done />` as literals."
+    )
+
+    assert detect_incomplete_control_markup(response) == ""
+    assert detect_invalid_think_markup(response) == ""
+    assert visible_text_has_control_tag_leak(response) is False
+
+
+def test_fenced_xml_examples_do_not_trigger_structural_think_invalids():
+    response = (
+        "<think>\n"
+        "Need to explain valid examples.\n"
+        "</think>\n"
+        "<memory_update_done />\n"
+        "```xml\n<action>{\"type\":\"read_file\",\"path\":\"x.py\"}</action>\n```\n"
+        "```xml\n<intent mode=\"activate\">{\"intent_id\":\"x\"}</intent>\n```"
+    )
+
+    assert detect_incomplete_control_markup(response) == ""
+    assert detect_invalid_think_markup(response) == ""
+    assert visible_text_has_control_tag_leak(response) is False
 
 
 def test_long_prose_think_is_accepted_if_structurally_closed():

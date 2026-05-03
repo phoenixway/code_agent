@@ -1,0 +1,10 @@
+raw: |
+  <intent mode="activate">{"intent_id":"save_doc","intent_type":"MODIFY","goal":"Save analysis","allowed_actions":["write_file_block"],"mode":"activate","switch_reason":"user_requested_save"}</intent>
+  <action>{"type":"write_file_block","path":"docs/report.md"}</action>
+shape: INVALID
+valid: false
+error_code: E_FILE_CONTENT_REQUIRES_ACTION
+recovery_id: file_content_requires_action
+invalid_part: file_content
+transition_applied: false
+action_dispatched: false

@@ -1,4 +1,13 @@
-# План Покращення Архітектури Оркестрації
+# План Покращення Архітектури Оркестрації (Historical Draft)
+
+> Status: Historical Draft.
+> This document describes a pre-split orchestration architecture and should not
+> be used as the current implementation plan.
+> Canonical current references:
+> `docs/ORCHESTRATION_PHASE_ARCHITECTURE.md`,
+> `docs/ORCHESTRATION_PACKAGE_MAP.md`,
+> `docs/ORCHESTRATION_DEPENDENCY_RULES.md`,
+> `docs/ORCHESTRATION_COLLABORATOR_BUNDLES.md`.
 
 ## Фінальний глибокий аналіз архітектури
 

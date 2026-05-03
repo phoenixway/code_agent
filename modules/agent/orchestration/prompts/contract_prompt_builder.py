@@ -264,6 +264,8 @@ class ContractPromptBuilderMixin:
         planner = getattr(self.agent, "planner", None)
         if planner is None or not hasattr(planner, "render_runtime_snapshot"):
             return None
+        if self._current_active_intent() is None or not self._intent_universe().has_active_contract:
+            return None
         board = getattr(self.state, "task_board", None)
         snapshot = planner.render_runtime_snapshot(board)
         if not isinstance(snapshot, str) or not snapshot.strip():

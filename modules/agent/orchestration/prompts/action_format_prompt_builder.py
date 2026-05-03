@@ -458,7 +458,7 @@ class ActionFormatPromptBuilderMixin:
             "SYSTEM: Your response mixed a user-visible answer with internal protocol/tool use.\n"
             "Choose exactly one:\n"
             "1. Return only the final plain-text answer, with no <think>, <intent>, <action>, or other control tags.\n"
-            "2. Or return internal protocol only: optional <think>, then memory/subgoal tags if needed, <memory_update_done />, and exactly one <action>.\n"
+            "2. Or return internal protocol only: optional <think>, then memory/subgoal tags if needed, <memory_update_done />, then intent/action protocol if needed.\n"
             "Do not put visible prose before internal protocol."
         )
 

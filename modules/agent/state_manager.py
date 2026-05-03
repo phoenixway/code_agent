@@ -47,6 +47,87 @@ BUILD_STATUS_RE = re.compile(
 class AgentState:
     """Зберігає динамічний стан агента: токени, циклічність, задачі."""
 
+    ORCHESTRATION_TURN_LOCAL_FIELDS = (
+        "readonly_steps_this_turn",
+        "intent_only_response_count",
+        "pending_suspect_intent_payload",
+        "pending_goal_drift_payload",
+        "allow_suspect_intent_once",
+        "orchestration_trace",
+        "orchestration_trace_sequence",
+        "last_memory_board_parsed_count",
+        "last_memory_board_accepted_count",
+        "last_memory_board_rejected_count",
+        "last_memory_update_done",
+        "memory_tag_expected_next_step",
+        "memory_tag_reason",
+        "memory_tag_expected_intent_id",
+        "current_turn_state_change_count",
+        "current_turn_state_change_tools",
+        "intentless_state_changing_file_write_count",
+        "last_plan_subgoal_create_count",
+        "reuse_only_intent_required",
+        "reuse_only_blocked_action",
+        "transition_only_intent_required",
+        "transition_only_blocked_action",
+        "intent_transition_defect_reason",
+        "intent_transition_defect_universe",
+        "intent_transition_defect_count",
+        "think_reflection_repair_kind",
+        "build_fix_last_build_ran",
+        "build_fix_last_build_passed",
+        "build_fix_last_build_command",
+    )
+
+    ORCHESTRATION_CROSS_TURN_FIELDS = (
+        "pending_loop_stop_info",
+        "terminal_plaintext_completion_pending",
+        "terminal_plaintext_completion_text",
+        "pending_finalize_after_terminal_plaintext_completion",
+        "pending_finalize_completion_reason",
+        "pending_finalize_completion_source",
+        "last_resumable_intent_id",
+        "last_resumable_intent_type",
+        "last_resumable_intent_goal",
+        "last_resumable_intent_allowed_actions",
+        "last_resumable_intent_lineage_id",
+        "last_resumable_intent_safe_steps_limit",
+        "last_resumable_intent_retry_limit",
+        "last_resumable_intent_completion_reason",
+        "last_technical_interruption",
+        "pending_resume_query",
+        "build_fix_mode_active",
+        "build_fix_mode_reason",
+        "build_fix_error_summary",
+        "build_fix_compiler_mentioned_files",
+        "current_turn_id",
+    )
+
+    RESUMABLE_INTENT_FIELDS = (
+        "last_resumable_intent_id",
+        "last_resumable_intent_type",
+        "last_resumable_intent_goal",
+        "last_resumable_intent_allowed_actions",
+        "last_resumable_intent_lineage_id",
+        "last_resumable_intent_safe_steps_limit",
+        "last_resumable_intent_retry_limit",
+        "last_resumable_intent_completion_reason",
+    )
+
+    TECHNICAL_INTERRUPTION_FIELDS = (
+        "last_technical_interruption",
+        "pending_resume_query",
+    )
+
+    @classmethod
+    def orchestration_state_field_groups(cls) -> dict[str, tuple[str, ...]]:
+        return {
+            "turn_local": cls.ORCHESTRATION_TURN_LOCAL_FIELDS,
+            "cross_turn": cls.ORCHESTRATION_CROSS_TURN_FIELDS,
+            "resumable": cls.RESUMABLE_INTENT_FIELDS,
+            "technical_interruption": cls.TECHNICAL_INTERRUPTION_FIELDS,
+        }
+
     def __init__(self, config=None):
         self._config = config
         self.session_tokens = 0

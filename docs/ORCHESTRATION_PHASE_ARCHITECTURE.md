@@ -27,10 +27,10 @@ The orchestrator must not reorder these phases casually, because several correct
 
 Primary implementation:
 
-- `modules/agent/orchestration/parsing.py`
-- `modules/agent/orchestration/parsing_normalization.py`
-- `modules/agent/orchestration/think_repair.py`
-- `modules/agent/orchestration/response_pipeline_prevalidation.py`
+- `modules/agent/orchestration/parsers/parsing.py`
+- `modules/agent/orchestration/parsers/parsing_normalization.py`
+- `modules/agent/orchestration/parsers/think_repair.py`
+- `modules/agent/orchestration/responses/response_pipeline_prevalidation.py`
 
 Responsibilities:
 
@@ -53,7 +53,7 @@ Not allowed here:
 
 Primary implementation:
 
-- `modules/agent/orchestration/response_pipeline_prevalidation.py`
+- `modules/agent/orchestration/responses/response_pipeline_prevalidation.py`
 
 Responsibilities:
 
@@ -69,9 +69,9 @@ Invariant:
 
 Primary implementation:
 
-- `modules/agent/orchestration/intent_transitions.py`
-- `modules/agent/orchestration/intent_transition_apply.py`
-- `modules/agent/orchestration/intent_transition_routing.py`
+- `modules/agent/orchestration/transitions/intent_transitions.py`
+- `modules/agent/orchestration/transitions/intent_transition_apply.py`
+- `modules/agent/orchestration/transitions/intent_transition_routing.py`
 
 Responsibilities:
 
@@ -89,9 +89,9 @@ Invariant:
 
 Primary implementation:
 
-- `modules/agent/orchestration/plan_board_stage.py`
-- `modules/agent/orchestration/memory_board_stage.py`
-- `modules/agent/orchestration/response_pipeline_stages.py`
+- `modules/agent/orchestration/runtime/plan_board_stage.py`
+- `modules/agent/orchestration/runtime/memory_board_stage.py`
+- `modules/agent/orchestration/responses/response_pipeline_stages.py`
 
 Responsibilities:
 
@@ -107,9 +107,9 @@ Invariant:
 
 Primary implementation:
 
-- `modules/agent/orchestration/parsing.py`
-- `modules/agent/orchestration/parsing_intent.py`
-- `modules/agent/orchestration/parsing_actions.py`
+- `modules/agent/orchestration/parsers/parsing.py`
+- `modules/agent/orchestration/parsers/parsing_intent.py`
+- `modules/agent/orchestration/parsers/parsing_actions.py`
 
 Responsibilities:
 
@@ -127,9 +127,9 @@ Invariant:
 
 Primary implementation:
 
-- `modules/agent/orchestration/output_recovery.py`
-- `modules/agent/orchestration/output_recovery_terminal.py`
-- `modules/agent/orchestration/output_recovery_routing.py`
+- `modules/agent/orchestration/responses/output_recovery.py`
+- `modules/agent/orchestration/responses/output_recovery_terminal.py`
+- `modules/agent/orchestration/responses/output_recovery_routing.py`
 
 Responsibilities:
 
@@ -145,7 +145,7 @@ Invariant:
 
 Primary implementation:
 
-- `modules/agent/orchestration/action_policy.py`
+- `modules/agent/orchestration/runtime/action_policy.py`
 
 Responsibilities:
 
@@ -161,15 +161,38 @@ Invariant:
 
 Primary implementation:
 
-- `modules/agent/orchestration/response_pipeline.py`
-- `modules/agent/orchestration/dispatch_pipeline.py`
-- `modules/agent/orchestration/dispatch_outcome.py`
+- `modules/agent/orchestration/responses/response_pipeline.py`
+- `modules/agent/orchestration/runtime/dispatch_pipeline.py`
+- `modules/agent/orchestration/runtime/dispatch_outcome.py`
 
 Responsibilities:
 
 - produce final dispatch-ready outcome
 - preserve parsed segments and parsed output
 - hand off to dispatch machinery only after all earlier phases pass
+
+## Diagnostics And Trace Ownership
+
+Canonical implementation:
+
+- `modules/agent/orchestration/shared/trace.py`
+
+Adapters over that canonical owner:
+
+- `modules/agent/orchestration/responses/stage_logging.py`
+- `modules/agent/orchestration/trace_export.py`
+
+Responsibilities of the canonical trace layer:
+
+- own stable trace schema defaults
+- normalize trace fields before entries are persisted
+- append typed `OrchestrationTraceEntry` records to state
+- produce snapshot and human-readable render output for dumps
+
+Invariant:
+
+- trace schema ownership lives in `shared/trace.py`
+- stage loggers and exporters must not define competing schema defaults or alternate entry shapes
 
 ## Facade Modules
 
@@ -189,6 +212,7 @@ Safe refactors:
 
 - moving helpers between phase-local mixins/modules
 - improving diagnostics or trace fields
+- extending trace helpers through `shared/trace.py`
 - tightening tests around phase ordering
 
 Unsafe refactors unless justified explicitly:

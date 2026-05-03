@@ -6,6 +6,63 @@ import json
 
 
 class IntentPromptBuilderMixin:
+    def _suggest_example_intent_id(self, goal: str, *, fallback: str = "continue_requested_modification") -> str:
+        text = str(goal or "").strip().lower()
+        if not text:
+            return fallback
+        if any(token in text for token in ("save", "saved", "document", "docs", "markdown", "md file", "write to docs")):
+            return "save_requested_document"
+        if any(token in text for token in ("refactor", "rewrite", "cleanup", "clean up")):
+            return "continue_requested_refactor"
+        return fallback
+
+    def _build_activate_or_atomic_bundle_prompt(
+        self,
+        *,
+        header: str,
+        reason: str,
+        goal: str,
+        allowed_actions: list[str] | None = None,
+        intent_id: str = "",
+    ) -> str:
+        normalized_goal = self.sanitize_intent_goal(
+            goal,
+            fallback="Continue multi-step code modification.",
+        )
+        normalized_allowed = [str(action).strip() for action in (allowed_actions or []) if str(action).strip()]
+        if not normalized_allowed:
+            normalized_allowed = ["read_file", "edit_file", "write_file_block", "create_file", "run_shell"]
+        example_payload = {
+            "intent_id": intent_id or self._suggest_example_intent_id(normalized_goal),
+            "intent_type": "MODIFY",
+            "goal": normalized_goal,
+            "allowed_actions": normalized_allowed,
+            "safe_steps_limit": 10,
+            "retry_limit": 2,
+            "mode": "activate",
+        }
+        return (
+            f"SYSTEM: {header}\n"
+            f"Reason: {reason}.\n"
+            "Return a valid formal intent before the action.\n"
+            "\n"
+            "You may either:\n"
+            "1. Return only one <intent mode=\"activate\">...</intent>, then wait for acceptance.\n"
+            "2. Or return an atomic bundle: one <intent mode=\"activate\">...</intent> followed by exactly one valid <action>...</action> and required <file_content> if the action needs it.\n"
+            "\n"
+            "If you return a bundle, the whole bundle is all-or-nothing:\n"
+            "- if the intent is invalid, no intent is activated and no action is dispatched;\n"
+            "- if the action is not allowed by the proposed intent, no intent is activated and no action is dispatched;\n"
+            "- if <file_content> is missing or malformed for a write action, no intent is activated and no action is dispatched.\n"
+            "\n"
+            "Do not include visible final answer text in the same response as an action.\n"
+            "Return the corrected response from the beginning.\n"
+            "Example intent:\n"
+            "<intent mode=\"activate\">\n"
+            f"{json.dumps(example_payload, ensure_ascii=False, indent=2)}\n"
+            "</intent>"
+        )
+
     def build_intent_required_prompt(self, reason: str, allowed_actions: list[str] | None = None) -> str:
         if str(reason or "").strip() == "build_failure_requires_formal_intent":
             return self.build_build_fix_intent_required_prompt(goal=self._current_intent_goal())
@@ -25,21 +82,15 @@ class IntentPromptBuilderMixin:
         active_intent = self._current_active_intent()
         if not universe.has_active_contract or active_intent is None:
             return (
-                "SYSTEM: A formal intent contract is required before further tool use.\n"
-                f"Reason: {reason}.{next_hint}\n"
-                "There is currently NO active accepted intent contract for this work.\n"
+                self._build_activate_or_atomic_bundle_prompt(
+                    header="A formal intent contract is required before this tool use.",
+                    reason=f"{reason}{next_hint}".strip(),
+                    goal=self._current_intent_goal(),
+                    allowed_actions=allowed_actions,
+                )
+                + "\nThere is currently NO active accepted intent contract for this work.\n"
                 "Continue from already gathered evidence. Do not restart the task from zero.\n"
-                "Return EXACTLY ONE <intent> JSON block first.\n"
-                "Until activation succeeds, do not assume contract-scoped permissions or allowed_actions.\n"
-                "Optional schema fields:\n"
-                "- intent_id\n"
-                "- intent_type\n"
-                "- goal\n"
-                "- allowed_actions\n"
-                "- safe_steps_limit\n"
-                "- retry_limit\n"
-                "- mode\n"
-                "If you also need an action now, place the <intent> block before the action."
+                "Until activation succeeds, do not assume contract-scoped permissions or allowed_actions."
             )
         if reason == "exhausted_intent_requires_reuse_or_completion":
             return self.build_limit_aware_reuse_prompt(
@@ -141,6 +192,22 @@ class IntentPromptBuilderMixin:
         normalized_type = str(intent_type or "").strip().upper()
         normalized_blocked = str(blocked_action or "").strip().lower()
         display_blocked = normalized_blocked or str(blocked_action or "unknown").strip() or "unknown"
+        read_only_actions = {
+            "read_file",
+            "read_chunk",
+            "read_file_skeleton",
+            "extract_symbol",
+            "extract_kotlin_function",
+            "search_content",
+            "search_files",
+            "list_directory",
+            "find_files",
+            "git_diff",
+            "run_shell",
+        }
+        investigate_to_modify = normalized_type == "INVESTIGATE" and display_blocked not in read_only_actions
+        same_goal_upgrade_type = "MODIFY" if investigate_to_modify else (normalized_type or "<intent_type>")
+        same_goal_switch_reason = "work_type_changed" if investigate_to_modify else "current_intent_no_longer_fits"
 
         if repeated:
             return self.build_repeated_disallowed_action_reuse_only_prompt(
@@ -161,10 +228,10 @@ class IntentPromptBuilderMixin:
             "<intent mode=\"reuse\">\n"
             "{\n"
             f'  "intent_id": "{intent_id or "<current_intent_id>"}",\n'
-            f'  "intent_type": {"\"MODIFY\"" if normalized_type == "INVESTIGATE" else "\"<intent_type>\""},\n'
+            f'  "intent_type": "{same_goal_upgrade_type}",\n'
             f'  "allowed_actions": [{", ".join(json.dumps(action, ensure_ascii=False) for action in (allowed + ([display_blocked] if display_blocked not in allowed else [])))}],\n'
             '  "mode": "reuse",\n'
-            '  "switch_reason": "work_type_changed"\n'
+            f'  "switch_reason": "{same_goal_switch_reason}"\n'
             "}\n"
             "</intent>\n"
             "For a new save/output artifact goal, use:\n"
@@ -418,31 +485,57 @@ class IntentPromptBuilderMixin:
             goal,
             fallback="Continue multi-step code modification.",
         )
-        payload = {
-            "intent_id": "fix_ksp_build_error",
-            "intent_type": "MODIFY",
-            "goal": normalized_goal,
-            "allowed_actions": [
-                "read_file",
-                "edit_file",
-                "write_file_block",
-                "create_file",
-                "run_shell",
-            ],
-            "safe_steps_limit": 10,
-            "retry_limit": 2,
-            "mode": "activate",
-        }
-        return (
-            "SYSTEM: Formal intent contract is required before further tool use.\n"
-            "Return only one top-level <intent mode=\"activate\">...</intent>.\n"
-            "Do not include <think>, <memory_update_done />, <action>, <file_content>, or final answer.\n"
-            "After the intent is accepted, the next step may emit the action.\n"
-            "\n"
-            "<intent mode=\"activate\">\n"
-            f"{json.dumps(payload, ensure_ascii=False, indent=2)}\n"
-            "</intent>"
+        return self._build_activate_or_atomic_bundle_prompt(
+            header="Formal intent contract is required before this tool use.",
+            reason="formal_intent_required_for_multi_step_state_change",
+            goal=normalized_goal,
+            allowed_actions=["read_file", "edit_file", "write_file_block", "create_file", "run_shell"],
+            intent_id=self._suggest_example_intent_id(normalized_goal),
         )
+
+    def build_atomic_bundle_rejected_prompt(
+        self,
+        *,
+        invalid_part: str,
+        reason: str,
+        blocked_action: str = "",
+        proposed_allowed_actions: list[str] | None = None,
+        goal: str = "",
+    ) -> str:
+        part = str(invalid_part or "").strip() or "bundle"
+        normalized_reason = str(reason or "").strip() or "invalid_bundle"
+        lines = [
+            "SYSTEM: Your response used an atomic intent/action bundle, but part of the bundle is invalid.",
+            f"Invalid part: {part}.",
+        ]
+        if part == "action" and blocked_action:
+            allowed = [str(action).strip() for action in (proposed_allowed_actions or []) if str(action).strip()]
+            allowed_line = ", ".join(allowed) if allowed else "none"
+            lines.append(
+                f'Reason: the action type "{blocked_action}" is not allowed by the proposed intent contract.'
+                if normalized_reason == "intent_action_not_allowed"
+                else f"Reason: {normalized_reason}."
+            )
+            lines.append(f"Proposed allowed_actions: {allowed_line}.")
+        elif part == "file_content":
+            lines.append(f"Reason: {normalized_reason}.")
+            lines.append("The write-like action is missing required file body content or the file-content pairing is malformed.")
+        else:
+            lines.append(f"Reason: {normalized_reason}.")
+        lines.extend(
+            [
+                "The entire bundle was rejected:",
+                "- no intent was activated;",
+                "- no action was dispatched.",
+                "Return a corrected valid response from the beginning:",
+                "- either a valid <intent mode=\"activate\">...</intent>;",
+                "- or a valid atomic bundle with that intent followed by exactly one allowed <action>.",
+                "Do not include visible final answer text in the same response as an action.",
+            ]
+        )
+        if goal:
+            lines.append(f"Goal context: {goal}.")
+        return "\n".join(lines)
 
     def build_build_fix_mode_blocks_feature_expansion_prompt(self, *, allowed_files: list[str] | None = None) -> str:
         file_hint = ""
@@ -454,6 +547,17 @@ class IntentPromptBuilderMixin:
             "Use compiler-mentioned files and fix the current compile errors first.\n"
             "Read the compiler-mentioned files, fix the current error group, then rerun ./gradlew :app:assembleDebug.\n"
             f"{file_hint}"
+        )
+
+    def build_mixed_intent_transition_and_visible_answer_prompt(self) -> str:
+        return (
+            "SYSTEM: Your response mixed an intent transition with user-visible answer text in the same step.\n"
+            "Choose exactly one valid shape:\n"
+            "1. Return only one valid <intent mode=\"activate\">...</intent> or other required top-level intent transition.\n"
+            "2. Or return only the final plain-text answer, with no <intent>, <action>, or other control tags.\n"
+            "3. Or return a valid atomic bundle: one allowed <intent> transition followed by exactly one valid <action> and required <file_content> if needed.\n"
+            "Do not put user-visible analysis or final-answer prose after an intent transition.\n"
+            "Return the corrected response from the beginning."
         )
 
     def build_build_fix_final_answer_missing_build_status_prompt(self) -> str:

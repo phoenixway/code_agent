@@ -21,6 +21,7 @@ from .decision_models import (
     ResponsePipelineOutcome,
 )
 from .recovery_policy import RecoveryPolicyResolver
+from .trace import TRACE_SCHEMA_DEFAULTS, append_trace_entry, normalize_trace_fields, render_trace_text, snapshot_trace
 
 __all__ = [
     "ActionPolicyDecision",
@@ -42,4 +43,9 @@ __all__ = [
     "RecoveryDecision",
     "RecoveryPolicyResolver",
     "ResponsePipelineOutcome",
+    "TRACE_SCHEMA_DEFAULTS",
+    "append_trace_entry",
+    "normalize_trace_fields",
+    "render_trace_text",
+    "snapshot_trace",
 ]

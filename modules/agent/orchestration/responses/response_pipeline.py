@@ -8,6 +8,7 @@ from .response_pipeline_stages import ResponsePipelineStagesMixin
 from .response_guards import ResponseGuardPolicy
 from .response_semantics import ResponseSemantics
 from .stage_logging import OrchestrationStageLogger
+from ..protocol import ProtocolCompiler
 
 
 class ModelResponsePipeline(ResponsePipelinePrevalidationMixin, ResponsePipelineStagesMixin):
@@ -25,6 +26,7 @@ class ModelResponsePipeline(ResponsePipelinePrevalidationMixin, ResponsePipeline
         "intent_payload_inside_action",
         "control_tag_leak_in_visible_text",
         "mixed_visible_text_and_control_protocol",
+        "mixed_intent_transition_and_visible_answer",
     }
 
     def __init__(
@@ -51,6 +53,7 @@ class ModelResponsePipeline(ResponsePipelinePrevalidationMixin, ResponsePipeline
         self.plan_board_stage = plan_board_stage
         self.memory_board_stage = memory_board_stage
         self.stage_logger = OrchestrationStageLogger(getattr(agent, "log", None), self.state)
+        self.protocol_compiler = ProtocolCompiler()
         self.memory_checkpoint_hard_stop_streak = int(
             getattr(getattr(agent, "config", None), "MEMORY_CHECKPOINT_ONLY_HARD_STOP_STREAK", 4) or 4
         )

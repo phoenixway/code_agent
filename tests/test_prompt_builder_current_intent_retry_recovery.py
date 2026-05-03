@@ -348,6 +348,18 @@ class PromptBuilderCurrentIntentRetryRecoveryTests(unittest.TestCase):
         self.assertIn("Runtime mode: INTENTLESS_SHORT_MODE", out["content"])
         self.assertIn("formal_intent_required_now: no", out["content"])
 
+    def test_build_plan_board_context_message_is_omitted_without_active_intent_contract(self):
+        builder = self._builder(active_intent=None)
+        builder.state.task_board = {
+            "goal": "Stale board should not leak into no-active-contract universe.",
+            "steps": [{"id": "sg_1", "status": "in_progress", "title": "Stale step"}],
+            "active_step_id": "sg_1",
+        }
+
+        out = builder.build_plan_board_context_message()
+
+        self.assertIsNone(out)
+
     def test_memory_board_protocol_distinguishes_fact_from_finding(self):
         builder = self._builder(active_intent=None)
 

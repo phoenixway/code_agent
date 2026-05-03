@@ -380,7 +380,28 @@ class DisallowedActionRecoveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("this action is outside the current intent contract", decision.next_query.lower())
         self.assertIn('mode="reuse"', decision.next_query)
         self.assertIn('"switch_reason": "work_type_changed"', decision.next_query)
+        self.assertIn('"intent_type": "MODIFY"', decision.next_query)
         self.assertIn("do not include <think>, <memory_update_done />, <action>, <file_content>, or final answer", decision.next_query.lower())
+
+    async def test_blocked_read_file_under_investigate_same_type_uses_no_longer_fits(self):
+        handler, state = self._handler(["search_content", "read_chunk", "read_file_skeleton", "search_files", "run_shell"])
+        state.active_intent = SimpleNamespace(
+            intent_id="prompt_conflict_analysis",
+            intent_type="INVESTIGATE",
+            goal="Analyze the system prompt for conflicting instructions.",
+            allowed_actions=["search_content", "read_chunk", "read_file_skeleton", "search_files", "run_shell"],
+        )
+        decision = await handler.decide(
+            SimpleNamespace(user_input="Continue"),
+            [_Segment("action", {"type": "read_file", "path": "modules/default_system_prompt.md"})],
+            intent_payload=None,
+        )
+        self.assertTrue(decision.handled)
+        self.assertEqual("intent_action_not_allowed", decision.reason)
+        self.assertIn('mode="reuse"', decision.next_query)
+        self.assertIn('"intent_type": "INVESTIGATE"', decision.next_query)
+        self.assertIn('"switch_reason": "current_intent_no_longer_fits"', decision.next_query)
+        self.assertNotIn('"switch_reason": "work_type_changed"', decision.next_query)
 
     async def test_repeated_disallowed_action_triggers_specific_reason(self):
         handler, _state = self._handler(["edit_file", "read_chunk"])

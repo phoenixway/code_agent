@@ -2,8 +2,30 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
+from ...intent_runtime import IntentRuntime
+from .action_policy_state import ActionPolicyStateAdapter
 from ..responses.stage_logging import OrchestrationStageLogger
 from ..shared.decision_models import ActionPolicyDecision
+
+
+@dataclass
+class AtomicBundleActionValidationResult:
+    ok: bool
+    reason: str = ""
+    details: dict | None = None
+
+
+class _AtomicBundlePreviewState:
+    def __init__(self, base_state, *, active_intent):
+        self._base_state = base_state
+        self.active_intent = active_intent
+        self.intent_required_until_activated = False
+        self.intent_required_reason = ""
+
+    def __getattr__(self, name):
+        return getattr(self._base_state, name)
 
 
 class ActionPolicyHandler:
@@ -29,98 +51,20 @@ class ActionPolicyHandler:
         "delete_file",
         "replace",
     }
+    FILE_BODY_ACTIONS = {
+        "create_file",
+        "write_file",
+        "write_file_block",
+        "append_file_block",
+    }
 
     def __init__(self, agent, intent_guard, prompt_builder):
         self.agent = agent
         self.state = agent.state
+        self.state_view = ActionPolicyStateAdapter(agent.state)
         self.intent_guard = intent_guard
         self.prompt_builder = prompt_builder
         self.stage_logger = OrchestrationStageLogger(getattr(agent, "log", None), self.state)
-
-    def _note_disallowed_action_repeat(self, action_type: str) -> int:
-        normalized = str(action_type or "").strip().lower()
-        active_intent = getattr(self.state, "active_intent", None)
-        intent_id = str(getattr(active_intent, "intent_id", "") or "").strip()
-        current_type = str(getattr(self.state, "disallowed_action_repeat_type", "") or "").strip().lower()
-        current_intent = str(getattr(self.state, "disallowed_action_repeat_intent_id", "") or "").strip()
-        count = int(getattr(self.state, "disallowed_action_repeat_count", 0) or 0)
-        if normalized != current_type or intent_id != current_intent:
-            count = 0
-        count += 1
-        try:
-            setattr(self.state, "disallowed_action_repeat_type", normalized)
-            setattr(self.state, "disallowed_action_repeat_intent_id", intent_id)
-            setattr(self.state, "disallowed_action_repeat_count", count)
-        except Exception:
-            pass
-        return count
-
-    def _clear_disallowed_action_repeat(self) -> None:
-        try:
-            setattr(self.state, "disallowed_action_repeat_type", "")
-            setattr(self.state, "disallowed_action_repeat_intent_id", "")
-            setattr(self.state, "disallowed_action_repeat_count", 0)
-            setattr(self.state, "last_blocked_action_type", "")
-            setattr(self.state, "last_blocked_action_path", "")
-        except Exception:
-            pass
-
-    def _mark_terminal_plaintext_handoff(self, text: str, reason: str) -> None:
-        normalized_text = str(text or "").strip()
-        if not normalized_text:
-            return
-        try:
-            setattr(self.state, "terminal_plaintext_completion_pending", True)
-            setattr(self.state, "terminal_plaintext_completion_text", normalized_text)
-        except Exception:
-            pass
-        marker = getattr(self.state, "mark_pending_forced_plaintext_completion_close", None)
-        if callable(marker):
-            try:
-                marker(str(reason or "terminal_plaintext_completion").strip(), "action_policy")
-            except Exception:
-                pass
-
-    def _current_active_intent_id(self) -> str:
-        active_intent = getattr(self.state, "active_intent", None)
-        return str(getattr(active_intent, "intent_id", "") or "").strip()
-
-    def _record_blocked_action(self, action_type: str, path: str = "") -> None:
-        try:
-            setattr(self.state, "last_blocked_action_type", str(action_type or "").strip())
-            setattr(self.state, "last_blocked_action_path", str(path or "").strip())
-        except Exception:
-            pass
-
-    def _set_reuse_only_intent_required(self, value: bool, blocked_action: str = "") -> None:
-        try:
-            setattr(self.state, "reuse_only_intent_required", bool(value))
-            setattr(self.state, "reuse_only_blocked_action", str(blocked_action or "").strip() if value else "")
-        except Exception:
-            pass
-
-    def _set_transition_only_intent_required(self, value: bool, blocked_action: str = "") -> None:
-        try:
-            setattr(self.state, "transition_only_intent_required", bool(value))
-            setattr(
-                self.state,
-                "transition_only_blocked_action",
-                str(blocked_action or "").strip() if value else "",
-            )
-        except Exception:
-            pass
-
-    def _has_pending_edit_mismatch_for_path(self, path: str) -> bool:
-        normalized_path = str(path or "").strip()
-        if not normalized_path:
-            return False
-        pending_path = str(getattr(self.state, "pending_edit_mismatch_path", "") or "").strip()
-        pending_intent = str(getattr(self.state, "pending_edit_mismatch_intent_id", "") or "").strip()
-        return bool(
-            pending_path
-            and normalized_path == pending_path
-            and pending_intent == self._current_active_intent_id()
-        )
 
     def _is_state_changing_file_action(self, content: dict) -> bool:
         if not isinstance(content, dict):
@@ -134,13 +78,7 @@ class ActionPolicyHandler:
         action_type = str(content.get("type") or content.get("action") or "").strip().lower()
         if action_type not in {"read_file", "read_chunk", "read_file_skeleton", "extract_symbol", "extract_kotlin_function"}:
             return False
-        checker = getattr(self.state, "compiler_mentioned_file_allowed", None)
-        if not callable(checker):
-            return False
-        try:
-            return bool(checker(str(content.get("path") or "").strip()))
-        except Exception:
-            return False
+        return self.state_view.compiler_mentioned_file_allowed(str(content.get("path") or "").strip())
 
     def _is_build_verify_action(self, content: dict) -> bool:
         if not isinstance(content, dict):
@@ -152,22 +90,17 @@ class ActionPolicyHandler:
         return "./gradlew :app:assembleDebug" in command
 
     def _build_fix_mode_blocks_action(self, content: dict) -> bool:
-        if not bool(getattr(self.state, "is_build_fix_intent_active", lambda: False)()):
+        if not self.state_view.is_build_fix_intent_active():
             return False
         if self._is_compiler_targeted_read(content) or self._is_build_verify_action(content):
             return False
         if self._is_state_changing_file_action(content):
             path = str(content.get("path") or "").strip()
-            checker = getattr(self.state, "compiler_mentioned_file_allowed", None)
-            if callable(checker):
-                try:
-                    return not bool(checker(path))
-                except Exception:
-                    return True
+            return not self.state_view.compiler_mentioned_file_allowed(path)
         return False
 
     def _board_subgoal_count(self) -> int:
-        board = getattr(self.state, "task_board", None)
+        board = self.state_view.task_board()
         if not isinstance(board, dict):
             return 0
         steps = board.get("steps")
@@ -207,7 +140,7 @@ class ActionPolicyHandler:
         return any(phrase in text for phrase in phrases)
 
     def _formal_intent_required_for_multi_write_flow(self, action_segments, *, current_user_input: str) -> bool:
-        if getattr(self.state, "active_intent", None) is not None:
+        if self.state_view.active_intent() is not None:
             return False
         if not action_segments:
             return False
@@ -216,11 +149,11 @@ class ActionPolicyHandler:
         if any(not self._is_state_changing_file_action(seg.content) for seg in action_segments):
             return False
 
-        prior_writes = int(getattr(self.state, "intentless_state_changing_file_write_count", 0) or 0)
+        prior_writes = self.state_view.intentless_state_changing_write_count()
         if prior_writes >= 2:
             return True
 
-        if int(getattr(self.state, "last_plan_subgoal_create_count", 0) or 0) >= 2:
+        if self.state_view.last_plan_subgoal_create_count() >= 2:
             return True
 
         if self._board_subgoal_count() >= 3:
@@ -256,14 +189,12 @@ class ActionPolicyHandler:
         )
 
     def _handle_build_fix_intent_requirement(self, parsed_action_count: int) -> ActionPolicyDecision | None:
-        if not bool(getattr(self.state, "build_fix_mode_requires_intent", lambda: False)()):
+        if not self.state_view.build_fix_mode_requires_intent():
             return None
-        require_intent = getattr(self.state, "require_intent", None)
-        if callable(require_intent):
-            require_intent("build_failure_requires_formal_intent")
+        self.state_view.require_intent("build_failure_requires_formal_intent")
         return self._continue_with(
             self.prompt_builder.build_build_fix_intent_required_prompt(
-                goal=str(getattr(self.state, "build_fix_error_summary", "") or "")
+                goal=self.state_view.build_fix_error_summary()
             ),
             reason="build_failure_requires_formal_intent",
             source="action_policy",
@@ -276,9 +207,7 @@ class ActionPolicyHandler:
             current_user_input=getattr(ctx, "user_input", ""),
         ):
             return None
-        require_intent = getattr(self.state, "require_intent", None)
-        if callable(require_intent):
-            require_intent("formal_intent_required_for_multi_step_state_change")
+        self.state_view.require_intent("formal_intent_required_for_multi_step_state_change")
         goal = str(getattr(ctx, "user_input", "") or "").strip()
         return self._continue_with(
             self.prompt_builder.build_formal_intent_required_for_multi_step_state_change_prompt(goal=goal),
@@ -288,22 +217,13 @@ class ActionPolicyHandler:
         )
 
     def _handle_hard_exhausted_intent(self, parsed_action_count: int) -> ActionPolicyDecision | None:
-        hard_exhausted_checker = getattr(self.state, "has_hard_exhausted_active_intent", None)
-        hard_exhausted = False
-        if callable(hard_exhausted_checker):
-            try:
-                hard_exhausted = bool(hard_exhausted_checker())
-            except Exception:
-                hard_exhausted = False
-        if not hard_exhausted:
+        if not self.state_view.has_hard_exhausted_active_intent():
             return None
-        require_intent = getattr(self.state, "require_intent", None)
-        if callable(require_intent):
-            require_intent("exhausted_intent_requires_reuse_or_completion")
+        self.state_view.require_intent("exhausted_intent_requires_reuse_or_completion")
         next_query = self.prompt_builder.build_limit_aware_reuse_prompt(
             "exhausted_intent_requires_reuse_or_completion",
-            getattr(getattr(self.state, "active_intent", None), "allowed_actions", None) or [],
-            goal=getattr(getattr(self.state, "active_intent", None), "goal", ""),
+            getattr(self.state_view.active_intent(), "allowed_actions", None) or [],
+            goal=getattr(self.state_view.active_intent(), "goal", ""),
         )
         return self._continue_with(
             next_query,
@@ -316,7 +236,7 @@ class ActionPolicyHandler:
         if self._build_fix_mode_blocks_action(seg.content):
             return self._continue_with(
                 self.prompt_builder.build_build_fix_mode_blocks_feature_expansion_prompt(
-                    allowed_files=list(getattr(self.state, "build_fix_compiler_mentioned_files", []) or [])
+                    allowed_files=self.state_view.build_fix_compiler_mentioned_files()
                 ),
                 reason="build_fix_mode_blocks_feature_expansion",
                 source="action_policy",
@@ -344,7 +264,7 @@ class ActionPolicyHandler:
                 parsed_action_count=parsed_action_count,
             )
 
-        if not self._has_pending_edit_mismatch_for_path(str(seg.content.get("path") or "")):
+        if not self.state_view.has_pending_edit_mismatch_for_path(str(seg.content.get("path") or "")):
             return None
 
         return self._continue_with(
@@ -371,13 +291,13 @@ class ActionPolicyHandler:
             return None
         blocked_action = str(seg.content.get("type") or seg.content.get("action") or "").strip()
         blocked_path = str(seg.content.get("path") or "").strip()
-        self._record_blocked_action(blocked_action, blocked_path)
-        repeat_count = self._note_disallowed_action_repeat(blocked_action)
+        self.state_view.record_blocked_action(blocked_action, blocked_path)
+        repeat_count = self.state_view.note_disallowed_action_repeat(blocked_action)
         allowed_actions = list(getattr(active_intent, "allowed_actions", []) or [])
         intent_id = str(getattr(active_intent, "intent_id", "") or "").strip()
         intent_type = str(getattr(active_intent, "intent_type", "") or "").strip().upper()
         if repeat_count >= 3:
-            self._mark_terminal_plaintext_handoff(
+            self.state_view.mark_terminal_plaintext_handoff(
                 self.prompt_builder.build_terminal_repeated_disallowed_action_handoff_text(
                     blocked_action=blocked_action,
                     intent_id=intent_id,
@@ -411,8 +331,8 @@ class ActionPolicyHandler:
             allowed_actions=allowed_actions,
             repeated=effective_reason == "repeated_disallowed_action",
         )
-        self._set_transition_only_intent_required(True, blocked_action=blocked_action)
-        self._set_reuse_only_intent_required(
+        self.state_view.set_transition_only_intent_required(True, blocked_action=blocked_action)
+        self.state_view.set_reuse_only_intent_required(
             effective_reason == "repeated_disallowed_action",
             blocked_action=blocked_action,
         )
@@ -435,7 +355,7 @@ class ActionPolicyHandler:
         if not required:
             return None
 
-        active_intent = getattr(self.state, "active_intent", None)
+        active_intent = self.state_view.active_intent()
         disallowed = self._handle_disallowed_action_with_active_intent(
             seg,
             parsed_action_count=parsed_action_count,
@@ -445,8 +365,8 @@ class ActionPolicyHandler:
         if disallowed is not None:
             return disallowed
 
-        if active_intent is None and hasattr(self.state, "require_intent"):
-            self.state.require_intent(reason)
+        if active_intent is None:
+            self.state_view.require_intent(reason)
         return self._continue_with(
             self.prompt_builder.build_intent_required_prompt(
                 reason,
@@ -457,6 +377,107 @@ class ActionPolicyHandler:
             parsed_action_count=parsed_action_count,
         )
 
+    def _bundle_file_body_validation(self, command: dict) -> AtomicBundleActionValidationResult:
+        if not isinstance(command, dict):
+            return AtomicBundleActionValidationResult(False, "invalid_action_payload", {})
+        action_type = str(command.get("type") or command.get("action") or "").strip().lower()
+        if action_type not in self.FILE_BODY_ACTIONS:
+            return AtomicBundleActionValidationResult(True)
+        if action_type in {"write_file_block", "append_file_block"}:
+            if not isinstance(command.get("file_content"), str):
+                return AtomicBundleActionValidationResult(
+                    False,
+                    "missing_file_content_block",
+                    {
+                        "message": f"{action_type} requires a complete <file_content>...</file_content> block immediately after </action>.",
+                        "blocked_action": action_type,
+                    },
+                )
+            return AtomicBundleActionValidationResult(True)
+        if isinstance(command.get("content"), str) or isinstance(command.get("file_content"), str):
+            return AtomicBundleActionValidationResult(True)
+        return AtomicBundleActionValidationResult(
+            False,
+            "missing_file_content_block",
+            {
+                "message": f"{action_type} requires file body content, either inline JSON content or a following <file_content> block.",
+                "blocked_action": action_type,
+            },
+        )
+
+    def validate_atomic_bundle_action(
+        self,
+        ctx,
+        segments,
+        *,
+        proposed_active_intent,
+    ) -> AtomicBundleActionValidationResult:
+        action_segments = [
+            seg for seg in (segments or []) if getattr(seg, "type", "") == "action" and isinstance(getattr(seg, "content", None), dict)
+        ]
+        if len(action_segments) != 1:
+            return AtomicBundleActionValidationResult(
+                False,
+                "atomic_bundle_requires_exactly_one_action",
+                {"message": "Atomic intent/action bundle requires exactly one valid <action> block."},
+            )
+
+        seg = action_segments[0]
+        shape_guard = self._handle_action_shape_guard(seg, 1)
+        if shape_guard is not None:
+            return AtomicBundleActionValidationResult(
+                False,
+                str(getattr(shape_guard, "reason", "") or "invalid_action_shape"),
+                {
+                    "message": str(getattr(shape_guard, "next_query", "") or ""),
+                    "blocked_action": str(seg.content.get("type") or seg.content.get("action") or "").strip(),
+                },
+            )
+
+        file_body_check = self._bundle_file_body_validation(seg.content)
+        if not file_body_check.ok:
+            return file_body_check
+
+        preview_state = _AtomicBundlePreviewState(self.state, active_intent=proposed_active_intent)
+        command = dict(seg.content or {})
+        action_type = str(command.get("type") or command.get("action") or "").strip().lower()
+        if action_type in {"create_file", "write_file"} and "content" not in command and isinstance(command.get("file_content"), str):
+            command["content"] = command["file_content"]
+
+        required, reason = self.intent_guard.action_requires_intent(
+            command,
+            preview_state,
+            batch_size=1,
+            current_user_input=getattr(ctx, "user_input", ""),
+        )
+        if required:
+            return AtomicBundleActionValidationResult(
+                False,
+                reason,
+                {
+                    "blocked_action": action_type,
+                    "allowed_actions": list(getattr(proposed_active_intent, "allowed_actions", []) or []),
+                },
+            )
+
+        config = getattr(self.state, "_config", None) or getattr(self.agent, "config", None)
+        preview_runtime = IntentRuntime(config, state=preview_state) if config is not None else None
+        if preview_runtime is not None:
+            preview_runtime.active_intent = proposed_active_intent
+            stop_info = preview_runtime.pre_action_check(command)
+            if isinstance(stop_info, dict):
+                return AtomicBundleActionValidationResult(
+                    False,
+                    str(stop_info.get("reason") or "intent_action_not_allowed"),
+                    {
+                        **stop_info,
+                        "blocked_action": action_type,
+                        "allowed_actions": list(getattr(proposed_active_intent, "allowed_actions", []) or []),
+                    },
+                )
+
+        return AtomicBundleActionValidationResult(True)
+
     async def decide(self, ctx, segments, *, intent_payload: dict | None) -> ActionPolicyDecision:
         action_segments = [
             seg for seg in segments if getattr(seg, "type", "") == "action" and isinstance(getattr(seg, "content", None), dict)
@@ -464,9 +485,9 @@ class ActionPolicyHandler:
         parsed_action_count = len(action_segments)
 
         if not action_segments:
-            self._set_reuse_only_intent_required(False)
-            self._set_transition_only_intent_required(False)
-            self._clear_disallowed_action_repeat()
+            self.state_view.set_reuse_only_intent_required(False)
+            self.state_view.set_transition_only_intent_required(False)
+            self.state_view.clear_disallowed_action_repeat()
             self.stage_logger.log(
                 "action_policy",
                 "pass",
@@ -510,9 +531,9 @@ class ActionPolicyHandler:
             action_count=parsed_action_count,
             reason="actions_allowed_to_proceed",
         )
-        self._set_reuse_only_intent_required(False)
-        self._set_transition_only_intent_required(False)
-        self._clear_disallowed_action_repeat()
+        self.state_view.set_reuse_only_intent_required(False)
+        self.state_view.set_transition_only_intent_required(False)
+        self.state_view.clear_disallowed_action_repeat()
         return ActionPolicyDecision.pass_through(
             reason="actions_allowed_to_proceed",
             source="action_policy",

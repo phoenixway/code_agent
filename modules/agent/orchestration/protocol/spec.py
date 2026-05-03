@@ -1,0 +1,161 @@
+"""Declarative protocol specification shared by compiler stages."""
+
+from __future__ import annotations
+
+from .models import BlockSpec, ConstraintSpec, EnumSpec, ErrorSpec, PayloadSpec, ProtocolSpec, ShapeSpec
+
+
+PROTOCOL_SPEC = ProtocolSpec(
+    version="0.1.0",
+    blocks={
+        "think": BlockSpec(name="think", kind="closed", payload=PayloadSpec(type="raw_text")),
+        "intent": BlockSpec(
+            name="intent",
+            kind="closed",
+            attrs={"mode": EnumSpec(("activate", "complete", "reuse", "replace"))},
+            payload=PayloadSpec(type="json"),
+        ),
+        "action": BlockSpec(name="action", kind="closed", payload=PayloadSpec(type="json")),
+        "file_content": BlockSpec(name="file_content", kind="closed", payload=PayloadSpec(type="raw_file")),
+        "memory_update_done": BlockSpec(name="memory_update_done", kind="self_closing"),
+        "fact": BlockSpec(name="fact", kind="closed", payload=PayloadSpec(type="text")),
+        "finding": BlockSpec(name="finding", kind="closed", payload=PayloadSpec(type="text")),
+        "decision": BlockSpec(name="decision", kind="closed", payload=PayloadSpec(type="text")),
+        "path": BlockSpec(name="path", kind="closed", payload=PayloadSpec(type="text")),
+        "progress": BlockSpec(name="progress", kind="closed", payload=PayloadSpec(type="text")),
+        "memory_review": BlockSpec(name="memory_review", kind="self_closing"),
+        "subgoal": BlockSpec(name="subgoal", kind="closed", payload=PayloadSpec(type="text")),
+    },
+    shapes={
+        "PLAINTEXT_ONLY": ShapeSpec(name="PLAINTEXT_ONLY", sequence=("visible_text*",)),
+        "MEMORY_TEXT": ShapeSpec(
+            name="MEMORY_TEXT",
+            sequence=("think?", "board*", "memory_update_done?", "visible_text+"),
+        ),
+        "ACTION_ONLY": ShapeSpec(
+            name="ACTION_ONLY",
+            sequence=("think?", "board*", "memory_update_done?", "action", "file_content?"),
+            constraints=("no_visible_text", "single_action_object"),
+        ),
+        "READ_ONLY_BATCH_CANDIDATE": ShapeSpec(
+            name="READ_ONLY_BATCH_CANDIDATE",
+            sequence=("think?", "board*", "memory_update_done?", "action", "action+"),
+            constraints=("no_intent", "read_only_batch_only", "no_visible_text"),
+        ),
+        "INTENT_ONLY": ShapeSpec(
+            name="INTENT_ONLY",
+            sequence=("think?", "board*", "memory_update_done?", "intent"),
+            constraints=("exactly_one_intent", "no_visible_text"),
+        ),
+        "INTENT_ACTION_BUNDLE": ShapeSpec(
+            name="INTENT_ACTION_BUNDLE",
+            sequence=("think?", "board*", "memory_update_done?", "intent", "action", "file_content?"),
+            constraints=(
+                "exactly_one_intent",
+                "exactly_one_action",
+                "atomic_all_or_nothing",
+                "no_visible_text",
+                "file_content_only_for_write_action",
+            ),
+        ),
+        "INTENT_COMPLETE_WITH_TEXT": ShapeSpec(
+            name="INTENT_COMPLETE_WITH_TEXT",
+            sequence=("think?", "board*", "memory_update_done?", "intent_complete", "visible_text+"),
+        ),
+        "INVALID": ShapeSpec(name="INVALID", sequence=()),
+    },
+    constraints=(
+        ConstraintSpec(
+            id="atomic_bundle_requires_exactly_one_action",
+            phase="shape",
+            applies_to="INTENT_ACTION_BUNDLE",
+            error_code="E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION",
+        ),
+        ConstraintSpec(
+            id="mixed_visible_text_and_control",
+            phase="shape",
+            applies_to="ALL",
+            error_code="E_MIXED_VISIBLE_TEXT_AND_CONTROL",
+        ),
+        ConstraintSpec(
+            id="file_content_requires_action",
+            phase="shape",
+            applies_to="ALL",
+            error_code="E_FILE_CONTENT_REQUIRES_ACTION",
+        ),
+    ),
+    errors={
+        "E_UNCLOSED_THINK": ErrorSpec(
+            code="E_UNCLOSED_THINK",
+            phase="parse",
+            recovery_id="unclosed_think",
+            default_message="Response opened <think> but did not close it.",
+        ),
+        "E_ACTION_INSIDE_THINK": ErrorSpec(
+            code="E_ACTION_INSIDE_THINK",
+            phase="parse",
+            recovery_id="action_inside_think",
+            default_message="Protocol action block appeared inside an open <think> block.",
+        ),
+        "E_INTENT_INSIDE_THINK": ErrorSpec(
+            code="E_INTENT_INSIDE_THINK",
+            phase="parse",
+            recovery_id="intent_inside_think",
+            default_message="Protocol intent block appeared inside an open <think> block.",
+        ),
+        "E_FILE_CONTENT_INSIDE_THINK": ErrorSpec(
+            code="E_FILE_CONTENT_INSIDE_THINK",
+            phase="parse",
+            recovery_id="file_content_inside_think",
+            default_message="Protocol file content block appeared inside an open <think> block.",
+        ),
+        "E_MEMORY_TAG_INSIDE_THINK": ErrorSpec(
+            code="E_MEMORY_TAG_INSIDE_THINK",
+            phase="parse",
+            recovery_id="memory_tag_inside_think",
+            default_message="Memory or subgoal tag appeared inside an open <think> block.",
+        ),
+        "E_ACTION_JSON_INVALID": ErrorSpec(
+            code="E_ACTION_JSON_INVALID",
+            phase="parse",
+            recovery_id="action_json_invalid",
+            default_message="Action payload is not valid JSON.",
+        ),
+        "E_INTENT_JSON_INVALID": ErrorSpec(
+            code="E_INTENT_JSON_INVALID",
+            phase="parse",
+            recovery_id="intent_json_invalid",
+            default_message="Intent payload is not valid JSON.",
+        ),
+        "E_FILE_CONTENT_UNCLOSED": ErrorSpec(
+            code="E_FILE_CONTENT_UNCLOSED",
+            phase="parse",
+            recovery_id="file_content_unclosed",
+            default_message="File content block was not closed.",
+        ),
+        "E_AMBIGUOUS_PROTOCOL_SYNTAX": ErrorSpec(
+            code="E_AMBIGUOUS_PROTOCOL_SYNTAX",
+            phase="parse",
+            recovery_id="ambiguous_protocol_syntax",
+            default_message="Protocol-like markup is ambiguous in this position.",
+        ),
+        "E_MIXED_VISIBLE_TEXT_AND_CONTROL": ErrorSpec(
+            code="E_MIXED_VISIBLE_TEXT_AND_CONTROL",
+            phase="shape",
+            recovery_id="mixed_visible_control",
+            default_message="Visible text cannot be mixed with control protocol in this shape.",
+        ),
+        "E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION": ErrorSpec(
+            code="E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION",
+            phase="shape",
+            recovery_id="atomic_bundle_exactly_one_action",
+            default_message="Atomic intent/action bundles require exactly one action.",
+        ),
+        "E_FILE_CONTENT_REQUIRES_ACTION": ErrorSpec(
+            code="E_FILE_CONTENT_REQUIRES_ACTION",
+            phase="shape",
+            recovery_id="file_content_requires_action",
+            default_message="File content cannot appear without an action.",
+        ),
+    },
+)

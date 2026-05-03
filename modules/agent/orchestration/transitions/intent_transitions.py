@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 
+from .dependencies import TransitionLayerCollaborators
 from .intent_transition_apply import IntentTransitionApplyMixin
 from .intent_transition_routing import IntentTransitionRoutingMixin
 from ..responses.stage_logging import OrchestrationStageLogger
@@ -12,27 +13,41 @@ from ..responses.stage_logging import OrchestrationStageLogger
 class IntentTransitionHandler(IntentTransitionApplyMixin, IntentTransitionRoutingMixin):
     REMAINING_OPEN_CONTROL_TAG_RE = re.compile(r"<\s*(intent|action)\b", re.IGNORECASE)
     REMAINING_ACTION_TAG_RE = re.compile(r"<\s*action\b", re.IGNORECASE)
-    INTENT_TAG_RE = re.compile(r"<intent(?:\s+[^>]*)?>.*?</intent>", re.IGNORECASE | re.DOTALL)
+    INTENT_TAG_RE = re.compile(
+        r"<intent\b(?P<attrs>[^>]*?)(?:>(?P<body>.*?)</intent>|(?P<selfclose>/\s*>))",
+        re.IGNORECASE | re.DOTALL,
+    )
     THINK_TAG_RE = re.compile(r"<think(?:\s+[^>]*)?>.*?</think>", re.IGNORECASE | re.DOTALL)
+    ACTION_BLOCK_RE = re.compile(r"<action(?:\s+[^>]*)?>.*?</action>", re.IGNORECASE | re.DOTALL)
     FILE_CONTENT_TAG_RE = re.compile(r"<file_content(?:\s+[^>]*)?>.*?</file_content>", re.IGNORECASE | re.DOTALL)
     MEMORY_BLOCK_RE = re.compile(r"<(fact|finding|decision|preference|progress|path)\b[^>]*>.*?</\1>", re.IGNORECASE | re.DOTALL)
     MEMORY_TAG_RE = re.compile(r"</?(fact|finding|decision|preference|progress|path)\b[^>]*>", re.IGNORECASE)
     MEMORY_REVIEW_RE = re.compile(r"<memory_review\b[^>]*/>", re.IGNORECASE)
     SUBGOAL_TAG_RE = re.compile(r"<subgoal\b[^>]*(?:>.*?</subgoal>|/>)", re.IGNORECASE | re.DOTALL)
     MEMORY_UPDATE_DONE_RE = re.compile(r"<memory_update_done\s*/>", re.IGNORECASE)
+    ATTR_RE = re.compile(r"""([a-zA-Z_][\w\-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')""")
 
     def __init__(self, agent, prompt_builder, recovery):
         self.agent = agent
-        self.state = agent.state
-        self.config = agent.config
+        self.runtime = TransitionLayerCollaborators.from_agent(agent, needs_config=True)
+        self.state = self.runtime.state
+        self.config = self.runtime.config
         self.prompt_builder = prompt_builder
         self.recovery = recovery
-        self.stage_logger = OrchestrationStageLogger(getattr(agent, "log", None), self.state)
+        self.stage_logger = OrchestrationStageLogger(self.runtime.logger, self.state)
 
     def _intent_universe_label(self) -> str:
         if getattr(self.state, "active_intent", None) is not None:
             return "active_contract"
         return "no_active_contract"
+
+    @property
+    def ui(self):
+        return getattr(self.agent, "ui", None)
+
+    @property
+    def logger(self):
+        return self.runtime.logger
 
     def _resumable_intent_meta(self) -> tuple[str, str, str]:
         interruption = getattr(self.state, "last_technical_interruption", None)
@@ -41,6 +56,14 @@ class IntentTransitionHandler(IntentTransitionApplyMixin, IntentTransitionRoutin
         resumable_type = str(getattr(self.state, "last_resumable_intent_type", "") or "").strip()
         resumable_goal = str(getattr(self.state, "last_resumable_intent_goal", "") or "").strip()
         return resumable_id, resumable_type, resumable_goal
+
+    def _parse_attrs(self, attrs_raw: str) -> dict[str, str]:
+        attrs: dict[str, str] = {}
+        if not isinstance(attrs_raw, str) or not attrs_raw.strip():
+            return attrs
+        for key, v1, v2 in self.ATTR_RE.findall(attrs_raw.strip()):
+            attrs[str(key).strip().lower()] = str(v1 or v2 or "").strip()
+        return attrs
 
     def _mask_file_content_blocks(self, text: str) -> str:
         def _mask(match: re.Match) -> str:
@@ -72,9 +95,19 @@ class IntentTransitionHandler(IntentTransitionApplyMixin, IntentTransitionRoutin
         masked = self._mask_for_followup_analysis(response_text)
         if not masked:
             return False
-        if "<intent" in masked.lower():
+        if re.search(r"<\s*intent\b", masked, re.IGNORECASE):
             return False
-        return bool(self.REMAINING_ACTION_TAG_RE.search(masked))
+        action_count = len(self.REMAINING_ACTION_TAG_RE.findall(masked))
+        if action_count != 1:
+            return False
+        masked = self.ACTION_BLOCK_RE.sub(" ", masked)
+        masked = self.FILE_CONTENT_TAG_RE.sub(" ", masked)
+        masked = self.MEMORY_BLOCK_RE.sub(" ", masked)
+        masked = self.MEMORY_TAG_RE.sub(" ", masked)
+        masked = self.MEMORY_REVIEW_RE.sub(" ", masked)
+        masked = self.SUBGOAL_TAG_RE.sub(" ", masked)
+        masked = self.MEMORY_UPDATE_DONE_RE.sub(" ", masked)
+        return not bool(re.sub(r"<[^>]+>", " ", masked).strip())
 
 
     def _remaining_has_plaintext_answer_only(self, response_text: str) -> bool:
@@ -93,6 +126,58 @@ class IntentTransitionHandler(IntentTransitionApplyMixin, IntentTransitionRoutin
     def _response_without_think_and_intent(self, response_text: str) -> str:
         return self._mask_for_followup_analysis(response_text, strip_intent=True).strip()
 
+    def _strip_matching_current_intent_block(self, response_text: str, intent_payload: dict | None) -> str:
+        text = str(response_text or "")
+        if not text or not isinstance(intent_payload, dict):
+            return text
+        matches = list(self.INTENT_TAG_RE.finditer(text))
+        if not matches:
+            return text
+        payload_mode = str((intent_payload or {}).get("mode") or "").strip().lower()
+        payload_id = str((intent_payload or {}).get("intent_id") or "").strip()
+        payload_type = str((intent_payload or {}).get("intent_type") or "").strip().upper()
+        payload_goal = str((intent_payload or {}).get("goal") or "").strip()
+        for match in reversed(matches):
+            attrs = self._parse_attrs(match.group("attrs") or "")
+            body = str(match.group("body") or "").strip()
+            block_payload = None
+            if body:
+                try:
+                    import json
+                    parsed = json.loads(body)
+                    if isinstance(parsed, dict):
+                        block_payload = parsed
+                except Exception:
+                    block_payload = None
+            if block_payload is None:
+                continue
+            block_mode = str(block_payload.get("mode") or attrs.get("mode") or "").strip().lower()
+            block_id = str(block_payload.get("intent_id") or "").strip()
+            block_type = str(block_payload.get("intent_type") or "").strip().upper()
+            block_goal = str(block_payload.get("goal") or "").strip()
+            comparisons = 0
+            if payload_mode:
+                comparisons += 1
+                if block_mode != payload_mode:
+                    continue
+            if payload_id:
+                comparisons += 1
+                if block_id != payload_id:
+                    continue
+            if payload_type:
+                comparisons += 1
+                if block_type != payload_type:
+                    continue
+            if payload_goal:
+                comparisons += 1
+                if block_goal != payload_goal:
+                    continue
+            if comparisons == 0:
+                continue
+            start, end = match.span(0)
+            return (text[:start] + text[end:]).strip()
+        return text
+
     def _has_no_followup_after_intent(self, response_text: str) -> bool:
         return not bool(self._response_without_think_and_intent(response_text))
 
@@ -100,7 +185,9 @@ class IntentTransitionHandler(IntentTransitionApplyMixin, IntentTransitionRoutin
         payload_mode = str((intent_payload or {}).get("mode") or "").strip().lower()
         if payload_mode != "reuse":
             return False
-        masked = self._response_without_think_and_intent(response_text)
+        masked = self._response_without_think_and_intent(
+            self._strip_matching_current_intent_block(response_text, intent_payload)
+        )
         if not masked:
             return False
         if re.search(r"<\s*intent\b", masked, re.IGNORECASE):
@@ -112,7 +199,9 @@ class IntentTransitionHandler(IntentTransitionApplyMixin, IntentTransitionRoutin
         payload_mode = str((intent_payload or {}).get("mode") or "").strip().lower()
         if payload_mode != "reuse":
             return False
-        masked = self._response_without_think_and_intent(response_text)
+        masked = self._response_without_think_and_intent(
+            self._strip_matching_current_intent_block(response_text, intent_payload)
+        )
         if not masked:
             return False
         if re.search(r"<\s*(intent|action)\b", masked, re.IGNORECASE):
@@ -129,6 +218,14 @@ class IntentTransitionHandler(IntentTransitionApplyMixin, IntentTransitionRoutin
         if not masked:
             return False
         return bool(self.REMAINING_ACTION_TAG_RE.search(masked))
+
+    def _current_transition_has_inline_action_only(self, intent_payload: dict | None, response_text: str) -> bool:
+        stripped = self._strip_matching_current_intent_block(response_text, intent_payload)
+        return self._remaining_has_action_only(stripped)
+
+    def _followup_conflict_reason_after_current_transition(self, intent_payload: dict | None, response_text: str) -> str:
+        stripped = self._strip_matching_current_intent_block(response_text, intent_payload)
+        return self._remaining_followup_conflict_reason(stripped)
 
     def _reuse_only_intent_required(self) -> bool:
         return bool(getattr(self.state, "reuse_only_intent_required", False))

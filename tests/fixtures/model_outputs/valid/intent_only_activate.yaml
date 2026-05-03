@@ -1,0 +1,6 @@
+raw: |
+  <intent mode="activate">{"intent_id":"inspect_protocol","intent_type":"INVESTIGATE","goal":"Inspect runtime protocol","allowed_actions":["read_file","search_content"],"mode":"activate","switch_reason":"user_requested_investigation"}</intent>
+shape: INTENT_ONLY
+valid: true
+transition_applied: false
+action_dispatched: false

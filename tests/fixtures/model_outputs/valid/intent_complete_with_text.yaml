@@ -1,0 +1,7 @@
+raw: |
+  <intent mode="complete">{"intent_id":"inspect_protocol","mode":"complete","completion_reason":"goal_completed"}</intent>
+  Готово. Архітектуру розібрано.
+shape: INTENT_COMPLETE_WITH_TEXT
+valid: true
+transition_applied: false
+action_dispatched: false

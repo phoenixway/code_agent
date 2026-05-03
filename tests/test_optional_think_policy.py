@@ -83,7 +83,7 @@ def test_long_closed_think_is_valid():
     assert parsed.invalid_kind == ""
 
 
-def test_strict_formal_intent_recovery_prompt_says_no_think_no_marker_no_action():
+def test_formal_intent_recovery_prompt_allows_intent_only_or_atomic_bundle():
     builder = OrchestratorPromptBuilder(
         SimpleNamespace(
             state=SimpleNamespace(active_intent=None),
@@ -96,8 +96,13 @@ def test_strict_formal_intent_recovery_prompt_says_no_think_no_marker_no_action(
         goal="Fix KSP/Room build failure after bookmark import/export changes."
     )
 
-    assert 'Return only one top-level <intent mode="activate">...</intent>.' in prompt
-    assert "Do not include <think>, <memory_update_done />, <action>, <file_content>, or final answer." in prompt
+    assert "Return a valid formal intent before the action." in prompt
+    assert "Return only one top-level <intent mode=\"activate\">...</intent>." not in prompt
+    assert "Do not include <think>, <memory_update_done />, <action>, <file_content>, or final answer." not in prompt
+    assert "You may either:" in prompt
+    assert "Or return an atomic bundle" in prompt
+    assert "all-or-nothing" in prompt
+    assert "If you also need an action now, place the <intent> block before the action." not in prompt
 
 
 def test_system_prompt_no_longer_says_think_mandatory():

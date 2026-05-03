@@ -239,6 +239,13 @@ class ResponsePipelinePrevalidationMixin:
 
         payload = getattr(step, "intent_payload", None)
         payload_mode = str((payload or {}).get("mode") or "").strip().lower() if isinstance(payload, dict) else ""
+        if (
+            payload_mode in {"activate", "reuse", "replace"}
+            and str(getattr(parsed_output, "visible_text", "") or "").strip()
+            and not bool(getattr(parsed_output, "has_action_segment", False))
+            and not str(getattr(parsed_output, "invalid_kind", "") or "").strip()
+        ):
+            parsed_output.invalid_kind = "mixed_intent_transition_and_visible_answer"
         intent_only_transition_required_now = bool(
             payload_mode in {"activate", "reuse", "replace"}
             and str(getattr(parsed_output, "invalid_kind", "") or "").strip() in {"missing_action_or_answer", "intent_only_without_next_step"}
@@ -261,6 +268,15 @@ class ResponsePipelinePrevalidationMixin:
             return None
 
         if not str(getattr(parsed_output, "invalid_kind", "") or "").strip():
+            bundle_rejection = self._reject_invalid_atomic_bundle_before_transition(
+                ctx,
+                payload,
+                parsed_output,
+                segments,
+                response=response,
+            )
+            if bundle_rejection is not None:
+                return bundle_rejection
             return None
 
         self.stage_logger.log(
@@ -292,6 +308,72 @@ class ResponsePipelinePrevalidationMixin:
             )
 
         return None
+
+    def _reject_invalid_atomic_bundle_before_transition(self, ctx, payload: dict, parsed_output, segments, *, response: str):
+        payload_mode = str((payload or {}).get("mode") or "").strip().lower()
+        if payload_mode not in {"activate", "reuse", "replace"}:
+            return None
+        if not bool(getattr(parsed_output, "has_action_segment", False)):
+            return None
+        previewer = getattr(self.intent_transitions, "preview_payload_decision", None)
+        validator = getattr(self.action_policy, "validate_atomic_bundle_action", None)
+        if not callable(previewer) or not callable(validator):
+            return None
+
+        preview = previewer(payload)
+        if not bool(getattr(preview, "applied", False)):
+            underlying_reason = str(getattr(preview, "message", "") or "invalid_intent_transition")
+            self.stage_logger.log(
+                "response_pipeline",
+                "continue",
+                reason="atomic_bundle_intent_invalid",
+                source="intent_atomic_bundle_guard",
+                invalid_part="intent",
+                bundle_reason=underlying_reason,
+            )
+            return ResponsePipelineOutcome.continue_with(
+                self.prompt_builder.build_atomic_bundle_rejected_prompt(
+                    invalid_part="intent",
+                    reason=underlying_reason,
+                    goal=str((payload or {}).get("goal") or ""),
+                ),
+                response_text=response,
+                reason="atomic_bundle_intent_invalid",
+                source="intent_atomic_bundle_guard",
+            )
+
+        action_validation = validator(
+            ctx,
+            segments,
+            proposed_active_intent=getattr(preview, "active_intent", None),
+        )
+        if bool(getattr(action_validation, "ok", False)):
+            return None
+
+        underlying_reason = str(getattr(action_validation, "reason", "") or "invalid_action")
+        details = dict(getattr(action_validation, "details", {}) or {})
+        invalid_part = "file_content" if underlying_reason == "missing_file_content_block" else "action"
+        self.stage_logger.log(
+            "response_pipeline",
+            "continue",
+            reason=f"atomic_bundle_{invalid_part}_invalid",
+            source="intent_atomic_bundle_guard",
+            invalid_part=invalid_part,
+            bundle_reason=underlying_reason,
+            blocked_action=str(details.get("blocked_action") or ""),
+        )
+        return ResponsePipelineOutcome.continue_with(
+            self.prompt_builder.build_atomic_bundle_rejected_prompt(
+                invalid_part=invalid_part,
+                reason=str(details.get("message") or underlying_reason),
+                blocked_action=str(details.get("blocked_action") or ""),
+                proposed_allowed_actions=list(details.get("allowed_actions") or []),
+                goal=str((payload or {}).get("goal") or ""),
+            ),
+            response_text=response,
+            reason=f"atomic_bundle_{invalid_part}_invalid",
+            source="intent_atomic_bundle_guard",
+        )
 
     def _terminal_plaintext_text_or_empty(self, response_text: str) -> str:
         visible_text, leak_detected = sanitize_visible_text_for_user(response_text)

@@ -119,8 +119,8 @@ class OutputRecoveryRoutingMixin:
 
         if invalid_kind == "malformed_action":
             next_retries = malformed_action_retries + 1
-            if self.agent.log:
-                self.agent.log.warning(
+            if self.logger:
+                self.logger.warning(
                     "Malformed action response detected (retry %s/1).",
                     next_retries,
                 )
@@ -285,6 +285,35 @@ class OutputRecoveryRoutingMixin:
                 audit_marker_retries=0,
             )
 
+        if invalid_kind == "mixed_intent_transition_and_visible_answer":
+            builder = getattr(self.prompt_builder, "build_mixed_intent_transition_and_visible_answer_prompt", None)
+            prompt = (
+                builder()
+                if callable(builder)
+                else (
+                    "SYSTEM: Your response mixed an intent transition with user-visible answer text in the same step.\n"
+                    "Choose exactly one valid shape:\n"
+                    "1. Return only the required top-level <intent> transition.\n"
+                    "2. Or return only the final plain-text answer, with no <intent>, <action>, or other control tags.\n"
+                    "3. Or return a valid atomic intent/action bundle if the next step truly needs tool use.\n"
+                    "Do not put user-visible prose after an intent transition.\n"
+                    "Return the corrected response from the beginning."
+                )
+            )
+            self.stage_logger.log(
+                "output_recovery",
+                "continue",
+                reason=invalid_kind,
+                universe=self._intent_universe_label(),
+            )
+            return OutputRecoveryDecision.continue_with(
+                prompt,
+                reason=invalid_kind,
+                source="output_recovery",
+                malformed_action_retries=0,
+                audit_marker_retries=0,
+            )
+
         if invalid_kind == "tool_history_echo":
             self.stage_logger.log("output_recovery", "continue", reason=invalid_kind, universe=self._intent_universe_label())
             return OutputRecoveryDecision.continue_with(
@@ -312,8 +341,8 @@ class OutputRecoveryRoutingMixin:
 
         if invalid_kind == "audit_marker_echo":
             next_retries = audit_marker_retries + 1
-            if self.agent.log:
-                self.agent.log.warning(
+            if self.logger:
+                self.logger.warning(
                     "Audit-marker echo without action detected (retry %s/1).",
                     next_retries,
                 )

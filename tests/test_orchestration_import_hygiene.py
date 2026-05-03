@@ -1,4 +1,4 @@
-"""Contract tests for orchestration package exports and compatibility wrappers."""
+"""Contract tests for orchestration package exports and semantic imports."""
 
 from modules.agent import orchestration
 from modules.agent.orchestration import (
@@ -8,11 +8,6 @@ from modules.agent.orchestration import (
     ModelResponsePipeline,
     OrchestratorPromptBuilder,
 )
-from modules.agent.orchestration.output_recovery import ModelOutputRecoveryHandler as LegacyOutputRecoveryHandler
-from modules.agent.orchestration.parsing import IntentResponseParser as LegacyIntentResponseParser
-from modules.agent.orchestration.prompting import OrchestratorPromptBuilder as LegacyPromptBuilder
-from modules.agent.orchestration.response_pipeline import ModelResponsePipeline as LegacyResponsePipeline
-from modules.agent.orchestration.intent_transitions import IntentTransitionHandler as LegacyIntentTransitionHandler
 from modules.agent.orchestration.parsers import IntentResponseParser as ParserFacade
 from modules.agent.orchestration.prompts import OrchestratorPromptBuilder as PromptFacade
 from modules.agent.orchestration.responses import (
@@ -44,17 +39,19 @@ def test_semantic_subpackages_export_expected_entry_points():
     assert RecoveryContext is not None
 
 
-def test_legacy_wrapper_modules_still_resolve_to_same_facades():
-    assert LegacyIntentResponseParser is IntentResponseParser
-    assert LegacyPromptBuilder is OrchestratorPromptBuilder
-    assert LegacyOutputRecoveryHandler is ModelOutputRecoveryHandler
-    assert LegacyResponsePipeline is ModelResponsePipeline
-    assert LegacyIntentTransitionHandler is IntentTransitionHandler
-
-
-def test_shared_wrappers_still_resolve_to_shared_exports():
-    from modules.agent.orchestration.decision_models import RecoveryContext as LegacyRecoveryContext
-    from modules.agent.orchestration.recovery_policy import RecoveryPolicyResolver as LegacyRecoveryPolicyResolver
-
-    assert LegacyRecoveryContext is RecoveryContext
-    assert LegacyRecoveryPolicyResolver is RecoveryPolicyResolver
+def test_removed_root_wrapper_modules_are_absent():
+    removed = [
+        "modules.agent.orchestration.parsing",
+        "modules.agent.orchestration.prompting",
+        "modules.agent.orchestration.output_recovery",
+        "modules.agent.orchestration.response_pipeline",
+        "modules.agent.orchestration.intent_transitions",
+        "modules.agent.orchestration.decision_models",
+        "modules.agent.orchestration.recovery_policy",
+    ]
+    for module_name in removed:
+        try:
+            __import__(module_name)
+        except ModuleNotFoundError:
+            continue
+        raise AssertionError(f"{module_name} should be removed")

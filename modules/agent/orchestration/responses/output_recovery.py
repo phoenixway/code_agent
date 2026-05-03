@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 
+from .dependencies import ResponseLayerCollaborators
 from ..shared.decision_models import ParsedModelOutput
 from .output_recovery_routing import OutputRecoveryRoutingMixin
 from .output_recovery_terminal import OutputRecoveryTerminalMixin
@@ -69,10 +70,11 @@ class ModelOutputRecoveryHandler(OutputRecoveryTerminalMixin, OutputRecoveryRout
 
     def __init__(self, agent, prompt_builder):
         self.agent = agent
-        self.state = agent.state
-        self.config = agent.config
+        self.runtime = ResponseLayerCollaborators.from_agent(agent, needs_config=True)
+        self.state = self.runtime.state
+        self.config = self.runtime.config
         self.prompt_builder = prompt_builder
-        self.stage_logger = OrchestrationStageLogger(getattr(agent, "log", None), self.state)
+        self.stage_logger = OrchestrationStageLogger(self.runtime.logger, self.state)
         self.semantics = ResponseSemantics()
 
     def _intent_universe_label(self) -> str:
@@ -387,4 +389,8 @@ class ModelOutputRecoveryHandler(OutputRecoveryTerminalMixin, OutputRecoveryRout
 
     @property
     def ui(self):
-        return self.agent.ui
+        return getattr(self.agent, "ui", None)
+
+    @property
+    def logger(self):
+        return self.runtime.logger

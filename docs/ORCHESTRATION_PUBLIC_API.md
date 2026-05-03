@@ -31,15 +31,13 @@ For implementation code, prefer semantic subpackages:
 
 ## Compatibility Policy
 
-Top-level wrapper modules remain only as migration shims.
+The former top-level orchestration wrapper modules were removed after repo
+usage dropped to zero.
 
-Do not add new internal dependencies on:
+Do not reintroduce new root helper/runtime/shared wrappers.
 
-- root helper wrappers
-- root runtime wrappers
-- root shared wrappers
-
-except in compatibility-focused tests that explicitly verify migration behavior.
+Compatibility-focused tests may verify the absence of those old wrapper paths,
+but implementation code must use the semantic subpackages directly.
 
 ## External Import Boundary
 

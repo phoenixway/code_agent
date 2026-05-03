@@ -5,20 +5,22 @@ from __future__ import annotations
 import asyncio
 
 from ..responses.stage_logging import OrchestrationStageLogger
+from .dependencies import RuntimeCollaborators
 
 
 class DispatchPipeline:
     def __init__(self, agent, dispatch_outcome):
         self.agent = agent
-        self.state = agent.state
-        self.history = agent.history
-        self.dispatcher = agent.action_dispatcher
+        self.runtime = RuntimeCollaborators.from_agent(agent, needs_history=True, needs_dispatcher=True)
+        self.state = self.runtime.state
+        self.history = self.runtime.history
+        self.dispatcher = self.runtime.dispatcher
         self.dispatch_outcome = dispatch_outcome
-        self.stage_logger = OrchestrationStageLogger(getattr(agent, "log", None), self.state)
+        self.stage_logger = OrchestrationStageLogger(self.runtime.logger, self.state)
 
     @property
     def ui(self):
-        return self.agent.ui
+        return getattr(self.agent, "ui", None)
 
     async def _dispatch_segments(self, ctx, segments):
         if ctx.state_machine is not None:
@@ -29,9 +31,9 @@ class DispatchPipeline:
         return await self.state.current_task
 
     def _log_iteration_health(self, ctx, action_count: int):
-        if self.agent.log:
+        if self.runtime.logger:
             elapsed = asyncio.get_running_loop().time() - ctx.session_started_at
-            self.agent.log.info(
+            self.runtime.logger.info(
                 "Health.iteration "
                 f"step={ctx.consecutive_calls} "
                 f"elapsed_sec={elapsed:.2f} "

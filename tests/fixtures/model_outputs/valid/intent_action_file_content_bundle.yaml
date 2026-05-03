@@ -1,0 +1,15 @@
+raw: |
+  <think>
+  Need to save the analysis.
+  </think>
+  <memory_update_done />
+  <intent mode="activate">{"intent_id":"save_doc","intent_type":"MODIFY","goal":"Save analysis","allowed_actions":["write_file_block"],"mode":"activate","switch_reason":"user_requested_save"}</intent>
+  <action>{"type":"write_file_block","path":"docs/report.md"}</action>
+  <file_content>
+  # Report
+  Saved content.
+  </file_content>
+shape: INTENT_ACTION_BUNDLE
+valid: true
+transition_applied: false
+action_dispatched: false

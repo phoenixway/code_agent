@@ -1,0 +1,12 @@
+raw: |
+  <think>
+  Need exact next step.
+  <action>{"type":"read_file","path":"x.py"}</action>
+  </think>
+shape: INVALID
+valid: false
+error_code: E_ACTION_INSIDE_THINK
+recovery_id: action_inside_think
+invalid_part: null
+transition_applied: false
+action_dispatched: false

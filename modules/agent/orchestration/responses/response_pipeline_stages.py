@@ -247,6 +247,10 @@ class ResponsePipelineStagesMixin:
         response = checkpoint_state.response
         segments = self.parser.parse(response)
         parsed_output = self._classify_intent_output(response, segments, allow_think_autorepair=True)
+        compiler_analysis = self.protocol_compiler.analyze(response)
+        parsed_output.compiler_shape = compiler_analysis.shape.name
+        parsed_output.compiler_error_code = str(getattr(compiler_analysis.error, "code", "") or "")
+        parsed_output.compiler_recovery_id = str(getattr(compiler_analysis.error, "recovery_id", "") or "")
         parsed_output.model_stop_reason = str(getattr(step, "model_stop_reason", "") or "").strip()
         checkpoint_has_think = self.semantics.has_complete_think_before_action(raw_response)
         checkpoint_has_marker = bool(
@@ -285,6 +289,24 @@ class ResponsePipelineStagesMixin:
             think_repair_reason=str(getattr(parsed_output, "auto_closed_think_reason", "") or ""),
             think_repair_tag=str(getattr(parsed_output, "auto_closed_think_tag", "") or ""),
         )
+        legacy_invalid = str(parsed_output.invalid_kind or "").strip()
+        compiler_invalid = str(getattr(compiler_analysis.error, "code", "") or "").strip()
+        if legacy_invalid or compiler_invalid:
+            if legacy_invalid != compiler_invalid:
+                span_excerpt = ""
+                if getattr(compiler_analysis.error, "span", None) is not None:
+                    span_excerpt = str(compiler_analysis.error.span.excerpt or "")
+                self.stage_logger.log(
+                    "protocol_shadow",
+                    "disagreement",
+                    legacy_invalid_kind=legacy_invalid,
+                    compiler_phase=str(getattr(compiler_analysis.error, "phase", "") or ""),
+                    compiler_code=compiler_invalid,
+                    compiler_shape=compiler_analysis.shape.name,
+                    recovery_id=str(getattr(compiler_analysis.error, "recovery_id", "") or ""),
+                    span_excerpt=span_excerpt,
+                    shadow_only=True,
+                )
         return ClassifiedStageState(
             response=response,
             parsed_output=parsed_output,

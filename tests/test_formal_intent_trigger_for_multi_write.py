@@ -75,10 +75,11 @@ async def test_third_write_in_intentless_lineage_requires_formal_intent():
     assert decision.handled is True
     assert decision.reason == "formal_intent_required_for_multi_step_state_change"
     assert '<intent mode="activate">' in (decision.next_query or "")
-    assert '<action>{"type":' not in (decision.next_query or "")
-    assert "Do not include <think>, <memory_update_done />, <action>, <file_content>, or final answer." in (
-        decision.next_query or ""
-    )
+    assert "You may either:" in (decision.next_query or "")
+    assert "Or return an atomic bundle" in (decision.next_query or "")
+    assert "all-or-nothing" in (decision.next_query or "")
+    assert "If you also need an action now, place the <intent> block before the action." not in (decision.next_query or "")
+    assert "fix_ksp_build_error" not in (decision.next_query or "")
 
 
 @pytest.mark.asyncio
