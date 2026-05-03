@@ -360,6 +360,41 @@ class PromptBuilderCurrentIntentRetryRecoveryTests(unittest.TestCase):
 
         self.assertIsNone(out)
 
+    def test_build_plan_board_context_message_suppresses_stale_other_lineage_board(self):
+        active_intent = SimpleNamespace(
+            intent_id="activity_tracker_edit",
+            intent_type="INVESTIGATE",
+            goal="Understand current implementation.",
+            allowed_actions=["read_chunk", "search_content"],
+            safe_steps_limit=4,
+            step_count=1,
+            retry_limit=2,
+            retry_count=0,
+            user_step_extension=0,
+            lineage_id="activity_tracker_edit",
+        )
+        builder = self._builder(active_intent)
+        builder.agent.planner = SimpleNamespace(
+            render_runtime_snapshot=lambda board: "",
+            normalize_board_for_active_intent=lambda state, board: None,
+        )
+        builder.state.task_board = {
+            "goal": "Old lineage board",
+            "intent_id": "old_intent",
+            "lineage_id": "old_lineage",
+            "steps": [{"id": "sg_1", "status": "in_progress", "title": "Stale step"}],
+            "active_step_id": "sg_1",
+        }
+
+        out = builder.build_plan_board_context_message()
+
+        self.assertIsNone(out)
+        trace = getattr(builder.state, "orchestration_trace", []) or []
+        self.assertTrue(trace)
+        self.assertEqual("prompt_builder", trace[-1].stage)
+        self.assertEqual("suppress", trace[-1].decision)
+        self.assertEqual("stale_plan_board_suppressed", trace[-1].fields.get("reason"))
+
     def test_memory_board_protocol_distinguishes_fact_from_finding(self):
         builder = self._builder(active_intent=None)
 

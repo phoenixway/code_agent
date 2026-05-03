@@ -17,6 +17,19 @@ TRACE_SCHEMA_DEFAULTS = {
     "think_repair_reason": "",
     "think_repair_confidence": "",
     "think_repair_tag": "",
+    "compiler_shape": "",
+    "compiler_code": "",
+    "compiler_recovery_id": "",
+    "compiler_replay": None,
+    "execution_plan": None,
+    "execution_commit": None,
+    "bundle_validated": None,
+    "invalid_part": "",
+    "bundle_reason": "",
+    "action_dispatched": None,
+    "active_intent_unchanged": None,
+    "before_active_intent_id": "",
+    "after_active_intent_id": "",
 }
 
 

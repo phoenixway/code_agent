@@ -290,6 +290,7 @@ class OrchestrationPipeline:
             segments=outcome.segments,
             parsed_output=outcome.parsed_output,
             parsed_action_count=outcome.parsed_action_count,
+            execution_plan=getattr(outcome, "execution_plan", None),
             reason="ready_for_dispatch",
             source="response_pipeline",
             malformed_action_retries=outcome.malformed_action_retries,

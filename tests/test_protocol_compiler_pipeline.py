@@ -75,6 +75,8 @@ def test_file_content_preserves_raw_body():
     assert analysis.error is None
     assert analysis.shape == ResponseShape.ACTION_ONLY
     assert analysis.ast is not None
+    assert analysis.ir is not None
     file_nodes = [node for node in analysis.ast.nodes if node.__class__.__name__ == "FileContentNode"]
     assert len(file_nodes) == 1
     assert "<action>literal</action>" in file_nodes[0].content
+    assert analysis.ir.action_ops[0].file_content is not None

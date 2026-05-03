@@ -69,6 +69,14 @@ def test_start_turn_runtime_finalizes_pending_forced_plaintext_completion_before
         force_plaintext_completion=True,
         hard_limit_hit_count=4,
     )
+    state.task_board = {
+        "goal": "Finish change",
+        "intent_id": "intent_1",
+        "lineage_id": "lineage_1",
+        "steps": [{"id": "sg_1", "status": "in_progress", "title": "Finalize answer"}],
+        "active_step_id": "sg_1",
+    }
+    state.task_board_enabled = True
     state.intent_runtime = SimpleNamespace(
         active_intent=active_intent,
         finalize_current_intent_completion=lambda: setattr(state.intent_runtime, "active_intent", None) or True,
@@ -86,4 +94,92 @@ def test_start_turn_runtime_finalizes_pending_forced_plaintext_completion_before
     assert state.last_resumable_intent_type == "MODIFY"
     assert state.last_resumable_intent_lineage_id == "lineage_1"
     assert state.last_resumable_intent_completion_reason == "forced_plaintext_completion"
+    assert state.task_board is None
+    assert state.task_board_enabled is False
     assert state.current_turn_id == 8
+
+
+def _intent_config():
+    return SimpleNamespace(
+        INTENT_RELABEL_SUSPICION_ENABLED=False,
+        INTENT_REUSE_EXTENSION_STEPS=4,
+    )
+
+
+def test_apply_intent_contract_clears_plan_board_for_new_lineage_activation():
+    state = AgentState(_intent_config())
+    state.task_board = {
+        "goal": "Old lineage board",
+        "intent_id": "old_intent",
+        "lineage_id": "old_lineage",
+        "steps": [{"id": "sg_1", "status": "in_progress", "title": "Stale step"}],
+        "active_step_id": "sg_1",
+    }
+    state.task_board_enabled = True
+
+    ok, msg = state.apply_intent_contract(
+        {
+            "intent_id": "new_intent",
+            "intent_type": "INVESTIGATE",
+            "goal": "Determine how plan board ownership should behave across fresh intent lineage activation.",
+            "allowed_actions": ["read_file"],
+            "safe_steps_limit": 4,
+            "retry_limit": 2,
+            "mode": "activate",
+            "switch_reason": "user_requested_new_task",
+        },
+        _intent_config(),
+    )
+
+    assert ok, msg
+    assert state.active_intent is not None
+    assert state.active_intent.intent_id == "new_intent"
+    assert state.task_board is None
+    assert state.task_board_enabled is False
+
+
+def test_apply_intent_contract_preserves_plan_board_for_same_lineage_reuse():
+    state = AgentState(_intent_config())
+    assert state.apply_intent_contract(
+        {
+            "intent_id": "intent_1",
+            "intent_type": "INVESTIGATE",
+            "goal": "Determine how plan board ownership should behave across same-lineage implementation work.",
+            "allowed_actions": ["read_file"],
+            "safe_steps_limit": 4,
+            "retry_limit": 2,
+            "mode": "activate",
+            "switch_reason": "user_requested_new_task",
+        },
+        _intent_config(),
+    )[0]
+    state.task_board = {
+        "goal": "Determine how plan board ownership should behave across same-lineage implementation work.",
+        "intent_id": "intent_1",
+        "lineage_id": "intent_1",
+        "steps": [{"id": "sg_1", "status": "in_progress", "title": "Read key files"}],
+        "active_step_id": "sg_1",
+    }
+    state.task_board_enabled = True
+
+    ok, msg = state.apply_intent_contract(
+        {
+            "intent_id": "intent_1",
+            "intent_type": "MODIFY",
+            "goal": "Determine how plan board ownership should behave across same-lineage implementation work.",
+            "allowed_actions": ["read_file", "write_file_block"],
+            "mode": "reuse",
+            "requested_steps": 4,
+            "switch_reason": "work_type_changed",
+        },
+        _intent_config(),
+    )
+
+    assert ok, msg
+    assert state.active_intent is not None
+    assert state.active_intent.intent_id == "intent_1"
+    assert state.active_intent.lineage_id == "intent_1"
+    assert state.task_board is not None
+    assert state.task_board["intent_id"] == "intent_1"
+    assert state.task_board["lineage_id"] == "intent_1"
+    assert state.task_board_enabled is True

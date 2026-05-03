@@ -2,11 +2,30 @@
 
 from __future__ import annotations
 
-from ..shared.decision_models import NormalizedModelResponse, ResponsePipelineOutcome
+from ..shared.decision_models import AtomicBundlePlan, NormalizedModelResponse, ResponsePipelineOutcome
 from ..parsers.visible_text import sanitize_visible_text_for_user, terminal_plaintext_completion_status
 
 
 class ResponsePipelinePrevalidationMixin:
+    COMPILER_INVALID_KIND_BY_CODE = {
+        "E_UNCLOSED_THINK": "malformed_incomplete_think",
+        "E_ACTION_INSIDE_THINK": "action_inside_think",
+        "E_INTENT_INSIDE_THINK": "intent_inside_think",
+        "E_FILE_CONTENT_INSIDE_THINK": "file_content_inside_think",
+        "E_MIXED_VISIBLE_TEXT_AND_CONTROL": "mixed_visible_text_and_control_protocol",
+        "E_FILE_CONTENT_REQUIRES_ACTION": "file_content_must_follow_action",
+    }
+    COMPILER_DRIVEN_INVALID_KINDS = {
+        "malformed_incomplete_think",
+        "action_inside_think",
+        "intent_inside_think",
+        "file_content_inside_think",
+        "mixed_visible_text_and_control_protocol",
+        "action_payload_array",
+        "multiple_actions",
+        "file_content_must_follow_action",
+    }
+
     def _normalize_response_if_supported(self, response: str, *, allow_autorepair: bool) -> NormalizedModelResponse:
         text = str(response or "")
         normalizer = getattr(self.intent_response_parser, "normalize_model_response", None)
@@ -112,6 +131,49 @@ class ResponsePipelinePrevalidationMixin:
         except TypeError:
             return classifier(response, segments)
 
+    def _compiler_invalid_kind(self, compiler_analysis) -> str:
+        error = getattr(compiler_analysis, "error", None)
+        if error is None:
+            return ""
+        code = str(getattr(error, "code", "") or "").strip()
+        if code == "E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION":
+            actual = str(getattr(error, "actual", "") or "").strip().lower()
+            if actual == "array":
+                return "action_payload_array"
+            return "multiple_actions"
+        return self.COMPILER_INVALID_KIND_BY_CODE.get(code, "")
+
+    def _apply_compiler_diagnosis(self, parsed_output, response: str):
+        compiler_analysis = self.protocol_compiler.analyze(response)
+        parsed_output.compiler_shape = compiler_analysis.shape.name
+        parsed_output.compiler_error_code = str(getattr(compiler_analysis.error, "code", "") or "")
+        parsed_output.compiler_recovery_id = str(getattr(compiler_analysis.error, "recovery_id", "") or "")
+        parsed_output.compiler_ir = getattr(compiler_analysis, "ir", None)
+        compiler_invalid_kind = self._compiler_invalid_kind(compiler_analysis)
+        if compiler_invalid_kind:
+            legacy_invalid_kind = str(getattr(parsed_output, "invalid_kind", "") or "").strip()
+            has_plain_think_prefix = False
+            checker = getattr(self.intent_response_parser, "has_plain_think_prefix", None)
+            if callable(checker):
+                try:
+                    has_plain_think_prefix = bool(checker(response))
+                except Exception:
+                    has_plain_think_prefix = False
+            if not has_plain_think_prefix:
+                try:
+                    has_plain_think_prefix = bool(self.semantics.has_plain_think_prefix(response))
+                except Exception:
+                    has_plain_think_prefix = False
+            if (
+                compiler_invalid_kind == "mixed_visible_text_and_control_protocol"
+                and has_plain_think_prefix
+                and not legacy_invalid_kind
+            ):
+                return compiler_analysis
+            if not legacy_invalid_kind or legacy_invalid_kind in self.COMPILER_DRIVEN_INVALID_KINDS:
+                parsed_output.invalid_kind = compiler_invalid_kind
+        return compiler_analysis
+
     def _clear_terminal_plaintext_completion_state(self) -> None:
         try:
             setattr(self.state, "terminal_plaintext_completion_pending", False)
@@ -206,6 +268,7 @@ class ResponsePipelinePrevalidationMixin:
             segments,
             allow_think_autorepair=allow_think_autorepair,
         )
+        self._apply_compiler_diagnosis(parsed_output, response)
         checkpoint_has_think = self.semantics.has_complete_think_before_action(response)
         checkpoint_has_marker = self.semantics.has_memory_update_done_before_action(response)
         checkpoint_has_tags = self.semantics.has_checkpoint_before_action(response)
@@ -267,6 +330,15 @@ class ResponsePipelinePrevalidationMixin:
         ):
             return None
 
+        compiler_bundle_rejection = self._reject_compiler_invalid_atomic_bundle_before_transition(
+            ctx,
+            payload,
+            parsed_output,
+            response=response,
+        )
+        if compiler_bundle_rejection is not None:
+            return compiler_bundle_rejection
+
         if not str(getattr(parsed_output, "invalid_kind", "") or "").strip():
             bundle_rejection = self._reject_invalid_atomic_bundle_before_transition(
                 ctx,
@@ -309,6 +381,107 @@ class ResponsePipelinePrevalidationMixin:
 
         return None
 
+    def _reject_compiler_invalid_atomic_bundle_before_transition(self, ctx, payload: dict, parsed_output, *, response: str):
+        payload_mode = str((payload or {}).get("mode") or "").strip().lower()
+        if payload_mode not in {"activate", "reuse", "replace"}:
+            return None
+
+        compiler_code = str(getattr(parsed_output, "compiler_error_code", "") or "").strip()
+        legacy_invalid_kind = str(getattr(parsed_output, "invalid_kind", "") or "").strip()
+        if compiler_code not in {"E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION", "E_FILE_CONTENT_REQUIRES_ACTION"}:
+            return None
+        if legacy_invalid_kind not in {"action_payload_array", "multiple_actions", "file_content_must_follow_action"}:
+            return None
+
+        previewer = getattr(self.intent_transitions, "preview_payload_decision", None)
+        if not callable(previewer):
+            return None
+
+        preview = previewer(payload)
+        plan = self._atomic_bundle_plan_from_preview(payload, preview)
+        if not bool(getattr(preview, "applied", False)):
+            underlying_reason = str(getattr(preview, "message", "") or "invalid_intent_transition")
+            plan.bundle_reason = underlying_reason
+            plan.invalid_part = "intent"
+            self.stage_logger.log(
+                "response_pipeline",
+                "continue",
+                reason="atomic_bundle_intent_invalid",
+                source="intent_atomic_bundle_guard",
+                invalid_part=plan.invalid_part,
+                bundle_reason=underlying_reason,
+                compiler_code=compiler_code,
+                bundle_validated=plan.bundle_validated,
+                transition_applied=plan.transition_applied,
+                action_dispatched=plan.action_dispatched,
+                active_intent_unchanged=plan.active_intent_unchanged,
+                before_active_intent_id=plan.before_active_intent_id,
+                after_active_intent_id=plan.after_active_intent_id,
+            )
+            return ResponsePipelineOutcome.continue_with(
+                self.prompt_builder.build_atomic_bundle_rejected_prompt(
+                    invalid_part="intent",
+                    reason=underlying_reason,
+                    goal=str((payload or {}).get("goal") or ""),
+                ),
+                response_text=response,
+                reason="atomic_bundle_intent_invalid",
+                source="intent_atomic_bundle_guard",
+                atomic_bundle_plan=plan,
+            )
+
+        invalid_part = "file_content" if compiler_code == "E_FILE_CONTENT_REQUIRES_ACTION" else "action"
+        blocked_action = ""
+        proposed_intent = getattr(preview, "active_intent", None)
+        if proposed_intent is not None:
+            blocked_action = str(getattr(proposed_intent, "intent_type", "") or "")
+
+        reason_text = self._compiler_atomic_bundle_reason_text(parsed_output, invalid_part=invalid_part)
+        plan.invalid_part = invalid_part
+        plan.bundle_reason = legacy_invalid_kind or compiler_code
+        plan.blocked_action = blocked_action
+        self.stage_logger.log(
+            "response_pipeline",
+            "continue",
+            reason=f"atomic_bundle_{invalid_part}_invalid",
+            source="intent_atomic_bundle_guard",
+            invalid_part=plan.invalid_part,
+            bundle_reason=plan.bundle_reason,
+            compiler_code=compiler_code,
+            bundle_validated=plan.bundle_validated,
+            transition_applied=plan.transition_applied,
+            action_dispatched=plan.action_dispatched,
+            active_intent_unchanged=plan.active_intent_unchanged,
+            before_active_intent_id=plan.before_active_intent_id,
+            after_active_intent_id=plan.after_active_intent_id,
+        )
+        return ResponsePipelineOutcome.continue_with(
+            self.prompt_builder.build_atomic_bundle_rejected_prompt(
+                invalid_part=invalid_part,
+                reason=reason_text,
+                blocked_action=blocked_action,
+                proposed_allowed_actions=list(getattr(proposed_intent, "allowed_actions", []) or []),
+                goal=str((payload or {}).get("goal") or ""),
+            ),
+            response_text=response,
+            reason=f"atomic_bundle_{invalid_part}_invalid",
+            source="intent_atomic_bundle_guard",
+            atomic_bundle_plan=plan,
+        )
+
+    def _compiler_atomic_bundle_reason_text(self, parsed_output, *, invalid_part: str) -> str:
+        legacy_invalid_kind = str(getattr(parsed_output, "invalid_kind", "") or "").strip()
+        compiler_code = str(getattr(parsed_output, "compiler_error_code", "") or "").strip()
+        if invalid_part == "file_content":
+            return "write_file_block requires a complete <file_content>...</file_content> block immediately after </action>."
+        if legacy_invalid_kind == "action_payload_array":
+            return "Atomic intent/action bundle requires exactly one <action> block with one JSON object. Do not return an action array."
+        if legacy_invalid_kind == "multiple_actions":
+            return "Atomic intent/action bundle requires exactly one <action> block. Do not return multiple <action> blocks."
+        if compiler_code == "E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION":
+            return "Atomic intent/action bundle requires exactly one <action> block."
+        return "Atomic intent/action bundle is invalid."
+
     def _reject_invalid_atomic_bundle_before_transition(self, ctx, payload: dict, parsed_output, segments, *, response: str):
         payload_mode = str((payload or {}).get("mode") or "").strip().lower()
         if payload_mode not in {"activate", "reuse", "replace"}:
@@ -321,15 +494,24 @@ class ResponsePipelinePrevalidationMixin:
             return None
 
         preview = previewer(payload)
+        plan = self._atomic_bundle_plan_from_preview(payload, preview)
         if not bool(getattr(preview, "applied", False)):
             underlying_reason = str(getattr(preview, "message", "") or "invalid_intent_transition")
+            plan.bundle_reason = underlying_reason
+            plan.invalid_part = "intent"
             self.stage_logger.log(
                 "response_pipeline",
                 "continue",
                 reason="atomic_bundle_intent_invalid",
                 source="intent_atomic_bundle_guard",
-                invalid_part="intent",
-                bundle_reason=underlying_reason,
+                invalid_part=plan.invalid_part,
+                bundle_reason=plan.bundle_reason,
+                bundle_validated=plan.bundle_validated,
+                transition_applied=plan.transition_applied,
+                action_dispatched=plan.action_dispatched,
+                active_intent_unchanged=plan.active_intent_unchanged,
+                before_active_intent_id=plan.before_active_intent_id,
+                after_active_intent_id=plan.after_active_intent_id,
             )
             return ResponsePipelineOutcome.continue_with(
                 self.prompt_builder.build_atomic_bundle_rejected_prompt(
@@ -340,6 +522,7 @@ class ResponsePipelinePrevalidationMixin:
                 response_text=response,
                 reason="atomic_bundle_intent_invalid",
                 source="intent_atomic_bundle_guard",
+                atomic_bundle_plan=plan,
             )
 
         action_validation = validator(
@@ -348,19 +531,43 @@ class ResponsePipelinePrevalidationMixin:
             proposed_active_intent=getattr(preview, "active_intent", None),
         )
         if bool(getattr(action_validation, "ok", False)):
+            success_plan = self._atomic_bundle_success_plan(payload, preview, action_validation)
+            self.stage_logger.log(
+                "response_pipeline",
+                "pass",
+                reason="atomic_bundle_validated",
+                source="intent_atomic_bundle_guard",
+                bundle_validated=success_plan.bundle_validated,
+                invalid_part=success_plan.invalid_part or "",
+                bundle_reason=success_plan.bundle_reason,
+                transition_applied=success_plan.transition_applied,
+                action_dispatched=success_plan.action_dispatched,
+                active_intent_unchanged=success_plan.active_intent_unchanged,
+                before_active_intent_id=success_plan.before_active_intent_id,
+                after_active_intent_id=success_plan.after_active_intent_id,
+            )
             return None
 
         underlying_reason = str(getattr(action_validation, "reason", "") or "invalid_action")
         details = dict(getattr(action_validation, "details", {}) or {})
         invalid_part = "file_content" if underlying_reason == "missing_file_content_block" else "action"
+        plan.invalid_part = invalid_part
+        plan.bundle_reason = underlying_reason
+        plan.blocked_action = str(details.get("blocked_action") or "")
         self.stage_logger.log(
             "response_pipeline",
             "continue",
             reason=f"atomic_bundle_{invalid_part}_invalid",
             source="intent_atomic_bundle_guard",
-            invalid_part=invalid_part,
-            bundle_reason=underlying_reason,
-            blocked_action=str(details.get("blocked_action") or ""),
+            invalid_part=plan.invalid_part,
+            bundle_reason=plan.bundle_reason,
+            blocked_action=plan.blocked_action,
+            bundle_validated=plan.bundle_validated,
+            transition_applied=plan.transition_applied,
+            action_dispatched=plan.action_dispatched,
+            active_intent_unchanged=plan.active_intent_unchanged,
+            before_active_intent_id=plan.before_active_intent_id,
+            after_active_intent_id=plan.after_active_intent_id,
         )
         return ResponsePipelineOutcome.continue_with(
             self.prompt_builder.build_atomic_bundle_rejected_prompt(
@@ -373,6 +580,62 @@ class ResponsePipelinePrevalidationMixin:
             response_text=response,
             reason=f"atomic_bundle_{invalid_part}_invalid",
             source="intent_atomic_bundle_guard",
+            atomic_bundle_plan=plan,
+        )
+
+    def _atomic_bundle_plan_from_preview(self, payload: dict, preview) -> AtomicBundlePlan:
+        current_active = getattr(self.state, "active_intent", None)
+        current_intent_id = str(getattr(current_active, "intent_id", "") or "").strip()
+        transition_info = dict(getattr(preview, "transition_info", {}) or {})
+        proposed_active = getattr(preview, "active_intent", None)
+        after_intent_id = str(
+            transition_info.get("after_active_intent_id")
+            or getattr(proposed_active, "intent_id", "")
+            or current_intent_id
+        ).strip()
+        before_intent_id = str(
+            transition_info.get("before_active_intent_id")
+            or current_intent_id
+        ).strip()
+        return AtomicBundlePlan(
+            bundle_validated=False,
+            invalid_part=None,
+            bundle_reason="",
+            transition_applied=False,
+            active_intent_unchanged=(after_intent_id == before_intent_id),
+            action_dispatched=False,
+            before_active_intent_id=before_intent_id,
+            after_active_intent_id=before_intent_id,
+            proposed_intent_id=str((payload or {}).get("intent_id") or after_intent_id).strip(),
+            blocked_action="",
+        )
+
+    def _atomic_bundle_success_plan(self, payload: dict, preview, action_validation) -> AtomicBundlePlan:
+        _ = action_validation
+        current_active = getattr(self.state, "active_intent", None)
+        current_intent_id = str(getattr(current_active, "intent_id", "") or "").strip()
+        transition_info = dict(getattr(preview, "transition_info", {}) or {})
+        proposed_active = getattr(preview, "active_intent", None)
+        after_intent_id = str(
+            transition_info.get("after_active_intent_id")
+            or getattr(proposed_active, "intent_id", "")
+            or current_intent_id
+        ).strip()
+        before_intent_id = str(
+            transition_info.get("before_active_intent_id")
+            or current_intent_id
+        ).strip()
+        return AtomicBundlePlan(
+            bundle_validated=True,
+            invalid_part=None,
+            bundle_reason="validated",
+            transition_applied=True,
+            active_intent_unchanged=(after_intent_id == before_intent_id),
+            action_dispatched=True,
+            before_active_intent_id=before_intent_id,
+            after_active_intent_id=after_intent_id,
+            proposed_intent_id=str((payload or {}).get("intent_id") or after_intent_id).strip(),
+            blocked_action="",
         )
 
     def _terminal_plaintext_text_or_empty(self, response_text: str) -> str:

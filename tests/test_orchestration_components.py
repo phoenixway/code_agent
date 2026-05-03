@@ -8,7 +8,7 @@ from modules.agent.core import AngelicaAgent
 from modules.agent.intent_runtime import IntentContract
 from modules.agent.technical_interruptions import TechnicalInterruption
 from modules.agent.orchestration.runtime.action_policy import ActionPolicyHandler
-from modules.agent.orchestration.shared.decision_models import DispatchHandlingDecision, MemoryBoardDecision, ModelStepResult, OrchestrationTraceEntry, ParsedModelOutput, RecoveryDecision
+from modules.agent.orchestration.shared.decision_models import DispatchHandlingDecision, ExecutionPlan, MemoryBoardDecision, ModelStepResult, OrchestrationTraceEntry, ParsedModelOutput, RecoveryDecision
 from modules.agent.orchestration.runtime.loop_gate import LoopGateHandler
 from modules.agent.orchestration.runtime.lifecycle import TurnLifecycle
 from modules.agent.orchestration.runtime.core import LoopContext, Orchestrator
@@ -520,6 +520,85 @@ class DispatchPipelineTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(decision.stop_loop)
         dispatch_outcome.handle.assert_awaited_once()
         self.assertEqual("post_dispatch_pipeline", state.orchestration_trace[0].stage)
+
+    async def test_run_iteration_attaches_execution_commit_and_logs_planned_vs_committed(self):
+        ui = SimpleNamespace(print_system=AsyncMock())
+        history = SimpleNamespace(add_message=MagicMock(), current_token_count=0, max_tokens=4096)
+        state = SimpleNamespace(
+            orchestration_trace=[],
+            orchestration_trace_sequence=0,
+            confirmation_count=0,
+            session_tokens=0,
+            last_batch_actions_executed=0,
+            last_batch_actions_total=0,
+            consecutive_same_action_count=0,
+        )
+        agent = SimpleNamespace(
+            ui=ui,
+            state=state,
+            history=history,
+            action_dispatcher=SimpleNamespace(),
+            log=None,
+        )
+        dispatch_outcome = SimpleNamespace(
+            handle=AsyncMock(
+                return_value=DispatchHandlingDecision(
+                    handled=False,
+                    continue_loop=False,
+                    stop_loop=False,
+                    reason="system_results_forwarded",
+                    source="dispatch",
+                )
+            )
+        )
+        pipeline = DispatchPipeline(agent, dispatch_outcome)
+        pipeline._dispatch_segments = AsyncMock(
+            return_value=(
+                [_Segment("action", {"type": "read_chunk", "path": "x.py"})],
+                ["SYSTEM RESULT for `read_chunk`: ok"],
+                False,
+            )
+        )
+        ctx = LoopContext(
+            user_input="x",
+            tools_prompt="",
+            ctx_prompt="",
+            state_machine=None,
+            current_query="x",
+            consecutive_calls=1,
+            malformed_action_retries=0,
+            audit_marker_retries=0,
+            active_loop=True,
+            session_started_at=0.0,
+        )
+        iteration = SimpleNamespace(
+            segments=[_Segment("action", {"type": "read_chunk", "path": "x.py"})],
+            parsed_action_count=1,
+            execution_plan=ExecutionPlan(
+                shape="intent_action_bundle",
+                transaction_kind="atomic_intent_action_bundle",
+                action_effects=["read_chunk:x.py"],
+                bundle_validated=True,
+                transition_applied=True,
+                action_dispatched=False,
+                before_active_intent_id="intent_1",
+                after_active_intent_id="intent_1",
+            ),
+        )
+
+        decision = await pipeline.run_iteration(ctx, iteration)
+
+        self.assertIsNotNone(decision.execution_commit)
+        self.assertTrue(decision.execution_commit.action_dispatched)
+        self.assertEqual(1, decision.execution_commit.committed_action_count)
+        self.assertEqual(1, decision.execution_commit.committed_system_result_count)
+        self.assertFalse(decision.execution_commit.dispatch_stop_requested)
+        trace_entry = state.orchestration_trace[-1]
+        self.assertEqual("post_dispatch_pipeline", trace_entry.stage)
+        self.assertEqual("pass", trace_entry.decision)
+        self.assertEqual("atomic_intent_action_bundle", trace_entry.fields["execution_plan"]["transaction_kind"])
+        self.assertTrue(trace_entry.fields["execution_commit"]["action_dispatched"])
+        self.assertEqual(1, trace_entry.fields["execution_commit"]["committed_action_count"])
 
 
 class ActionPolicyHandlerTests(unittest.IsolatedAsyncioTestCase):
@@ -2326,6 +2405,58 @@ class IntentTransitionHandlerTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(decision.handled)
         self.assertEqual("conflicting_intent_transitions", decision.reason)
         self.assertIn("conflicting intent transitions", decision.next_query)
+
+    async def test_accepted_intent_with_followup_action_array_is_rejected_as_multiple_actions_conflict(self):
+        state = SimpleNamespace(
+            intent_required_until_activated=False,
+            active_intent=SimpleNamespace(
+                intent_id="inspect_activity_tracker",
+                intent_type="MODIFY",
+                goal="Implement the planned change",
+                allowed_actions=["edit_file", "read_chunk"],
+            ),
+            intent_runtime=SimpleNamespace(
+                last_apply_warning="",
+                last_transition_info={
+                    "transition": "intent_activated",
+                    "before_active_intent_id": "",
+                    "after_active_intent_id": "inspect_activity_tracker",
+                },
+            ),
+            apply_intent_contract=MagicMock(return_value=(True, "intent_activated")),
+            note_intent_only_response=MagicMock(),
+            active_intent_summary=MagicMock(return_value="inspect_activity_tracker"),
+        )
+        agent = SimpleNamespace(
+            ui=SimpleNamespace(),
+            state=state,
+            config=SimpleNamespace(),
+            log=None,
+        )
+        prompt_builder = OrchestratorPromptBuilder(
+            SimpleNamespace(
+                state=state,
+                config=SimpleNamespace(),
+                memory_board_store=None,
+                log=None,
+            )
+        )
+        recovery = SimpleNamespace(handle_defect_detector_stop=AsyncMock())
+        handler = IntentTransitionHandler(agent, prompt_builder, recovery)
+
+        decision = await handler.handle_model_step(
+            intent_payload={"goal": "Implement the planned change"},
+            intent_error=None,
+            response_text=(
+                '<action>[{"type":"read_chunk","path":"a.py","start_line":1,"end_line":10},'
+                '{"type":"read_chunk","path":"b.py","start_line":1,"end_line":10}]</action>'
+            ),
+            state_machine=None,
+        )
+
+        self.assertTrue(decision.handled)
+        self.assertEqual("multiple_actions", decision.reason)
+        self.assertIn("multiple top-level <action> blocks", decision.next_query)
 
     async def test_completed_intent_with_plaintext_answer_is_allowed_to_continue_as_final_answer(self):
         state = SimpleNamespace(

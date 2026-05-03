@@ -6,6 +6,27 @@ from ..shared.decision_models import OutputRecoveryDecision, ParsedModelOutput
 
 
 class OutputRecoveryRoutingMixin:
+    COMPILER_INVALID_KIND_BY_CODE = {
+        "E_UNCLOSED_THINK": "malformed_incomplete_think",
+        "E_ACTION_INSIDE_THINK": "action_inside_think",
+        "E_INTENT_INSIDE_THINK": "intent_inside_think",
+        "E_FILE_CONTENT_INSIDE_THINK": "file_content_inside_think",
+        "E_FILE_CONTENT_UNCLOSED": "malformed_incomplete_file_content",
+        "E_MIXED_VISIBLE_TEXT_AND_CONTROL": "mixed_visible_text_and_control_protocol",
+        "E_FILE_CONTENT_REQUIRES_ACTION": "file_content_must_follow_action",
+    }
+    COMPILER_ROUTED_INVALID_KINDS = {
+        "malformed_incomplete_think",
+        "action_inside_think",
+        "intent_inside_think",
+        "file_content_inside_think",
+        "malformed_incomplete_file_content",
+        "mixed_visible_text_and_control_protocol",
+        "action_payload_array",
+        "multiple_actions",
+        "file_content_must_follow_action",
+    }
+
     async def decide(
         self,
         parsed_output: ParsedModelOutput,
@@ -14,7 +35,15 @@ class OutputRecoveryRoutingMixin:
         audit_marker_retries: int,
     ) -> OutputRecoveryDecision:
         self._last_parsed_output_for_handoff = parsed_output
-        invalid_kind = str(parsed_output.invalid_kind or "").strip()
+        invalid_kind = self._resolved_invalid_kind(parsed_output)
+        compiler_strategy_decision = self._compiler_strategy_decision(
+            parsed_output,
+            invalid_kind=invalid_kind,
+            malformed_action_retries=malformed_action_retries,
+            audit_marker_retries=audit_marker_retries,
+        )
+        if compiler_strategy_decision is not None:
+            return compiler_strategy_decision
         missing_durable_checkpoint = self._is_missing_durable_state_checkpoint(parsed_output)
         state_changing_without_reflection = False
         raw_chars = len(str(getattr(parsed_output, "response", "") or ""))
@@ -90,6 +119,7 @@ class OutputRecoveryRoutingMixin:
                 str(getattr(parsed_output, "response", "") or "")
             ):
                 self._clear_malformed_think_count()
+            self._clear_compiler_recovery_fingerprint()
             self._clear_architecture_defect_repeat()
             self._clear_recovery_loop_handoff_repeat()
             self._clear_large_malformed_response()
@@ -637,4 +667,301 @@ class OutputRecoveryRoutingMixin:
             source="output_recovery",
             malformed_action_retries=0,
             audit_marker_retries=0,
+        )
+
+    def _resolved_invalid_kind(self, parsed_output: ParsedModelOutput) -> str:
+        legacy_invalid_kind = str(getattr(parsed_output, "invalid_kind", "") or "").strip()
+        compiler_code = str(getattr(parsed_output, "compiler_error_code", "") or "").strip()
+        compiler_invalid_kind = self._compiler_invalid_kind_from_output(parsed_output)
+        if compiler_invalid_kind and (not legacy_invalid_kind or legacy_invalid_kind in self.COMPILER_ROUTED_INVALID_KINDS):
+            return compiler_invalid_kind
+        if legacy_invalid_kind:
+            return legacy_invalid_kind
+        if compiler_code and compiler_invalid_kind:
+            return compiler_invalid_kind
+        return ""
+
+    def _compiler_invalid_kind_from_output(self, parsed_output: ParsedModelOutput) -> str:
+        compiler_code = str(getattr(parsed_output, "compiler_error_code", "") or "").strip()
+        if compiler_code == "E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION":
+            recovery_id = str(getattr(parsed_output, "compiler_recovery_id", "") or "").strip()
+            response_text = str(getattr(parsed_output, "response", "") or "")
+            if self._compiler_action_array_hint(parsed_output, response_text=response_text, recovery_id=recovery_id):
+                return "action_payload_array"
+            return "multiple_actions"
+        return self.COMPILER_INVALID_KIND_BY_CODE.get(compiler_code, "")
+
+    def _compiler_action_array_hint(self, parsed_output: ParsedModelOutput, *, response_text: str, recovery_id: str) -> bool:
+        legacy_invalid_kind = str(getattr(parsed_output, "invalid_kind", "") or "").strip()
+        if legacy_invalid_kind == "action_payload_array":
+            return True
+        if recovery_id == "atomic_bundle_exactly_one_action":
+            compact = "".join(str(response_text or "").split())
+            if "<action>[" in compact.lower():
+                return True
+        return False
+
+    def _compiler_strategy_decision(
+        self,
+        parsed_output: ParsedModelOutput,
+        *,
+        invalid_kind: str,
+        malformed_action_retries: int,
+        audit_marker_retries: int,
+    ) -> OutputRecoveryDecision | None:
+        registry = getattr(self, "compiler_recovery_registry", None)
+        if registry is None:
+            return None
+        compiler_code = str(getattr(parsed_output, "compiler_error_code", "") or "").strip()
+        compiler_recovery_id = str(getattr(parsed_output, "compiler_recovery_id", "") or "").strip()
+        if not compiler_code:
+            return None
+        strategy = registry.resolve(
+            error_code=compiler_code,
+            recovery_id=compiler_recovery_id,
+            invalid_kind=invalid_kind,
+        )
+        if strategy is None:
+            return None
+        handler = getattr(self, f"_compiler_strategy_{strategy.handler_key}", None)
+        if not callable(handler):
+            return None
+        return handler(
+            parsed_output,
+            invalid_kind=invalid_kind,
+            malformed_action_retries=malformed_action_retries,
+            audit_marker_retries=audit_marker_retries,
+        )
+
+    def _compiler_strategy_malformed_think(
+        self,
+        parsed_output: ParsedModelOutput,
+        *,
+        invalid_kind: str,
+        malformed_action_retries: int,
+        audit_marker_retries: int,
+    ) -> OutputRecoveryDecision:
+        raw_chars = len(str(getattr(parsed_output, "response", "") or ""))
+        if raw_chars > 10000:
+            large_count = self._note_large_malformed_response(invalid_kind)
+            if large_count >= 2:
+                return self._terminal_large_malformed_response_decision(
+                    invalid_kind=invalid_kind,
+                    raw_chars=raw_chars,
+                    parsed_output=parsed_output,
+                )
+        repeat_count = self._note_malformed_think_count(invalid_kind)
+        if repeat_count >= 3:
+            return self._terminal_malformed_think_handoff_decision(invalid_kind)
+        prompt = (
+            self.prompt_builder.build_exact_think_skeleton_prompt()
+            if repeat_count >= 2
+            else self.prompt_builder.build_incomplete_think_recovery_prompt()
+        )
+        self.stage_logger.log(
+            "output_recovery",
+            "continue",
+            reason=invalid_kind,
+            source="compiler_recovery_strategy",
+            universe=self._intent_universe_label(),
+            repeat_count=repeat_count,
+            compiler_error_code=str(getattr(parsed_output, "compiler_error_code", "") or ""),
+            compiler_recovery_id=str(getattr(parsed_output, "compiler_recovery_id", "") or ""),
+        )
+        return OutputRecoveryDecision.continue_with(
+            prompt,
+            reason=invalid_kind,
+            source="compiler_recovery_strategy",
+            malformed_action_retries=malformed_action_retries,
+            audit_marker_retries=audit_marker_retries,
+        )
+
+    def _compiler_strategy_incomplete_file_content(
+        self,
+        parsed_output: ParsedModelOutput,
+        *,
+        invalid_kind: str,
+        malformed_action_retries: int,
+        audit_marker_retries: int,
+    ) -> OutputRecoveryDecision:
+        self.stage_logger.log(
+            "output_recovery",
+            "continue",
+            reason=invalid_kind,
+            source="compiler_recovery_strategy",
+            universe=self._intent_universe_label(),
+            compiler_error_code=str(getattr(parsed_output, "compiler_error_code", "") or ""),
+            compiler_recovery_id=str(getattr(parsed_output, "compiler_recovery_id", "") or ""),
+        )
+        return OutputRecoveryDecision.continue_with(
+            self.prompt_builder.build_incomplete_file_content_recovery_prompt(),
+            reason=invalid_kind,
+            source="compiler_recovery_strategy",
+            malformed_action_retries=malformed_action_retries,
+            audit_marker_retries=audit_marker_retries,
+        )
+
+    def _compiler_strategy_mixed_visible_control(
+        self,
+        parsed_output: ParsedModelOutput,
+        *,
+        invalid_kind: str,
+        malformed_action_retries: int,
+        audit_marker_retries: int,
+    ) -> OutputRecoveryDecision:
+        repeat_fingerprint = self._compiler_repeat_fingerprint(parsed_output, invalid_kind=invalid_kind)
+        repeat_count = self._note_compiler_recovery_fingerprint(repeat_fingerprint)
+        builder = getattr(self.prompt_builder, "build_mixed_visible_text_and_control_protocol_prompt", None)
+        prompt = (
+            builder()
+            if callable(builder)
+            else (
+                "SYSTEM: Your response mixed a user-visible answer with internal protocol/tool use.\n"
+                "Choose exactly one:\n"
+                "1. Return only the final plain-text answer, with no <think>, <intent>, <action>, or other control tags.\n"
+                "2. Or return internal protocol only: optional <think>, then memory/subgoal tags if needed, <memory_update_done />, and exactly one <action>.\n"
+                "Do not put visible prose before internal protocol."
+            )
+        )
+        if repeat_count >= 2:
+            prompt += (
+                "\nSYSTEM: This same protocol shape error happened again."
+                "\nReturn exactly one shape only."
+                "\nDo not mix visible prose with any control block."
+            )
+        if repeat_count >= 3:
+            return self._terminal_recovery_loop_decision(invalid_kind)
+        self.stage_logger.log(
+            "output_recovery",
+            "continue",
+            reason=invalid_kind,
+            source="compiler_recovery_strategy",
+            universe=self._intent_universe_label(),
+            repeat_count=repeat_count,
+            repeat_fingerprint=repeat_fingerprint,
+            compiler_error_code=str(getattr(parsed_output, "compiler_error_code", "") or ""),
+            compiler_recovery_id=str(getattr(parsed_output, "compiler_recovery_id", "") or ""),
+        )
+        return OutputRecoveryDecision.continue_with(
+            prompt,
+            reason=invalid_kind,
+            source="compiler_recovery_strategy",
+            malformed_action_retries=malformed_action_retries,
+            audit_marker_retries=audit_marker_retries,
+        )
+
+    def _compiler_strategy_file_content_order(
+        self,
+        parsed_output: ParsedModelOutput,
+        *,
+        invalid_kind: str,
+        malformed_action_retries: int,
+        audit_marker_retries: int,
+    ) -> OutputRecoveryDecision:
+        self.stage_logger.log(
+            "output_recovery",
+            "continue",
+            reason=invalid_kind,
+            source="compiler_recovery_strategy",
+            universe=self._intent_universe_label(),
+            compiler_error_code=str(getattr(parsed_output, "compiler_error_code", "") or ""),
+            compiler_recovery_id=str(getattr(parsed_output, "compiler_recovery_id", "") or ""),
+        )
+        return OutputRecoveryDecision.continue_with(
+            self.prompt_builder.build_file_content_must_follow_action_prompt(),
+            reason=invalid_kind,
+            source="compiler_recovery_strategy",
+            malformed_action_retries=malformed_action_retries,
+            audit_marker_retries=audit_marker_retries,
+        )
+
+    def _compiler_strategy_action_array(
+        self,
+        parsed_output: ParsedModelOutput,
+        *,
+        invalid_kind: str,
+        malformed_action_retries: int,
+        audit_marker_retries: int,
+    ) -> OutputRecoveryDecision:
+        repeat_fingerprint = self._compiler_repeat_fingerprint(parsed_output, invalid_kind=invalid_kind)
+        repeat_count = self._note_compiler_recovery_fingerprint(repeat_fingerprint)
+        if repeat_count >= 3:
+            return self._terminal_recovery_loop_decision(invalid_kind)
+        prompt = self.prompt_builder.build_action_payload_array_prompt()
+        if repeat_count >= 2:
+            prompt = (
+                "SYSTEM: The same atomic bundle action-shape error happened again.\n"
+                "Return only one valid <intent mode=\"activate\">...</intent> block now.\n"
+                "Do not include <action>, <file_content>, visible text, or multiple blocks.\n"
+                "Do not return an action array."
+            )
+        self.stage_logger.log(
+            "output_recovery",
+            "continue",
+            reason=invalid_kind,
+            source="compiler_recovery_strategy",
+            universe=self._intent_universe_label(),
+            repeat_count=repeat_count,
+            repeat_fingerprint=repeat_fingerprint,
+            compiler_error_code=str(getattr(parsed_output, "compiler_error_code", "") or ""),
+            compiler_recovery_id=str(getattr(parsed_output, "compiler_recovery_id", "") or ""),
+        )
+        return OutputRecoveryDecision.continue_with(
+            prompt,
+            reason=invalid_kind,
+            source="compiler_recovery_strategy",
+            malformed_action_retries=malformed_action_retries,
+            audit_marker_retries=audit_marker_retries,
+        )
+
+    def _compiler_strategy_multiple_actions(
+        self,
+        parsed_output: ParsedModelOutput,
+        *,
+        invalid_kind: str,
+        malformed_action_retries: int,
+        audit_marker_retries: int,
+    ) -> OutputRecoveryDecision:
+        repeat_fingerprint = self._compiler_repeat_fingerprint(parsed_output, invalid_kind=invalid_kind)
+        repeat_count = self._note_compiler_recovery_fingerprint(repeat_fingerprint)
+        if repeat_count >= 3:
+            return self._terminal_recovery_loop_decision(invalid_kind)
+        prompt = self.prompt_builder.build_multiple_actions_prompt()
+        if repeat_count >= 2:
+            prompt = (
+                "SYSTEM: The same atomic bundle action-shape error happened again.\n"
+                "Return only one valid <intent mode=\"activate\">...</intent> block now.\n"
+                "Do not include <action>, <file_content>, visible text, or multiple blocks.\n"
+                "Do not return multiple <action> blocks."
+            )
+        self.stage_logger.log(
+            "output_recovery",
+            "continue",
+            reason=invalid_kind,
+            source="compiler_recovery_strategy",
+            universe=self._intent_universe_label(),
+            repeat_count=repeat_count,
+            repeat_fingerprint=repeat_fingerprint,
+            compiler_error_code=str(getattr(parsed_output, "compiler_error_code", "") or ""),
+            compiler_recovery_id=str(getattr(parsed_output, "compiler_recovery_id", "") or ""),
+        )
+        return OutputRecoveryDecision.continue_with(
+            prompt,
+            reason=invalid_kind,
+            source="compiler_recovery_strategy",
+            malformed_action_retries=malformed_action_retries,
+            audit_marker_retries=audit_marker_retries,
+        )
+
+    def _compiler_repeat_fingerprint(self, parsed_output: ParsedModelOutput, *, invalid_kind: str) -> str:
+        compiler_code = str(getattr(parsed_output, "compiler_error_code", "") or "").strip()
+        compiler_recovery_id = str(getattr(parsed_output, "compiler_recovery_id", "") or "").strip()
+        return "|".join(
+            part
+            for part in (
+                compiler_code,
+                compiler_recovery_id,
+                str(invalid_kind or "").strip(),
+            )
+            if part
         )

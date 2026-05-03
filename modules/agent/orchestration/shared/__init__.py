@@ -3,6 +3,7 @@
 from .decision_models import (
     ActionPolicyDecision,
     DispatchHandlingDecision,
+    ExecutionCommit,
     IntentDecision,
     IntentHandlingDecision,
     LoopControlDecision,
@@ -26,6 +27,7 @@ from .trace import TRACE_SCHEMA_DEFAULTS, append_trace_entry, normalize_trace_fi
 __all__ = [
     "ActionPolicyDecision",
     "DispatchHandlingDecision",
+    "ExecutionCommit",
     "IntentDecision",
     "IntentHandlingDecision",
     "LoopControlDecision",

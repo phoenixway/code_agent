@@ -116,7 +116,21 @@ class ActionPolicyStateAdapter:
         return int(getattr(self.state, "last_plan_subgoal_create_count", 0) or 0)
 
     def task_board(self):
-        return getattr(self.state, "task_board", None)
+        board = getattr(self.state, "task_board", None)
+        if not isinstance(board, dict):
+            return board
+        active_intent = self.active_intent()
+        if active_intent is None:
+            return None
+        board_intent_id = str(board.get("intent_id", "") or "").strip()
+        board_lineage_id = str(board.get("lineage_id", "") or "").strip()
+        active_intent_id = str(getattr(active_intent, "intent_id", "") or "").strip()
+        active_lineage_id = str(getattr(active_intent, "lineage_id", "") or active_intent_id or "").strip()
+        if board_lineage_id and board_lineage_id == active_lineage_id:
+            return board
+        if board_intent_id and board_intent_id == active_intent_id:
+            return board
+        return None
 
     def _safe_set(self, name: str, value) -> None:
         try:

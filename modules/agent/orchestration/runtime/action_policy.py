@@ -139,14 +139,80 @@ class ActionPolicyHandler:
         )
         return any(phrase in text for phrase in phrases)
 
-    def _formal_intent_required_for_multi_write_flow(self, action_segments, *, current_user_input: str) -> bool:
+    def _compiler_ir_action_ops(self, parsed_output) -> list:
+        ir = getattr(parsed_output, "compiler_ir", None)
+        if ir is None:
+            return []
+        return list(getattr(ir, "action_ops", ()) or [])
+
+    def _compiler_ir_action_payload(self, parsed_output, *, action_index: int = 0) -> dict | None:
+        action_ops = self._compiler_ir_action_ops(parsed_output)
+        if action_index < 0 or action_index >= len(action_ops):
+            return None
+        payload = getattr(action_ops[action_index], "payload", None)
+        return dict(payload) if isinstance(payload, dict) else None
+
+    def _compiler_ir_file_content(self, parsed_output, *, action_index: int = 0) -> str | None:
+        action_ops = self._compiler_ir_action_ops(parsed_output)
+        if action_index < 0 or action_index >= len(action_ops):
+            return None
+        file_content = getattr(action_ops[action_index], "file_content", None)
+        return file_content if isinstance(file_content, str) else None
+
+    def _effective_command(self, raw_command: dict, *, parsed_output=None, action_index: int = 0) -> dict:
+        command = dict(raw_command or {}) if isinstance(raw_command, dict) else {}
+        compiler_payload = self._compiler_ir_action_payload(parsed_output, action_index=action_index)
+        if isinstance(compiler_payload, dict):
+            command = compiler_payload
+        file_content = self._compiler_ir_file_content(parsed_output, action_index=action_index)
+        if isinstance(file_content, str) and not isinstance(command.get("file_content"), str):
+            command["file_content"] = file_content
+        return command
+
+    def _atomic_bundle_candidate_commands(self, segments, *, parsed_output=None) -> list[dict]:
+        action_ops = self._compiler_ir_action_ops(parsed_output)
+        commands: list[dict] = []
+        if action_ops:
+            for idx, action_op in enumerate(action_ops):
+                payload = self._compiler_ir_action_payload(parsed_output, action_index=idx)
+                if isinstance(payload, dict):
+                    commands.append(self._effective_command(payload, parsed_output=parsed_output, action_index=idx))
+                else:
+                    commands.append(self._effective_command({}, parsed_output=parsed_output, action_index=idx))
+            return commands
+
+        action_segments = [
+            seg for seg in (segments or []) if getattr(seg, "type", "") == "action" and isinstance(getattr(seg, "content", None), dict)
+        ]
+        for idx, seg in enumerate(action_segments):
+            commands.append(self._effective_command(seg.content, parsed_output=parsed_output, action_index=idx))
+        return commands
+
+    def _compiler_ir_has_state_changing_file_actions_only(self, parsed_output) -> bool:
+        action_ops = self._compiler_ir_action_ops(parsed_output)
+        if not action_ops:
+            return False
+        if any(not bool(getattr(op, "write_like", False)) for op in action_ops):
+            return False
+        return True
+
+    def _formal_intent_required_for_multi_write_flow(self, action_segments, *, current_user_input: str, parsed_output=None) -> bool:
         if self.state_view.active_intent() is not None:
             return False
-        if not action_segments:
-            return False
-        if not any(self._is_state_changing_file_action(seg.content) for seg in action_segments):
-            return False
-        if any(not self._is_state_changing_file_action(seg.content) for seg in action_segments):
+        compiler_shape = str(getattr(parsed_output, "compiler_shape", "") or "").strip().upper()
+        ir_only_write = self._compiler_ir_has_state_changing_file_actions_only(parsed_output)
+        if ir_only_write:
+            candidate_count = len(self._compiler_ir_action_ops(parsed_output))
+        else:
+            if not action_segments:
+                return False
+            if not any(self._is_state_changing_file_action(seg.content) for seg in action_segments):
+                return False
+            if any(not self._is_state_changing_file_action(seg.content) for seg in action_segments):
+                return False
+            candidate_count = len(action_segments)
+
+        if candidate_count <= 0:
             return False
 
         prior_writes = self.state_view.intentless_state_changing_write_count()
@@ -201,10 +267,11 @@ class ActionPolicyHandler:
             parsed_action_count=parsed_action_count,
         )
 
-    def _handle_multi_write_intent_requirement(self, ctx, action_segments, parsed_action_count: int) -> ActionPolicyDecision | None:
+    def _handle_multi_write_intent_requirement(self, ctx, action_segments, parsed_action_count: int, *, parsed_output=None) -> ActionPolicyDecision | None:
         if not self._formal_intent_required_for_multi_write_flow(
             action_segments,
             current_user_input=getattr(ctx, "user_input", ""),
+            parsed_output=parsed_output,
         ):
             return None
         self.state_view.require_intent("formal_intent_required_for_multi_step_state_change")
@@ -232,8 +299,9 @@ class ActionPolicyHandler:
             parsed_action_count=parsed_action_count,
         )
 
-    def _handle_action_shape_guard(self, seg, parsed_action_count: int) -> ActionPolicyDecision | None:
-        if self._build_fix_mode_blocks_action(seg.content):
+    def _handle_action_shape_guard(self, seg, parsed_action_count: int, *, command: dict | None = None) -> ActionPolicyDecision | None:
+        effective_command = command if isinstance(command, dict) else getattr(seg, "content", {})
+        if self._build_fix_mode_blocks_action(effective_command):
             return self._continue_with(
                 self.prompt_builder.build_build_fix_mode_blocks_feature_expansion_prompt(
                     allowed_files=self.state_view.build_fix_compiler_mentioned_files()
@@ -242,7 +310,7 @@ class ActionPolicyHandler:
                 source="action_policy",
                 parsed_action_count=parsed_action_count,
             )
-        action_type = str(seg.content.get("type") or seg.content.get("action") or "").strip().lower()
+        action_type = str(effective_command.get("type") or effective_command.get("action") or "").strip().lower()
         if action_type == "intent":
             return self._continue_with(
                 self.prompt_builder.build_intent_payload_inside_action_prompt(),
@@ -254,8 +322,8 @@ class ActionPolicyHandler:
         if action_type != "edit_file":
             return None
 
-        search_text = seg.content.get("search_text")
-        replace_text = seg.content.get("replace_text")
+        search_text = effective_command.get("search_text")
+        replace_text = effective_command.get("replace_text")
         if isinstance(search_text, str) and isinstance(replace_text, str) and search_text == replace_text:
             return self._continue_with(
                 self.prompt_builder.build_noop_edit_prompt(),
@@ -264,12 +332,12 @@ class ActionPolicyHandler:
                 parsed_action_count=parsed_action_count,
             )
 
-        if not self.state_view.has_pending_edit_mismatch_for_path(str(seg.content.get("path") or "")):
+        if not self.state_view.has_pending_edit_mismatch_for_path(str(effective_command.get("path") or "")):
             return None
 
         return self._continue_with(
             self.prompt_builder.build_edit_retry_requires_fresh_read_prompt(
-                path=str(seg.content.get("path") or "").strip(),
+                path=str(effective_command.get("path") or "").strip(),
                 allowed_actions=list(
                     getattr(getattr(self.state, "active_intent", None), "allowed_actions", []) or []
                 ),
@@ -283,14 +351,16 @@ class ActionPolicyHandler:
         self,
         seg,
         *,
+        command: dict | None = None,
         parsed_action_count: int,
         reason: str,
         active_intent,
     ) -> ActionPolicyDecision | None:
         if reason not in {"intent_action_not_allowed", "repeated_disallowed_action"} or active_intent is None:
             return None
-        blocked_action = str(seg.content.get("type") or seg.content.get("action") or "").strip()
-        blocked_path = str(seg.content.get("path") or "").strip()
+        effective_command = command if isinstance(command, dict) else getattr(seg, "content", {})
+        blocked_action = str(effective_command.get("type") or effective_command.get("action") or "").strip()
+        blocked_path = str(effective_command.get("path") or "").strip()
         self.state_view.record_blocked_action(blocked_action, blocked_path)
         repeat_count = self.state_view.note_disallowed_action_repeat(blocked_action)
         allowed_actions = list(getattr(active_intent, "allowed_actions", []) or [])
@@ -345,9 +415,10 @@ class ActionPolicyHandler:
             repeat_count=repeat_count,
         )
 
-    def _handle_intent_guard_requirement(self, seg, ctx, *, parsed_action_count: int) -> ActionPolicyDecision | None:
+    def _handle_intent_guard_requirement(self, seg, ctx, *, command: dict | None = None, parsed_action_count: int) -> ActionPolicyDecision | None:
+        effective_command = command if isinstance(command, dict) else getattr(seg, "content", {})
         required, reason = self.intent_guard.action_requires_intent(
-            seg.content,
+            effective_command,
             self.state,
             batch_size=parsed_action_count,
             current_user_input=ctx.user_input,
@@ -358,6 +429,7 @@ class ActionPolicyHandler:
         active_intent = self.state_view.active_intent()
         disallowed = self._handle_disallowed_action_with_active_intent(
             seg,
+            command=effective_command,
             parsed_action_count=parsed_action_count,
             reason=reason,
             active_intent=active_intent,
@@ -377,14 +449,17 @@ class ActionPolicyHandler:
             parsed_action_count=parsed_action_count,
         )
 
-    def _bundle_file_body_validation(self, command: dict) -> AtomicBundleActionValidationResult:
+    def _bundle_file_body_validation(self, command: dict, *, compiler_action_op=None, compiler_file_content=None) -> AtomicBundleActionValidationResult:
         if not isinstance(command, dict):
             return AtomicBundleActionValidationResult(False, "invalid_action_payload", {})
         action_type = str(command.get("type") or command.get("action") or "").strip().lower()
         if action_type not in self.FILE_BODY_ACTIONS:
             return AtomicBundleActionValidationResult(True)
+        effective_file_content = command.get("file_content")
+        if not isinstance(effective_file_content, str) and isinstance(compiler_file_content, str):
+            effective_file_content = compiler_file_content
         if action_type in {"write_file_block", "append_file_block"}:
-            if not isinstance(command.get("file_content"), str):
+            if not isinstance(effective_file_content, str):
                 return AtomicBundleActionValidationResult(
                     False,
                     "missing_file_content_block",
@@ -394,7 +469,7 @@ class ActionPolicyHandler:
                     },
                 )
             return AtomicBundleActionValidationResult(True)
-        if isinstance(command.get("content"), str) or isinstance(command.get("file_content"), str):
+        if isinstance(command.get("content"), str) or isinstance(effective_file_content, str):
             return AtomicBundleActionValidationResult(True)
         return AtomicBundleActionValidationResult(
             False,
@@ -412,34 +487,47 @@ class ActionPolicyHandler:
         *,
         proposed_active_intent,
     ) -> AtomicBundleActionValidationResult:
-        action_segments = [
-            seg for seg in (segments or []) if getattr(seg, "type", "") == "action" and isinstance(getattr(seg, "content", None), dict)
-        ]
-        if len(action_segments) != 1:
+        parsed_output = getattr(ctx, "parsed_output", None)
+        candidate_commands = self._atomic_bundle_candidate_commands(segments, parsed_output=parsed_output)
+        if len(candidate_commands) != 1:
             return AtomicBundleActionValidationResult(
                 False,
                 "atomic_bundle_requires_exactly_one_action",
                 {"message": "Atomic intent/action bundle requires exactly one valid <action> block."},
             )
 
-        seg = action_segments[0]
-        shape_guard = self._handle_action_shape_guard(seg, 1)
+        action_segments = [
+            seg for seg in (segments or []) if getattr(seg, "type", "") == "action" and isinstance(getattr(seg, "content", None), dict)
+        ]
+        seg = action_segments[0] if action_segments else None
+        effective_command = candidate_commands[0]
+        shape_guard = self._handle_action_shape_guard(seg, 1, command=effective_command)
         if shape_guard is not None:
             return AtomicBundleActionValidationResult(
                 False,
                 str(getattr(shape_guard, "reason", "") or "invalid_action_shape"),
                 {
                     "message": str(getattr(shape_guard, "next_query", "") or ""),
-                    "blocked_action": str(seg.content.get("type") or seg.content.get("action") or "").strip(),
+                    "blocked_action": str(effective_command.get("type") or effective_command.get("action") or "").strip(),
                 },
             )
 
-        file_body_check = self._bundle_file_body_validation(seg.content)
+        compiler_action_op = None
+        compiler_file_content = None
+        action_ops = self._compiler_ir_action_ops(parsed_output)
+        if len(action_ops) == 1:
+            compiler_action_op = action_ops[0]
+            compiler_file_content = getattr(compiler_action_op, "file_content", None)
+        file_body_check = self._bundle_file_body_validation(
+            effective_command,
+            compiler_action_op=compiler_action_op,
+            compiler_file_content=compiler_file_content,
+        )
         if not file_body_check.ok:
             return file_body_check
 
         preview_state = _AtomicBundlePreviewState(self.state, active_intent=proposed_active_intent)
-        command = dict(seg.content or {})
+        command = dict(effective_command or {})
         action_type = str(command.get("type") or command.get("action") or "").strip().lower()
         if action_type in {"create_file", "write_file"} and "content" not in command and isinstance(command.get("file_content"), str):
             command["content"] = command["file_content"]
@@ -478,7 +566,7 @@ class ActionPolicyHandler:
 
         return AtomicBundleActionValidationResult(True)
 
-    async def decide(self, ctx, segments, *, intent_payload: dict | None) -> ActionPolicyDecision:
+    async def decide(self, ctx, segments, *, intent_payload: dict | None, parsed_output=None) -> ActionPolicyDecision:
         action_segments = [
             seg for seg in segments if getattr(seg, "type", "") == "action" and isinstance(getattr(seg, "content", None), dict)
         ]
@@ -504,7 +592,12 @@ class ActionPolicyHandler:
         if build_fix_requirement is not None:
             return build_fix_requirement
 
-        multi_write_requirement = self._handle_multi_write_intent_requirement(ctx, action_segments, parsed_action_count)
+        multi_write_requirement = self._handle_multi_write_intent_requirement(
+            ctx,
+            action_segments,
+            parsed_action_count,
+            parsed_output=parsed_output,
+        )
         if multi_write_requirement is not None:
             return multi_write_requirement
 
@@ -512,14 +605,16 @@ class ActionPolicyHandler:
         if hard_exhausted_requirement is not None:
             return hard_exhausted_requirement
 
-        for seg in action_segments:
-            shape_guard = self._handle_action_shape_guard(seg, parsed_action_count)
+        for idx, seg in enumerate(action_segments):
+            effective_command = self._effective_command(seg.content, parsed_output=parsed_output, action_index=idx)
+            shape_guard = self._handle_action_shape_guard(seg, parsed_action_count, command=effective_command)
             if shape_guard is not None:
                 return shape_guard
 
             intent_requirement = self._handle_intent_guard_requirement(
                 seg,
                 ctx,
+                command=effective_command,
                 parsed_action_count=parsed_action_count,
             )
             if intent_requirement is not None:

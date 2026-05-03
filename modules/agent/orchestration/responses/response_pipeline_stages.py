@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ..shared.decision_models import ExecutionPlan
 from ..shared.decision_models import ResponsePipelineOutcome
 
 
@@ -35,6 +36,92 @@ class ClassifiedStageState:
 
 
 class ResponsePipelineStagesMixin:
+    def _build_execution_plan(self, step, parsed_output, *, parsed_action_count: int):
+        if parsed_output is None:
+            return None
+        payload = getattr(step, "intent_payload", None)
+        if not isinstance(payload, dict):
+            return None
+        payload_mode = str(payload.get("mode") or "").strip().lower()
+        if payload_mode not in {"activate", "reuse", "replace"}:
+            return None
+        compiler_shape = str(getattr(parsed_output, "compiler_shape", "") or "").strip().upper()
+        if compiler_shape not in {"ACTION_ONLY", "INTENT_ACTION_BUNDLE"}:
+            return None
+        if parsed_action_count <= 0 and not bool(getattr(parsed_output, "has_action_segment", False)):
+            return None
+        ir = getattr(parsed_output, "compiler_ir", None)
+        if ir is None:
+            return None
+        active_intent = getattr(self.state, "active_intent", None)
+        after_intent_id = str(getattr(active_intent, "intent_id", "") or "").strip()
+        transition_info = dict(getattr(getattr(self.state, "intent_runtime", None), "last_transition_info", {}) or {})
+        before_intent_id = str(
+            transition_info.get("before_active_intent_id")
+            or payload.get("intent_id")
+            or after_intent_id
+        ).strip()
+        action_effects: list[str] = []
+        for action in list(getattr(ir, "action_ops", ()) or ()):
+            action_type = str(getattr(action, "action_type", "") or "").strip()
+            payload_obj = getattr(action, "payload", None)
+            target = ""
+            if isinstance(payload_obj, dict):
+                target = str(payload_obj.get("path") or payload_obj.get("command") or "").strip()
+            summary = action_type or "action"
+            if target:
+                summary = f"{summary}:{target}"
+            action_effects.append(summary)
+        state_effects = [f"{payload_mode}_intent:{after_intent_id or str(payload.get('intent_id') or '').strip()}"]
+        return ExecutionPlan(
+            shape=str(getattr(parsed_output, "compiler_shape", "") or ""),
+            transaction_kind="atomic_intent_action_bundle",
+            state_effects=state_effects,
+            action_effects=action_effects,
+            output_effects=[],
+            bundle_validated=True,
+            transition_applied=True,
+            action_dispatched=False,
+            active_intent_unchanged=bool(before_intent_id and after_intent_id and before_intent_id == after_intent_id),
+            before_active_intent_id=before_intent_id,
+            after_active_intent_id=after_intent_id,
+        )
+
+    def _compiler_replay_snapshot(self, compiler_analysis) -> dict:
+        snapshot = {
+            "shape": getattr(getattr(compiler_analysis, "shape", None), "name", ""),
+            "error_code": str(getattr(getattr(compiler_analysis, "error", None), "code", "") or ""),
+            "recovery_id": str(getattr(getattr(compiler_analysis, "error", None), "recovery_id", "") or ""),
+            "tokens": [],
+            "ast_nodes": [],
+            "ir": None,
+            "span_excerpt": "",
+        }
+        error_span = getattr(getattr(compiler_analysis, "error", None), "span", None)
+        if error_span is not None:
+            snapshot["span_excerpt"] = str(getattr(error_span, "excerpt", "") or "")
+        for token in list(getattr(compiler_analysis, "tokens", ()) or ())[:12]:
+            snapshot["tokens"].append(token.__class__.__name__)
+        ast = getattr(compiler_analysis, "ast", None)
+        for node in list(getattr(ast, "nodes", ()) or ())[:12]:
+            snapshot["ast_nodes"].append(node.__class__.__name__)
+        ir = getattr(compiler_analysis, "ir", None)
+        if ir is not None:
+            snapshot["ir"] = {
+                "shape": getattr(getattr(ir, "shape", None), "name", ""),
+                "intent_ops": len(getattr(ir, "intent_ops", ()) or ()),
+                "action_ops": len(getattr(ir, "action_ops", ()) or ()),
+                "board_ops": len(getattr(ir, "board_ops", ()) or ()),
+                "annotations": len(getattr(ir, "annotations", ()) or ()),
+                "visible_answer": bool(getattr(ir, "visible_answer", None)),
+                "file_content": bool(getattr(ir, "file_content", None)),
+                "effects_preview": [
+                    str(getattr(effect, "summary", "") or "")
+                    for effect in list(getattr(ir, "effects_preview", ()) or ())[:6]
+                ],
+            }
+        return snapshot
+
     async def _run_initial_stages(self, ctx, step):
         raw_response = str(step.response or "")
         normalized = self._normalize_response_stage(
@@ -247,10 +334,7 @@ class ResponsePipelineStagesMixin:
         response = checkpoint_state.response
         segments = self.parser.parse(response)
         parsed_output = self._classify_intent_output(response, segments, allow_think_autorepair=True)
-        compiler_analysis = self.protocol_compiler.analyze(response)
-        parsed_output.compiler_shape = compiler_analysis.shape.name
-        parsed_output.compiler_error_code = str(getattr(compiler_analysis.error, "code", "") or "")
-        parsed_output.compiler_recovery_id = str(getattr(compiler_analysis.error, "recovery_id", "") or "")
+        compiler_analysis = self._apply_compiler_diagnosis(parsed_output, response)
         parsed_output.model_stop_reason = str(getattr(step, "model_stop_reason", "") or "").strip()
         checkpoint_has_think = self.semantics.has_complete_think_before_action(raw_response)
         checkpoint_has_marker = bool(
@@ -288,6 +372,10 @@ class ResponsePipelineStagesMixin:
             think_repair_applied=bool(getattr(parsed_output, "auto_closed_think", False)),
             think_repair_reason=str(getattr(parsed_output, "auto_closed_think_reason", "") or ""),
             think_repair_tag=str(getattr(parsed_output, "auto_closed_think_tag", "") or ""),
+            compiler_shape=compiler_analysis.shape.name,
+            compiler_code=str(getattr(compiler_analysis.error, "code", "") or ""),
+            compiler_recovery_id=str(getattr(compiler_analysis.error, "recovery_id", "") or ""),
+            compiler_replay=self._compiler_replay_snapshot(compiler_analysis),
         )
         legacy_invalid = str(parsed_output.invalid_kind or "").strip()
         compiler_invalid = str(getattr(compiler_analysis.error, "code", "") or "").strip()
@@ -596,11 +684,19 @@ class ResponsePipelineStagesMixin:
                 source="structural_invalid_guard",
             )
 
-        action_policy_decision = await self.action_policy.decide(
-            ctx,
-            segments,
-            intent_payload=step.intent_payload,
-        )
+        try:
+            action_policy_decision = await self.action_policy.decide(
+                ctx,
+                segments,
+                intent_payload=step.intent_payload,
+                parsed_output=parsed_output,
+            )
+        except TypeError:
+            action_policy_decision = await self.action_policy.decide(
+                ctx,
+                segments,
+                intent_payload=step.intent_payload,
+            )
         parsed_action_count = action_policy_decision.parsed_action_count
         if parsed_action_count > 1 and not self._multiple_actions_are_pure_read_only(segments):
             self.stage_logger.log(
@@ -694,12 +790,27 @@ class ResponsePipelineStagesMixin:
             "response_pipeline",
             "dispatch",
             action_count=parsed_action_count,
+            execution_plan=(
+                {
+                    "shape": execution_plan.shape,
+                    "transaction_kind": execution_plan.transaction_kind,
+                    "bundle_validated": execution_plan.bundle_validated,
+                    "transition_applied": execution_plan.transition_applied,
+                    "action_dispatched": execution_plan.action_dispatched,
+                    "before_active_intent_id": execution_plan.before_active_intent_id,
+                    "after_active_intent_id": execution_plan.after_active_intent_id,
+                    "action_effects": list(execution_plan.action_effects),
+                }
+                if (execution_plan := self._build_execution_plan(step, parsed_output, parsed_action_count=parsed_action_count)) is not None
+                else None
+            ),
         )
         return ResponsePipelineOutcome.dispatch_ready(
             response_text=response,
             segments=segments,
             parsed_output=parsed_output,
             parsed_action_count=parsed_action_count,
+            execution_plan=execution_plan,
             malformed_action_retries=0,
             audit_marker_retries=0,
             reason="dispatch_ready",

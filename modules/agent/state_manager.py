@@ -373,6 +373,31 @@ class AgentState:
         self.pending_finalize_completion_reason = ""
         self.pending_finalize_completion_source = ""
 
+    def clear_task_board(self) -> None:
+        self.task_board = None
+        self.task_board_enabled = False
+
+    def _reconcile_task_board_after_intent_transition(self) -> None:
+        board = getattr(self, "task_board", None)
+        if not isinstance(board, dict):
+            return
+        active_intent = self.active_intent
+        if active_intent is None:
+            self.clear_task_board()
+            return
+        runtime = self.intent_runtime
+        info = getattr(runtime, "last_transition_info", {}) if runtime is not None else {}
+        same_lineage = bool(info.get("same_lineage")) if isinstance(info, dict) else False
+        if not same_lineage:
+            self.clear_task_board()
+            return
+        intent_id = str(getattr(active_intent, "intent_id", "") or "").strip()
+        lineage_id = str(getattr(active_intent, "lineage_id", "") or intent_id or "").strip()
+        board["intent_id"] = intent_id
+        board["lineage_id"] = lineage_id
+        self.task_board = board
+        self.task_board_enabled = bool(board.get("steps"))
+
     def _capture_recent_resumable_intent_from_active(self, active_intent, completion_reason: str = "forced_plaintext_completion") -> None:
         if active_intent is None:
             return
@@ -417,6 +442,8 @@ class AgentState:
                 except Exception:
                     finalized = False
 
+        if finalized:
+            self.clear_task_board()
         if clear_pending_stop:
             self.pending_loop_stop_info = None
         return finalized
@@ -769,6 +796,7 @@ class AgentState:
         if ok:
             self.pending_suspect_intent_payload = None
             self.pending_goal_drift_payload = None
+            self._reconcile_task_board_after_intent_transition()
         return ok, msg
 
     def allow_pending_suspect_intent_once(self, config) -> tuple[bool, str]:

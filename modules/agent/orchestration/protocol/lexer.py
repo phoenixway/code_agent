@@ -85,6 +85,9 @@ class ProtocolLexer:
     def _is_structural_boundary(self, text: str, index: int) -> bool:
         if index == 0:
             return True
+        prev_char = text[index - 1]
+        if prev_char == ">":
+            return True
         prev_newline = text.rfind("\n", 0, index)
         prefix = text[prev_newline + 1:index]
         return prefix.strip() == ""

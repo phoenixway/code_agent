@@ -29,6 +29,54 @@ class ParsedModelOutput:
     compiler_shape: str = ""
     compiler_error_code: str = ""
     compiler_recovery_id: str = ""
+    compiler_ir: Any = None
+
+
+@dataclass
+class AtomicBundlePlan:
+    bundle_validated: bool
+    invalid_part: str | None = None
+    bundle_reason: str = ""
+    transition_applied: bool = False
+    active_intent_unchanged: bool = True
+    action_dispatched: bool = False
+    before_active_intent_id: str = ""
+    after_active_intent_id: str = ""
+    proposed_intent_id: str = ""
+    blocked_action: str = ""
+
+
+@dataclass
+class ExecutionPlan:
+    shape: str
+    transaction_kind: str
+    state_effects: list[str] = field(default_factory=list)
+    action_effects: list[str] = field(default_factory=list)
+    output_effects: list[str] = field(default_factory=list)
+    bundle_validated: bool = False
+    transition_applied: bool = False
+    action_dispatched: bool = False
+    active_intent_unchanged: bool = True
+    before_active_intent_id: str = ""
+    after_active_intent_id: str = ""
+
+
+@dataclass
+class ExecutionCommit:
+    shape: str
+    transaction_kind: str
+    state_effects: list[str] = field(default_factory=list)
+    action_effects: list[str] = field(default_factory=list)
+    output_effects: list[str] = field(default_factory=list)
+    bundle_validated: bool = False
+    transition_applied: bool = False
+    action_dispatched: bool = False
+    active_intent_unchanged: bool = True
+    before_active_intent_id: str = ""
+    after_active_intent_id: str = ""
+    committed_action_count: int = 0
+    committed_system_result_count: int = 0
+    dispatch_stop_requested: bool = False
 
 
 @dataclass
@@ -219,6 +267,7 @@ class PipelineIterationDecision:
     parsed_action_count: int = 0
     malformed_action_retries: int | None = None
     audit_marker_retries: int | None = None
+    execution_plan: ExecutionPlan | None = None
     reason: str = ""
     source: str = ""
 
@@ -250,6 +299,7 @@ class PipelineIterationDecision:
         segments: list[Any],
         parsed_output: ParsedModelOutput | None,
         parsed_action_count: int,
+        execution_plan: ExecutionPlan | None = None,
         malformed_action_retries: int | None = None,
         audit_marker_retries: int | None = None,
         reason: str = "",
@@ -262,6 +312,7 @@ class PipelineIterationDecision:
             segments=segments,
             parsed_output=parsed_output,
             parsed_action_count=parsed_action_count,
+            execution_plan=execution_plan,
             malformed_action_retries=malformed_action_retries,
             audit_marker_retries=audit_marker_retries,
             reason=reason,
@@ -298,6 +349,8 @@ class ResponsePipelineOutcome(PreDispatchDecision):
     memory_checkpoint_only: bool = False
     memory_checkpoint_and_text: bool = False
     memory_checkpoint_and_action: bool = False
+    atomic_bundle_plan: AtomicBundlePlan | None = None
+    execution_plan: ExecutionPlan | None = None
 
     @classmethod
     def stop(
@@ -335,6 +388,7 @@ class ResponsePipelineOutcome(PreDispatchDecision):
         segments: list[Any],
         parsed_output: ParsedModelOutput | None,
         parsed_action_count: int,
+        execution_plan: ExecutionPlan | None = None,
         malformed_action_retries: int | None = None,
         audit_marker_retries: int | None = None,
         reason: str = "",
@@ -351,6 +405,7 @@ class ResponsePipelineOutcome(PreDispatchDecision):
             segments=segments,
             parsed_output=parsed_output,
             parsed_action_count=parsed_action_count,
+            execution_plan=execution_plan,
             malformed_action_retries=malformed_action_retries,
             audit_marker_retries=audit_marker_retries,
             memory_checkpoint_and_text=memory_checkpoint_and_text,
@@ -362,7 +417,7 @@ class ResponsePipelineOutcome(PreDispatchDecision):
 
 @dataclass
 class DispatchHandlingDecision(LoopControlDecision):
-    pass
+    execution_commit: ExecutionCommit | None = None
 
 
 @dataclass

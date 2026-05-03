@@ -228,13 +228,55 @@ class TaskBoardPlanner:
             return str(board.get("goal", "") or "").strip()
         return ""
 
+    def _active_board_owner(self, state) -> tuple[str, str]:
+        active_intent = getattr(state, "active_intent", None)
+        if active_intent is None:
+            return "", ""
+        intent_id = str(getattr(active_intent, "intent_id", "") or "").strip()
+        lineage_id = str(getattr(active_intent, "lineage_id", "") or intent_id or "").strip()
+        return intent_id, lineage_id
+
+    def bind_board_to_active_intent(self, state, board: dict | None) -> dict | None:
+        if not isinstance(board, dict):
+            return None
+        intent_id, lineage_id = self._active_board_owner(state)
+        board["intent_id"] = intent_id
+        board["lineage_id"] = lineage_id
+        return board
+
+    def board_matches_active_intent(self, state, board: dict | None) -> bool:
+        if not isinstance(board, dict):
+            return False
+        active_intent = getattr(state, "active_intent", None)
+        if active_intent is None:
+            return False
+        active_intent_id, active_lineage_id = self._active_board_owner(state)
+        board_intent_id = str(board.get("intent_id", "") or "").strip()
+        board_lineage_id = str(board.get("lineage_id", "") or "").strip()
+        if board_lineage_id and board_lineage_id == active_lineage_id:
+            return True
+        if board_intent_id and board_intent_id == active_intent_id:
+            return True
+        return False
+
+    def normalize_board_for_active_intent(self, state, board: dict | None) -> dict | None:
+        if not isinstance(board, dict):
+            return None
+        steps = board.get("steps")
+        if not isinstance(steps, list) or not steps:
+            return None
+        if not self.board_matches_active_intent(state, board):
+            return None
+        return self.bind_board_to_active_intent(state, deepcopy(board))
+
     def _new_board(self, state) -> dict:
-        return {
+        board = {
             "version": 2,
             "goal": self._default_goal(state),
             "active_step_id": None,
             "steps": [],
         }
+        return self.bind_board_to_active_intent(state, board) or board
 
     def _steps(self, board: dict) -> list[dict]:
         steps = board.get("steps")
@@ -275,7 +317,8 @@ class TaskBoardPlanner:
             return False, "No plan changes."
 
         previous = deepcopy(getattr(state, "task_board", None))
-        board = deepcopy(previous) if isinstance(previous, dict) else self._new_board(state)
+        normalized_previous = self.normalize_board_for_active_intent(state, previous)
+        board = normalized_previous if isinstance(normalized_previous, dict) else self._new_board(state)
         board["version"] = 2
         board["goal"] = self._default_goal(state)
         steps = self._steps(board)
@@ -353,6 +396,7 @@ class TaskBoardPlanner:
 
         self._enforce_step_limit(board)
         self._ensure_active_step(board)
+        self.bind_board_to_active_intent(state, board)
         state.task_board = board
         state.task_board_enabled = bool(board.get("steps"))
         return True, self.render_chat_update_payload(previous, board)

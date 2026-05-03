@@ -132,6 +132,13 @@ class IntentTransitionApplyMixin:
             except Exception:
                 pass
 
+        clear_task_board = getattr(self.state, "clear_task_board", None)
+        if callable(clear_task_board):
+            try:
+                clear_task_board()
+            except Exception:
+                pass
+
         if hasattr(self.state, "pending_loop_stop_info"):
             self.state.pending_loop_stop_info = None
 

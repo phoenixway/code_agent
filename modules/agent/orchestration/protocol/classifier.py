@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .lowerer import ProtocolLowerer
 from .models import (
     ActionNode,
     CompilerAnalysis,
@@ -46,6 +47,7 @@ class ProtocolCompiler:
     def __init__(self, spec=PROTOCOL_SPEC):
         self.spec = spec
         self.parser = ProtocolParser(spec)
+        self.lowerer = ProtocolLowerer(spec)
 
     def analyze(self, raw: str) -> CompilerAnalysis:
         ast, error, tokens = self.parser.parse(raw)
@@ -53,7 +55,10 @@ class ProtocolCompiler:
             return CompilerAnalysis(tokens=tokens, ast=None, shape=ResponseShape.INVALID, error=error)
         assert ast is not None
         shape, shape_error = self._classify(ast)
-        return CompilerAnalysis(tokens=tokens, ast=ast, shape=shape, error=shape_error)
+        if shape_error is not None:
+            return CompilerAnalysis(tokens=tokens, ast=ast, shape=shape, error=shape_error)
+        ir, lowering_error = self.lowerer.lower(ast, shape)
+        return CompilerAnalysis(tokens=tokens, ast=ast, shape=shape, error=lowering_error, ir=ir)
 
     def _classify(self, ast: ResponseAst) -> tuple[ResponseShape, ErrorValue | None]:
         nodes = list(ast.nodes)

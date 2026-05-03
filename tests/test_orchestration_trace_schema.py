@@ -38,6 +38,8 @@ class OrchestrationTraceSchemaTests(unittest.TestCase):
         self.assertEqual("", fields["think_repair_reason"])
         self.assertEqual("", fields["think_repair_confidence"])
         self.assertEqual("", fields["think_repair_tag"])
+        self.assertIsNone(fields["execution_plan"])
+        self.assertIsNone(fields["execution_commit"])
 
     def test_explicit_trace_fields_override_defaults(self):
         state = self._state()

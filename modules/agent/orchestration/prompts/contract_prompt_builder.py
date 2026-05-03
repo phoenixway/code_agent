@@ -6,6 +6,8 @@ from textwrap import dedent
 
 from modules.defaults import DEFAULT_SYSTEM_PROMPT
 
+from ..shared.trace import append_trace_entry
+
 
 class ContractPromptBuilderMixin:
     def build_active_intent_contract_prompt(self) -> str:
@@ -267,6 +269,19 @@ class ContractPromptBuilderMixin:
         if self._current_active_intent() is None or not self._intent_universe().has_active_contract:
             return None
         board = getattr(self.state, "task_board", None)
+        normalize = getattr(planner, "normalize_board_for_active_intent", None)
+        if callable(normalize):
+            board = normalize(self.state, board)
+            if board is None and getattr(self.state, "task_board", None):
+                append_trace_entry(
+                    self.state,
+                    stage="prompt_builder",
+                    decision="suppress",
+                    fields={
+                        "reason": "stale_plan_board_suppressed",
+                        "source": "plan_board",
+                    },
+                )
         snapshot = planner.render_runtime_snapshot(board)
         if not isinstance(snapshot, str) or not snapshot.strip():
             return None

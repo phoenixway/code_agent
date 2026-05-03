@@ -18,6 +18,10 @@ def test_normalize_trace_fields_applies_canonical_defaults():
     assert normalized["source"] == TRACE_SCHEMA_DEFAULTS["source"]
     assert normalized["transition_applied"] is None
     assert normalized["think_repair_applied"] is False
+    assert normalized["compiler_shape"] == ""
+    assert normalized["compiler_replay"] is None
+    assert normalized["execution_plan"] is None
+    assert normalized["execution_commit"] is None
 
 
 def test_append_trace_entry_updates_sequence_and_normalizes_fields():

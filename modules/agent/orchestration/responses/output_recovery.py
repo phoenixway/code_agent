@@ -6,6 +6,7 @@ import re
 
 from .dependencies import ResponseLayerCollaborators
 from ..shared.decision_models import ParsedModelOutput
+from .compiler_recovery_registry import CompilerRecoveryRegistry
 from .output_recovery_routing import OutputRecoveryRoutingMixin
 from .output_recovery_terminal import OutputRecoveryTerminalMixin
 from .response_semantics import ResponseSemantics
@@ -76,6 +77,7 @@ class ModelOutputRecoveryHandler(OutputRecoveryTerminalMixin, OutputRecoveryRout
         self.prompt_builder = prompt_builder
         self.stage_logger = OrchestrationStageLogger(self.runtime.logger, self.state)
         self.semantics = ResponseSemantics()
+        self.compiler_recovery_registry = CompilerRecoveryRegistry()
 
     def _intent_universe_label(self) -> str:
         if getattr(self.state, "active_intent", None) is not None:
@@ -314,6 +316,29 @@ class ModelOutputRecoveryHandler(OutputRecoveryTerminalMixin, OutputRecoveryRout
             setattr(self.state, "large_malformed_response_intent_id", "")
             setattr(self.state, "large_malformed_response_count", 0)
             setattr(self.state, "large_malformed_response_kind", "")
+        except Exception:
+            pass
+
+    def _note_compiler_recovery_fingerprint(self, fingerprint: str) -> int:
+        normalized = str(fingerprint or "").strip()
+        if not normalized:
+            return 0
+        current = str(getattr(self.state, "compiler_recovery_fingerprint", "") or "").strip()
+        count = int(getattr(self.state, "compiler_recovery_fingerprint_count", 0) or 0)
+        if current != normalized:
+            count = 0
+        count += 1
+        try:
+            setattr(self.state, "compiler_recovery_fingerprint", normalized)
+            setattr(self.state, "compiler_recovery_fingerprint_count", count)
+        except Exception:
+            pass
+        return count
+
+    def _clear_compiler_recovery_fingerprint(self) -> None:
+        try:
+            setattr(self.state, "compiler_recovery_fingerprint", "")
+            setattr(self.state, "compiler_recovery_fingerprint_count", 0)
         except Exception:
             pass
 

@@ -87,6 +87,8 @@ async def test_many_subgoal_creates_plus_write_requires_formal_intent():
     state = _state()
     state.last_plan_subgoal_create_count = 3
     state.task_board = {
+        "intent_id": "intent_1",
+        "lineage_id": "intent_1",
         "steps": [
             {"id": "sg_1", "title": "Lesson 1", "status": "in_progress"},
             {"id": "sg_2", "title": "Lesson 2", "status": "todo"},
@@ -104,6 +106,30 @@ async def test_many_subgoal_creates_plus_write_requires_formal_intent():
     assert decision.handled is True
     assert decision.reason == "formal_intent_required_for_multi_step_state_change"
     assert '<intent mode="activate">' in (decision.next_query or "")
+
+
+@pytest.mark.asyncio
+async def test_stale_plan_board_without_active_intent_does_not_count_toward_multi_write_gate():
+    state = _state()
+    state.task_board = {
+        "intent_id": "old_intent",
+        "lineage_id": "old_lineage",
+        "steps": [
+            {"id": "sg_1", "title": "Old step 1", "status": "in_progress"},
+            {"id": "sg_2", "title": "Old step 2", "status": "todo"},
+            {"id": "sg_3", "title": "Old step 3", "status": "todo"},
+        ],
+    }
+    handler = _handler(state)
+
+    decision = await handler.decide(
+        SimpleNamespace(user_input="Save these notes to a markdown file."),
+        [_Segment("action", {"type": "write_file_block", "path": "notes.md", "overwrite": True})],
+        intent_payload=None,
+    )
+
+    assert decision.handled is False
+    assert decision.reason == "actions_allowed_to_proceed"
 
 
 @pytest.mark.asyncio
@@ -151,3 +177,27 @@ async def test_plain_answer_does_not_require_formal_intent():
 
     assert decision.handled is False
     assert decision.reason == "no_action_gate_needed"
+
+
+@pytest.mark.asyncio
+async def test_compiler_ir_can_drive_formal_intent_requirement_for_write_like_proposal():
+    state = _state()
+    state.intentless_state_changing_file_write_count = 2
+    handler = _handler(state)
+    parsed_output = SimpleNamespace(
+        compiler_shape="ACTION_ONLY",
+        compiler_ir=SimpleNamespace(
+            action_ops=[SimpleNamespace(write_like=True)],
+        ),
+    )
+
+    decision = await handler.decide(
+        SimpleNamespace(user_input="Save these notes to a markdown file."),
+        [_Segment("action", {"type": "tool_call", "path": "notes.md"})],
+        intent_payload=None,
+        parsed_output=parsed_output,
+    )
+
+    assert decision.handled is True
+    assert decision.reason == "formal_intent_required_for_multi_step_state_change"
+    assert '<intent mode="activate">' in (decision.next_query or "")

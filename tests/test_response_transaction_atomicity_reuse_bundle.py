@@ -13,6 +13,7 @@ from modules.agent.orchestration.shared.decision_models import (
 from modules.agent.orchestration.transitions import IntentTransitionHandler
 from modules.agent.orchestration.parsers import IntentResponseParser
 from modules.agent.orchestration.responses import ModelResponsePipeline
+from modules.agent.orchestration.shared.trace import snapshot_trace
 from modules.parser import ResponseParser
 
 
@@ -375,6 +376,14 @@ async def test_valid_reuse_plus_allowed_action_bundle_is_dispatch_ready():
     assert outcome.continue_loop is False
     assert outcome.stop_loop is False
     assert outcome.parsed_action_count == 1
+    assert outcome.execution_plan is not None
+    assert outcome.execution_plan.transaction_kind == "atomic_intent_action_bundle"
+    assert outcome.execution_plan.bundle_validated is True
+    assert outcome.execution_plan.transition_applied is True
+    assert outcome.execution_plan.action_dispatched is False
+    assert outcome.execution_plan.before_active_intent_id == "current_intent"
+    assert outcome.execution_plan.after_active_intent_id == "current_intent"
+    assert outcome.execution_plan.action_effects == ["read_chunk:x.py"]
     assert outcome.segments
     assert any(getattr(seg, "type", "") == "action" for seg in outcome.segments)
 
@@ -419,6 +428,14 @@ async def test_valid_activate_write_bundle_is_dispatch_ready():
     assert outcome.continue_loop is False
     assert outcome.stop_loop is False
     assert outcome.parsed_action_count == 1
+    assert outcome.execution_plan is not None
+    assert outcome.execution_plan.transaction_kind == "atomic_intent_action_bundle"
+    assert outcome.execution_plan.bundle_validated is True
+    assert outcome.execution_plan.transition_applied is True
+    assert outcome.execution_plan.action_dispatched is False
+    assert outcome.execution_plan.before_active_intent_id == "save_requested_document"
+    assert outcome.execution_plan.after_active_intent_id == "save_requested_document"
+    assert outcome.execution_plan.action_effects == ["write_file_block:docs/x.md"]
     assert any(getattr(seg, "type", "") == "action" for seg in outcome.segments)
 
 
@@ -451,6 +468,13 @@ async def test_valid_reuse_plus_disallowed_action_is_checked_after_reuse():
     assert outcome.continue_loop is True
     assert outcome.reason == "atomic_bundle_action_invalid"
     assert outcome.parsed_action_count == 0
+    assert outcome.atomic_bundle_plan is not None
+    assert outcome.atomic_bundle_plan.bundle_validated is False
+    assert outcome.atomic_bundle_plan.invalid_part == "action"
+    assert outcome.atomic_bundle_plan.transition_applied is False
+    assert outcome.atomic_bundle_plan.action_dispatched is False
+    assert outcome.atomic_bundle_plan.before_active_intent_id == "current_intent"
+    assert outcome.atomic_bundle_plan.after_active_intent_id == "current_intent"
 
 
 @pytest.mark.asyncio
@@ -499,6 +523,11 @@ async def test_invalid_reuse_bundle_missing_switch_reason_rejects_whole_bundle()
     assert state.apply_called is False
     assert outcome.continue_loop is True
     assert outcome.reason == "atomic_bundle_intent_invalid"
+    assert outcome.atomic_bundle_plan is not None
+    assert outcome.atomic_bundle_plan.bundle_validated is False
+    assert outcome.atomic_bundle_plan.invalid_part == "intent"
+    assert outcome.atomic_bundle_plan.transition_applied is False
+    assert outcome.atomic_bundle_plan.action_dispatched is False
 
 
 @pytest.mark.asyncio
@@ -538,3 +567,136 @@ async def test_missing_file_content_rejects_whole_bundle():
     assert state.apply_called is False
     assert outcome.continue_loop is True
     assert outcome.reason == "atomic_bundle_file_content_invalid"
+    assert outcome.atomic_bundle_plan is not None
+    assert outcome.atomic_bundle_plan.bundle_validated is False
+    assert outcome.atomic_bundle_plan.invalid_part == "file_content"
+    assert outcome.atomic_bundle_plan.transition_applied is False
+    assert outcome.atomic_bundle_plan.action_dispatched is False
+
+
+@pytest.mark.asyncio
+async def test_action_array_bundle_rejects_whole_transition_before_apply():
+    state = DummyState(allowed_actions=["read_chunk"], hard_exhausted=False)
+    state.active_intent = None
+    state.intent_required_until_activated = False
+    state.intent_required_reason = ""
+    pipeline = make_pipeline(state)
+
+    step = SimpleNamespace(
+        intent_payload={
+            "mode": "activate",
+            "intent_id": "save_requested_document",
+            "intent_type": "MODIFY",
+            "goal": "Save requested document.",
+            "allowed_actions": ["write_file_block"],
+            "safe_steps_limit": 2,
+            "retry_limit": 1,
+        },
+        intent_error=None,
+        model_stop_reason="",
+        response=(
+            '<intent mode="activate">{"mode":"activate","intent_id":"save_requested_document","intent_type":"MODIFY","goal":"Save requested document.","allowed_actions":["write_file_block"],"safe_steps_limit":2,"retry_limit":1}</intent>\n'
+            '<action>[{"type":"read_chunk","path":"a.py","start_line":1,"end_line":5},{"type":"read_chunk","path":"b.py","start_line":1,"end_line":5}]</action>'
+        ),
+    )
+    ctx = SimpleNamespace(
+        state_machine=None,
+        malformed_action_retries=0,
+        audit_marker_retries=0,
+        user_input="save the document",
+    )
+
+    outcome = await pipeline.run_step(ctx, step)
+
+    assert state.apply_called is False
+    assert outcome.continue_loop is True
+    assert outcome.reason == "atomic_bundle_action_invalid"
+    assert outcome.atomic_bundle_plan is not None
+    assert outcome.atomic_bundle_plan.bundle_validated is False
+    assert outcome.atomic_bundle_plan.invalid_part == "action"
+    assert outcome.atomic_bundle_plan.transition_applied is False
+    assert outcome.atomic_bundle_plan.action_dispatched is False
+
+
+@pytest.mark.asyncio
+async def test_multiple_action_blocks_bundle_rejects_whole_transition_before_apply():
+    state = DummyState(allowed_actions=["read_chunk"], hard_exhausted=False)
+    state.active_intent = None
+    state.intent_required_until_activated = False
+    state.intent_required_reason = ""
+    pipeline = make_pipeline(state)
+
+    step = SimpleNamespace(
+        intent_payload={
+            "mode": "activate",
+            "intent_id": "save_requested_document",
+            "intent_type": "MODIFY",
+            "goal": "Save requested document.",
+            "allowed_actions": ["write_file_block"],
+            "safe_steps_limit": 2,
+            "retry_limit": 1,
+        },
+        intent_error=None,
+        model_stop_reason="",
+        response=(
+            '<intent mode="activate">{"mode":"activate","intent_id":"save_requested_document","intent_type":"MODIFY","goal":"Save requested document.","allowed_actions":["write_file_block"],"safe_steps_limit":2,"retry_limit":1}</intent>\n'
+            '<action>{"type":"read_chunk","path":"a.py","start_line":1,"end_line":5}</action>\n'
+            '<action>{"type":"read_chunk","path":"b.py","start_line":1,"end_line":5}</action>'
+        ),
+    )
+    ctx = SimpleNamespace(
+        state_machine=None,
+        malformed_action_retries=0,
+        audit_marker_retries=0,
+        user_input="save the document",
+    )
+
+    outcome = await pipeline.run_step(ctx, step)
+
+    assert state.apply_called is False
+    assert outcome.continue_loop is True
+    assert outcome.reason == "atomic_bundle_action_invalid"
+    assert outcome.atomic_bundle_plan is not None
+    assert outcome.atomic_bundle_plan.bundle_validated is False
+    assert outcome.atomic_bundle_plan.invalid_part == "action"
+    assert outcome.atomic_bundle_plan.transition_applied is False
+    assert outcome.atomic_bundle_plan.action_dispatched is False
+
+
+@pytest.mark.asyncio
+async def test_valid_bundle_emits_atomic_bundle_validated_trace_preview():
+    state = DummyState(allowed_actions=["read_chunk"], hard_exhausted=True)
+    pipeline = make_pipeline(state)
+
+    step = SimpleNamespace(
+        intent_payload=reuse_payload(allowed_actions=["read_chunk"]),
+        intent_error=None,
+        model_stop_reason="",
+        response=(
+            "<think>! Reuse request is valid. ? Need exact chunk. → read_chunk.</think>\n"
+            "<memory_update_done />\n"
+            '<action>{"type":"read_chunk","path":"x.py","start_line":1,"end_line":5}</action>'
+        ),
+    )
+    ctx = SimpleNamespace(
+        state_machine=None,
+        malformed_action_retries=0,
+        audit_marker_retries=0,
+        user_input="continue",
+    )
+
+    outcome = await pipeline.run_step(ctx, step)
+
+    assert outcome.continue_loop is False
+    trace = snapshot_trace(state)
+    entries = [
+        entry for entry in trace
+        if entry["stage"] == "response_pipeline" and entry["decision"] == "pass" and entry["fields"].get("reason") == "atomic_bundle_validated"
+    ]
+    assert entries
+    fields = entries[-1]["fields"]
+    assert fields["bundle_validated"] is True
+    assert fields["transition_applied"] is True
+    assert fields["action_dispatched"] is True
+    assert fields["before_active_intent_id"] == "current_intent"
+    assert fields["after_active_intent_id"] == "current_intent"

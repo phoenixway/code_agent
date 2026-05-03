@@ -200,8 +200,59 @@ class LiteralProtocolTagNode(Node):
 
 
 @dataclass(frozen=True)
+class AnnotationIR:
+    kind: str
+    text: str
+
+
+@dataclass(frozen=True)
+class BoardOpIR:
+    kind: str
+    attrs: dict[str, str]
+    content: str | None
+
+
+@dataclass(frozen=True)
+class IntentOpIR:
+    mode: str
+    payload: dict[str, Any]
+    intent_id: str
+    intent_type: str
+    goal: str
+
+
+@dataclass(frozen=True)
+class ActionOpIR:
+    action_type: str
+    payload: dict[str, Any] | list[Any] | None
+    file_content: str | None
+    read_only: bool
+    write_like: bool
+
+
+@dataclass(frozen=True)
+class EffectPreview:
+    kind: str
+    summary: str
+    target: str | None = None
+
+
+@dataclass(frozen=True)
+class ResponseIR:
+    shape: ResponseShape
+    annotations: tuple[AnnotationIR, ...]
+    board_ops: tuple[BoardOpIR, ...]
+    intent_ops: tuple[IntentOpIR, ...]
+    action_ops: tuple[ActionOpIR, ...]
+    visible_answer: str | None
+    file_content: str | None
+    effects_preview: tuple[EffectPreview, ...]
+
+
+@dataclass(frozen=True)
 class CompilerAnalysis:
     tokens: tuple[ProtocolToken, ...]
     ast: ResponseAst | None
     shape: ResponseShape
     error: ErrorValue | None
+    ir: ResponseIR | None = None
