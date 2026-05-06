@@ -49,6 +49,9 @@ def _is_compiler_valid_pre_action_text(parsed_output, parsed_action_count: int) 
     compiler_shape = str(getattr(parsed_output, "compiler_shape", "") or "").strip()
     compiler_error_code = str(getattr(parsed_output, "compiler_error_code", "") or "").strip()
     has_action = parsed_action_count > 0 or bool(getattr(parsed_output, "has_action_segment", False))
+    ir = getattr(parsed_output, "compiler_ir", None)
+    if ir and (getattr(ir, "has_think", False) or getattr(ir, "has_checkpoint", False)):
+        return False
     return (
         str(getattr(parsed_output, "invalid_kind", "") or "").strip() == "mixed_visible_text_and_control_protocol"
         and compiler_shape == "PRE_ACTION_TEXT_AND_ACTION"

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from ..shared.decision_models import ExecutionPlan
 from ..shared.decision_models import ResponsePipelineOutcome
 from ..shared.trace import compact_compiler_replay
+from .protocol_decision_bridge import resolve_protocol_authority
 
 
 @dataclass
@@ -91,17 +92,6 @@ class ResponsePipelineStagesMixin:
             active_intent_unchanged=bool(before_intent_id and after_intent_id and before_intent_id == after_intent_id),
             before_active_intent_id=before_intent_id,
             after_active_intent_id=after_intent_id,
-        )
-
-    def _is_compiler_valid_pre_action_text(self, parsed_output, parsed_action_count: int) -> bool:
-        compiler_shape = str(getattr(parsed_output, "compiler_shape", "") or "").strip()
-        compiler_error_code = str(getattr(parsed_output, "compiler_error_code", "") or "").strip()
-        has_action = parsed_action_count > 0 or bool(getattr(parsed_output, "has_action_segment", False))
-        return (
-            str(getattr(parsed_output, "invalid_kind", "") or "").strip() == "mixed_visible_text_and_control_protocol"
-            and compiler_shape == "PRE_ACTION_TEXT_AND_ACTION"
-            and not compiler_error_code
-            and has_action
         )
 
     async def _run_initial_stages(self, ctx, step):
@@ -659,6 +649,16 @@ class ResponsePipelineStagesMixin:
                 source="output_recovery",
             )
 
+        authority = resolve_protocol_authority(parsed_output, parsed_action_count)
+        if authority.suppress_legacy_invalid_kind:
+            self.stage_logger.log(
+                "response_pipeline",
+                "pass",
+                reason=f"compiler_authority_override:{authority.reason}",
+                source=f"protocol_authority:{authority.source}",
+            )
+            parsed_output.invalid_kind = ""
+
         recovery_decision = await self.output_recovery.decide(
             parsed_output,
             malformed_action_retries=ctx.malformed_action_retries,
@@ -697,13 +697,24 @@ class ResponsePipelineStagesMixin:
                 source="output_recovery",
             )
 
+        if authority.dispatch_allowed is False:
+            compiler_invalid_kind = self.output_recovery._compiler_invalid_kind_from_output(parsed_output)
+            if compiler_invalid_kind:
+                parsed_output.invalid_kind = compiler_invalid_kind
+            self.stage_logger.log(
+                "response_pipeline",
+                "pass",
+                reason=f"compiler_authority_block:{authority.reason}",
+                source=f"protocol_authority:{authority.source}",
+            )
+
         if str(getattr(parsed_output, "invalid_kind", "") or "").strip() in self.STRUCTURAL_INVALID_KINDS:
-            if self._is_compiler_valid_pre_action_text(parsed_output, parsed_action_count):
+            if authority.suppress_legacy_invalid_kind:
                 self.stage_logger.log(
                     "response_pipeline",
                     "pass",
-                    reason="compiler_override_for_pre_action_text",
-                    source="structural_invalid_guard",
+                    reason=authority.reason,
+                    source=f"protocol_authority:{authority.source}",
                 )
             else:
                 self.stage_logger.log(

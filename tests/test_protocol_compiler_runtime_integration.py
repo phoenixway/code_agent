@@ -35,8 +35,12 @@ class LegacyPermissiveIntentResponseParser:
                 compiler_error_code="",
                 compiler_ir=SimpleNamespace(
                     action_count=1,
+                    has_action=True,
+                    has_think=False,
+                    has_checkpoint=False,
                     has_pre_action_text=True,
                     pre_action_text="I will now read the file.",
+                    has_visible_answer=False,
                     action_ops=[SimpleNamespace(action_type="read_file", payload={"path": "x.py"})],
                 ),
             )
