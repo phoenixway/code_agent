@@ -4,17 +4,10 @@ from __future__ import annotations
 
 from ..shared.decision_models import AtomicBundlePlan, NormalizedModelResponse, ResponsePipelineOutcome
 from ..parsers.visible_text import sanitize_visible_text_for_user, terminal_plaintext_completion_status
+from .protocol_decision_bridge import COMPILER_INVALID_KIND_BY_CODE
 
 
 class ResponsePipelinePrevalidationMixin:
-    COMPILER_INVALID_KIND_BY_CODE = {
-        "E_UNCLOSED_THINK": "malformed_incomplete_think",
-        "E_ACTION_INSIDE_THINK": "action_inside_think",
-        "E_INTENT_INSIDE_THINK": "intent_inside_think",
-        "E_FILE_CONTENT_INSIDE_THINK": "file_content_inside_think",
-        "E_MIXED_VISIBLE_TEXT_AND_CONTROL": "mixed_visible_text_and_control_protocol",
-        "E_FILE_CONTENT_REQUIRES_ACTION": "file_content_must_follow_action",
-    }
     COMPILER_DRIVEN_INVALID_KINDS = {
         "malformed_incomplete_think",
         "action_inside_think",
@@ -141,7 +134,7 @@ class ResponsePipelinePrevalidationMixin:
             if actual == "array":
                 return "action_payload_array"
             return "multiple_actions"
-        return self.COMPILER_INVALID_KIND_BY_CODE.get(code, "")
+        return COMPILER_INVALID_KIND_BY_CODE.get(code, "")
 
     def _apply_compiler_diagnosis(self, parsed_output, response: str):
         compiler_analysis = self.protocol_compiler.analyze(response)

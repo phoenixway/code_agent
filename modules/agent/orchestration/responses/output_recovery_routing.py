@@ -3,23 +3,10 @@
 from __future__ import annotations
 
 from ..shared.decision_models import OutputRecoveryDecision, ParsedModelOutput
+from .protocol_decision_bridge import COMPILER_INVALID_KIND_BY_CODE
 
 
 class OutputRecoveryRoutingMixin:
-    COMPILER_INVALID_KIND_BY_CODE = {
-        "E_UNCLOSED_THINK": "malformed_incomplete_think",
-        "E_ACTION_INSIDE_THINK": "action_inside_think",
-        "E_INTENT_INSIDE_THINK": "intent_inside_think",
-        "E_FILE_CONTENT_INSIDE_THINK": "file_content_inside_think",
-        "E_FILE_CONTENT_UNCLOSED": "malformed_incomplete_file_content",
-        "E_MIXED_VISIBLE_TEXT_AND_CONTROL": "mixed_visible_text_and_control_protocol",
-        "E_FILE_CONTENT_REQUIRES_ACTION": "file_content_must_follow_action",
-        "E_ACTION_PAYLOAD_ARRAY": "action_payload_array",
-        "E_ACTION_PAYLOAD_XML_FIELDS": "action_payload_xml_fields",
-        "E_ACTION_PAYLOAD_TOOL_CODE": "action_payload_tool_code",
-        "E_ACTION_PAYLOAD_NOT_OBJECT": "action_payload_not_object",
-        "E_PROTOCOL_TAG_IN_JSON_STRING": "protocol_tag_in_json_string",
-    }
     COMPILER_ROUTED_INVALID_KINDS = {
         "malformed_incomplete_think",
         "action_inside_think",
@@ -698,7 +685,7 @@ class OutputRecoveryRoutingMixin:
             if self._compiler_action_array_hint(parsed_output, response_text=response_text, recovery_id=recovery_id):
                 return "action_payload_array"
             return "multiple_actions"
-        return self.COMPILER_INVALID_KIND_BY_CODE.get(compiler_code, "")
+        return COMPILER_INVALID_KIND_BY_CODE.get(compiler_code, "")
 
     def _compiler_action_array_hint(self, parsed_output: ParsedModelOutput, *, response_text: str, recovery_id: str) -> bool:
         legacy_invalid_kind = str(getattr(parsed_output, "invalid_kind", "") or "").strip()
