@@ -1,0 +1,16 @@
+name: file_content_without_write_action
+input: |
+  <file_content>
+  hello
+  </file_content>
+legacy_expectation:
+  handles: true
+  invalid_kind: file_content_must_follow_action
+compiler_expectation:
+  current_status: ready
+  expected_shape: INVALID
+  expected_error_code: E_FILE_CONTENT_REQUIRES_ACTION
+  notes: The compiler correctly identifies that file_content cannot appear without an action.
+migration_target:
+  desired_compiler_behavior: No change needed.
+  priority: high

@@ -1,0 +1,15 @@
+name: subgoal_inside_open_think_is_invalid
+input: |
+  <think>Need subgoal
+  <subgoal>Inspect files</subgoal>
+legacy_expectation:
+  handles: true
+  invalid_kind: malformed_incomplete_think
+compiler_expectation:
+  current_status: ready
+  expected_shape: INVALID
+  expected_error_code: E_MEMORY_TAG_INSIDE_THINK
+  notes: The parser correctly identifies a subgoal tag inside an unclosed think block.
+migration_target:
+  desired_compiler_behavior: No change needed.
+  priority: high

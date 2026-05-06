@@ -1,0 +1,16 @@
+name: action_payload_tool_code_gap
+input: |
+  <think>Need action.</think>
+  <memory_update_done />
+  <action>read_file("a.py")</action>
+legacy_expectation:
+  handles: true
+  invalid_kind: action_payload_tool_code
+compiler_expectation:
+  current_status: ready
+  expected_shape: INVALID
+  expected_error_code: E_ACTION_PAYLOAD_TOOL_CODE
+  notes: The compiler now specifically identifies an action payload that looks like raw tool code.
+migration_target:
+  desired_compiler_behavior: No change needed.
+  priority: high

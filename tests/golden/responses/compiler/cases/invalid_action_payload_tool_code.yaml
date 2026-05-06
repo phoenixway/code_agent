@@ -1,0 +1,8 @@
+name: invalid_action_payload_tool_code
+input: |
+  <think>This should fail.</think>
+  <action>read_file("foo.txt")</action>
+expected:
+  shape: INVALID
+  error_code: E_ACTION_PAYLOAD_TOOL_CODE
+  has_ir: false

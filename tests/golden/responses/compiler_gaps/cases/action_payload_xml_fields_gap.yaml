@@ -1,0 +1,16 @@
+name: action_payload_xml_fields_gap
+input: |
+  <think>Need action.</think>
+  <memory_update_done />
+  <action><type>read_file</type><path>a.py</path></action>
+legacy_expectation:
+  handles: true
+  invalid_kind: action_payload_xml_fields
+compiler_expectation:
+  current_status: ready
+  expected_shape: INVALID
+  expected_error_code: E_ACTION_PAYLOAD_XML_FIELDS
+  notes: The compiler now specifically identifies an action payload that contains XML-like tags.
+migration_target:
+  desired_compiler_behavior: No change needed.
+  priority: high

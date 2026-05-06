@@ -121,6 +121,24 @@ PROTOCOL_SPEC = ProtocolSpec(
             recovery_id="action_json_invalid",
             default_message="Action payload is not valid JSON.",
         ),
+        "E_ACTION_PAYLOAD_ARRAY": ErrorSpec(
+            code="E_ACTION_PAYLOAD_ARRAY",
+            phase="parse",
+            recovery_id="action_payload_array",
+            default_message="Action payload must be a JSON object, not an array.",
+        ),
+        "E_ACTION_PAYLOAD_XML_FIELDS": ErrorSpec(
+            code="E_ACTION_PAYLOAD_XML_FIELDS",
+            phase="parse",
+            recovery_id="action_payload_xml_fields",
+            default_message="Action payload appears to be XML fields, not a JSON object.",
+        ),
+        "E_ACTION_PAYLOAD_TOOL_CODE": ErrorSpec(
+            code="E_ACTION_PAYLOAD_TOOL_CODE",
+            phase="parse",
+            recovery_id="action_payload_tool_code",
+            default_message="Action payload appears to be raw tool code, not a JSON object.",
+        ),
         "E_INTENT_JSON_INVALID": ErrorSpec(
             code="E_INTENT_JSON_INVALID",
             phase="parse",

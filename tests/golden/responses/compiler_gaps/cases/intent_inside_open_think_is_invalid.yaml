@@ -1,0 +1,15 @@
+name: intent_inside_open_think_is_invalid
+input: |
+  <think>Need intent
+  <intent mode="activate">{"intent_id":"x","intent_type":"MODIFY","goal":"x"}</intent>
+legacy_expectation:
+  handles: true
+  invalid_kind: intent_inside_think
+compiler_expectation:
+  current_status: ready
+  expected_shape: INVALID
+  expected_error_code: E_INTENT_INSIDE_THINK
+  notes: The parser correctly identifies an intent tag inside an unclosed think block.
+migration_target:
+  desired_compiler_behavior: No change needed.
+  priority: high

@@ -1,0 +1,8 @@
+name: invalid_action_payload_array
+input: |
+  <think>This should fail.</think>
+  <action>[{"type":"read_file"}]</action>
+expected:
+  shape: INVALID
+  error_code: E_ACTION_PAYLOAD_ARRAY
+  has_ir: false

@@ -1,0 +1,17 @@
+name: file_content_inside_open_think_is_invalid
+input: |
+  <think>Need write
+  <file_content>
+  hello
+  </file_content>
+legacy_expectation:
+  handles: true
+  invalid_kind: file_content_inside_think
+compiler_expectation:
+  current_status: ready
+  expected_shape: INVALID
+  expected_error_code: E_FILE_CONTENT_INSIDE_THINK
+  notes: The parser correctly identifies a file_content tag inside an unclosed think block.
+migration_target:
+  desired_compiler_behavior: No change needed.
+  priority: high

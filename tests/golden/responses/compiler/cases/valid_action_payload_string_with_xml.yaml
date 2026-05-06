@@ -1,0 +1,12 @@
+name: valid_action_payload_string_with_xml
+input: |
+  <think>This should not be an XML error.</think>
+  <action>"this is a string with <type>"</action>
+expected:
+  shape: ACTION_ONLY
+  error_code: null
+  has_ir: true
+  action_count: 1
+notes: This case verifies that valid JSON strings containing XML-looking text are not misclassified by malformed-payload heuristics. JSON scalar action payload validation is a separate future semantic gap.
+expected_shadow_mismatches:
+  - has_visible_answer

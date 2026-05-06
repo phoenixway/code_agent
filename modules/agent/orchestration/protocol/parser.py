@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from .lexer import ProtocolLexer
@@ -34,6 +35,14 @@ from .spec import PROTOCOL_SPEC
 
 class ProtocolParser:
     MEMORY_TAGS = {"fact", "finding", "decision", "path", "progress", "memory_review"}
+    ACTION_XML_FIELD_RE = re.compile(
+        r"</?\s*(type|action|path|command|args|payload|content)\b",
+        re.IGNORECASE,
+    )
+    ACTION_TOOL_CODE_RE = re.compile(
+        r"^\s*[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?\s*\([^{}]*\)\s*$",
+        re.DOTALL,
+    )
     THINK_FORBIDDEN_TAG_MAP = {
         "action": "E_ACTION_INSIDE_THINK",
         "intent": "E_INTENT_INSIDE_THINK",
@@ -100,22 +109,34 @@ class ProtocolParser:
         token = tokens[start_index]
         assert isinstance(token, StartTagToken)
         name = token.name
+
+        if name == "think":
+            # Scan for forbidden tags or the end tag
+            for i in range(start_index + 1, len(tokens)):
+                inner_token = tokens[i]
+                if isinstance(inner_token, (StartTagToken, SelfClosingTagToken)):
+                    code = self.THINK_FORBIDDEN_TAG_MAP.get(inner_token.name)
+                    if code:
+                        return self._error(code, inner_token.span, actual=inner_token.name)
+                elif isinstance(inner_token, EndTagToken) and inner_token.name == "think":
+                    # Found the closing tag. The block is valid.
+                    closing_index = i
+                    body_tokens = tokens[start_index + 1 : closing_index]
+                    body_span = self._merge_spans(token.span, tokens[closing_index].span)
+                    body_text = self._concat_text(body_tokens)
+                    return ThinkNode(content=body_text, span=body_span), closing_index + 1
+            # If loop finishes, tag was not closed
+            return self._error("E_UNCLOSED_THINK", token.span, actual=name)
+
         closing_index = self._find_matching_end(tokens, start_index + 1, name)
         if closing_index is None:
-            if name == "think":
-                return self._error("E_UNCLOSED_THINK", token.span, actual=name)
             if name == "file_content":
                 return self._error("E_FILE_CONTENT_UNCLOSED", token.span, actual=name)
             return self._error("E_AMBIGUOUS_PROTOCOL_SYNTAX", token.span, actual=name)
-        body_tokens = tokens[start_index + 1:closing_index]
+        body_tokens = tokens[start_index + 1 : closing_index]
         body_span = self._merge_spans(token.span, tokens[closing_index].span)
         body_text = self._concat_text(body_tokens)
 
-        if name == "think":
-            forbidden = self._first_forbidden_in_think(body_text)
-            if forbidden is not None:
-                return forbidden
-            return ThinkNode(content=body_text, span=body_span), closing_index + 1
         if name == "intent":
             payload, error = self._parse_json_object(body_text, "E_INTENT_JSON_INVALID", body_span)
             if error is not None:
@@ -184,21 +205,16 @@ class ProtocolParser:
     def _parse_json_any(self, text: str, code: str, span: Span) -> tuple[Any | None, ErrorValue | None]:
         try:
             payload = json.loads(text)
+            if isinstance(payload, list):
+                return None, self._error("E_ACTION_PAYLOAD_ARRAY", span, actual="json_array")
+            return payload, None
         except json.JSONDecodeError as exc:
+            stripped_text = text.strip()
+            if self.ACTION_XML_FIELD_RE.search(stripped_text):
+                return None, self._error("E_ACTION_PAYLOAD_XML_FIELDS", span, actual="xml_like_tags")
+            if self.ACTION_TOOL_CODE_RE.match(stripped_text):
+                return None, self._error("E_ACTION_PAYLOAD_TOOL_CODE", span, actual="tool_code_like")
             return None, self._error(code, span, actual=exc.msg)
-        return payload, None
-
-    def _first_forbidden_in_think(self, body_text: str) -> ErrorValue | None:
-        for token in self.lexer.lex(body_text):
-            if isinstance(token, StartTagToken):
-                code = self.THINK_FORBIDDEN_TAG_MAP.get(token.name)
-                if code:
-                    return self._error(code, token.span, actual=token.name)
-            if isinstance(token, SelfClosingTagToken):
-                code = self.THINK_FORBIDDEN_TAG_MAP.get(token.name)
-                if code:
-                    return self._error(code, token.span, actual=token.name)
-        return None
 
     def _error(self, code: str, span: Span | None, *, actual: str | None = None) -> ErrorValue:
         spec = self.spec.errors[code]

@@ -1,0 +1,8 @@
+name: invalid_action_payload_malformed_json
+input: |
+  <think>This should fail.</think>
+  <action>{"type":"read_file",}</action>
+expected:
+  shape: INVALID
+  error_code: E_ACTION_JSON_INVALID
+  has_ir: false

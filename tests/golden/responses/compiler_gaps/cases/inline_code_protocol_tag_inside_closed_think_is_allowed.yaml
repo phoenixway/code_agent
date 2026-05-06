@@ -1,0 +1,18 @@
+name: inline_code_protocol_tag_inside_closed_think_is_allowed
+input: |
+  <think>
+  I am considering the literal text `<action>` as an example, not as a protocol action.
+  </think>
+  <memory_update_done />
+  <action>{"type":"read_file","path":"x.py"}</action>
+legacy_expectation:
+  handles: true
+  invalid_kind: null
+compiler_expectation:
+  current_status: ready
+  expected_shape: ACTION_ONLY
+  expected_error_code: null
+  notes: The lexer correctly identifies inline code inside a think block and the parser treats it as literal text, not protocol.
+migration_target:
+  desired_compiler_behavior: No change needed.
+  priority: high

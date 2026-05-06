@@ -1,0 +1,23 @@
+name: long_closed_think_is_valid
+input: |
+  <think>
+  This is a long multi-line reasoning draft.
+  It may contain numbered lists:
+  1. inspect
+  2. decide
+  3. act
+  This should not be invalid merely because it is long.
+  </think>
+  <memory_update_done />
+  <action>{"type":"read_file","path":"tui.py"}</action>
+legacy_expectation:
+  handles: true
+  invalid_kind: null
+compiler_expectation:
+  current_status: ready
+  expected_shape: ACTION_ONLY
+  expected_error_code: null
+  notes: The compiler correctly parses long, multi-line think blocks.
+migration_target:
+  desired_compiler_behavior: No change needed.
+  priority: high

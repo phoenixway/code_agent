@@ -72,6 +72,27 @@ class CompilerRecoveryRegistry:
                 handler_key="file_content_order",
             ),
             CompilerRecoveryStrategy(
+                id="action_payload_array",
+                error_codes=("E_ACTION_PAYLOAD_ARRAY",),
+                recovery_ids=("action_payload_array",),
+                invalid_kind="action_payload_array",
+                handler_key="action_array",
+            ),
+            CompilerRecoveryStrategy(
+                id="action_payload_xml_fields",
+                error_codes=("E_ACTION_PAYLOAD_XML_FIELDS",),
+                recovery_ids=("action_payload_xml_fields",),
+                invalid_kind="action_payload_xml_fields",
+                handler_key="malformed_action",
+            ),
+            CompilerRecoveryStrategy(
+                id="action_payload_tool_code",
+                error_codes=("E_ACTION_PAYLOAD_TOOL_CODE",),
+                recovery_ids=("action_payload_tool_code",),
+                invalid_kind="action_payload_tool_code",
+                handler_key="malformed_action",
+            ),
+            CompilerRecoveryStrategy(
                 id="atomic_bundle_exactly_one_action_array",
                 error_codes=("E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION",),
                 recovery_ids=("atomic_bundle_exactly_one_action",),

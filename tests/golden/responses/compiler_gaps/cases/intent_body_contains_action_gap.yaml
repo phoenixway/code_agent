@@ -1,0 +1,14 @@
+name: intent_body_contains_action_gap
+input: |
+  <intent mode="activate">{"intent_id":"x","intent_type":"MODIFY","goal":"do <action>bad</action>"}</intent>
+legacy_expectation:
+  handles: true
+  invalid_kind: intent_body_contains_action
+compiler_expectation:
+  current_status: missing
+  expected_shape: INTENT_ONLY
+  expected_error_code: null
+  notes: The compiler does not currently inspect JSON string values for nested protocol tags. It parses this as a valid intent.
+migration_target:
+  desired_compiler_behavior: Add a semantic check to the compiler to detect protocol tags inside JSON string values and emit an error like E_PROTOCOL_IN_JSON_STRING.
+  priority: low

@@ -1,0 +1,14 @@
+name: inline_code_protocol_tag_is_visible_text
+input: |
+  This mentions `<action>` as text, not protocol.
+legacy_expectation:
+  handles: true
+  invalid_kind: null
+compiler_expectation:
+  current_status: ready
+  expected_shape: PLAINTEXT_ONLY
+  expected_error_code: null
+  notes: The lexer correctly identifies inline code blocks and the parser treats them as literal text, not protocol.
+migration_target:
+  desired_compiler_behavior: No change needed.
+  priority: high

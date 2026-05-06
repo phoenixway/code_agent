@@ -1,0 +1,14 @@
+name: pure_unclosed_think_is_generic_unclosed
+input: |
+  <think>Need to reason but forgot to close it
+legacy_expectation:
+  handles: true
+  invalid_kind: malformed_incomplete_think
+compiler_expectation:
+  current_status: ready
+  expected_shape: INVALID
+  expected_error_code: E_UNCLOSED_THINK
+  notes: The parser correctly identifies an unclosed think block with no other protocol tags inside.
+migration_target:
+  desired_compiler_behavior: No change needed.
+  priority: high

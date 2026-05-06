@@ -1,0 +1,8 @@
+name: invalid_action_payload_xml
+input: |
+  <think>This should fail.</think>
+  <action><type>read_file</type></action>
+expected:
+  shape: INVALID
+  error_code: E_ACTION_PAYLOAD_XML_FIELDS
+  has_ir: false

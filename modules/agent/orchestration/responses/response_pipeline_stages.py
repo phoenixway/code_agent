@@ -296,6 +296,57 @@ class ResponsePipelineStagesMixin:
             memory_board_decision=memory_board_decision,
         ), None
 
+    def _log_semantic_shadow_disagreements(
+        self, raw_response: str, parsed_output, parsed_action_count: int, compiler_analysis
+    ):
+        config = getattr(self, "config", None)
+        if not config:
+            return
+
+        is_enabled = False
+        if isinstance(config, dict):
+            is_enabled = bool(config.get("enable_semantic_shadow_logging", False))
+        else:
+            is_enabled = bool(getattr(config, "enable_semantic_shadow_logging", False))
+
+        if not is_enabled:
+            return
+
+        ir = getattr(compiler_analysis, "ir", None)
+        if not ir:
+            return
+
+        legacy_values = {
+            "action_count": parsed_action_count,
+            "has_think": self.semantics.has_substantial_think(raw_response),
+            "has_checkpoint": self.semantics.has_checkpoint_tags(raw_response),
+            "has_visible_answer": self.semantics.is_plaintext_answer_path(
+                raw_response, parsed_output, parsed_action_count
+            ),
+        }
+
+        compiler_values = {
+            "action_count": ir.action_count,
+            "has_think": ir.has_think,
+            "has_checkpoint": ir.has_checkpoint,
+            "has_visible_answer": ir.has_visible_answer,
+        }
+
+        for field, legacy_val in legacy_values.items():
+            compiler_val = compiler_values.get(field)
+            if legacy_val != compiler_val:
+                self.stage_logger.log(
+                    "protocol_shadow",
+                    "semantic_disagreement",
+                    field=field,
+                    legacy_value=legacy_val,
+                    compiler_value=compiler_val,
+                    compiler_shape=compiler_analysis.shape.name,
+                    compiler_code=getattr(compiler_analysis.error, "code", None),
+                    response_len=len(raw_response),
+                    shadow_only=True,
+                )
+
     def _run_classification_stage(self, step, raw_response: str, checkpoint_state: CheckpointStageState):
         response = checkpoint_state.response
         segments = self.parser.parse(response)
@@ -361,6 +412,7 @@ class ResponsePipelineStagesMixin:
                     span_excerpt=span_excerpt,
                     shadow_only=True,
                 )
+        self._log_semantic_shadow_disagreements(raw_response, parsed_output, parsed_action_count, compiler_analysis)
         return ClassifiedStageState(
             response=response,
             parsed_output=parsed_output,

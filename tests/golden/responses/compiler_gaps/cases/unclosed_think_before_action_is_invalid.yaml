@@ -1,0 +1,15 @@
+name: unclosed_think_before_action_is_invalid
+input: |
+  <think>Need to inspect
+  <action>{"type":"read_file","path":"x.py"}</action>
+legacy_expectation:
+  handles: true
+  invalid_kind: action_inside_think
+compiler_expectation:
+  current_status: ready
+  expected_shape: INVALID
+  expected_error_code: E_ACTION_INSIDE_THINK
+  notes: The parser correctly identifies an action tag inside what it considers the body of an unclosed think block.
+migration_target:
+  desired_compiler_behavior: No change needed. The error code is specific and correct.
+  priority: high

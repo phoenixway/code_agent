@@ -14,6 +14,9 @@ class OutputRecoveryRoutingMixin:
         "E_FILE_CONTENT_UNCLOSED": "malformed_incomplete_file_content",
         "E_MIXED_VISIBLE_TEXT_AND_CONTROL": "mixed_visible_text_and_control_protocol",
         "E_FILE_CONTENT_REQUIRES_ACTION": "file_content_must_follow_action",
+        "E_ACTION_PAYLOAD_ARRAY": "action_payload_array",
+        "E_ACTION_PAYLOAD_XML_FIELDS": "action_payload_xml_fields",
+        "E_ACTION_PAYLOAD_TOOL_CODE": "action_payload_tool_code",
     }
     COMPILER_ROUTED_INVALID_KINDS = {
         "malformed_incomplete_think",
@@ -23,6 +26,8 @@ class OutputRecoveryRoutingMixin:
         "malformed_incomplete_file_content",
         "mixed_visible_text_and_control_protocol",
         "action_payload_array",
+        "action_payload_xml_fields",
+        "action_payload_tool_code",
         "multiple_actions",
         "file_content_must_follow_action",
     }

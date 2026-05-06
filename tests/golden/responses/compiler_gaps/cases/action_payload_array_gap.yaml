@@ -1,0 +1,16 @@
+name: action_payload_array_gap
+input: |
+  <think>Need action.</think>
+  <memory_update_done />
+  <action>[{"type":"read_file","path":"a.py"}]</action>
+legacy_expectation:
+  handles: true
+  invalid_kind: action_payload_array
+compiler_expectation:
+  current_status: ready
+  expected_shape: INVALID
+  expected_error_code: E_ACTION_PAYLOAD_ARRAY
+  notes: The compiler now specifically identifies an action payload that is a JSON array.
+migration_target:
+  desired_compiler_behavior: No change needed.
+  priority: high
