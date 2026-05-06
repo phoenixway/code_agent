@@ -288,6 +288,22 @@ class IntentTransitionRoutingMixin:
             self._clear_reuse_only_intent_required()
 
         if not str(response_text or "").strip() or transition_semantic.kind == "no_followup":
+            if self._has_action_payload_array(response_text):
+                self.stage_logger.log(
+                    "intent_transition",
+                    "continue",
+                    reason="action_payload_array",
+                    source="intent_runtime",
+                    universe="transition_in_progress",
+                    transition=intent_decision.transition_info.get("transition", ""),
+                    before_active_intent_id=intent_decision.transition_info.get("before_active_intent_id", ""),
+                    after_active_intent_id=intent_decision.transition_info.get("after_active_intent_id", ""),
+                )
+                return IntentHandlingDecision(
+                    handled=True,
+                    next_query=self.prompt_builder.build_followup_conflict_prompt("action_payload_array"),
+                    reason="action_payload_array",
+                )
             if hasattr(self.state, "note_intent_only_response"):
                 self.state.note_intent_only_response()
             if intent_decision.completion_requested:

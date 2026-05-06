@@ -114,4 +114,4 @@ def test_shadow_compiler_logs_disagreement_without_behavior_flip():
     trace = snapshot_trace(pipeline.state)
     shadow_entries = [entry for entry in trace if entry["stage"] == "protocol_shadow"]
     assert shadow_entries
-    assert shadow_entries[-1]["fields"]["compiler_shape"] == "INVALID"
+    assert shadow_entries[-1]["fields"]["compiler_shape"] == "PRE_ACTION_TEXT_AND_ACTION"

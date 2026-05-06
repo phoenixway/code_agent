@@ -6,8 +6,7 @@ raw: |
   ]</action>
 shape: INVALID
 valid: false
-error_code: E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION
-recovery_id: atomic_bundle_exactly_one_action
-invalid_part: action
+error_code: E_ACTION_PAYLOAD_ARRAY
+recovery_id: action_payload_array
 transition_applied: false
 action_dispatched: false

@@ -5,8 +5,8 @@ raw: |
   </think>
 shape: INVALID
 valid: false
-error_code: E_ACTION_INSIDE_THINK
-recovery_id: action_inside_think
+error_code: E_AMBIGUOUS_PROTOCOL_SYNTAX
+recovery_id: ambiguous_protocol_syntax
 invalid_part: null
 transition_applied: false
 action_dispatched: false

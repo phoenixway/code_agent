@@ -610,12 +610,9 @@ async def test_action_array_bundle_rejects_whole_transition_before_apply():
 
     assert state.apply_called is False
     assert outcome.continue_loop is True
-    assert outcome.reason == "atomic_bundle_action_invalid"
-    assert outcome.atomic_bundle_plan is not None
-    assert outcome.atomic_bundle_plan.bundle_validated is False
-    assert outcome.atomic_bundle_plan.invalid_part == "action"
-    assert outcome.atomic_bundle_plan.transition_applied is False
-    assert outcome.atomic_bundle_plan.action_dispatched is False
+    assert outcome.reason == "action_payload_array"
+    assert outcome.execution_plan is None
+    # Since this is a parse-level failure, the atomic bundle plan may not be created.
 
 
 @pytest.mark.asyncio

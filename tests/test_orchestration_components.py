@@ -2461,8 +2461,9 @@ class IntentTransitionHandlerTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertTrue(decision.handled)
-        self.assertEqual("multiple_actions", decision.reason)
-        self.assertIn("multiple top-level <action> blocks", decision.next_query)
+        self.assertEqual("action_payload_array", decision.reason)
+        self.assertIn("action array", decision.next_query)
+        self.assertIn("EXACTLY ONE valid <action>", decision.next_query)
 
     async def test_completed_intent_with_plaintext_answer_is_allowed_to_continue_as_final_answer(self):
         state = SimpleNamespace(

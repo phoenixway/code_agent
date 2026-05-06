@@ -117,19 +117,19 @@ def test_classification_trace_contains_compiler_replay_snapshot():
         memory_board_decision=None,
     ))
 
-    assert classified.parsed_output.compiler_error_code == "E_MIXED_VISIBLE_TEXT_AND_CONTROL"
+    assert classified.parsed_output.compiler_error_code == ""
     trace = snapshot_trace(pipeline.state)
     classified_entries = [entry for entry in trace if entry["stage"] == "response_pipeline" and entry["decision"] == "classified"]
     assert classified_entries
     fields = classified_entries[-1]["fields"]
     replay = fields["compiler_replay"]
-    assert fields["compiler_shape"] == "INVALID"
-    assert fields["compiler_code"] == "E_MIXED_VISIBLE_TEXT_AND_CONTROL"
-    assert replay["shape"] == "INVALID"
-    assert replay["error_code"] == "E_MIXED_VISIBLE_TEXT_AND_CONTROL"
+    assert fields["compiler_shape"] == "PRE_ACTION_TEXT_AND_ACTION"
+    assert fields["compiler_code"] == ""
+    assert replay["shape"] == "PRE_ACTION_TEXT_AND_ACTION"
+    assert replay["error_code"] == ""
     assert "StartTagToken" in replay["tokens"]
     assert "VisibleTextNode" in replay["ast_nodes"]
-    assert replay["ir"] is None
+    assert replay["ir"] is not None
 
 
 def test_classification_trace_contains_compact_ir_snapshot_for_valid_output():

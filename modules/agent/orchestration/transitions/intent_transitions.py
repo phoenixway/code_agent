@@ -89,12 +89,16 @@ class IntentTransitionHandler(IntentTransitionApplyMixin, IntentTransitionRoutin
     def _followup_surface_summary(self, response_text: str) -> dict[str, object]:
         analysis = self._analyze_followup_surface(response_text)
         followup = self.followup_semantics.summarize(analysis)
+        has_substantive = followup.has_substantive_nodes
+        if not has_substantive and analysis and getattr(analysis, "error", None):
+            if getattr(analysis.error, "code", "") == "E_ACTION_PAYLOAD_ARRAY":
+                has_substantive = True
         return {
             "analysis": followup.analysis,
             "intent_count": followup.intent_count,
             "action_count": followup.action_count,
             "visible_count": followup.visible_count,
-            "has_substantive_nodes": followup.has_substantive_nodes,
+            "has_substantive_nodes": has_substantive,
             "has_any_action": followup.has_any_action,
             "conflict_reason": followup.conflict_reason,
             "bundle_too_dense": followup.bundle_too_dense,
@@ -130,7 +134,11 @@ class IntentTransitionHandler(IntentTransitionApplyMixin, IntentTransitionRoutin
         return self._followup_surface_summary(stripped)
 
     def _has_substantive_followup_nodes(self, response_text: str) -> bool:
-        return bool(self._followup_surface_summary(response_text)["has_substantive_nodes"])
+        summary = self._followup_surface_summary(response_text)
+        analysis = summary.get("analysis")
+        if analysis and getattr(analysis, "error", None) and getattr(analysis.error, "code", "") == "E_ACTION_PAYLOAD_ARRAY":
+            return True
+        return bool(summary["has_substantive_nodes"])
 
     def _strip_matching_current_intent_block(self, response_text: str, intent_payload: dict | None) -> str:
         text = str(response_text or "")
@@ -277,6 +285,15 @@ class IntentTransitionHandler(IntentTransitionApplyMixin, IntentTransitionRoutin
 
     def _remaining_followup_conflict_reason(self, response_text: str) -> str:
         return str(self._followup_surface_summary(response_text)["conflict_reason"] or "")
+
+    def _has_action_payload_array(self, response_text: str) -> bool:
+        analysis = self._analyze_followup_surface(response_text)
+        if analysis and getattr(analysis, "error", None):
+            if getattr(analysis.error, "code", "") == "E_ACTION_PAYLOAD_ARRAY":
+                return True
+        # fallback: narrow single-action payload array detection
+        # only match <action>...</action> body whose stripped content starts with "["
+        return bool(re.search(r"<action\b[^>]*>\s*\[", response_text or "", re.IGNORECASE | re.DOTALL))
 
     def _analyze_followup_surface(self, response_text: str):
         masked = self._mask_for_followup_analysis(response_text)

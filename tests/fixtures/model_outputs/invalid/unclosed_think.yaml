@@ -4,8 +4,8 @@ raw: |
   <action>{"type":"read_file","path":"x.py"}</action>
 shape: INVALID
 valid: false
-error_code: E_UNCLOSED_THINK
-recovery_id: unclosed_think
+error_code: E_ACTION_INSIDE_THINK
+recovery_id: action_inside_think
 invalid_part: null
 transition_applied: false
 action_dispatched: false

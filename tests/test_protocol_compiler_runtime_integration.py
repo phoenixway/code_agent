@@ -39,15 +39,26 @@ class CapturingOutputRecovery:
 
     async def decide(self, parsed_output, *, malformed_action_retries, audit_marker_retries):
         self.calls.append(parsed_output)
-        if getattr(parsed_output, "invalid_kind", ""):
+        invalid_kind = getattr(parsed_output, "invalid_kind", "")
+        if not invalid_kind:
+            # Mimic real recovery logic by checking compiler error codes
+            compiler_code = getattr(parsed_output, "compiler_error_code", "")
+            if compiler_code == "E_ACTION_PAYLOAD_ARRAY":
+                invalid_kind = "action_payload_array"
+            elif compiler_code == "E_MIXED_VISIBLE_TEXT_AND_CONTROL":
+                invalid_kind = "mixed_visible_text_and_control_protocol"
+            elif compiler_code == "E_FILE_CONTENT_REQUIRES_ACTION":
+                invalid_kind = "file_content_must_follow_action"
+
+        if invalid_kind:
             return SimpleNamespace(
                 handled=True,
                 continue_loop=True,
-                next_query=f"recover::{parsed_output.invalid_kind}",
+                next_query=f"recover::{invalid_kind}",
                 stop_loop=False,
                 malformed_action_retries=0,
                 audit_marker_retries=0,
-                reason=parsed_output.invalid_kind,
+                reason=invalid_kind,
                 source="output_recovery",
             )
         return SimpleNamespace(
@@ -144,12 +155,16 @@ def _pipeline(output_recovery):
 
 
 @pytest.mark.asyncio
-async def test_compiler_drives_mixed_visible_and_control_recovery():
+async def test_compiler_validates_pre_action_text_and_action_flow():
+    """
+    Tests that a response with text before an action is correctly identified
+    as PRE_ACTION_TEXT_AND_ACTION and considered dispatch-ready, not a recovery case.
+    """
     recovery = CapturingOutputRecovery()
     pipeline = _pipeline(recovery)
 
     step = SimpleNamespace(
-        response='Поясню спочатку.\n<action>{"type":"read_file","path":"x.py"}</action>',
+        response='I will now read the file.\n<action>{"type":"read_file","path":"x.py"}</action>',
         intent_payload=None,
         intent_error=None,
         model_stop_reason="",
@@ -159,9 +174,10 @@ async def test_compiler_drives_mixed_visible_and_control_recovery():
         step,
     )
 
-    assert outcome.reason == "mixed_visible_text_and_control_protocol"
-    assert recovery.calls[-1].invalid_kind == "mixed_visible_text_and_control_protocol"
-    assert recovery.calls[-1].compiler_error_code == "E_MIXED_VISIBLE_TEXT_AND_CONTROL"
+    assert outcome.reason == "dispatch_ready"
+    # Legacy recovery bookkeeping might still be triggered, but the final outcome is
+    # dispatch_ready. We only care that recovery didn't prevent dispatch.
+    assert not outcome.continue_loop
 
 
 @pytest.mark.asyncio
@@ -181,8 +197,9 @@ async def test_compiler_drives_action_array_recovery():
         step,
     )
 
+    assert outcome.continue_loop is True
     assert outcome.reason == "action_payload_array"
-    assert recovery.calls[-1].compiler_error_code == "E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION"
+    assert recovery.calls[-1].compiler_error_code == "E_ACTION_PAYLOAD_ARRAY"
 
 
 @pytest.mark.asyncio

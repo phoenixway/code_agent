@@ -284,7 +284,7 @@ async def test_intent_followup_visible_text_is_not_treated_as_malformed_action()
     outcome = await pipeline.run_step(ctx, step)
 
     assert outcome.continue_loop is True
-    assert outcome.reason == "mixed_intent_transition_and_visible_answer"
-    assert output_recovery.calls == ["mixed_intent_transition_and_visible_answer"]
+    assert outcome.reason == "mixed_visible_text_and_control_protocol"
+    assert output_recovery.calls == ["mixed_visible_text_and_control_protocol"]
     assert action_policy.calls == 0
     assert "malformed <action>" not in (outcome.next_query or "")

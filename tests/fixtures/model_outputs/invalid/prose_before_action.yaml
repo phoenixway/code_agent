@@ -1,10 +1,7 @@
 raw: |
   Перепрошую, спочатку коротко поясню.
   <action>{"type":"read_file","path":"x.py"}</action>
-shape: INVALID
-valid: false
-error_code: E_MIXED_VISIBLE_TEXT_AND_CONTROL
-recovery_id: mixed_visible_control
-invalid_part: mixed_visible
+shape: PRE_ACTION_TEXT_AND_ACTION
+valid: true
 transition_applied: false
 action_dispatched: false
