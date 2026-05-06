@@ -139,6 +139,12 @@ PROTOCOL_SPEC = ProtocolSpec(
             recovery_id="action_payload_tool_code",
             default_message="Action payload appears to be raw tool code, not a JSON object.",
         ),
+        "E_ACTION_PAYLOAD_NOT_OBJECT": ErrorSpec(
+            code="E_ACTION_PAYLOAD_NOT_OBJECT",
+            phase="parse",
+            recovery_id="action_payload_not_object",
+            default_message="Action payload must be a JSON object.",
+        ),
         "E_INTENT_JSON_INVALID": ErrorSpec(
             code="E_INTENT_JSON_INVALID",
             phase="parse",

@@ -3,10 +3,11 @@ input: |
   <think>This should not be a tool code error.</think>
   <action>"read_file(\"x.py\")"</action>
 expected:
-  shape: ACTION_ONLY
-  error_code: null
-  has_ir: true
-  action_count: 1
-notes: This case verifies that valid JSON strings containing tool-code-looking text are not misclassified by malformed-payload heuristics. JSON scalar action payload validation is a separate future semantic gap.
+  shape: INVALID
+  error_code: E_ACTION_PAYLOAD_NOT_OBJECT
+  has_ir: false
+notes: This case verifies that valid JSON strings are correctly identified as E_ACTION_PAYLOAD_NOT_OBJECT, and not misclassified as E_ACTION_PAYLOAD_TOOL_CODE.
 expected_shadow_mismatches:
   - has_visible_answer
+  - has_action
+  - action_count

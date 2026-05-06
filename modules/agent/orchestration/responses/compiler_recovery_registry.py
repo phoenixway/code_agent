@@ -93,6 +93,13 @@ class CompilerRecoveryRegistry:
                 handler_key="malformed_action",
             ),
             CompilerRecoveryStrategy(
+                id="action_payload_not_object",
+                error_codes=("E_ACTION_PAYLOAD_NOT_OBJECT",),
+                recovery_ids=("action_payload_not_object",),
+                invalid_kind="action_payload_not_object",
+                handler_key="malformed_action",
+            ),
+            CompilerRecoveryStrategy(
                 id="atomic_bundle_exactly_one_action_array",
                 error_codes=("E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION",),
                 recovery_ids=("atomic_bundle_exactly_one_action",),

@@ -1,0 +1,8 @@
+name: invalid_action_payload_boolean
+input: |
+  <think>This should fail.</think>
+  <action>true</action>
+expected:
+  shape: INVALID
+  error_code: E_ACTION_PAYLOAD_NOT_OBJECT
+  has_ir: false

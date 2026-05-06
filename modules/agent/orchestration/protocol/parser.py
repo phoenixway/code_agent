@@ -207,6 +207,8 @@ class ProtocolParser:
             payload = json.loads(text)
             if isinstance(payload, list):
                 return None, self._error("E_ACTION_PAYLOAD_ARRAY", span, actual="json_array")
+            if not isinstance(payload, dict):
+                return None, self._error("E_ACTION_PAYLOAD_NOT_OBJECT", span, actual=type(payload).__name__)
             return payload, None
         except json.JSONDecodeError as exc:
             stripped_text = text.strip()

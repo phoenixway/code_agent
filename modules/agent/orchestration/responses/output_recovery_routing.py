@@ -17,6 +17,7 @@ class OutputRecoveryRoutingMixin:
         "E_ACTION_PAYLOAD_ARRAY": "action_payload_array",
         "E_ACTION_PAYLOAD_XML_FIELDS": "action_payload_xml_fields",
         "E_ACTION_PAYLOAD_TOOL_CODE": "action_payload_tool_code",
+        "E_ACTION_PAYLOAD_NOT_OBJECT": "action_payload_not_object",
     }
     COMPILER_ROUTED_INVALID_KINDS = {
         "malformed_incomplete_think",
@@ -28,6 +29,7 @@ class OutputRecoveryRoutingMixin:
         "action_payload_array",
         "action_payload_xml_fields",
         "action_payload_tool_code",
+        "action_payload_not_object",
         "multiple_actions",
         "file_content_must_follow_action",
     }

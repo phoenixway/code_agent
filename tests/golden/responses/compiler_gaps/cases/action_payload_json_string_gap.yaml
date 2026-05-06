@@ -1,0 +1,15 @@
+name: action_payload_json_string_gap
+input: |
+  <think>This is a valid JSON string, but not an object.</think>
+  <action>"just a string"</action>
+legacy_expectation:
+  handles: true
+  invalid_kind: malformed_action
+compiler_expectation:
+  current_status: ready
+  expected_shape: INVALID
+  expected_error_code: E_ACTION_PAYLOAD_NOT_OBJECT
+  notes: The parser correctly identifies that a JSON string is not a valid object payload.
+migration_target:
+  desired_compiler_behavior: No change needed.
+  priority: high

@@ -1,0 +1,15 @@
+name: action_payload_json_null_gap
+input: |
+  <think>This is valid JSON null, but not an object.</think>
+  <action>null</action>
+legacy_expectation:
+  handles: true
+  invalid_kind: malformed_action
+compiler_expectation:
+  current_status: ready
+  expected_shape: INVALID
+  expected_error_code: E_ACTION_PAYLOAD_NOT_OBJECT
+  notes: The parser correctly identifies that a JSON null is not a valid object payload.
+migration_target:
+  desired_compiler_behavior: No change needed.
+  priority: high
