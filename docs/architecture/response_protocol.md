@@ -33,7 +33,15 @@ This document outlines key invariants of the model response protocol, particular
 - **Compiler Override**: If the protocol compiler identifies the shape as `PRE_ACTION_TEXT_AND_ACTION` with no errors, the runtime is permitted to apply a narrow override. This bypasses the legacy recovery logic and allows the action to be dispatched.
 - **Narrow Scope**: This override must *only* apply to this specific migration case. It must not apply to responses with visible text *after* an action or any other response that the compiler deems invalid.
 
-## 6. Regression Testing Checklist
+## 6. Compiler Authority Boundary
+
+The `ProtocolDecisionBridge` centralizes compiler-vs-legacy authority. Its rules are intentionally narrow to prevent regressions during migration.
+
+- **`PLAINTEXT_ONLY` is not compiler-authoritative**: Legacy recovery policies for cases like `missing_action_or_answer` or plain-think recovery still apply to plaintext-like responses. The compiler does not yet override these.
+- **`PRE_ACTION_TEXT_AND_ACTION` authority is narrow**: The compiler is only authoritative for simple pre-action status text followed by an action. If the response also contains `<think>` or other control blocks, it falls back to legacy `mixed_visible_text_and_control_protocol` recovery.
+- **Action payload errors are compiler-authoritative**: The compiler is the authority for structural action payload errors (e.g., `E_ACTION_PAYLOAD_ARRAY`), preventing dispatch.
+
+## 7. Regression Testing Checklist
 
 To ensure these invariants are maintained, the following test suites must remain green after any related changes:
 
