@@ -43,6 +43,10 @@ class ProtocolParser:
         r"^\s*[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)?\s*\([^{}]*\)\s*$",
         re.DOTALL,
     )
+    PROTOCOL_TAG_IN_STRING_RE = re.compile(
+        r"</?\s*(action|intent|think|file_content|memory_update_done|memory_review|fact|finding|decision|path|progress|subgoal)\b",
+        re.IGNORECASE,
+    )
     THINK_FORBIDDEN_TAG_MAP = {
         "action": "E_ACTION_INSIDE_THINK",
         "intent": "E_INTENT_INSIDE_THINK",
@@ -200,6 +204,9 @@ class ProtocolParser:
             return None, self._error(code, span, actual=exc.msg)
         if not isinstance(payload, dict):
             return None, self._error(code, span, actual=type(payload).__name__)
+        found_tag = self._find_protocol_tag_in_json_strings(payload)
+        if found_tag:
+            return None, self._error("E_PROTOCOL_TAG_IN_JSON_STRING", span, actual=found_tag)
         return payload, None
 
     def _parse_json_any(self, text: str, code: str, span: Span) -> tuple[Any | None, ErrorValue | None]:
@@ -209,6 +216,9 @@ class ProtocolParser:
                 return None, self._error("E_ACTION_PAYLOAD_ARRAY", span, actual="json_array")
             if not isinstance(payload, dict):
                 return None, self._error("E_ACTION_PAYLOAD_NOT_OBJECT", span, actual=type(payload).__name__)
+            found_tag = self._find_protocol_tag_in_json_strings(payload)
+            if found_tag:
+                return None, self._error("E_PROTOCOL_TAG_IN_JSON_STRING", span, actual=found_tag)
             return payload, None
         except json.JSONDecodeError as exc:
             stripped_text = text.strip()
@@ -217,6 +227,23 @@ class ProtocolParser:
             if self.ACTION_TOOL_CODE_RE.match(stripped_text):
                 return None, self._error("E_ACTION_PAYLOAD_TOOL_CODE", span, actual="tool_code_like")
             return None, self._error(code, span, actual=exc.msg)
+
+    def _find_protocol_tag_in_json_strings(self, payload: Any) -> str | None:
+        if isinstance(payload, str):
+            match = self.PROTOCOL_TAG_IN_STRING_RE.search(payload)
+            if match:
+                return match.group(0)
+        elif isinstance(payload, dict):
+            for value in payload.values():
+                found = self._find_protocol_tag_in_json_strings(value)
+                if found:
+                    return found
+        elif isinstance(payload, list):
+            for item in payload:
+                found = self._find_protocol_tag_in_json_strings(item)
+                if found:
+                    return found
+        return None
 
     def _error(self, code: str, span: Span | None, *, actual: str | None = None) -> ErrorValue:
         spec = self.spec.errors[code]

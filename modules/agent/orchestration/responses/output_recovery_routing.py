@@ -18,6 +18,7 @@ class OutputRecoveryRoutingMixin:
         "E_ACTION_PAYLOAD_XML_FIELDS": "action_payload_xml_fields",
         "E_ACTION_PAYLOAD_TOOL_CODE": "action_payload_tool_code",
         "E_ACTION_PAYLOAD_NOT_OBJECT": "action_payload_not_object",
+        "E_PROTOCOL_TAG_IN_JSON_STRING": "protocol_tag_in_json_string",
     }
     COMPILER_ROUTED_INVALID_KINDS = {
         "malformed_incomplete_think",
@@ -30,6 +31,7 @@ class OutputRecoveryRoutingMixin:
         "action_payload_xml_fields",
         "action_payload_tool_code",
         "action_payload_not_object",
+        "protocol_tag_in_json_string",
         "multiple_actions",
         "file_content_must_follow_action",
     }

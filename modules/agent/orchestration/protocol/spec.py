@@ -145,6 +145,12 @@ PROTOCOL_SPEC = ProtocolSpec(
             recovery_id="action_payload_not_object",
             default_message="Action payload must be a JSON object.",
         ),
+        "E_PROTOCOL_TAG_IN_JSON_STRING": ErrorSpec(
+            code="E_PROTOCOL_TAG_IN_JSON_STRING",
+            phase="parse",
+            recovery_id="protocol_tag_in_json_string",
+            default_message="Protocol tag appeared inside a JSON string value.",
+        ),
         "E_INTENT_JSON_INVALID": ErrorSpec(
             code="E_INTENT_JSON_INVALID",
             phase="parse",

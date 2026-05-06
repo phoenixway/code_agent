@@ -1,0 +1,7 @@
+name: invalid_action_json_nested_string_contains_think_tag
+input: |
+  <action>{"args":{"prompt":"This is a prompt with <think> in it."}}</action>
+expected:
+  shape: INVALID
+  error_code: E_PROTOCOL_TAG_IN_JSON_STRING
+  has_ir: false

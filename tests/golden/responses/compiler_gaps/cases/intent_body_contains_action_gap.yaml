@@ -5,10 +5,13 @@ legacy_expectation:
   handles: true
   invalid_kind: intent_body_contains_action
 compiler_expectation:
-  current_status: missing
-  expected_shape: INTENT_ONLY
-  expected_error_code: null
-  notes: The compiler does not currently inspect JSON string values for nested protocol tags. It parses this as a valid intent.
+  current_status: ready
+  expected_shape: INVALID
+  expected_error_code: E_PROTOCOL_TAG_IN_JSON_STRING
+  notes: The compiler now inspects JSON string values for nested protocol tags.
 migration_target:
-  desired_compiler_behavior: Add a semantic check to the compiler to detect protocol tags inside JSON string values and emit an error like E_PROTOCOL_IN_JSON_STRING.
-  priority: low
+  desired_compiler_behavior: No change needed.
+  priority: high
+triage:
+  verdict: compiler_false_negative
+  reason: Fixed by compiler JSON string protocol-tag validation.

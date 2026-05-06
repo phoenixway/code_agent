@@ -1,0 +1,9 @@
+name: valid_intent_json_string_with_angle_comparison
+input: |
+  <intent mode="activate">{"intent_id":"x","intent_type":"INVESTIGATE","goal":"Check whether a < b in docs"}</intent>
+expected:
+  shape: INTENT_ONLY
+  error_code: null
+  has_ir: true
+expected_shadow_mismatches:
+  - has_visible_answer

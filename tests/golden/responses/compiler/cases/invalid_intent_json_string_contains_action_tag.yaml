@@ -1,0 +1,7 @@
+name: invalid_intent_json_string_contains_action_tag
+input: |
+  <intent mode="activate">{"goal":"do <action>something</action>"}</intent>
+expected:
+  shape: INVALID
+  error_code: E_PROTOCOL_TAG_IN_JSON_STRING
+  has_ir: false

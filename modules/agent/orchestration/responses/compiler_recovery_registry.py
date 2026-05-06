@@ -100,6 +100,13 @@ class CompilerRecoveryRegistry:
                 handler_key="malformed_action",
             ),
             CompilerRecoveryStrategy(
+                id="protocol_tag_in_json_string",
+                error_codes=("E_PROTOCOL_TAG_IN_JSON_STRING",),
+                recovery_ids=("protocol_tag_in_json_string",),
+                invalid_kind="protocol_tag_in_json_string",
+                handler_key="malformed_action",
+            ),
+            CompilerRecoveryStrategy(
                 id="atomic_bundle_exactly_one_action_array",
                 error_codes=("E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION",),
                 recovery_ids=("atomic_bundle_exactly_one_action",),
