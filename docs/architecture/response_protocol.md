@@ -41,7 +41,98 @@ The `ProtocolDecisionBridge` centralizes compiler-vs-legacy authority. Its rules
 - **`PRE_ACTION_TEXT_AND_ACTION` authority is narrow**: The compiler is only authoritative for simple pre-action status text followed by an action. If the response also contains `<think>` or other control blocks, it falls back to legacy `mixed_visible_text_and_control_protocol` recovery.
 - **Action payload errors are compiler-authoritative**: The compiler is the authority for structural action payload errors (e.g., `E_ACTION_PAYLOAD_ARRAY`), preventing dispatch.
 
-## 7. Regression Testing Checklist
+## 8. Compiler Authority Migration Backlog
+
+This section outlines the process and backlog for migrating response protocol decisions from legacy semantics to compiler authority.
+
+### Current State
+
+#### Compiler-Authoritative
+
+The `ProtocolDecisionBridge` currently grants authority to the compiler for a narrow set of well-defined cases:
+
+- **Simple `PRE_ACTION_TEXT_AND_ACTION`**: A response containing only leading visible text before a single action, without any other control blocks like `<think>`.
+- **Action Payload Diagnostics**: Structural errors in the action payload, such as `E_ACTION_PAYLOAD_ARRAY`.
+
+#### Legacy-Governed
+
+Most semantic and policy-level decisions remain under legacy control. The compiler may correctly identify the shape, but legacy recovery logic is still authoritative. These include:
+
+- **`PLAINTEXT_ONLY` responses**: These often overlap with legacy recovery policies for `missing_action_or_answer` or plain-think recovery. The compiler cannot yet safely override these.
+- **Mixed `PRE_ACTION_TEXT_AND_ACTION`**: If the response contains `<think>` or other control blocks mixed with visible prose and an action, it falls back to legacy `mixed_visible_text_and_control_protocol` recovery.
+- **Plain-think recovery**: Responses containing only a `<think>` block without an action.
+- **Missing action/answer policy**: General cases where the model fails to produce a required action or final answer.
+- **Evidence sufficiency**: Policies that guard against premature final answers without sufficient evidence (e.g., `modify_completion_claim_without_state_change_proof`).
+- **Subgoal validation**: Policies around `mark_done` usage.
+- **Search narrowing**: Policies that detect repeated low-value or broad searches.
+
+### Migration Process
+
+Migrating a category from legacy to compiler authority requires a careful, test-driven process.
+
+#### Entry Criteria
+
+Before adding a new rule to `ProtocolDecisionBridge`, the following criteria must be met:
+
+1.  **Compiler Golden Coverage**: The compiler must have golden test cases (`tests/golden/responses/compiler/cases/`) that correctly identify the shape and any relevant errors for the target category.
+2.  **Semantic Shadow Coverage**: Semantic shadow tests (`tests/golden/responses/test_semantic_shadow.py`) should be run to compare compiler semantics against legacy helpers, with any disagreements documented.
+3.  **Runtime Integration Coverage**: A runtime integration test (e.g., in `tests/test_protocol_compiler_runtime_integration.py`) must exist to prove the compiler's decision correctly flows through the pipeline.
+4.  **Negative Legacy-Regression Case**: A test must exist that proves the new rule does *not* incorrectly suppress a valid legacy recovery path (e.g., `test_mixed_visible_text_recovery_happens_before_action_policy`).
+5.  **Real-World Evidence**: Where possible, the decision should be supported by evidence from real model outputs (e.g., smoke test logs or production dumps).
+
+#### Steps
+
+1.  Add or verify compiler golden test coverage for the specific response shape.
+2.  Add or verify semantic shadow tests to understand any gaps between compiler and legacy views.
+3.  Add a new, narrow rule to `ProtocolDecisionBridge`.
+4.  Add a runtime integration test that asserts the new authority rule leads to the correct pipeline outcome (e.g., `dispatch_ready` or a specific recovery).
+5.  Keep the legacy logic as a fallback until the new compiler-driven category is fully proven.
+
+### Important Warnings
+
+- **Do not make `compiler_shape` alone authoritative.** The policy boundary must be clear and tested. A correct shape from the compiler does not automatically mean legacy recovery policies are wrong.
+- **`PLAINTEXT_ONLY` is a prime example.** While the compiler can identify this shape, it does not have the context to decide whether the response is a valid final answer or a case that requires `missing_action_or_answer` recovery. Authority must be granted based on more than just the shape.
+
+### ACTION_ONLY Migration Audit
+
+This audit assesses the feasibility of making `ACTION_ONLY` a compiler-authoritative shape.
+
+#### Current Flow
+
+A response classified as `ACTION_ONLY` by the compiler still passes through the full legacy pipeline:
+
+1.  **Output Recovery**: It is checked for legacy `invalid_kind`s like `missing_memory_update_done`.
+2.  **Action Policy**: It is checked against the active intent's `allowed_actions`.
+3.  **Dispatch**: If it passes all checks, it is dispatched.
+
+#### Coexisting Invalid Kinds
+
+A response can have `compiler_shape="ACTION_ONLY"` but still be invalid due to legacy or runtime policies.
+
+**Safe Candidates for Compiler Authority (already diagnosed by compiler):**
+
+- Malformed action payload (e.g., not a JSON object).
+- `write_file_block` missing its `<file_content>` block.
+
+**Unsafe Candidates (must remain legacy/runtime governed for now):**
+
+- **Missing memory checkpoint**: Policies like `missing_memory_update_done` or `state_changing_action_requires_think_reflection` are runtime-dependent and not purely structural.
+- **Action not allowed by intent**: This is a core `ActionPolicy` check based on the active intent's contract.
+- **No-op edits**: A runtime check to prevent actions that have no effect.
+- **Edit retries requiring fresh reads**: A runtime policy to ensure data consistency.
+
+#### Path to Migration
+
+Before `ACTION_ONLY` can become compiler-authoritative, even for a subset of cases, the following tests are required:
+
+1.  A test proving that a valid `ACTION_ONLY` response with a legacy `invalid_kind` (e.g., `missing_memory_update_done`) is **not** overridden by the compiler and still triggers recovery.
+2.  A test proving that a valid `ACTION_ONLY` response that is disallowed by `ActionPolicy` is **not** dispatched.
+
+#### Warning
+
+`compiler_shape == "ACTION_ONLY"` alone is insufficient to grant authority. It must not suppress legacy `invalid_kind`s related to runtime policy, such as missing checkpoints or disallowed actions. Any future authority rule must be extremely narrow, likely combined with other compiler diagnostics.
+
+## 9. Regression Testing Checklist
 
 To ensure these invariants are maintained, the following test suites must remain green after any related changes:
 

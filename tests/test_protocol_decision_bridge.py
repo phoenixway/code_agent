@@ -97,6 +97,24 @@ class ProtocolDecisionBridgeTests(unittest.TestCase):
         self.assertFalse(decision.suppress_legacy_invalid_kind)
         self.assertIsNone(decision.dispatch_allowed)
 
+    def test_action_only_is_legacy_authoritative_for_now(self):
+        """
+        A valid ACTION_ONLY shape with no compiler error still falls back
+        to legacy authority, because it may have legacy policy violations.
+        """
+        parsed_output = DummyParsedOutput(
+            compiler_shape="ACTION_ONLY",
+            has_action_segment=True,
+            compiler_ir=SimpleNamespace(
+                action_count=1,
+                has_think=False,
+                has_checkpoint=False,
+            ),
+        )
+        decision = resolve_protocol_authority(parsed_output, parsed_action_count=1)
+        self.assertEqual("legacy", decision.source)
+        self.assertFalse(decision.suppress_legacy_invalid_kind)
+
 
 if __name__ == "__main__":
     unittest.main()
