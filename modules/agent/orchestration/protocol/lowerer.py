@@ -62,15 +62,29 @@ class ProtocolLowerer:
         intent_nodes = [node for node in ast.nodes if isinstance(node, IntentNode)]
         action_nodes = [node for node in ast.nodes if isinstance(node, ActionNode)]
         file_nodes = [node for node in ast.nodes if isinstance(node, FileContentNode)]
-        visible_nodes = [node for node in ast.nodes if isinstance(node, VisibleTextNode) and node.text.strip()]
 
+        # Compute raw semantic values
+        think_text = "\n".join(node.content for node in think_nodes if node.content)
+        visible_text = self._merge_visible_text(ast) or ""
+        file_content_text = file_nodes[0].content if file_nodes else ""
+
+        # Lower to primary IR ops
         annotations = tuple(AnnotationIR(kind="think", text=node.content) for node in think_nodes)
         board_ops = tuple(self._lower_board_nodes(memory_nodes, subgoal_nodes, marker_nodes))
         intent_ops = tuple(self._lower_intent_node(node) for node in intent_nodes if isinstance(node.json_payload, dict))
-        file_content = file_nodes[0].content if file_nodes else None
-        action_ops = tuple(self._lower_action_node(node, file_content) for node in action_nodes)
-        visible_answer = self._merge_visible_text(ast)
-        effects_preview = tuple(self._preview_effects(intent_ops, action_ops, visible_answer, file_content))
+        action_ops = tuple(self._lower_action_node(node, file_content_text or None) for node in action_nodes)
+        effects_preview = tuple(self._preview_effects(intent_ops, action_ops, visible_text or None, file_content_text or None))
+
+        # Compute derived semantic flags
+        has_think = bool(think_text.strip())
+        has_visible_answer = bool(visible_text.strip())
+        has_action = len(action_ops) > 0
+        action_count = len(action_ops)
+        has_memory_checkpoint = len(memory_nodes) > 0 or len(marker_nodes) > 0
+        has_plan_checkpoint = len(subgoal_nodes) > 0
+        has_checkpoint = has_memory_checkpoint or has_plan_checkpoint
+        has_file_content = len(file_nodes) > 0
+        file_content_count = len(file_nodes)
 
         return ResponseIR(
             shape=shape,
@@ -78,9 +92,19 @@ class ProtocolLowerer:
             board_ops=board_ops,
             intent_ops=intent_ops,
             action_ops=action_ops,
-            visible_answer=visible_answer,
-            file_content=file_content,
             effects_preview=effects_preview,
+            has_think=has_think,
+            think_text=think_text,
+            has_visible_answer=has_visible_answer,
+            visible_text=visible_text,
+            has_action=has_action,
+            action_count=action_count,
+            has_checkpoint=has_checkpoint,
+            has_memory_checkpoint=has_memory_checkpoint,
+            has_plan_checkpoint=has_plan_checkpoint,
+            has_file_content=has_file_content,
+            file_content_count=file_content_count,
+            file_content_text=file_content_text,
         ), None
 
     def _lower_board_nodes(self, memory_nodes, subgoal_nodes, marker_nodes):

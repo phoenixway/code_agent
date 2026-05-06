@@ -101,6 +101,7 @@ make smoke         # Run end-to-end smoke flow (/add -> tool -> /drop)
 make test-core     # Core logic (parser, processor, context)
 make test-tools    # Tool definitions (files, shell, search)
 make test-commands # CLI command logic
+make test-compiler # Protocol compiler golden tests
 
 # Versioning (requires bump-my-version)
 make bump-patch    # 0.1.0 -> 0.1.1

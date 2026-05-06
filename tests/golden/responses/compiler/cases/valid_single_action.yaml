@@ -1,0 +1,17 @@
+name: valid_single_action
+input: |
+  <think>Need to inspect the file first.</think>
+  <memory_update_done />
+  <action>{"action":"read_file","args":{"path":"tui.py"}}</action>
+expected:
+  shape: ACTION_ONLY
+  error_code: null
+  recovery_id: null
+  has_ir: true
+  action_count: 1
+  has_visible_answer: false
+  has_think: true
+  has_checkpoint: true
+expected_shadow_mismatches:
+  - has_checkpoint
+  - has_visible_answer

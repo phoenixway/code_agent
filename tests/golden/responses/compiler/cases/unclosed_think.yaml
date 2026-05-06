@@ -1,0 +1,13 @@
+name: unclosed_think
+input: |
+  <think>Need to inspect file
+expected:
+  shape: INVALID
+  error_code: E_UNCLOSED_THINK
+  recovery_id: not_null
+  has_ir: false
+  action_count: 0
+  has_visible_answer: false
+expected_shadow_mismatches:
+  - has_think
+  - invalid_kind

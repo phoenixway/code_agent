@@ -1,0 +1,15 @@
+name: action_inside_think
+input: |
+  <think>Need to inspect <action>{"action":"read_file","args":{"path":"x.py"}}</action></think>
+expected:
+  shape: INVALID
+  error_code: E_AMBIGUOUS_PROTOCOL_SYNTAX
+  recovery_id: not_null
+  has_ir: false
+  action_count: 0
+  has_visible_answer: false
+expected_shadow_mismatches:
+  - invalid_kind
+  - has_think
+  - has_action
+  - action_count

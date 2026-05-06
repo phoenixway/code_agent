@@ -244,9 +244,31 @@ class ResponseIR:
     board_ops: tuple[BoardOpIR, ...]
     intent_ops: tuple[IntentOpIR, ...]
     action_ops: tuple[ActionOpIR, ...]
-    visible_answer: str | None
-    file_content: str | None
     effects_preview: tuple[EffectPreview, ...]
+
+    # Derived semantic fields
+    has_think: bool = False
+    think_text: str = ""
+    has_visible_answer: bool = False
+    visible_text: str = ""
+    has_action: bool = False
+    action_count: int = 0
+    has_checkpoint: bool = False
+    has_memory_checkpoint: bool = False
+    has_plan_checkpoint: bool = False
+    has_file_content: bool = False
+    file_content_count: int = 0
+    file_content_text: str = ""
+
+    @property
+    def visible_answer(self) -> str:
+        """Compatibility property for legacy visible_answer."""
+        return self.visible_text
+
+    @property
+    def file_content(self) -> str:
+        """Compatibility property for legacy file_content."""
+        return self.file_content_text
 
 
 @dataclass(frozen=True)

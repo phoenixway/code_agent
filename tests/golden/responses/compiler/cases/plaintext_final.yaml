@@ -1,0 +1,12 @@
+name: plaintext_final
+input: |
+  This is a normal assistant answer.
+expected:
+  shape: PLAINTEXT_ONLY
+  error_code: null
+  recovery_id: null
+  has_ir: true
+  action_count: 0
+  has_visible_answer: true
+  has_think: false
+  has_checkpoint: false

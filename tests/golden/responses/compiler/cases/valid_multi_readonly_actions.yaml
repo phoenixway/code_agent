@@ -1,0 +1,17 @@
+name: valid_multi_readonly_actions
+input: |
+  <think>Need to inspect files.</think>
+  <memory_update_done />
+  <action>{"action":"read_file","args":{"path":"tui.py"}}</action>
+  <action>{"action":"read_file","args":{"path":"core.py"}}</action>
+expected:
+  shape: READ_ONLY_BATCH_CANDIDATE
+  error_code: null
+  recovery_id: null
+  has_ir: true
+  action_count: 2
+  has_visible_answer: false
+expected_shadow_mismatches:
+  - has_checkpoint
+  - has_visible_answer
+  - has_think

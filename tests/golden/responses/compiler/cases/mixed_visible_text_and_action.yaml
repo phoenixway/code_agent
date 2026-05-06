@@ -1,0 +1,13 @@
+name: mixed_visible_text_and_action
+input: |
+  I will inspect the file.
+  <action>{"action":"read_file","args":{"path":"tui.py"}}</action>
+expected:
+  shape: INVALID
+  error_code: E_MIXED_VISIBLE_TEXT_AND_CONTROL
+  recovery_id: not_null
+  has_ir: false
+  action_count: 0
+  has_visible_answer: true
+expected_shadow_mismatches:
+  - invalid_kind

@@ -1,0 +1,13 @@
+name: file_content_unclosed
+input: |
+  <file_content path="x.py">
+  print("hello")
+expected:
+  shape: INVALID
+  error_code: E_FILE_CONTENT_UNCLOSED
+  recovery_id: not_null
+  has_ir: false
+  action_count: 0
+  has_visible_answer: false
+expected_shadow_mismatches:
+  - invalid_kind
