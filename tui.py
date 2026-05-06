@@ -85,7 +85,7 @@ class TUI(App):
             self.agent.state.note_technical_interruption(interruption, current_query=user_input)
             await self.ui.print_technical_interruption(self.agent.state.last_technical_interruption)
         except Exception as e:
-            self.agent.log.error(f"ERROR in prompt processing: {e}")
+            self.agent.log.exception("ERROR in prompt processing")
             await self.ui.print_error(f"Critical error: {e}")
         finally:
             if self.app._running:
