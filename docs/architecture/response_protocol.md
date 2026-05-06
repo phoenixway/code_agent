@@ -42,7 +42,7 @@ The `ProtocolDecisionBridge` centralizes compiler-vs-legacy authority. Its rules
 - **Action payload errors are compiler-authoritative**: The compiler is the authority for structural action payload errors (e.g., `E_ACTION_PAYLOAD_ARRAY`), preventing dispatch.
 - **File Content Pairing Diagnostics**: The compiler is authoritative for structural errors related to `write_file_block` and `<file_content>` pairing, such as `E_FILE_CONTENT_REQUIRES_ACTION`.
 
-## 8. Compiler Authority Migration Backlog
+## 7. Compiler Authority Migration Backlog
 
 This section outlines the process and backlog for migrating response protocol decisions from legacy semantics to compiler authority.
 
@@ -134,7 +134,39 @@ Before `ACTION_ONLY` can become compiler-authoritative, even for a subset of cas
 
 `compiler_shape == "ACTION_ONLY"` alone is insufficient to grant authority. It must not suppress legacy `invalid_kind`s related to runtime policy, such as missing checkpoints or disallowed actions. Any future authority rule must be extremely narrow, likely combined with other compiler diagnostics.
 
-## 9. Regression Testing Checklist
+## 8. Compiler Error Code Authority Matrix
+
+This table inventories compiler error codes and their authority status in `ProtocolDecisionBridge`.
+
+Note: Some structural errors may have compiler diagnostics and recovery mappings in `output_recovery_routing.py`, but they are not considered compiler-authoritative unless explicitly listed in a `ProtocolDecisionBridge` set.
+
+| Error Code | `invalid_kind` Mapping | Category | Bridge Authority | Notes |
+|---|---|---|---|---|
+| `E_UNCLOSED_THINK` | `malformed_incomplete_think` | Structural | Legacy | Has recovery mapping but is not yet compiler-authoritative. |
+| `E_ACTION_INSIDE_THINK` | `action_inside_think` | Structural | Legacy | Has recovery mapping but is not yet compiler-authoritative. |
+| `E_INTENT_INSIDE_THINK` | `intent_inside_think` | Structural | Legacy | Has recovery mapping but is not yet compiler-authoritative. |
+| `E_FILE_CONTENT_INSIDE_THINK` | `file_content_inside_think` | Structural | Compiler | File content pairing is structural. |
+| `E_FILE_CONTENT_UNCLOSED` | `malformed_incomplete_file_content` | Structural | Compiler | File content pairing is structural. |
+| `E_FILE_CONTENT_REQUIRES_ACTION` | `file_content_must_follow_action` | Structural | Compiler | File content pairing is structural. |
+| `E_ACTION_PAYLOAD_ARRAY` | `action_payload_array` | Structural | Compiler | Action payload shape is structural. |
+| `E_ACTION_PAYLOAD_NOT_OBJECT` | `action_payload_not_object` | Structural | Compiler | Action payload shape is structural. |
+| `E_ACTION_PAYLOAD_XML_FIELDS` | `action_payload_xml_fields` | Structural | Compiler | Action payload shape is structural. |
+| `E_ACTION_PAYLOAD_TOOL_CODE` | `action_payload_tool_code` | Structural | Compiler | Action payload shape is structural. |
+| `E_PROTOCOL_TAG_IN_JSON_STRING` | `protocol_tag_in_json_string` | Structural | Compiler | Action payload content is structural. |
+| `E_MIXED_VISIBLE_TEXT_AND_CONTROL` | `mixed_visible_text_and_control_protocol` | Structural | Legacy | Authority is narrow; only simple `PRE_ACTION_TEXT_AND_ACTION` is compiler-authoritative. |
+| `E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION` | `action_payload_array` or `multiple_actions` | Runtime Policy | Legacy | Related to atomic bundle policy, which is runtime-dependent. |
+
+## 9. Inventory Consistency Rules
+
+To keep documentation and behavior aligned, the following rules apply:
+
+- **Bridge is source of truth**: Any error code considered compiler-authoritative *must* be in one of the `COMPILER_*_ERROR_CODES` sets in `ProtocolDecisionBridge`.
+- **Docs must match bridge**: The authority matrix in this document must accurately reflect the sets in `ProtocolDecisionBridge`.
+- **Test coverage is required**: Every code in a `ProtocolDecisionBridge` set must have at least one test in `tests/test_protocol_decision_bridge.py` confirming its authority.
+- **Gap matrix for gaps**: If a compiler error code exists but is not yet authoritative, it should have a `tests/golden/responses/compiler_gaps/` case to document the gap. It must not be listed as compiler-authoritative in the docs.
+- **Recovery mappings are separate**: `invalid_kind` mappings in `output_recovery_routing.py` or `response_pipeline_prevalidation.py` may exist before a code is compiler-authoritative. The docs must continue to mark these as `Legacy` authority until they are added to the bridge.
+
+## 10. Regression Testing Checklist
 
 To ensure these invariants are maintained, the following test suites must remain green after any related changes:
 
