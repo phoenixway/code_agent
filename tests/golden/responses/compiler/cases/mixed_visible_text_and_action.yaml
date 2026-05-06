@@ -3,11 +3,13 @@ input: |
   I will inspect the file.
   <action>{"action":"read_file","args":{"path":"tui.py"}}</action>
 expected:
-  shape: INVALID
-  error_code: E_MIXED_VISIBLE_TEXT_AND_CONTROL
-  recovery_id: not_null
-  has_ir: false
-  action_count: 0
-  has_visible_answer: true
+  shape: PRE_ACTION_TEXT_AND_ACTION
+  error_code: null
+  has_ir: true
+  has_visible_answer: false
+  has_pre_action_text: true
+  action_count: 1
+notes: This case now documents the new semantics - leading visible text before an action is pre_action_text, not a final answer.
 expected_shadow_mismatches:
+  - has_visible_answer
   - invalid_kind

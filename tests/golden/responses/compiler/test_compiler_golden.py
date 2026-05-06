@@ -87,6 +87,13 @@ def has_think(analysis: CompilerAnalysis) -> bool:
     return False
 
 
+def has_pre_action_text(analysis: CompilerAnalysis) -> bool:
+    """Check if there is any pre-action text, checking IR first."""
+    if analysis.ir:
+        return analysis.ir.has_pre_action_text
+    return False
+
+
 def has_checkpoint(analysis: CompilerAnalysis) -> bool:
     """Check if there are any checkpoint tags, checking IR first, then AST."""
     if analysis.ir:
@@ -148,3 +155,7 @@ def test_compiler_golden_case(case_file: Path):
     if "has_checkpoint" in expected:
         actual_has_checkpoint = has_checkpoint(analysis)
         assert actual_has_checkpoint == expected["has_checkpoint"], f"[{case_name}] Has checkpoint mismatch"
+
+    if "has_pre_action_text" in expected:
+        actual_has_pre_action_text = has_pre_action_text(analysis)
+        assert actual_has_pre_action_text == expected["has_pre_action_text"], f"[{case_name}] Has pre-action text mismatch"

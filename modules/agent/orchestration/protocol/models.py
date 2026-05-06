@@ -71,6 +71,7 @@ class ResponseShape(str, Enum):
     MEMORY_TEXT = "memory_text"
     ACTION_ONLY = "action_only"
     READ_ONLY_BATCH_CANDIDATE = "read_only_batch_candidate"
+    PRE_ACTION_TEXT_AND_ACTION = "pre_action_text_and_action"
     INTENT_ONLY = "intent_only"
     INTENT_ACTION_BUNDLE = "intent_action_bundle"
     INTENT_COMPLETE_WITH_TEXT = "intent_complete_with_text"
@@ -251,6 +252,8 @@ class ResponseIR:
     think_text: str = ""
     has_visible_answer: bool = False
     visible_text: str = ""
+    has_pre_action_text: bool = False
+    pre_action_text: str = ""
     has_action: bool = False
     action_count: int = 0
     has_checkpoint: bool = False

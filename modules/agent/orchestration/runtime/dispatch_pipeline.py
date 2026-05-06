@@ -79,10 +79,26 @@ class DispatchPipeline:
         )
 
     async def run_iteration(self, ctx, iteration):
+        execution_plan = getattr(iteration, "execution_plan", None)
+        pre_action_text_emitted = False
+        pre_action_text_chars = 0
+        ui = getattr(self, "ui", None)
+        if execution_plan and ui:
+            for effect in execution_plan.output_effects:
+                if isinstance(effect, str) and effect.startswith("pre_action_text:"):
+                    text_to_print = effect.split(":", 1)[1]
+                    if text_to_print:
+                        await ui.print_message(text_to_print, role="assistant")
+                        pre_action_text_emitted = True
+                        pre_action_text_chars = len(text_to_print)
+                        break
+
         self.stage_logger.log(
             "post_dispatch_pipeline",
             "start",
             action_count=iteration.parsed_action_count,
+            pre_action_text_emitted=pre_action_text_emitted,
+            pre_action_text_chars=pre_action_text_chars,
         )
         processed_segs, sys_results, should_stop = await self._dispatch_segments(ctx, iteration.segments)
         decision = await self.dispatch_outcome.handle(ctx, processed_segs, sys_results, should_stop)

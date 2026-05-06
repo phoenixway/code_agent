@@ -83,7 +83,22 @@ class ProtocolCompiler:
             if self._intent_mode(intent_nodes[0]) == "complete":
                 return ResponseShape.INTENT_COMPLETE_WITH_TEXT, None
 
-        if visible_nodes and any(isinstance(node, (ActionNode, FileContentNode)) for node in control_nodes):
+        first_action_idx = next((i for i, n in enumerate(nodes) if isinstance(n, ActionNode)), -1)
+        last_visible_idx = (
+            nodes.index(visible_nodes[-1]) if visible_nodes else -1
+        )
+
+        if first_action_idx != -1 and last_visible_idx > first_action_idx:
+            return ResponseShape.INVALID, self._error(
+                "E_VISIBLE_TEXT_AFTER_ACTION",
+                nodes[last_visible_idx].span,
+                invalid_part="visible_text_after_action",
+            )
+
+        if visible_nodes and len(action_nodes) == 1 and not intent_nodes:
+            return ResponseShape.PRE_ACTION_TEXT_AND_ACTION, None
+
+        if visible_nodes and (intent_nodes or len(action_nodes) > 1):
             if len(intent_nodes) == 1 and self._intent_mode(intent_nodes[0]) == "complete" and not action_nodes:
                 return ResponseShape.INTENT_COMPLETE_WITH_TEXT, None
             return ResponseShape.INVALID, self._error(

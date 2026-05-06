@@ -65,7 +65,12 @@ class ProtocolLowerer:
 
         # Compute raw semantic values
         think_text = "\n".join(node.content for node in think_nodes if node.content)
-        visible_text = self._merge_visible_text(ast) or ""
+        pre_action_text = ""
+        visible_text = ""
+        if shape == ResponseShape.PRE_ACTION_TEXT_AND_ACTION:
+            pre_action_text = self._merge_visible_text(ast) or ""
+        else:
+            visible_text = self._merge_visible_text(ast) or ""
         file_content_text = file_nodes[0].content if file_nodes else ""
 
         # Lower to primary IR ops
@@ -78,6 +83,7 @@ class ProtocolLowerer:
         # Compute derived semantic flags
         has_think = bool(think_text.strip())
         has_visible_answer = bool(visible_text.strip())
+        has_pre_action_text = bool(pre_action_text.strip())
         has_action = len(action_ops) > 0
         action_count = len(action_ops)
         has_memory_checkpoint = len(memory_nodes) > 0 or len(marker_nodes) > 0
@@ -97,6 +103,8 @@ class ProtocolLowerer:
             think_text=think_text,
             has_visible_answer=has_visible_answer,
             visible_text=visible_text,
+            has_pre_action_text=has_pre_action_text,
+            pre_action_text=pre_action_text,
             has_action=has_action,
             action_count=action_count,
             has_checkpoint=has_checkpoint,

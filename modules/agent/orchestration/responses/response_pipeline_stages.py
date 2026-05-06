@@ -47,13 +47,18 @@ class ResponsePipelineStagesMixin:
         if payload_mode not in {"activate", "reuse", "replace"}:
             return None
         compiler_shape = str(getattr(parsed_output, "compiler_shape", "") or "").strip().upper()
-        if compiler_shape not in {"ACTION_ONLY", "INTENT_ACTION_BUNDLE"}:
+        if compiler_shape not in {"ACTION_ONLY", "INTENT_ACTION_BUNDLE", "PRE_ACTION_TEXT_AND_ACTION"}:
             return None
         if not self.semantics.has_any_action_proposal(parsed_output, parsed_action_count):
             return None
         ir = getattr(parsed_output, "compiler_ir", None)
         if ir is None:
             return None
+
+        output_effects: list[str] = []
+        if compiler_shape == "PRE_ACTION_TEXT_AND_ACTION" and ir.has_pre_action_text and ir.pre_action_text:
+            output_effects.append(f"pre_action_text:{ir.pre_action_text}")
+
         active_intent = getattr(self.state, "active_intent", None)
         after_intent_id = str(getattr(active_intent, "intent_id", "") or "").strip()
         transition_info = dict(getattr(getattr(self.state, "intent_runtime", None), "last_transition_info", {}) or {})
@@ -79,7 +84,7 @@ class ResponsePipelineStagesMixin:
             transaction_kind="atomic_intent_action_bundle",
             state_effects=state_effects,
             action_effects=action_effects,
-            output_effects=[],
+            output_effects=output_effects,
             bundle_validated=True,
             transition_applied=True,
             action_dispatched=False,

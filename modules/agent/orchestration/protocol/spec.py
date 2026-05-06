@@ -42,6 +42,11 @@ PROTOCOL_SPEC = ProtocolSpec(
             sequence=("think?", "board*", "memory_update_done?", "action", "action+"),
             constraints=("no_intent", "read_only_batch_only", "no_visible_text"),
         ),
+        "PRE_ACTION_TEXT_AND_ACTION": ShapeSpec(
+            name="PRE_ACTION_TEXT_AND_ACTION",
+            sequence=("think?", "board*", "memory_update_done?", "visible_text+", "action", "file_content?"),
+            constraints=("no_intent", "single_action_object", "no_text_after_action"),
+        ),
         "INTENT_ONLY": ShapeSpec(
             name="INTENT_ONLY",
             sequence=("think?", "board*", "memory_update_done?", "intent"),
@@ -82,6 +87,12 @@ PROTOCOL_SPEC = ProtocolSpec(
             phase="shape",
             applies_to="ALL",
             error_code="E_FILE_CONTENT_REQUIRES_ACTION",
+        ),
+        ConstraintSpec(
+            id="visible_text_after_action",
+            phase="shape",
+            applies_to="ALL",
+            error_code="E_VISIBLE_TEXT_AFTER_ACTION",
         ),
     ),
     errors={
@@ -180,6 +191,12 @@ PROTOCOL_SPEC = ProtocolSpec(
             phase="shape",
             recovery_id="atomic_bundle_exactly_one_action",
             default_message="Atomic intent/action bundles require exactly one action.",
+        ),
+        "E_VISIBLE_TEXT_AFTER_ACTION": ErrorSpec(
+            code="E_VISIBLE_TEXT_AFTER_ACTION",
+            phase="shape",
+            recovery_id="visible_text_after_action",
+            default_message="Visible text cannot appear after an action.",
         ),
         "E_FILE_CONTENT_REQUIRES_ACTION": ErrorSpec(
             code="E_FILE_CONTENT_REQUIRES_ACTION",

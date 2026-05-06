@@ -1,0 +1,9 @@
+name: action_then_visible_text_is_invalid
+input: |
+  <action>{"type":"search_content","pattern":"Capability","path":"app/src/main/java","recursive":true,"code_only":true}</action>
+
+  Ось що я знайшов...
+expected:
+  shape: INVALID
+  error_code: E_VISIBLE_TEXT_AFTER_ACTION
+  has_ir: false

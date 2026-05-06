@@ -1,0 +1,20 @@
+name: runtime_shadow_nested_think_in_think_text
+input: |
+  <think>
+  I am thinking about thinking. A nested `<think>` block would be invalid.
+  </think>
+  <action>{"type":"read_file","path":"x.py"}</action>
+legacy_expectation:
+  handles: true
+  invalid_kind: nested_think
+compiler_expectation:
+  current_status: ready
+  expected_shape: ACTION_ONLY
+  expected_error_code: null
+  notes: The compiler correctly treats protocol-like text inside a think block as plain text.
+migration_target:
+  desired_compiler_behavior: No change needed. This legacy behavior should not be preserved.
+  priority: high
+triage:
+  verdict: legacy_false_positive
+  reason: Legacy regex incorrectly flags literal text inside a think block as a structural protocol violation. The compiler is correct.

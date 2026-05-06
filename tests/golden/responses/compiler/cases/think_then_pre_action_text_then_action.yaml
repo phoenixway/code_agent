@@ -1,0 +1,15 @@
+name: think_then_pre_action_text_then_action
+input: |
+  <think>I need to inspect the project before giving a repo-specific guide.</think>
+  Я зараз перевірю визначення capabilities і після цього дам точний гайд.
+  <action>{"type":"search_content","pattern":"Capability","path":"app/src/main/java","recursive":true,"code_only":true}</action>
+expected:
+  shape: PRE_ACTION_TEXT_AND_ACTION
+  error_code: null
+  has_ir: true
+  has_think: true
+  has_visible_answer: false
+  has_pre_action_text: true
+  action_count: 1
+expected_shadow_mismatches:
+  - has_visible_answer
