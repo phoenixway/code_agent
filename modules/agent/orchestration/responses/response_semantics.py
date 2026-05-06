@@ -242,6 +242,14 @@ class ResponseSemantics:
             return False
         return bool(self.LEAKED_SYSTEM_RESULT_RE.search(text))
 
+    def has_any_action_proposal(self, parsed_output, parsed_action_count: int) -> bool:
+        if int(parsed_action_count or 0) > 0:
+            return True
+        ir = getattr(parsed_output, "compiler_ir", None)
+        if ir is not None and len(list(getattr(ir, "action_ops", ()) or ())) > 0:
+            return True
+        return bool(getattr(parsed_output, "has_action_segment", False))
+
     def is_reflection_only_repair_turn(self, raw_response: str, parsed_output, parsed_action_count: int) -> bool:
         return self.is_durable_state_repair_turn(
             raw_response,
@@ -262,7 +270,7 @@ class ResponseSemantics:
         if not text:
             return False
 
-        if parsed_action_count > 0 or bool(getattr(parsed_output, "has_action_segment", False)):
+        if self.has_any_action_proposal(parsed_output, parsed_action_count):
             return False
 
         invalid_kind = str(getattr(parsed_output, "invalid_kind", "") or "").strip()
@@ -284,7 +292,7 @@ class ResponseSemantics:
         if not text:
             return False
 
-        if parsed_action_count > 0 or bool(getattr(parsed_output, "has_action_segment", False)):
+        if self.has_any_action_proposal(parsed_output, parsed_action_count):
             return False
 
         invalid_kind = str(getattr(parsed_output, "invalid_kind", "") or "").strip()

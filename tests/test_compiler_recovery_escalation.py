@@ -52,6 +52,7 @@ class DummyState:
         self.terminal_plaintext_completion_text = ""
         self.compiler_recovery_fingerprint = ""
         self.compiler_recovery_fingerprint_count = 0
+        self.operational_journal = []
         self.pending_finalize = []
 
     def get_stop_reason_count(self, reason):
@@ -135,3 +136,26 @@ async def test_compiler_shape_recovery_handoffs_on_third_repeat():
     assert third.reason == "terminal_recovery_loop_handoff"
     assert agent.state.terminal_plaintext_completion_pending is True
     assert "mixed_visible_text_and_control_protocol" in agent.state.terminal_plaintext_completion_text
+
+
+@pytest.mark.asyncio
+async def test_terminal_recovery_loop_handoff_uses_operational_journal_when_no_action_context_exists():
+    agent = DummyAgent()
+    agent.state.operational_journal = [
+        {
+            "sequence": 1,
+            "kind": "tool_execution_commit",
+            "action_type": "read_chunk",
+            "target": "x.py",
+            "action_dispatched": True,
+        }
+    ]
+    handler = ModelOutputRecoveryHandler(agent, DummyPromptBuilder())
+
+    await handler.decide(_parsed_mixed(), malformed_action_retries=0, audit_marker_retries=0)
+    await handler.decide(_parsed_mixed(), malformed_action_retries=0, audit_marker_retries=0)
+    third = await handler.decide(_parsed_mixed(), malformed_action_retries=0, audit_marker_retries=0)
+
+    assert third.stop_loop is True
+    assert third.reason == "terminal_recovery_loop_handoff"
+    assert "TERMINAL:mixed_visible_text_and_control_protocol:read_chunk:x.py" == agent.state.terminal_plaintext_completion_text

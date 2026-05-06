@@ -323,16 +323,19 @@ class ContractPromptBuilderMixin:
             DURABLE STATE CHECKPOINT RULE:
             - Durable-state checkpointing is mandatory.
             - Every step must run this cycle in order: Sufficiency Check -> State Review -> Memory/Subgoal Update -> Action or Answer.
-            - You MUST emit memory tags and/or formal plan tags:
-              after every <think>,
-              after every meaningful reasoning result,
-              after every tool result that materially changes what is known, what should be done next, or what is already completed,
-              and after every user input that changes the active goal interpretation, plan structure, priorities, constraints, or durable memory relevance.
-            - Put the tags immediately after </think> and before any <action> or plain-text continuation.
+            - If you open <think>, close it with </think> before any memory tag, subgoal tag, <memory_update_done />, <intent>, <action>, <file_content>, or visible answer text.
+            - Do NOT emit memory tags only because <think> exists.
+            - Emit memory tags and/or formal plan tags only when durable state actually changed:
+              a meaningful reasoning result became worth preserving,
+              a tool result materially changed what is known or what must survive compression,
+              or the user input changed the active goal interpretation, plan structure, priorities, constraints, or durable memory relevance.
+            - When durable tags are needed, put them after </think> and before any <action> or plain-text continuation.
             - End the memory/subgoal review block for the step with <memory_update_done />.
-            - If the review found no memory/subgoal mutation to emit, output <memory_update_done /> anyway after the review.
+            - If the review found no durable memory/subgoal mutation to emit, output <memory_update_done /> alone after the review.
             - If the review found no durable mutation but you still need to acknowledge the review explicitly before a risky action, you may emit <memory_review status="no_change" scope="intent" /> immediately before <memory_update_done />.
-            - When in doubt, checkpoint more rather than less.
+            - Do not invent memory tags for routine successful tool usage with no durable insight.
+            - For routine tool success that should survive compression, preserve WHERE path/surface and WHAT changed or was confirmed.
+            - When in doubt, preserve durable conclusions and paths, not speculative filler.
             - Loss of durable operational state after history compression is a critical failure.
 
             Tag selection:

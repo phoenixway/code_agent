@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from ..shared.decision_models import ExecutionPlan
 from ..shared.decision_models import ResponsePipelineOutcome
+from ..shared.trace import compact_compiler_replay
 
 
 @dataclass
@@ -48,7 +49,7 @@ class ResponsePipelineStagesMixin:
         compiler_shape = str(getattr(parsed_output, "compiler_shape", "") or "").strip().upper()
         if compiler_shape not in {"ACTION_ONLY", "INTENT_ACTION_BUNDLE"}:
             return None
-        if parsed_action_count <= 0 and not bool(getattr(parsed_output, "has_action_segment", False)):
+        if not self.semantics.has_any_action_proposal(parsed_output, parsed_action_count):
             return None
         ir = getattr(parsed_output, "compiler_ir", None)
         if ir is None:
@@ -86,41 +87,6 @@ class ResponsePipelineStagesMixin:
             before_active_intent_id=before_intent_id,
             after_active_intent_id=after_intent_id,
         )
-
-    def _compiler_replay_snapshot(self, compiler_analysis) -> dict:
-        snapshot = {
-            "shape": getattr(getattr(compiler_analysis, "shape", None), "name", ""),
-            "error_code": str(getattr(getattr(compiler_analysis, "error", None), "code", "") or ""),
-            "recovery_id": str(getattr(getattr(compiler_analysis, "error", None), "recovery_id", "") or ""),
-            "tokens": [],
-            "ast_nodes": [],
-            "ir": None,
-            "span_excerpt": "",
-        }
-        error_span = getattr(getattr(compiler_analysis, "error", None), "span", None)
-        if error_span is not None:
-            snapshot["span_excerpt"] = str(getattr(error_span, "excerpt", "") or "")
-        for token in list(getattr(compiler_analysis, "tokens", ()) or ())[:12]:
-            snapshot["tokens"].append(token.__class__.__name__)
-        ast = getattr(compiler_analysis, "ast", None)
-        for node in list(getattr(ast, "nodes", ()) or ())[:12]:
-            snapshot["ast_nodes"].append(node.__class__.__name__)
-        ir = getattr(compiler_analysis, "ir", None)
-        if ir is not None:
-            snapshot["ir"] = {
-                "shape": getattr(getattr(ir, "shape", None), "name", ""),
-                "intent_ops": len(getattr(ir, "intent_ops", ()) or ()),
-                "action_ops": len(getattr(ir, "action_ops", ()) or ()),
-                "board_ops": len(getattr(ir, "board_ops", ()) or ()),
-                "annotations": len(getattr(ir, "annotations", ()) or ()),
-                "visible_answer": bool(getattr(ir, "visible_answer", None)),
-                "file_content": bool(getattr(ir, "file_content", None)),
-                "effects_preview": [
-                    str(getattr(effect, "summary", "") or "")
-                    for effect in list(getattr(ir, "effects_preview", ()) or ())[:6]
-                ],
-            }
-        return snapshot
 
     async def _run_initial_stages(self, ctx, step):
         raw_response = str(step.response or "")
@@ -375,7 +341,7 @@ class ResponsePipelineStagesMixin:
             compiler_shape=compiler_analysis.shape.name,
             compiler_code=str(getattr(compiler_analysis.error, "code", "") or ""),
             compiler_recovery_id=str(getattr(compiler_analysis.error, "recovery_id", "") or ""),
-            compiler_replay=self._compiler_replay_snapshot(compiler_analysis),
+            compiler_replay=compact_compiler_replay(compiler_analysis),
         )
         legacy_invalid = str(parsed_output.invalid_kind or "").strip()
         compiler_invalid = str(getattr(compiler_analysis.error, "code", "") or "").strip()
@@ -423,7 +389,7 @@ class ResponsePipelineStagesMixin:
         if (
             active_intent is not None
             and bool(getattr(active_intent, "force_plaintext_completion", False))
-            and parsed_output.has_action_segment
+            and self.semantics.has_any_action_proposal(parsed_output, parsed_action_count)
         ):
             self.guards.set_nonproductive_thinking_state(False)
             self.stage_logger.log(
@@ -578,8 +544,7 @@ class ResponsePipelineStagesMixin:
 
         if (
             memory_checkpoint_and_text
-            and parsed_action_count <= 0
-            and not bool(getattr(parsed_output, "has_action_segment", False))
+            and not self.semantics.has_any_action_proposal(parsed_output, parsed_action_count)
         ):
             self.guards.set_reflection_repair_pending(False)
             self.guards.set_nonproductive_thinking_state(False)
@@ -603,8 +568,7 @@ class ResponsePipelineStagesMixin:
             )
 
         if (
-            parsed_action_count <= 0
-            and not bool(getattr(parsed_output, "has_action_segment", False))
+            not self.semantics.has_any_action_proposal(parsed_output, parsed_action_count)
             and self.semantics.looks_like_leaked_system_result(response)
         ):
             self.guards.set_reflection_repair_pending(False)
@@ -725,7 +689,7 @@ class ResponsePipelineStagesMixin:
                 source="transaction_guard",
                 action_count=parsed_action_count,
             )
-        if parsed_action_count > 0 or bool(getattr(parsed_output, "has_action_segment", False)):
+        if self.semantics.has_any_action_proposal(parsed_output, parsed_action_count):
             self.guards.set_nonproductive_thinking_state(False)
 
         if action_policy_decision.handled:
@@ -757,12 +721,11 @@ class ResponsePipelineStagesMixin:
                 source=action_policy_decision.source,
             )
 
-        if parsed_action_count > 0 or bool(getattr(parsed_output, "has_action_segment", False)):
+        if self.semantics.has_any_action_proposal(parsed_output, parsed_action_count):
             self.guards.clear_terminal_plaintext_completion()
 
         zero_action_invalid = (
-            parsed_action_count <= 0
-            and not parsed_output.has_action_segment
+            not self.semantics.has_any_action_proposal(parsed_output, parsed_action_count)
             and bool(str(parsed_output.invalid_kind or "").strip())
         )
         if zero_action_invalid:

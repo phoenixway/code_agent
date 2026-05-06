@@ -14,6 +14,7 @@ class DummyParsedOutput:
         self.has_action_segment = has_action_segment
         self.invalid_kind = invalid_kind
         self.visible_text = visible_text
+        self.compiler_ir = None
 
 
 class DummyIntentResponseParser:
@@ -24,6 +25,16 @@ class DummyIntentResponseParser:
             invalid_kind="" if has_action else "missing_action_or_answer",
             visible_text="",
         )
+
+
+class CompilerOnlyActionIntentResponseParser(DummyIntentResponseParser):
+    def classify(self, response, segments):
+        parsed = DummyParsedOutput(
+            has_action_segment=False,
+            invalid_kind="",
+            visible_text="",
+        )
+        return parsed
 
 
 class TextAnswerIntentResponseParser(DummyIntentResponseParser):
@@ -511,6 +522,23 @@ class ResponsePipelineRefactorIntegrationTests(unittest.IsolatedAsyncioTestCase)
         self.assertEqual("force_plaintext_gate", result.source)
         self.assertEqual("PLAIN_TEXT_COMPLETION_PROMPT", result.next_query)
 
+    async def test_force_plaintext_completion_blocks_compiler_ir_action_without_legacy_segment(self):
+        state = self._state(active_intent=SimpleNamespace(force_plaintext_completion=True))
+        pipeline, _state, _ui = self._make_pipeline(
+            state=state,
+            intent_response_parser=CompilerOnlyActionIntentResponseParser(),
+        )
+
+        result = await pipeline.run_step(
+            self._ctx(),
+            self._step('<action>{"type":"read_chunk","path":"x.py","start_line":1,"end_line":5}</action>'),
+        )
+
+        self.assertTrue(result.continue_loop)
+        self.assertEqual("intent_force_plaintext_completion", result.reason)
+        self.assertEqual("force_plaintext_gate", result.source)
+        self.assertEqual("PLAIN_TEXT_COMPLETION_PROMPT", result.next_query)
+
     async def test_reflection_only_repair_is_accepted_before_generic_recovery(self):
         state = self._state(
             think_reflection_repair_pending=True,
@@ -652,6 +680,75 @@ class ResponsePipelineRefactorIntegrationTests(unittest.IsolatedAsyncioTestCase)
         self.assertTrue(getattr(recovery.last_parsed_output, "operational_checkpoint_has_think", False))
         self.assertTrue(getattr(recovery.last_parsed_output, "operational_checkpoint_has_marker", False))
         self.assertTrue(getattr(recovery.last_parsed_output, "operational_checkpoint_has_board_commit", False))
+
+    async def test_prevalidation_treats_compiler_ir_action_as_bundle_followup_without_legacy_action_segment(self):
+        pipeline, _state, _ui = self._make_pipeline()
+        parsed_output = DummyParsedOutput(has_action_segment=False, invalid_kind="", visible_text="")
+        parsed_output.compiler_ir = SimpleNamespace(
+            action_ops=[
+                SimpleNamespace(
+                    payload={"type": "read_chunk", "path": "x.py", "start_line": 1, "end_line": 5}
+                )
+            ]
+        )
+        pipeline._classify_response_for_prevalidation = (
+            lambda response, allow_think_autorepair=False: (
+                [SimpleNamespace(type="text", content="placeholder")],
+                parsed_output,
+            )
+        )
+        pipeline.intent_transitions.preview_payload_decision = lambda payload: SimpleNamespace(
+            applied=True,
+            active_intent=SimpleNamespace(allowed_actions=["read_chunk"], intent_type="INVESTIGATE"),
+            message="",
+        )
+
+        seen = {}
+
+        def _validator(ctx, segments, *, proposed_active_intent):
+            seen["segments"] = segments
+            seen["intent"] = proposed_active_intent
+            return SimpleNamespace(ok=False, reason="intent_action_not_allowed", details={"blocked_action": "read_chunk"})
+
+        pipeline.action_policy.validate_atomic_bundle_action = _validator
+        pipeline.prompt_builder.build_atomic_bundle_rejected_prompt = lambda **kwargs: "ATOMIC_REJECT"
+        step = SimpleNamespace(
+            response="<intent>...</intent>",
+            intent_payload={"mode": "reuse", "goal": "Continue"},
+            intent_error=None,
+            model_stop_reason="",
+        )
+
+        result = await pipeline._reject_invalid_intent_followup_before_transition(self._ctx(), step.response, step)
+
+        self.assertIsNotNone(result)
+        self.assertTrue(result.continue_loop)
+        self.assertEqual("atomic_bundle_action_invalid", result.reason)
+        self.assertEqual("ATOMIC_REJECT", result.next_query)
+        self.assertIn("segments", seen)
+
+    async def test_execution_plan_can_be_built_from_compiler_ir_action_without_legacy_segment(self):
+        pipeline, state, _ui = self._make_pipeline(
+            state=self._state(
+                active_intent=SimpleNamespace(intent_id="intent_1"),
+            ),
+            intent_response_parser=CompilerOnlyActionIntentResponseParser(),
+        )
+        state.intent_runtime = SimpleNamespace(last_transition_info={})
+        step = SimpleNamespace(
+            response='<action>{"type":"read_chunk","path":"x.py","start_line":1,"end_line":5}</action>',
+            intent_payload={"mode": "reuse", "intent_id": "intent_1"},
+            intent_error=None,
+            model_stop_reason="",
+        )
+
+        result = await pipeline.run_step(self._ctx(), step)
+
+        self.assertFalse(result.continue_loop)
+        self.assertEqual("dispatch_ready", result.reason)
+        self.assertIsNotNone(result.execution_plan)
+        self.assertEqual("atomic_intent_action_bundle", result.execution_plan.transaction_kind)
+        self.assertEqual(["read_chunk:x.py"], result.execution_plan.action_effects)
 
 
 if __name__ == "__main__":

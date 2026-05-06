@@ -600,8 +600,13 @@ class RecoveryPromptBuilderMixin:
                 required_hint = f"Runtime-suggested next actions: {', '.join(required)}.\n"
             else:
                 required_hint = f"Runtime-provided next-action hints: {', '.join(required)}.\n" if required else ""
+        last_action = ""
+        summarized_last_action = self._summarize_last_action()
+        if summarized_last_action and summarized_last_action != "none":
+            last_action = f"Last committed action: {summarized_last_action}.\n"
         return (
             "SYSTEM: Previous action violated orchestration policy.\n"
+            f"{last_action}"
             f"{required_hint}"
             "Use these only as recovery hints, not as a replacement for the current contract.\n"
             "Return the next valid output."

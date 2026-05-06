@@ -8,6 +8,7 @@ from .dispatch_outcome_history import DispatchOutcomeHistoryAdapter
 from .dispatch_outcome_state import DispatchOutcomeStateAdapter
 from .dispatch_outcome import DispatchOutcomeHandler
 from .dispatch_pipeline import DispatchPipeline
+from .execution_commit_observer import ExecutionCommitObserverAdapter
 from .lifecycle import TurnLifecycle
 from .loop_gate import LoopGateHandler
 from .memory_board_stage import MemoryBoardStageHandler
@@ -23,6 +24,7 @@ __all__ = [
     "DispatchOutcomeHistoryAdapter",
     "DispatchOutcomeStateAdapter",
     "DispatchPipeline",
+    "ExecutionCommitObserverAdapter",
     "IntentGuard",
     "LoopContext",
     "LoopGateHandler",

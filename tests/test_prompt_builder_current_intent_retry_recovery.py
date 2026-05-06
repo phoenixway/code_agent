@@ -27,6 +27,9 @@ class PromptBuilderCurrentIntentRetryRecoveryTests(unittest.TestCase):
                 active_intent=active_intent,
                 last_action_fingerprint='read_file_skeleton:{"path": "modules/activity_tracker.py"}',
                 last_action_status="success",
+                last_failed_action_command=None,
+                last_failed_action_result=None,
+                operational_journal=[],
                 recent_problem_actions=[],
                 memory_tag_expected_next_step=False,
                 memory_tag_reason="",
@@ -207,6 +210,60 @@ class PromptBuilderCurrentIntentRetryRecoveryTests(unittest.TestCase):
         self.assertIn("current_best_answer:", out["content"])
         self.assertIn("Memory-board expectation for this contract:", out["content"])
         self.assertIn("emit exactly ONE concise memory tag", out["content"])
+
+    def test_build_intent_runtime_context_message_prefers_runtime_operational_journal_over_legacy_fingerprint(self):
+        active_intent = SimpleNamespace(
+            intent_id="activity_tracker_edit",
+            intent_type="INVESTIGATE",
+            goal="Understand current implementation of activity tracker sorting and edit dialog to plan changes.",
+            allowed_actions=["read_chunk", "search_content", "run_shell", "read_file_skeleton", "search_files"],
+            safe_steps_limit=4,
+            step_count=2,
+            retry_limit=2,
+            retry_count=1,
+            user_step_extension=0,
+        )
+        builder = self._builder(active_intent)
+        builder.state.operational_journal = [
+            {
+                "sequence": 1,
+                "kind": "tool_execution_commit",
+                "action_type": "read_chunk",
+                "target": "modules/activity_tracker.py",
+                "action_dispatched": True,
+            }
+        ]
+
+        out = builder.build_intent_runtime_context_message()
+
+        self.assertIsNotNone(out)
+        self.assertIn('last_action: read_chunk("modules/activity_tracker.py") -> success', out["content"])
+        self.assertNotIn('last_action: read_file_skeleton("modules/activity_tracker.py") -> success', out["content"])
+
+    def test_build_intent_runtime_context_message_uses_last_failed_action_without_recent_problem_actions(self):
+        active_intent = SimpleNamespace(
+            intent_id="activity_tracker_edit",
+            intent_type="INVESTIGATE",
+            goal="Understand current implementation of activity tracker sorting and edit dialog to plan changes.",
+            allowed_actions=["read_chunk", "search_content", "run_shell", "read_file_skeleton", "search_files"],
+            safe_steps_limit=4,
+            step_count=2,
+            retry_limit=2,
+            retry_count=1,
+            user_step_extension=0,
+        )
+        builder = self._builder(active_intent)
+        builder.state.operational_journal = []
+        builder.state.last_action_fingerprint = ""
+        builder.state.last_action_status = ""
+        builder.state.last_failed_action_command = {"type": "edit_file", "path": "modules/activity_tracker.py"}
+        builder.state.last_failed_action_result = {"status": "error"}
+        builder.state.recent_problem_actions = []
+
+        out = builder.build_intent_runtime_context_message()
+
+        self.assertIsNotNone(out)
+        self.assertIn('last_action: edit_file("modules/activity_tracker.py") -> error', out["content"])
 
     def test_build_intent_runtime_context_message_uses_exhausted_gate_prompt_when_hard_limit_reached(self):
         active_intent = SimpleNamespace(
@@ -406,6 +463,10 @@ class PromptBuilderCurrentIntentRetryRecoveryTests(unittest.TestCase):
         self.assertIn("Use <finding> for conclusions, interpretations, suspected behavior", out)
         self.assertIn("<memory_update_done />", out)
         self.assertIn("Sufficiency Check -> State Review -> Memory/Subgoal Update -> Action or Answer", out)
+        self.assertIn("If you open <think>, close it with </think>", out)
+        self.assertIn("Do NOT emit memory tags only because <think> exists.", out)
+        self.assertNotIn("after every <think>", out)
+        self.assertNotIn("checkpoint more rather than less", out)
 
     def test_build_system_message_includes_skeleton_range_navigation_guidance(self):
         builder = self._builder(active_intent=None)

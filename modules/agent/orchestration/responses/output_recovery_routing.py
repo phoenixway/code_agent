@@ -115,7 +115,7 @@ class OutputRecoveryRoutingMixin:
         if not invalid_kind and self._is_missing_memory_update_done(parsed_output):
             invalid_kind = "missing_memory_update_done"
         if not invalid_kind:
-            if bool(getattr(parsed_output, "has_action_segment", False)) and self.semantics.has_complete_think_before_action(
+            if self._has_any_action_proposal(parsed_output) and self.semantics.has_complete_think_before_action(
                 str(getattr(parsed_output, "response", "") or "")
             ):
                 self._clear_malformed_think_count()

@@ -87,7 +87,7 @@ class ResponseGuardPolicy:
             return False
         if not semantics.has_substantial_think(raw_response):
             return False
-        if parsed_action_count > 0 or bool(getattr(parsed_output, "has_action_segment", False)):
+        if semantics.has_any_action_proposal(parsed_output, parsed_action_count):
             return False
         if plaintext_answer_path:
             return False

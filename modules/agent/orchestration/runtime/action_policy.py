@@ -570,9 +570,10 @@ class ActionPolicyHandler:
         action_segments = [
             seg for seg in segments if getattr(seg, "type", "") == "action" and isinstance(getattr(seg, "content", None), dict)
         ]
-        parsed_action_count = len(action_segments)
+        candidate_commands = self._atomic_bundle_candidate_commands(segments, parsed_output=parsed_output)
+        parsed_action_count = len(candidate_commands) if candidate_commands else len(action_segments)
 
-        if not action_segments:
+        if not candidate_commands:
             self.state_view.set_reuse_only_intent_required(False)
             self.state_view.set_transition_only_intent_required(False)
             self.state_view.clear_disallowed_action_repeat()
@@ -605,8 +606,8 @@ class ActionPolicyHandler:
         if hard_exhausted_requirement is not None:
             return hard_exhausted_requirement
 
-        for idx, seg in enumerate(action_segments):
-            effective_command = self._effective_command(seg.content, parsed_output=parsed_output, action_index=idx)
+        for idx, effective_command in enumerate(candidate_commands):
+            seg = action_segments[idx] if idx < len(action_segments) else None
             shape_guard = self._handle_action_shape_guard(seg, parsed_action_count, command=effective_command)
             if shape_guard is not None:
                 return shape_guard

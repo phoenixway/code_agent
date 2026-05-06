@@ -8,6 +8,8 @@ def test_orchestration_state_field_groups_expose_expected_categories():
 
     assert set(groups) == {"turn_local", "cross_turn", "resumable", "technical_interruption"}
     assert "orchestration_trace" in groups["turn_local"]
+    assert "last_execution_plan" in groups["turn_local"]
+    assert "last_execution_commit" in groups["turn_local"]
     assert "terminal_plaintext_completion_pending" in groups["cross_turn"]
     assert "last_resumable_intent_id" in groups["resumable"]
     assert "last_technical_interruption" in groups["technical_interruption"]
@@ -23,6 +25,10 @@ def test_start_turn_runtime_resets_turn_local_orchestration_fields_but_preserves
     state.intent_transition_defect_reason = "conflict"
     state.orchestration_trace = ["entry"]
     state.orchestration_trace_sequence = 3
+    state.last_execution_plan = {"transaction_kind": "atomic_intent_action_bundle"}
+    state.last_execution_commit = {"action_dispatched": True}
+    state.operational_journal = [{"sequence": 1, "kind": "tool_execution_commit"}]
+    state.operational_journal_sequence = 1
     state.build_fix_last_build_ran = True
     state.build_fix_last_build_passed = True
     state.build_fix_last_build_command = "./gradlew :app:assembleDebug"
@@ -44,6 +50,10 @@ def test_start_turn_runtime_resets_turn_local_orchestration_fields_but_preserves
     assert state.intent_transition_defect_reason == ""
     assert state.orchestration_trace == []
     assert state.orchestration_trace_sequence == 0
+    assert state.last_execution_plan is None
+    assert state.last_execution_commit is None
+    assert state.operational_journal == [{"sequence": 1, "kind": "tool_execution_commit"}]
+    assert state.operational_journal_sequence == 1
     assert state.build_fix_last_build_ran is False
     assert state.build_fix_last_build_passed is False
     assert state.build_fix_last_build_command == ""
@@ -183,3 +193,47 @@ def test_apply_intent_contract_preserves_plan_board_for_same_lineage_reuse():
     assert state.task_board["intent_id"] == "intent_1"
     assert state.task_board["lineage_id"] == "intent_1"
     assert state.task_board_enabled is True
+
+
+def test_suspicion_context_command_uses_last_failed_action_before_recent_problem_actions():
+    state = AgentState(_intent_config())
+    state.last_failed_action_command = {"type": "edit_file", "path": "app/src/main/kotlin/Feature.kt"}
+    state.recent_problem_actions = [
+        {
+            "command": {"type": "read_chunk", "path": "stale.kt"},
+            "status": "error",
+        }
+    ]
+    state.operational_journal = [
+        {
+            "sequence": 1,
+            "kind": "tool_execution_commit",
+            "action_type": "write_file_block",
+            "target": "fresh.md",
+            "action_dispatched": True,
+        }
+    ]
+
+    assert state._suspicion_context_command() == {"type": "edit_file", "path": "app/src/main/kotlin/Feature.kt"}
+
+
+def test_suspicion_context_command_falls_back_to_operational_journal_before_recent_problem_actions():
+    state = AgentState(_intent_config())
+    state.last_failed_action_command = None
+    state.recent_problem_actions = [
+        {
+            "command": {"type": "read_chunk", "path": "stale.kt"},
+            "status": "error",
+        }
+    ]
+    state.operational_journal = [
+        {
+            "sequence": 1,
+            "kind": "tool_execution_commit",
+            "action_type": "write_file_block",
+            "target": "fresh.md",
+            "action_dispatched": True,
+        }
+    ]
+
+    assert state._suspicion_context_command() == {"type": "write_file_block", "path": "fresh.md"}

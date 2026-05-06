@@ -174,6 +174,12 @@ class ResponsePipelinePrevalidationMixin:
                 parsed_output.invalid_kind = compiler_invalid_kind
         return compiler_analysis
 
+    def _has_any_action_proposal(self, parsed_output, *, parsed_action_count: int = 0) -> bool:
+        try:
+            return bool(self.semantics.has_any_action_proposal(parsed_output, parsed_action_count))
+        except Exception:
+            return bool(getattr(parsed_output, "has_action_segment", False)) or int(parsed_action_count or 0) > 0
+
     def _clear_terminal_plaintext_completion_state(self) -> None:
         try:
             setattr(self.state, "terminal_plaintext_completion_pending", False)
@@ -301,18 +307,20 @@ class ResponsePipelinePrevalidationMixin:
         parsed_output.model_stop_reason = str(getattr(step, "model_stop_reason", "") or "").strip()
 
         payload = getattr(step, "intent_payload", None)
+        parsed_action_count = sum(1 for seg in segments if getattr(seg, "type", "") == "action")
+        has_any_action = self._has_any_action_proposal(parsed_output, parsed_action_count=parsed_action_count)
         payload_mode = str((payload or {}).get("mode") or "").strip().lower() if isinstance(payload, dict) else ""
         if (
             payload_mode in {"activate", "reuse", "replace"}
             and str(getattr(parsed_output, "visible_text", "") or "").strip()
-            and not bool(getattr(parsed_output, "has_action_segment", False))
+            and not has_any_action
             and not str(getattr(parsed_output, "invalid_kind", "") or "").strip()
         ):
             parsed_output.invalid_kind = "mixed_intent_transition_and_visible_answer"
         intent_only_transition_required_now = bool(
             payload_mode in {"activate", "reuse", "replace"}
             and str(getattr(parsed_output, "invalid_kind", "") or "").strip() in {"missing_action_or_answer", "intent_only_without_next_step"}
-            and not bool(getattr(parsed_output, "has_action_segment", False))
+            and not has_any_action
             and not str(getattr(parsed_output, "visible_text", "") or "").strip()
             and (
                 bool(getattr(self.state, "intent_required_until_activated", False))
@@ -325,7 +333,7 @@ class ResponsePipelinePrevalidationMixin:
         if (
             payload_mode == "reuse"
             and str(getattr(parsed_output, "invalid_kind", "") or "").strip() in {"missing_action_or_answer", "intent_only_without_next_step"}
-            and not bool(getattr(parsed_output, "has_action_segment", False))
+            and not has_any_action
             and not str(getattr(parsed_output, "visible_text", "") or "").strip()
         ):
             return None
@@ -372,7 +380,7 @@ class ResponsePipelinePrevalidationMixin:
                 response_text=response,
                 segments=segments,
                 parsed_output=parsed_output,
-                parsed_action_count=sum(1 for seg in segments if getattr(seg, "type", "") == "action"),
+                parsed_action_count=parsed_action_count,
                 malformed_action_retries=recovery_decision.malformed_action_retries,
                 audit_marker_retries=recovery_decision.audit_marker_retries,
                 reason=recovery_decision.reason,
@@ -486,7 +494,8 @@ class ResponsePipelinePrevalidationMixin:
         payload_mode = str((payload or {}).get("mode") or "").strip().lower()
         if payload_mode not in {"activate", "reuse", "replace"}:
             return None
-        if not bool(getattr(parsed_output, "has_action_segment", False)):
+        parsed_action_count = sum(1 for seg in segments if getattr(seg, "type", "") == "action")
+        if not self._has_any_action_proposal(parsed_output, parsed_action_count=parsed_action_count):
             return None
         previewer = getattr(self.intent_transitions, "preview_payload_decision", None)
         validator = getattr(self.action_policy, "validate_atomic_bundle_action", None)

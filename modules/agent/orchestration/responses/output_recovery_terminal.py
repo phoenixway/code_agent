@@ -36,7 +36,38 @@ class OutputRecoveryTerminalMixin:
                 return action_type, path
         blocked_action = str(getattr(self.state, "last_blocked_action_type", "") or "").strip()
         blocked_path = str(getattr(self.state, "last_blocked_action_path", "") or "").strip()
+        if blocked_action or blocked_path:
+            return blocked_action, blocked_path
+        journal_entry = self._latest_operational_journal_action_entry()
+        if journal_entry is not None:
+            action_type = str(journal_entry.get("action_type") or "").strip()
+            target = str(journal_entry.get("target") or "").strip()
+            if action_type or target:
+                return action_type, target
         return blocked_action, blocked_path
+
+    def _latest_operational_journal_action_entry(self) -> dict | None:
+        snapshotter = getattr(self.state, "operational_journal_snapshot", None)
+        if callable(snapshotter):
+            try:
+                snapshot = snapshotter() or []
+                for entry in reversed(snapshot):
+                    if isinstance(entry, dict) and str(entry.get("kind") or "").strip() == "tool_execution_commit":
+                        return entry
+            except Exception:
+                pass
+        journal = list(getattr(self.state, "operational_journal", []) or [])
+        for entry in reversed(journal):
+            if isinstance(entry, dict) and str(entry.get("kind") or "").strip() == "tool_execution_commit":
+                return entry
+            if hasattr(entry, "__dict__"):
+                try:
+                    payload = dict(vars(entry))
+                except Exception:
+                    continue
+                if str(payload.get("kind") or "").strip() == "tool_execution_commit":
+                    return payload
+        return None
 
     def _terminal_recovery_loop_decision(self, defect_kind: str) -> OutputRecoveryDecision:
         blocked_action, path_or_action = self._action_context_from_parsed_output(self._last_parsed_output_for_handoff)

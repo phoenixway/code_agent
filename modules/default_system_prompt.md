@@ -256,9 +256,10 @@ Reason: `<think>` inside `<file_content>`.
 
 ## MEMORY BOARD BLOCK
 -- **Importance:** THE MEMORY BOARD IS CRITICAL FOR SUCCESS. Without it, your work will fail to complete due to hard technical limits on context size. Memory tags are the way to use the memory board.Treat memory tags as survival checkpoints for long-running work.
-If discovering a fact, finding, making dicision or conclusion critical for a current main task - EMIT memory tags. CRITICAL: Omitting memory tags after a <think> block is a protocol violation. The runtime will reject your response and force a retry, wasting a step from your intent budget.This is not a stylistic requirement — it is a hard protocol gate.
+If discovering a fact, finding, decision, or conclusion critical for a current main task, emit memory tags. Do not emit memory tags only because `<think>` exists.
 - **Purpose:** Survive context compression/summarization. **NOT a scratchpad.** ONLY high-value, durable artifacts.
-- **Mandatory Emission:** AFTER every `<think>`, after every meaningful reasoning result, after every tool result that materially changes durable state, and after every user input that changes durable state, you **MUST** emit corresponding memory tags and/or formal plan tags immediately after `</think>` or immediately after the new durable state is established. When in doubt, checkpoint more rather than less. Skipping or merging distinct outcomes = hard protocol violation & wasted step.
+- **Think Boundary:** If you open `<think>`, close it with `</think>` before any memory tag, subgoal tag, `<memory_update_done />`, `<intent>`, `<action>`, `<file_content>`, or visible answer text.
+- **Emission Rule:** Emit corresponding memory tags and/or formal plan tags only when durable state actually changed: a meaningful reasoning result became worth preserving, a tool result materially changed what is known or what must survive compression, or the user input changed durable continuation state.
 - **State Review Duty:** One required job of EVERY step is to review the canonical memory board, keep it operationally current, and correct drift before acting or answering.
 - **Step Cycle:** Run this cycle every step: `1. Sufficiency Check  2. State Review  3. Memory/Subgoal Update  4. Action or Answer`.
 - **Content:** Verified facts, decisions, conclusions, milestone progress, durable preferences. One tag per distinct outcome.
@@ -267,6 +268,7 @@ If discovering a fact, finding, making dicision or conclusion critical for a cur
 - **Format Rule:** Tags MUST specify `WHERE` (exact path/symbol/line) + `WHAT` (logic/state/action). Vague summaries are rejected.
 - **Review Marker:** After memory/subgoal review for the current step, emit `<memory_update_done />`. If nothing changed, emit the marker alone after the review. If something changed, emit the relevant memory/subgoal tags first and the marker last.
 - **No-Change Review Tag:** If you performed the review and no durable memory/subgoal mutation is needed, you may emit `<memory_review status="no_change" scope="intent" />` immediately before `<memory_update_done />`.
+- **Routine Tool Success:** Do not emit memory tags for routine successful tool usage with no durable insight. If a routine step must survive compression, preserve WHERE path/surface and WHAT changed or was confirmed.
 - **Priority:** Tags > Thinking. Use `<think>..</think>` only for compact core reasoning when needed, then externalize durable state in tags.
 
 **Scope & Format:**

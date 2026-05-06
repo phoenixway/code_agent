@@ -55,6 +55,8 @@ class AgentState:
         "allow_suspect_intent_once",
         "orchestration_trace",
         "orchestration_trace_sequence",
+        "last_execution_plan",
+        "last_execution_commit",
         "last_memory_board_parsed_count",
         "last_memory_board_accepted_count",
         "last_memory_board_rejected_count",
@@ -255,6 +257,10 @@ class AgentState:
         self.current_turn_id = 0
         self.orchestration_trace = []
         self.orchestration_trace_sequence = 0
+        self.last_execution_plan = None
+        self.last_execution_commit = None
+        self.operational_journal = []
+        self.operational_journal_sequence = 0
         self.stop_reason_counts = {}
 
     @property
@@ -316,6 +322,8 @@ class AgentState:
         self.allow_suspect_intent_once = False
         self.orchestration_trace = []
         self.orchestration_trace_sequence = 0
+        self.last_execution_plan = None
+        self.last_execution_commit = None
         self.last_memory_board_parsed_count = 0
         self.last_memory_board_accepted_count = 0
         self.last_memory_board_rejected_count = 0
@@ -362,6 +370,33 @@ class AgentState:
 
         if self.defect_detector:
             self.defect_detector.reset()
+
+    def append_operational_journal_entry(self, entry: dict) -> dict:
+        payload = dict(entry or {})
+        sequence = int(getattr(self, "operational_journal_sequence", 0) or 0) + 1
+        self.operational_journal_sequence = sequence
+        payload.setdefault("sequence", sequence)
+        payload.setdefault("turn_id", int(getattr(self, "current_turn_id", 0) or 0))
+        journal = list(getattr(self, "operational_journal", []) or [])
+        journal.append(payload)
+        max_entries = 25
+        if len(journal) > max_entries:
+            journal = journal[-max_entries:]
+        self.operational_journal = journal
+        return payload
+
+    def operational_journal_snapshot(self) -> list[dict]:
+        snapshot: list[dict] = []
+        for entry in list(getattr(self, "operational_journal", []) or []):
+            if isinstance(entry, dict):
+                snapshot.append(dict(entry))
+            elif is_dataclass(entry):
+                snapshot.append(asdict(entry))
+            elif hasattr(entry, "__dict__"):
+                snapshot.append(dict(vars(entry)))
+            else:
+                snapshot.append({"value": str(entry)})
+        return snapshot
 
     def mark_pending_forced_plaintext_completion_close(self, reason: str = "forced_plaintext_completion", source: str = "") -> None:
         self.pending_finalize_after_terminal_plaintext_completion = True
@@ -622,6 +657,58 @@ class AgentState:
         self.recent_problem_actions.append(entry)
         self._trim_recent_problem_actions()
 
+    def _latest_operational_journal_action_command(self) -> dict:
+        snapshotter = getattr(self, "operational_journal_snapshot", None)
+        if callable(snapshotter):
+            try:
+                snapshot = snapshotter() or []
+                for entry in reversed(snapshot):
+                    if not isinstance(entry, dict):
+                        continue
+                    if str(entry.get("kind") or "").strip() != "tool_execution_commit":
+                        continue
+                    action_type = str(entry.get("action_type") or "").strip()
+                    target = str(entry.get("target") or "").strip()
+                    if action_type:
+                        command = {"type": action_type}
+                        if target:
+                            command["path"] = target
+                        return command
+            except Exception:
+                pass
+        for entry in reversed(list(getattr(self, "operational_journal", []) or [])):
+            if hasattr(entry, "__dict__"):
+                try:
+                    entry = dict(vars(entry))
+                except Exception:
+                    continue
+            if not isinstance(entry, dict):
+                continue
+            if str(entry.get("kind") or "").strip() != "tool_execution_commit":
+                continue
+            action_type = str(entry.get("action_type") or "").strip()
+            target = str(entry.get("target") or "").strip()
+            if action_type:
+                command = {"type": action_type}
+                if target:
+                    command["path"] = target
+                return command
+        return {}
+
+    def _suspicion_context_command(self) -> dict:
+        command = getattr(self, "last_failed_action_command", None)
+        if isinstance(command, dict) and command:
+            return command.copy()
+        command = self._latest_operational_journal_action_command()
+        if isinstance(command, dict) and command:
+            return command.copy()
+        recent = self.recent_problem_actions[-1] if self.recent_problem_actions else {}
+        if isinstance(recent, dict):
+            command = recent.get("command")
+            if isinstance(command, dict) and command:
+                return command.copy()
+        return {}
+
     def attach_config(self, config):
         self._config = config
         if self.intent_runtime is None:
@@ -744,7 +831,6 @@ class AgentState:
             and transition_info.get("old_goal")
             and contract.mode in {"activate", "replace"}
         ):
-            recent = self.recent_problem_actions[-1] if self.recent_problem_actions else {}
             same_allowed = transition_info.get("actions_overlap", 0.0) >= float(getattr(config, "INTENT_RELABEL_ACTION_OVERLAP_THRESHOLD", 0.6))
             goal_core_loss = self._goal_core_loss_suspected(
                 transition_info.get("old_goal", ""),
@@ -760,7 +846,7 @@ class AgentState:
                     "recoverable": True,
                     "error_code": "SUSPECT_INTENT_GOAL_DRIFT" if goal_core_loss else "SUSPECT_INTENT_RELABEL_REPEAT",
                     "next_actions": list(contract.allowed_actions),
-                    "command": recent.get("command", {}).copy() if isinstance(recent.get("command"), dict) else {},
+                    "command": self._suspicion_context_command(),
                     "message": (
                         "Модель підозріло змінила поточну ціль у межах тієї самої лінії роботи."
                         if goal_core_loss else

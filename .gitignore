@@ -11,3 +11,6 @@ communication.log
 backups/
 *.zip
 dumps/
+.env
+.aider.conf.yml
+.aider*

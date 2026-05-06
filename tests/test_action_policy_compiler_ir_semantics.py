@@ -222,6 +222,29 @@ async def _decide_with_ir(handler, *, allowed_actions):
     )
 
 
+async def _decide_with_ir_without_legacy_action_segment(handler, *, allowed_actions):
+    handler.state.active_intent.allowed_actions = list(allowed_actions)
+    return await handler.decide(
+        SimpleNamespace(user_input="Continue"),
+        [_Segment("text", "placeholder")],
+        intent_payload=None,
+        parsed_output=SimpleNamespace(
+            compiler_shape="ACTION_ONLY",
+            compiler_ir=SimpleNamespace(
+                action_ops=[
+                    SimpleNamespace(
+                        action_type="write_file_block",
+                        payload={"type": "write_file_block", "path": "a.py", "overwrite": True},
+                        file_content="hello\n",
+                        read_only=False,
+                        write_like=True,
+                    )
+                ]
+            ),
+        ),
+    )
+
+
 def test_disallowed_active_intent_action_can_be_driven_by_compiler_ir_payload():
     import asyncio
 
@@ -237,6 +260,26 @@ def test_allowed_active_intent_action_can_be_driven_by_compiler_ir_payload():
 
     handler = _handler()
     decision = asyncio.run(_decide_with_ir(handler, allowed_actions=["write_file", "read_chunk"]))
+
+    assert decision.handled is False
+    assert decision.reason == "actions_allowed_to_proceed"
+
+
+def test_disallowed_active_intent_action_can_be_driven_by_compiler_ir_without_legacy_action_segment():
+    import asyncio
+
+    handler = _handler()
+    decision = asyncio.run(_decide_with_ir_without_legacy_action_segment(handler, allowed_actions=["edit_file", "read_chunk"]))
+
+    assert decision.handled is True
+    assert decision.reason == "intent_action_not_allowed"
+
+
+def test_allowed_active_intent_action_can_be_driven_by_compiler_ir_without_legacy_action_segment():
+    import asyncio
+
+    handler = _handler()
+    decision = asyncio.run(_decide_with_ir_without_legacy_action_segment(handler, allowed_actions=["write_file", "read_chunk"]))
 
     assert decision.handled is False
     assert decision.reason == "actions_allowed_to_proceed"

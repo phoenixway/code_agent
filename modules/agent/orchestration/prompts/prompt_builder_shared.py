@@ -347,7 +347,96 @@ class PromptBuilderSharedMixin:
                 pass
         return self._intent_hard_steps_remaining(active_intent) <= 0
 
+    def _latest_operational_journal_entry(self) -> dict | None:
+        state = getattr(self, "state", None)
+        if state is None:
+            return None
+        snapshotter = getattr(state, "operational_journal_snapshot", None)
+        if callable(snapshotter):
+            try:
+                snapshot = snapshotter() or []
+                if snapshot:
+                    latest = snapshot[-1]
+                    return latest if isinstance(latest, dict) else None
+            except Exception:
+                pass
+        journal = list(getattr(state, "operational_journal", []) or [])
+        if not journal:
+            return None
+        latest = journal[-1]
+        if isinstance(latest, dict):
+            return latest
+        if hasattr(latest, "__dict__"):
+            try:
+                return dict(vars(latest))
+            except Exception:
+                return None
+        return None
+
+    def _summarize_last_committed_action(self) -> str:
+        entry = self._latest_operational_journal_entry()
+        if not isinstance(entry, dict):
+            return "none"
+        if str(entry.get("kind") or "").strip() != "tool_execution_commit":
+            return "none"
+
+        action_type = str(entry.get("action_type") or "").strip()
+        target = str(entry.get("target") or "").strip()
+        if not action_type:
+            effects = list(entry.get("action_effects") or [])
+            if effects:
+                primary = str(effects[0] or "").strip()
+                if ":" in primary:
+                    action_type, target = primary.split(":", 1)
+                elif primary:
+                    action_type = primary
+        if not action_type:
+            return "none"
+
+        rendered = action_type
+        if target:
+            rendered += f'("{target[:120]}")'
+        if bool(entry.get("action_dispatched", False)):
+            return f"{rendered} -> success"
+        return rendered
+
+    def _summarize_last_failed_action(self) -> str:
+        state = getattr(self, "state", None)
+        if state is None:
+            return "none"
+        command = getattr(state, "last_failed_action_command", None)
+        result = getattr(state, "last_failed_action_result", None)
+        if not isinstance(command, dict):
+            return "none"
+
+        cmd_type = str(command.get("type") or command.get("action") or "action").strip() or "action"
+        rendered = cmd_type
+        path = command.get("path")
+        shell_command = command.get("command")
+        pattern = command.get("pattern") or command.get("query") or command.get("name")
+        if isinstance(path, str) and path.strip():
+            rendered += f'("{path[:120]}")'
+        elif isinstance(shell_command, str) and shell_command.strip():
+            rendered += f'("{shell_command[:80]}")'
+        elif pattern not in (None, ""):
+            rendered += f'("{str(pattern)[:80]}")'
+
+        status = ""
+        if isinstance(result, dict):
+            status = str(result.get("status") or "").strip().lower()
+        if status:
+            return f"{rendered} -> {status}"
+        return rendered
+
     def _summarize_last_action(self) -> str:
+        committed = self._summarize_last_committed_action()
+        if committed != "none":
+            return committed
+
+        failed = self._summarize_last_failed_action()
+        if failed != "none":
+            return failed
+
         state = getattr(self, "state", None)
         if state is None:
             return "none"
@@ -374,21 +463,6 @@ class PromptBuilderSharedMixin:
             if status:
                 return f"{rendered} -> {status}"
             return rendered
-
-        recent_problem_actions = getattr(state, "recent_problem_actions", None) or []
-        if recent_problem_actions:
-            latest = recent_problem_actions[-1]
-            cmd = latest.get("command") if isinstance(latest, dict) else None
-            if isinstance(cmd, dict):
-                cmd_type = str(cmd.get("type") or cmd.get("action") or "action")
-                path = cmd.get("path")
-                rendered = cmd_type
-                if isinstance(path, str) and path.strip():
-                    rendered += f'("{path}")'
-                latest_status = str(latest.get("status") or "").strip().lower()
-                if latest_status:
-                    return f"{rendered} -> {latest_status}"
-                return rendered
 
         return "none"
 

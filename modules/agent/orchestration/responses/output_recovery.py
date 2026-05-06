@@ -128,8 +128,14 @@ class ModelOutputRecoveryHandler(OutputRecoveryTerminalMixin, OutputRecoveryRout
         except Exception:
             pass
 
+    def _has_any_action_proposal(self, parsed_output: ParsedModelOutput, *, parsed_action_count: int = 0) -> bool:
+        try:
+            return bool(self.semantics.has_any_action_proposal(parsed_output, parsed_action_count))
+        except Exception:
+            return bool(getattr(parsed_output, "has_action_segment", False)) or int(parsed_action_count or 0) > 0
+
     def _has_followup_output(self, parsed_output: ParsedModelOutput) -> bool:
-        if bool(getattr(parsed_output, "has_action_segment", False)):
+        if self._has_any_action_proposal(parsed_output):
             return True
         if bool(getattr(parsed_output, "has_intent_segment", False)):
             return True
@@ -362,7 +368,7 @@ class ModelOutputRecoveryHandler(OutputRecoveryTerminalMixin, OutputRecoveryRout
         }
 
     def _is_unproven_modify_completion_claim(self, parsed_output: ParsedModelOutput) -> bool:
-        if parsed_output.has_action_segment:
+        if self._has_any_action_proposal(parsed_output):
             return False
         if not self._is_modify_context():
             return False
@@ -376,7 +382,7 @@ class ModelOutputRecoveryHandler(OutputRecoveryTerminalMixin, OutputRecoveryRout
         return bool(self.MODIFY_COMPLETION_CLAIM_RE.search(text))
 
     def _is_internal_summary_instead_of_final_answer(self, parsed_output: ParsedModelOutput) -> bool:
-        if parsed_output.has_action_segment:
+        if self._has_any_action_proposal(parsed_output):
             return False
         text = str(getattr(parsed_output, "visible_text", "") or "").strip()
         if not text:
@@ -397,7 +403,7 @@ class ModelOutputRecoveryHandler(OutputRecoveryTerminalMixin, OutputRecoveryRout
         return False
 
     def _build_fix_final_answer_missing_build_status(self, parsed_output: ParsedModelOutput) -> bool:
-        if parsed_output.has_action_segment:
+        if self._has_any_action_proposal(parsed_output):
             return False
         if not bool(getattr(self.state, "is_build_fix_intent_active", lambda: False)()):
             return False

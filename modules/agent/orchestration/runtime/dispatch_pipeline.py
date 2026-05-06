@@ -6,7 +6,9 @@ import asyncio
 
 from ..responses.stage_logging import OrchestrationStageLogger
 from ..shared.decision_models import ExecutionCommit
+from ..shared.trace import compact_execution_commit, compact_execution_plan
 from .dependencies import RuntimeCollaborators
+from .execution_commit_observer import ExecutionCommitObserverAdapter
 
 
 class DispatchPipeline:
@@ -17,6 +19,7 @@ class DispatchPipeline:
         self.history = self.runtime.history
         self.dispatcher = self.runtime.dispatcher
         self.dispatch_outcome = dispatch_outcome
+        self.execution_commit_observer = ExecutionCommitObserverAdapter(self.state)
         self.stage_logger = OrchestrationStageLogger(self.runtime.logger, self.state)
 
     @property
@@ -75,37 +78,6 @@ class DispatchPipeline:
             dispatch_stop_requested=bool(should_stop),
         )
 
-    def _compact_execution_plan(self, execution_plan):
-        if execution_plan is None:
-            return None
-        return {
-            "shape": execution_plan.shape,
-            "transaction_kind": execution_plan.transaction_kind,
-            "bundle_validated": execution_plan.bundle_validated,
-            "transition_applied": execution_plan.transition_applied,
-            "action_dispatched": execution_plan.action_dispatched,
-            "before_active_intent_id": execution_plan.before_active_intent_id,
-            "after_active_intent_id": execution_plan.after_active_intent_id,
-            "action_effects": list(execution_plan.action_effects),
-        }
-
-    def _compact_execution_commit(self, execution_commit):
-        if execution_commit is None:
-            return None
-        return {
-            "shape": execution_commit.shape,
-            "transaction_kind": execution_commit.transaction_kind,
-            "bundle_validated": execution_commit.bundle_validated,
-            "transition_applied": execution_commit.transition_applied,
-            "action_dispatched": execution_commit.action_dispatched,
-            "before_active_intent_id": execution_commit.before_active_intent_id,
-            "after_active_intent_id": execution_commit.after_active_intent_id,
-            "committed_action_count": execution_commit.committed_action_count,
-            "committed_system_result_count": execution_commit.committed_system_result_count,
-            "dispatch_stop_requested": execution_commit.dispatch_stop_requested,
-            "action_effects": list(execution_commit.action_effects),
-        }
-
     async def run_iteration(self, ctx, iteration):
         self.stage_logger.log(
             "post_dispatch_pipeline",
@@ -120,13 +92,18 @@ class DispatchPipeline:
             sys_results,
             should_stop,
         )
+        self.execution_commit_observer.observe_execution_commit(
+            getattr(iteration, "execution_plan", None),
+            getattr(decision, "execution_commit", None),
+            sys_results=sys_results,
+        )
         self.stage_logger.log(
             "post_dispatch_pipeline",
             "continue" if decision.continue_loop else ("stop" if decision.stop_loop else "pass"),
             reason=decision.reason,
             source=decision.source,
-            execution_plan=self._compact_execution_plan(getattr(iteration, "execution_plan", None)),
-            execution_commit=self._compact_execution_commit(getattr(decision, "execution_commit", None)),
+            execution_plan=compact_execution_plan(getattr(iteration, "execution_plan", None)),
+            execution_commit=compact_execution_commit(getattr(decision, "execution_commit", None)),
         )
         self._log_iteration_health(ctx, iteration.parsed_action_count)
         return decision

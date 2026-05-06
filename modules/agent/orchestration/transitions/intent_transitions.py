@@ -7,6 +7,7 @@ import re
 from .dependencies import TransitionLayerCollaborators
 from .intent_transition_apply import IntentTransitionApplyMixin
 from .intent_transition_routing import IntentTransitionRoutingMixin
+from .transition_followup_semantics import TransitionFollowupSemantics
 from ..protocol import ProtocolCompiler
 from ..protocol.models import ActionNode, IntentNode, VisibleTextNode
 from ..responses.stage_logging import OrchestrationStageLogger
@@ -38,6 +39,7 @@ class IntentTransitionHandler(IntentTransitionApplyMixin, IntentTransitionRoutin
         self.recovery = recovery
         self.stage_logger = OrchestrationStageLogger(self.runtime.logger, self.state)
         self.protocol_compiler = ProtocolCompiler()
+        self.followup_semantics = TransitionFollowupSemantics()
 
     def _intent_universe_label(self) -> str:
         if getattr(self.state, "active_intent", None) is not None:
@@ -84,44 +86,51 @@ class IntentTransitionHandler(IntentTransitionApplyMixin, IntentTransitionRoutin
             masked = self.INTENT_TAG_RE.sub(" ", masked)
         return masked
 
+    def _followup_surface_summary(self, response_text: str) -> dict[str, object]:
+        analysis = self._analyze_followup_surface(response_text)
+        followup = self.followup_semantics.summarize(analysis)
+        return {
+            "analysis": followup.analysis,
+            "intent_count": followup.intent_count,
+            "action_count": followup.action_count,
+            "visible_count": followup.visible_count,
+            "has_substantive_nodes": followup.has_substantive_nodes,
+            "has_any_action": followup.has_any_action,
+            "conflict_reason": followup.conflict_reason,
+            "bundle_too_dense": followup.bundle_too_dense,
+        }
+
     def _remaining_transition_bundle_too_dense(self, response_text: str) -> bool:
-        masked = self._mask_for_followup_analysis(response_text)
-        if not masked:
-            return False
-        intent_count = len(self.INTENT_TAG_RE.findall(masked))
-        action_count = len(self.REMAINING_ACTION_TAG_RE.findall(masked))
-        if intent_count >= 1:
-            return True
-        return action_count >= 2
+        return bool(self._followup_surface_summary(response_text)["bundle_too_dense"])
 
     def _remaining_has_action_only(self, response_text: str) -> bool:
-        analysis = self._analyze_followup_surface(response_text)
+        summary = self._followup_surface_summary(response_text)
+        analysis = summary["analysis"]
         if analysis is None or analysis.ast is None:
             return False
         if getattr(analysis, "error", None) is not None:
             return False
-        action_count = sum(1 for node in analysis.ast.nodes if isinstance(node, ActionNode))
-        intent_count = sum(1 for node in analysis.ast.nodes if isinstance(node, IntentNode))
-        visible_count = sum(1 for node in analysis.ast.nodes if isinstance(node, VisibleTextNode) and str(node.text or "").strip())
         return (
             getattr(analysis.shape, "name", "") == "ACTION_ONLY"
-            and intent_count == 0
-            and action_count == 1
-            and visible_count == 0
+            and summary["intent_count"] == 0
+            and summary["action_count"] == 1
+            and summary["visible_count"] == 0
         )
 
 
     def _remaining_has_plaintext_answer_only(self, response_text: str) -> bool:
-        analysis = self._analyze_followup_surface(response_text)
-        if analysis is None or analysis.ast is None:
-            return False
-        action_count = sum(1 for node in analysis.ast.nodes if isinstance(node, ActionNode))
-        intent_count = sum(1 for node in analysis.ast.nodes if isinstance(node, IntentNode))
-        visible_count = sum(1 for node in analysis.ast.nodes if isinstance(node, VisibleTextNode) and str(node.text or "").strip())
-        return intent_count == 0 and action_count == 0 and visible_count > 0
+        summary = self._followup_surface_summary(response_text)
+        return summary["intent_count"] == 0 and summary["action_count"] == 0 and summary["visible_count"] > 0
 
     def _response_without_think_and_intent(self, response_text: str) -> str:
         return self._mask_for_followup_analysis(response_text, strip_intent=True).strip()
+
+    def _followup_surface_summary_after_current_transition(self, intent_payload: dict | None, response_text: str) -> dict[str, object]:
+        stripped = self._strip_matching_current_intent_block(response_text, intent_payload)
+        return self._followup_surface_summary(stripped)
+
+    def _has_substantive_followup_nodes(self, response_text: str) -> bool:
+        return bool(self._followup_surface_summary(response_text)["has_substantive_nodes"])
 
     def _strip_matching_current_intent_block(self, response_text: str, intent_payload: dict | None) -> str:
         text = str(response_text or "")
@@ -176,53 +185,50 @@ class IntentTransitionHandler(IntentTransitionApplyMixin, IntentTransitionRoutin
         return text
 
     def _has_no_followup_after_intent(self, response_text: str) -> bool:
-        return not bool(self._response_without_think_and_intent(response_text))
+        stripped = self._response_without_think_and_intent(response_text)
+        if not stripped:
+            return True
+        return not self._has_substantive_followup_nodes(stripped)
 
     def _reuse_has_inline_single_action(self, intent_payload: dict | None, response_text: str) -> bool:
         payload_mode = str((intent_payload or {}).get("mode") or "").strip().lower()
         if payload_mode != "reuse":
             return False
-        masked = self._response_without_think_and_intent(
+        stripped = self._response_without_think_and_intent(
             self._strip_matching_current_intent_block(response_text, intent_payload)
         )
-        if not masked:
-            return False
-        if re.search(r"<\s*intent\b", masked, re.IGNORECASE):
-            return False
-        action_count = len(self.REMAINING_ACTION_TAG_RE.findall(masked))
-        return action_count == 1
+        return self._remaining_has_action_only(stripped)
 
     def _reuse_has_inline_plaintext_answer(self, intent_payload: dict | None, response_text: str) -> bool:
         payload_mode = str((intent_payload or {}).get("mode") or "").strip().lower()
         if payload_mode != "reuse":
             return False
-        masked = self._response_without_think_and_intent(
+        stripped = self._response_without_think_and_intent(
             self._strip_matching_current_intent_block(response_text, intent_payload)
         )
-        if not masked:
-            return False
-        if re.search(r"<\s*(intent|action)\b", masked, re.IGNORECASE):
-            return False
-        masked = self.MEMORY_BLOCK_RE.sub(" ", masked)
-        masked = self.MEMORY_TAG_RE.sub(" ", masked)
-        masked = self.MEMORY_REVIEW_RE.sub(" ", masked)
-        masked = self.SUBGOAL_TAG_RE.sub(" ", masked)
-        masked = self.MEMORY_UPDATE_DONE_RE.sub(" ", masked)
-        return bool(re.sub(r"<[^>]+>", " ", masked).strip())
+        return self._remaining_has_plaintext_answer_only(stripped)
 
     def _remaining_has_any_action(self, response_text: str) -> bool:
-        analysis = self._analyze_followup_surface(response_text)
-        if analysis is None or analysis.ast is None:
-            return False
-        return any(isinstance(node, ActionNode) for node in analysis.ast.nodes)
+        return bool(self._followup_surface_summary(response_text)["has_any_action"])
 
     def _current_transition_has_inline_action_only(self, intent_payload: dict | None, response_text: str) -> bool:
-        stripped = self._strip_matching_current_intent_block(response_text, intent_payload)
-        return self._remaining_has_action_only(stripped)
+        summary = self._followup_surface_summary_after_current_transition(intent_payload, response_text)
+        analysis = summary["analysis"]
+        if analysis is None or getattr(analysis, "ast", None) is None:
+            return False
+        if getattr(analysis, "error", None) is not None:
+            return False
+        return (
+            getattr(analysis.shape, "name", "") == "ACTION_ONLY"
+            and summary["intent_count"] == 0
+            and summary["action_count"] == 1
+            and summary["visible_count"] == 0
+        )
 
     def _followup_conflict_reason_after_current_transition(self, intent_payload: dict | None, response_text: str) -> str:
-        stripped = self._strip_matching_current_intent_block(response_text, intent_payload)
-        return self._remaining_followup_conflict_reason(stripped)
+        return str(
+            self._followup_surface_summary_after_current_transition(intent_payload, response_text)["conflict_reason"] or ""
+        )
 
     def _reuse_only_intent_required(self) -> bool:
         return bool(getattr(self.state, "reuse_only_intent_required", False))
@@ -270,19 +276,7 @@ class IntentTransitionHandler(IntentTransitionApplyMixin, IntentTransitionRoutin
             pass
 
     def _remaining_followup_conflict_reason(self, response_text: str) -> str:
-        analysis = self._analyze_followup_surface(response_text)
-        if analysis is None or analysis.ast is None:
-            return ""
-        intent_count = sum(1 for node in analysis.ast.nodes if isinstance(node, IntentNode))
-        action_count = sum(1 for node in analysis.ast.nodes if isinstance(node, ActionNode))
-        if intent_count >= 1:
-            return "conflicting_intent_transitions"
-        if action_count >= 2:
-            return "multiple_actions"
-        error_code = str(getattr(analysis.error, "code", "") or "").strip()
-        if error_code == "E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION":
-            return "multiple_actions"
-        return ""
+        return str(self._followup_surface_summary(response_text)["conflict_reason"] or "")
 
     def _analyze_followup_surface(self, response_text: str):
         masked = self._mask_for_followup_analysis(response_text)

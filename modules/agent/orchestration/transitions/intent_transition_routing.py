@@ -122,11 +122,17 @@ class IntentTransitionRoutingMixin:
 
         if not intent_decision.applied:
             defect_count = self._note_transition_defect(intent_decision.message)
-            if defect_count >= 3 and intent_decision.message in {
-                "intent_reuse_without_active_intent",
-                "intent_switch_reason_required",
-                "conflicting_intent_transitions",
-            }:
+            rejected_followup_summary = self.followup_semantics.summarize(
+                self._analyze_followup_surface(response_text)
+            )
+            transition_semantic = self.followup_semantics.evaluate_transition(
+                phase="rejected",
+                rejection_reason=intent_decision.message,
+                defect_count=defect_count,
+                has_active_intent=getattr(self.state, "active_intent", None) is not None,
+                summary=rejected_followup_summary,
+            )
+            if transition_semantic.kind == "terminal_repeated_intent_transition_defect":
                 self.stage_logger.log(
                     "intent_transition",
                     "stop",
@@ -143,8 +149,7 @@ class IntentTransitionRoutingMixin:
                     reason="terminal_repeated_intent_transition_defect",
                 )
 
-            if intent_decision.message == "intent_reuse_without_active_intent":
-                strict = defect_count >= 2
+            if transition_semantic.kind == "intent_reuse_without_active_intent":
                 self.stage_logger.log(
                     "intent_transition",
                     "continue",
@@ -156,16 +161,12 @@ class IntentTransitionRoutingMixin:
                 return IntentHandlingDecision(
                     handled=True,
                     next_query=self.prompt_builder.build_reuse_without_active_intent_activate_only_prompt(
-                        strict=strict
+                        strict=transition_semantic.strict
                     ),
                     reason=intent_decision.message,
                 )
 
-            if (
-                intent_decision.message == "unnecessary_intent_reactivation_or_replace"
-                and getattr(self.state, "active_intent", None) is not None
-                and self._remaining_has_action_only(response_text)
-            ):
+            if transition_semantic.kind == "ignored_redundant_intent_reactivation_with_followup_action":
                 self.stage_logger.log(
                     "intent_transition",
                     "pass",
@@ -235,48 +236,58 @@ class IntentTransitionRoutingMixin:
             )
 
         payload_mode = str((intent_payload or {}).get("mode") or "").strip().lower()
-        if self._transition_only_intent_required():
-            if self._remaining_has_any_action(response_text):
-                blocked_action = str(getattr(self.state, "transition_only_blocked_action", "") or "").strip()
-                self._clear_transition_only_intent_required()
-                if payload_mode == "reuse":
-                    self._clear_reuse_only_intent_required()
-                self.stage_logger.log(
-                    "intent_transition",
-                    "continue",
-                    reason="transition_only_recovery_cannot_bundle_action",
-                    source="intent_runtime",
-                    universe="transition_in_progress",
-                )
-                return IntentHandlingDecision(
-                    handled=True,
-                    next_query=self.prompt_builder.build_transition_only_intent_cannot_bundle_action_prompt(
-                        blocked_action=blocked_action
-                    ),
-                    reason="transition_only_recovery_cannot_bundle_action",
-                )
+        followup_summary = self.followup_semantics.summarize(
+            self._followup_surface_summary_after_current_transition(intent_payload, response_text)["analysis"]
+        )
+        transition_semantic = self.followup_semantics.evaluate_transition(
+            phase="accepted",
+            payload_mode=payload_mode,
+            completion_requested=bool(intent_decision.completion_requested),
+            transition_only_required=self._transition_only_intent_required(),
+            reuse_only_required=self._reuse_only_intent_required(),
+            summary=followup_summary,
+        )
+        if transition_semantic.kind == "transition_only_recovery_cannot_bundle_action":
+            blocked_action = str(getattr(self.state, "transition_only_blocked_action", "") or "").strip()
             self._clear_transition_only_intent_required()
-        if payload_mode == "reuse" and self._reuse_only_intent_required():
-            if self._remaining_has_any_action(response_text):
-                blocked_action = str(getattr(self.state, "reuse_only_blocked_action", "") or "").strip()
+            if payload_mode == "reuse":
                 self._clear_reuse_only_intent_required()
-                self.stage_logger.log(
-                    "intent_transition",
-                    "continue",
-                    reason="reuse_only_transition_cannot_bundle_action",
-                    source="intent_runtime",
-                    universe="transition_in_progress",
-                )
-                return IntentHandlingDecision(
-                    handled=True,
-                    next_query=self.prompt_builder.build_reuse_only_transition_cannot_bundle_action_prompt(
-                        blocked_action=blocked_action
-                    ),
-                    reason="reuse_only_transition_cannot_bundle_action",
-                )
+            self.stage_logger.log(
+                "intent_transition",
+                "continue",
+                reason=transition_semantic.kind,
+                source="intent_runtime",
+                universe="transition_in_progress",
+            )
+            return IntentHandlingDecision(
+                handled=True,
+                next_query=self.prompt_builder.build_transition_only_intent_cannot_bundle_action_prompt(
+                    blocked_action=blocked_action
+                ),
+                reason=transition_semantic.kind,
+            )
+        self._clear_transition_only_intent_required()
+        if transition_semantic.kind == "reuse_only_transition_cannot_bundle_action":
+            blocked_action = str(getattr(self.state, "reuse_only_blocked_action", "") or "").strip()
+            self._clear_reuse_only_intent_required()
+            self.stage_logger.log(
+                "intent_transition",
+                "continue",
+                reason=transition_semantic.kind,
+                source="intent_runtime",
+                universe="transition_in_progress",
+            )
+            return IntentHandlingDecision(
+                handled=True,
+                next_query=self.prompt_builder.build_reuse_only_transition_cannot_bundle_action_prompt(
+                    blocked_action=blocked_action
+                ),
+                reason=transition_semantic.kind,
+            )
+        if payload_mode == "reuse":
             self._clear_reuse_only_intent_required()
 
-        if not str(response_text or "").strip() or self._has_no_followup_after_intent(response_text):
+        if not str(response_text or "").strip() or transition_semantic.kind == "no_followup":
             if hasattr(self.state, "note_intent_only_response"):
                 self.state.note_intent_only_response()
             if intent_decision.completion_requested:
@@ -315,44 +326,43 @@ class IntentTransitionRoutingMixin:
                 reason="intent_accepted_without_followup",
             )
 
+        if transition_semantic.kind == "intent_complete_with_action_not_allowed":
+            self.stage_logger.log(
+                "intent_transition",
+                "continue",
+                reason=transition_semantic.kind,
+                source="intent_runtime",
+                universe="transition_in_progress",
+                transition=intent_decision.transition_info.get("transition", ""),
+                before_active_intent_id=intent_decision.transition_info.get("before_active_intent_id", ""),
+                after_active_intent_id=intent_decision.transition_info.get("after_active_intent_id", ""),
+            )
+            return IntentHandlingDecision(
+                handled=True,
+                next_query=self.prompt_builder.build_completion_with_action_not_allowed_prompt(),
+                clear_pending_stop=True,
+                reason=transition_semantic.kind,
+            )
+
+        if intent_decision.completion_requested and transition_semantic.kind == "followup_conflict":
+            self.stage_logger.log(
+                "intent_transition",
+                "continue",
+                reason=transition_semantic.conflict_reason,
+                source="intent_runtime",
+                universe="transition_in_progress",
+                transition=intent_decision.transition_info.get("transition", ""),
+                before_active_intent_id=intent_decision.transition_info.get("before_active_intent_id", ""),
+                after_active_intent_id=intent_decision.transition_info.get("after_active_intent_id", ""),
+            )
+            return IntentHandlingDecision(
+                handled=True,
+                next_query=self.prompt_builder.build_followup_conflict_prompt(transition_semantic.conflict_reason),
+                clear_pending_stop=True,
+                reason=transition_semantic.conflict_reason,
+            )
+
         if intent_decision.completion_requested:
-            if self._remaining_has_any_action(response_text):
-                self.stage_logger.log(
-                    "intent_transition",
-                    "continue",
-                    reason="intent_complete_with_action_not_allowed",
-                    source="intent_runtime",
-                    universe="transition_in_progress",
-                    transition=intent_decision.transition_info.get("transition", ""),
-                    before_active_intent_id=intent_decision.transition_info.get("before_active_intent_id", ""),
-                    after_active_intent_id=intent_decision.transition_info.get("after_active_intent_id", ""),
-                )
-                return IntentHandlingDecision(
-                    handled=True,
-                    next_query=self.prompt_builder.build_completion_with_action_not_allowed_prompt(),
-                    clear_pending_stop=True,
-                    reason="intent_complete_with_action_not_allowed",
-                )
-
-            followup_conflict = self._followup_conflict_reason_after_current_transition(intent_payload, response_text)
-            if followup_conflict:
-                self.stage_logger.log(
-                    "intent_transition",
-                    "continue",
-                    reason=followup_conflict,
-                    source="intent_runtime",
-                    universe="transition_in_progress",
-                    transition=intent_decision.transition_info.get("transition", ""),
-                    before_active_intent_id=intent_decision.transition_info.get("before_active_intent_id", ""),
-                    after_active_intent_id=intent_decision.transition_info.get("after_active_intent_id", ""),
-                )
-                return IntentHandlingDecision(
-                    handled=True,
-                    next_query=self.prompt_builder.build_followup_conflict_prompt(followup_conflict),
-                    clear_pending_stop=True,
-                    reason=followup_conflict,
-                )
-
             self._finalize_completed_intent()
             self._mark_terminal_plaintext_completion(response_text)
             self.stage_logger.log(
@@ -367,11 +377,11 @@ class IntentTransitionRoutingMixin:
             )
             return IntentHandlingDecision(handled=False)
 
-        if self._reuse_has_inline_plaintext_answer(intent_payload, response_text):
+        if transition_semantic.kind == "intent_reuse_applied_with_inline_plaintext_answer":
             self.stage_logger.log(
                 "intent_transition",
                 "pass",
-                reason="intent_reuse_applied_with_inline_plaintext_answer",
+                reason=transition_semantic.kind,
                 source="intent_runtime",
                 universe="transition_in_progress",
                 transition=intent_decision.transition_info.get("transition", ""),
@@ -380,11 +390,11 @@ class IntentTransitionRoutingMixin:
             )
             return IntentHandlingDecision(handled=False)
 
-        if self._reuse_has_inline_single_action(intent_payload, response_text):
+        if transition_semantic.kind == "intent_reuse_applied_with_inline_followup_action":
             self.stage_logger.log(
                 "intent_transition",
                 "pass",
-                reason="intent_reuse_applied_with_inline_followup_action",
+                reason=transition_semantic.kind,
                 source="intent_runtime",
                 universe="transition_in_progress",
                 transition=intent_decision.transition_info.get("transition", ""),
@@ -393,11 +403,11 @@ class IntentTransitionRoutingMixin:
             )
             return IntentHandlingDecision(handled=False)
 
-        if self._current_transition_has_inline_action_only(intent_payload, response_text):
+        if transition_semantic.kind == "intent_applied_with_followup_action":
             self.stage_logger.log(
                 "intent_transition",
                 "pass",
-                reason="intent_applied_with_followup_action",
+                reason=transition_semantic.kind,
                 source="intent_runtime",
                 universe="transition_in_progress",
                 transition=intent_decision.transition_info.get("transition", ""),
@@ -406,12 +416,11 @@ class IntentTransitionRoutingMixin:
             )
             return IntentHandlingDecision(handled=False)
 
-        followup_conflict = self._followup_conflict_reason_after_current_transition(intent_payload, response_text)
-        if followup_conflict:
+        if transition_semantic.kind == "followup_conflict":
             self.stage_logger.log(
                 "intent_transition",
                 "continue",
-                reason=followup_conflict,
+                reason=transition_semantic.conflict_reason,
                 source="intent_runtime",
                 universe="transition_in_progress",
                 transition=intent_decision.transition_info.get("transition", ""),
@@ -420,9 +429,9 @@ class IntentTransitionRoutingMixin:
             )
             return IntentHandlingDecision(
                 handled=True,
-                next_query=self.prompt_builder.build_followup_conflict_prompt(followup_conflict),
+                next_query=self.prompt_builder.build_followup_conflict_prompt(transition_semantic.conflict_reason),
                 clear_pending_stop=True,
-                reason=followup_conflict,
+                reason=transition_semantic.conflict_reason,
             )
 
         active_intent = intent_decision.active_intent or getattr(self.state, "active_intent", None)

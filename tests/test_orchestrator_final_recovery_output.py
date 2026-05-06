@@ -14,7 +14,7 @@ class _EnumLike:
 
 
 def _make_components(active_intent):
-    state = SimpleNamespace(active_intent=active_intent)
+    state = SimpleNamespace(active_intent=active_intent, operational_journal=[])
     prompt_builder = OrchestratorPromptBuilder(
         SimpleNamespace(
             state=state,
@@ -129,6 +129,37 @@ class OrchestratorFinalRecoveryOutputTests(unittest.TestCase):
         self.assertIn("Previous action violated orchestration policy", out)
         self.assertIn("Runtime-suggested next actions: search_content, edit_file, write_file.", out)
         self.assertIn("Use these only as recovery hints, not as a replacement for the current contract.", out)
+
+    def test_modification_mode_generic_recovery_prefers_operational_journal_last_committed_action(self):
+        sm = self._sm(task_kind="MODIFICATION")
+        stop_info = {
+            "reason": "action_not_allowed_in_phase",
+            "recoverable": True,
+            "next_actions": ["search_content", "edit_file", "write_file"],
+            "next_actions_source": "recommended",
+        }
+
+        self.active_intent = SimpleNamespace(
+            intent_id="activity_tracker_doc_write",
+            intent_type="MODIFY",
+            goal="write documentation file with findings",
+            allowed_actions=["search_content", "edit_file", "write_file"],
+        )
+        self.prompt_builder, self.recovery = _make_components(self.active_intent)
+        self.prompt_builder.state.operational_journal = [
+            {
+                "sequence": 1,
+                "kind": "tool_execution_commit",
+                "action_type": "read_chunk",
+                "target": "ActivityTrackerScreen.kt",
+                "action_dispatched": True,
+            }
+        ]
+
+        out = self._final_recovery_output(sm, stop_info)
+
+        self.assertIn('Last committed action: read_chunk("ActivityTrackerScreen.kt") -> success.', out)
+        self.assertIn("Runtime-suggested next actions: search_content, edit_file, write_file.", out)
 
     def test_blocked_large_read_keeps_current_intent_contract_recovery_not_plain_text(self):
         sm = self._sm(task_kind="INSPECTION")

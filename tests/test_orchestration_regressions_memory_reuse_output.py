@@ -128,6 +128,24 @@ class OutputRecoveryRegressionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("modify_completion_claim_without_state_change_proof", decision.reason)
         self.assertTrue(decision.continue_loop)
 
+    async def test_compiler_ir_action_without_legacy_segment_passes_through_as_followup_output(self):
+        agent = _DummyAgent()
+        handler = ModelOutputRecoveryHandler(agent, _PromptBuilder())
+        parsed = ParsedModelOutput(
+            response="<think>Need exact chunk.</think>",
+            visible_text="",
+            has_action_segment=False,
+            invalid_kind="",
+        )
+        parsed.compiler_ir = types.SimpleNamespace(
+            action_ops=[types.SimpleNamespace(payload={"type": "read_chunk", "path": "x.py"})]
+        )
+
+        decision = await handler.decide(parsed, malformed_action_retries=0, audit_marker_retries=0)
+
+        self.assertFalse(decision.handled)
+        self.assertEqual("no_invalid_kind", decision.reason)
+
 
 class IntentReuseRegressionTests(unittest.TestCase):
     def test_reuse_plaintext_answer_does_not_treat_memory_tags_only_as_plaintext(self):

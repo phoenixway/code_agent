@@ -33,6 +33,75 @@ TRACE_SCHEMA_DEFAULTS = {
 }
 
 
+def compact_execution_plan(execution_plan) -> dict | None:
+    if execution_plan is None:
+        return None
+    return {
+        "shape": getattr(execution_plan, "shape", ""),
+        "transaction_kind": getattr(execution_plan, "transaction_kind", ""),
+        "bundle_validated": getattr(execution_plan, "bundle_validated", False),
+        "transition_applied": getattr(execution_plan, "transition_applied", False),
+        "action_dispatched": getattr(execution_plan, "action_dispatched", False),
+        "before_active_intent_id": getattr(execution_plan, "before_active_intent_id", ""),
+        "after_active_intent_id": getattr(execution_plan, "after_active_intent_id", ""),
+        "action_effects": list(getattr(execution_plan, "action_effects", []) or []),
+    }
+
+
+def compact_execution_commit(execution_commit) -> dict | None:
+    if execution_commit is None:
+        return None
+    return {
+        "shape": getattr(execution_commit, "shape", ""),
+        "transaction_kind": getattr(execution_commit, "transaction_kind", ""),
+        "bundle_validated": getattr(execution_commit, "bundle_validated", False),
+        "transition_applied": getattr(execution_commit, "transition_applied", False),
+        "action_dispatched": getattr(execution_commit, "action_dispatched", False),
+        "before_active_intent_id": getattr(execution_commit, "before_active_intent_id", ""),
+        "after_active_intent_id": getattr(execution_commit, "after_active_intent_id", ""),
+        "committed_action_count": getattr(execution_commit, "committed_action_count", 0),
+        "committed_system_result_count": getattr(execution_commit, "committed_system_result_count", 0),
+        "dispatch_stop_requested": getattr(execution_commit, "dispatch_stop_requested", False),
+        "action_effects": list(getattr(execution_commit, "action_effects", []) or []),
+    }
+
+
+def compact_compiler_replay(compiler_analysis) -> dict:
+    snapshot = {
+        "shape": getattr(getattr(compiler_analysis, "shape", None), "name", ""),
+        "error_code": str(getattr(getattr(compiler_analysis, "error", None), "code", "") or ""),
+        "recovery_id": str(getattr(getattr(compiler_analysis, "error", None), "recovery_id", "") or ""),
+        "tokens": [],
+        "ast_nodes": [],
+        "ir": None,
+        "span_excerpt": "",
+    }
+    error_span = getattr(getattr(compiler_analysis, "error", None), "span", None)
+    if error_span is not None:
+        snapshot["span_excerpt"] = str(getattr(error_span, "excerpt", "") or "")
+    for token in list(getattr(compiler_analysis, "tokens", ()) or ())[:12]:
+        snapshot["tokens"].append(token.__class__.__name__)
+    ast = getattr(compiler_analysis, "ast", None)
+    for node in list(getattr(ast, "nodes", ()) or ())[:12]:
+        snapshot["ast_nodes"].append(node.__class__.__name__)
+    ir = getattr(compiler_analysis, "ir", None)
+    if ir is not None:
+        snapshot["ir"] = {
+            "shape": getattr(getattr(ir, "shape", None), "name", ""),
+            "intent_ops": len(getattr(ir, "intent_ops", ()) or ()),
+            "action_ops": len(getattr(ir, "action_ops", ()) or ()),
+            "board_ops": len(getattr(ir, "board_ops", ()) or ()),
+            "annotations": len(getattr(ir, "annotations", ()) or ()),
+            "visible_answer": bool(getattr(ir, "visible_answer", None)),
+            "file_content": bool(getattr(ir, "file_content", None)),
+            "effects_preview": [
+                str(getattr(effect, "summary", "") or "")
+                for effect in list(getattr(ir, "effects_preview", ()) or ())[:6]
+            ],
+        }
+    return snapshot
+
+
 def normalize_trace_fields(fields: dict | None) -> dict:
     normalized = dict(TRACE_SCHEMA_DEFAULTS)
     for key, value in (fields or {}).items():

@@ -599,6 +599,12 @@ class DispatchPipelineTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("atomic_intent_action_bundle", trace_entry.fields["execution_plan"]["transaction_kind"])
         self.assertTrue(trace_entry.fields["execution_commit"]["action_dispatched"])
         self.assertEqual(1, trace_entry.fields["execution_commit"]["committed_action_count"])
+        self.assertIs(iteration.execution_plan, state.last_execution_plan)
+        self.assertIs(decision.execution_commit, state.last_execution_commit)
+        self.assertEqual(1, len(state.operational_journal))
+        self.assertEqual("tool_execution_commit", state.operational_journal[0]["kind"])
+        self.assertEqual("read_chunk", state.operational_journal[0]["action_type"])
+        self.assertEqual("x.py", state.operational_journal[0]["target"])
 
 
 class ActionPolicyHandlerTests(unittest.IsolatedAsyncioTestCase):
@@ -3275,6 +3281,79 @@ class OrchestrationTraceExporterTests(unittest.TestCase):
         self.assertIn("[1] stage=response_pipeline decision=dispatch", rendered)
         self.assertIn("action_count: 2", rendered)
 
+    def test_runtime_artifacts_exports_latest_plan_and_commit(self):
+        state = SimpleNamespace(
+            last_execution_plan=ExecutionPlan(
+                shape="intent_action_bundle",
+                transaction_kind="atomic_intent_action_bundle",
+                action_effects=["read_chunk:x.py"],
+                bundle_validated=True,
+                transition_applied=True,
+                action_dispatched=False,
+                before_active_intent_id="intent_1",
+                after_active_intent_id="intent_1",
+            ),
+            last_execution_commit=SimpleNamespace(
+                shape="intent_action_bundle",
+                transaction_kind="atomic_intent_action_bundle",
+                action_dispatched=True,
+                committed_action_count=1,
+            ),
+            orchestration_trace=[],
+        )
+
+        exported = OrchestrationTraceExporter().runtime_artifacts(state)
+
+        self.assertEqual("atomic_intent_action_bundle", exported["last_execution_plan"]["transaction_kind"])
+        self.assertTrue(exported["last_execution_commit"]["action_dispatched"])
+        self.assertEqual(1, exported["last_execution_commit"]["committed_action_count"])
+        self.assertEqual([], exported["operational_journal"])
+
+    def test_runtime_diagnostics_snapshot_exports_error_action_and_trace_context(self):
+        state = SimpleNamespace(
+            last_error_code="E_PROTOCOL",
+            last_error_recoverable=True,
+            consecutive_same_error_count=2,
+            last_failed_action_command={"type": "edit_file", "path": "x.py"},
+            last_failed_action_result={"status": "error", "message": "denied"},
+            last_execution_plan=ExecutionPlan(
+                shape="intent_action_bundle",
+                transaction_kind="atomic_intent_action_bundle",
+            ),
+            last_execution_commit=SimpleNamespace(
+                transaction_kind="atomic_intent_action_bundle",
+                action_dispatched=True,
+            ),
+            operational_journal=[
+                {
+                    "sequence": 1,
+                    "kind": "tool_execution_commit",
+                    "action_type": "read_chunk",
+                    "target": "x.py",
+                }
+            ],
+            orchestration_trace=[
+                OrchestrationTraceEntry(
+                    sequence=1,
+                    stage="response_pipeline",
+                    decision="continue",
+                    fields={"reason": "intent_required"},
+                )
+            ],
+        )
+
+        exported = OrchestrationTraceExporter().runtime_diagnostics_snapshot(state)
+
+        self.assertEqual("E_PROTOCOL", exported["last_error_code"])
+        self.assertTrue(exported["last_error_recoverable"])
+        self.assertEqual(2, exported["consecutive_same_error_count"])
+        self.assertEqual("edit_file", exported["last_failed_action_command"]["type"])
+        self.assertEqual("denied", exported["last_failed_action_result"]["message"])
+        self.assertEqual("atomic_intent_action_bundle", exported["last_execution_plan"]["transaction_kind"])
+        self.assertTrue(exported["last_execution_commit"]["action_dispatched"])
+        self.assertEqual("tool_execution_commit", exported["operational_journal"][0]["kind"])
+        self.assertIn("stage=response_pipeline", exported["orchestration_trace_text"])
+
     def test_command_handler_runtime_diagnostics_include_orchestration_trace(self):
         state = SimpleNamespace(
             last_error_code=None,
@@ -3282,6 +3361,22 @@ class OrchestrationTraceExporterTests(unittest.TestCase):
             consecutive_same_error_count=0,
             last_failed_action_command=None,
             last_failed_action_result=None,
+            last_execution_plan=ExecutionPlan(
+                shape="intent_action_bundle",
+                transaction_kind="atomic_intent_action_bundle",
+            ),
+            last_execution_commit=SimpleNamespace(
+                transaction_kind="atomic_intent_action_bundle",
+                action_dispatched=True,
+            ),
+            operational_journal=[
+                {
+                    "sequence": 1,
+                    "kind": "tool_execution_commit",
+                    "action_type": "read_chunk",
+                    "target": "x.py",
+                }
+            ],
             orchestration_trace=[
                 OrchestrationTraceEntry(
                     sequence=1,
@@ -3302,6 +3397,11 @@ class OrchestrationTraceExporterTests(unittest.TestCase):
         rendered = out.getvalue()
 
         self.assertIn("ORCHESTRATION TRACE:", rendered)
+        self.assertIn("LAST EXECUTION PLAN:", rendered)
+        self.assertIn("LAST EXECUTION COMMIT:", rendered)
+        self.assertIn("OPERATIONAL JOURNAL:", rendered)
+        self.assertIn("atomic_intent_action_bundle", rendered)
+        self.assertIn("tool_execution_commit", rendered)
         self.assertIn("stage=intent_transition", rendered)
 
 

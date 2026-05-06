@@ -79,6 +79,15 @@ class ResponseSemanticsTests(unittest.TestCase):
         parsed_action = SimpleNamespace(has_action_segment=True, invalid_kind="", visible_text="")
         self.assertFalse(self.s.is_reflection_only_repair_turn("<finding scope=\"intent\">X</finding><action>{}</action>", parsed_action, 1))
 
+    def test_is_reflection_only_repair_turn_rejects_compiler_ir_action_without_legacy_segment(self):
+        parsed = SimpleNamespace(
+            has_action_segment=False,
+            invalid_kind="missing_action_or_answer",
+            visible_text="",
+            compiler_ir=SimpleNamespace(action_ops=[SimpleNamespace(payload={"type": "read_file"})]),
+        )
+        self.assertFalse(self.s.is_reflection_only_repair_turn("<finding scope=\"intent\">X</finding>", parsed, 0))
+
     def test_is_durable_state_repair_turn_accepts_marker_only_for_missing_memory_update_done(self):
         parsed = SimpleNamespace(has_action_segment=False, invalid_kind="missing_action_or_answer", visible_text="")
         self.assertTrue(
@@ -99,6 +108,15 @@ class ResponseSemanticsTests(unittest.TestCase):
         self.assertFalse(self.s.is_plaintext_answer_path("<action>{}</action>", parsed_action, 1))
         parsed_invalid = SimpleNamespace(has_action_segment=False, invalid_kind="malformed_action", visible_text="")
         self.assertFalse(self.s.is_plaintext_answer_path("Answer", parsed_invalid, 0))
+
+    def test_is_plaintext_answer_path_rejects_compiler_ir_action_without_legacy_segment(self):
+        parsed = SimpleNamespace(
+            has_action_segment=False,
+            invalid_kind="missing_action_or_answer",
+            visible_text="Answer",
+            compiler_ir=SimpleNamespace(action_ops=[SimpleNamespace(payload={"type": "read_file"})]),
+        )
+        self.assertFalse(self.s.is_plaintext_answer_path("Answer", parsed, 0))
 
     def test_is_plaintext_answer_path_strips_think_and_memory_tags(self):
         parsed = SimpleNamespace(has_action_segment=False, invalid_kind="missing_action_or_answer", visible_text="")

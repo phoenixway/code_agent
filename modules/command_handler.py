@@ -134,6 +134,14 @@ class CommandHandler:
                 self.agent.state.last_failed_action_command = None
             if hasattr(self.agent.state, "last_failed_action_result"):
                 self.agent.state.last_failed_action_result = None
+            if hasattr(self.agent.state, "last_execution_plan"):
+                self.agent.state.last_execution_plan = None
+            if hasattr(self.agent.state, "last_execution_commit"):
+                self.agent.state.last_execution_commit = None
+            if hasattr(self.agent.state, "operational_journal"):
+                self.agent.state.operational_journal = []
+            if hasattr(self.agent.state, "operational_journal_sequence"):
+                self.agent.state.operational_journal_sequence = 0
             if hasattr(self.agent.state, "pending_loop_stop_info"):
                 self.agent.state.pending_loop_stop_info = None
             if hasattr(self.agent.state, "malformed_recovery_grace_remaining"):
@@ -326,12 +334,13 @@ class CommandHandler:
         if state is None:
             out.write("State unavailable.\n\n")
             return
+        exporter = OrchestrationTraceExporter()
+        diagnostics = exporter.runtime_diagnostics_snapshot(state)
 
-        last_failed_command = getattr(state, "last_failed_action_command", None)
-        last_failed_result = getattr(state, "last_failed_action_result", None)
-        out.write(f"last_error_code: {getattr(state, 'last_error_code', None)}\n")
-        out.write(f"last_error_recoverable: {getattr(state, 'last_error_recoverable', None)}\n")
-        out.write(f"consecutive_same_error_count: {getattr(state, 'consecutive_same_error_count', None)}\n")
+        last_failed_command = diagnostics["last_failed_action_command"]
+        out.write(f"last_error_code: {diagnostics['last_error_code']}\n")
+        out.write(f"last_error_recoverable: {diagnostics['last_error_recoverable']}\n")
+        out.write(f"consecutive_same_error_count: {diagnostics['consecutive_same_error_count']}\n")
         out.write("\n")
 
         if isinstance(last_failed_command, dict):
@@ -341,16 +350,36 @@ class CommandHandler:
         else:
             out.write("LAST FAILED ACTION COMMAND: unavailable\n\n")
 
-        if isinstance(last_failed_result, dict):
+        if isinstance(diagnostics["last_failed_action_result"], dict):
             out.write("LAST FAILED ACTION RESULT:\n")
-            out.write(self._to_pretty_json(last_failed_result))
+            out.write(self._to_pretty_json(diagnostics["last_failed_action_result"]))
             out.write("\n\n")
         else:
             out.write("LAST FAILED ACTION RESULT: unavailable\n\n")
 
-        exporter = OrchestrationTraceExporter()
+        if diagnostics["last_execution_plan"] is not None:
+            out.write("LAST EXECUTION PLAN:\n")
+            out.write(self._to_pretty_json(diagnostics["last_execution_plan"]))
+            out.write("\n\n")
+        else:
+            out.write("LAST EXECUTION PLAN: unavailable\n\n")
+
+        if diagnostics["last_execution_commit"] is not None:
+            out.write("LAST EXECUTION COMMIT:\n")
+            out.write(self._to_pretty_json(diagnostics["last_execution_commit"]))
+            out.write("\n\n")
+        else:
+            out.write("LAST EXECUTION COMMIT: unavailable\n\n")
+
+        if diagnostics["operational_journal"]:
+            out.write("OPERATIONAL JOURNAL:\n")
+            out.write(self._to_pretty_json(diagnostics["operational_journal"]))
+            out.write("\n\n")
+        else:
+            out.write("OPERATIONAL JOURNAL: unavailable\n\n")
+
         out.write("ORCHESTRATION TRACE:\n")
-        out.write(exporter.render_text(state))
+        out.write(diagnostics["orchestration_trace_text"])
         out.write("\n")
 
         if not full_dump or not isinstance(last_failed_command, dict):

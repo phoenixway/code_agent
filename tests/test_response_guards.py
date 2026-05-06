@@ -84,6 +84,21 @@ class ResponseGuardPolicyTests(unittest.TestCase):
                 )
             )
 
+    def test_nonproductive_thinking_turn_false_for_compiler_ir_action_without_legacy_segment(self):
+        parsed = SimpleNamespace(
+            has_action_segment=False,
+            compiler_ir=SimpleNamespace(action_ops=[SimpleNamespace(payload={"type": "read_file"})]),
+        )
+        self.assertFalse(
+            self.g.is_nonproductive_thinking_turn(
+                self.s,
+                "<think>one two three four five six</think>",
+                parsed,
+                0,
+                plaintext_answer_path=False,
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
