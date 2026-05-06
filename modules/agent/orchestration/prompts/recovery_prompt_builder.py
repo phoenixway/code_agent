@@ -204,19 +204,10 @@ class RecoveryPromptBuilderMixin:
             active_intent=self._current_active_intent(),
         )
 
-        source_value = str(source or "").strip().lower()
-        if source_value == "intent":
-            label = "Allowed actions under the CURRENT intent contract"
-        elif source_value == "recommended":
-            label = "Runtime-suggested next actions"
-        else:
-            label = "Allowed next actions"
-        return f"\n{label}: {', '.join(actions)}."
-
     def build_typed_stop_recovery_prompt(self, stop_info: dict | None) -> str:
         ctx = self._recovery_context(stop_info)
         stop_info = ctx.to_stop_info()
-        reason = ctx.reason.strip()
+        reason = str(ctx.reason or "").strip()
         if reason == "missing_executable":
             return self.build_missing_executable_prompt(stop_info)
         state_changing_only = reason in {"repeating_failure", "repeating_no_progress", "observe_budget_exhausted"}
@@ -230,11 +221,11 @@ class RecoveryPromptBuilderMixin:
             "intent_blocked_action_signature",
         }
         prompt = self.build_action_format_recovery_prompt(
-            self.typed_recovery_header(stop_info),
+            str(self.typed_recovery_header(stop_info) or ""),
             forbid_audit_markers=True,
             state_changing_only=state_changing_only,
             single_readonly_action_only=single_readonly_action_only,
-        )
+        ) or ""
         if reason in {"planned_turn_working_material_too_large", "planned_full_read_too_large", "intent_blocked_action_signature"}:
             active_intent = getattr(self.state, "active_intent", None)
             active_goal = getattr(active_intent, "goal", "") if active_intent is not None else ""

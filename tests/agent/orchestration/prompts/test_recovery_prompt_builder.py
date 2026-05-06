@@ -1,0 +1,118 @@
+"""Tests for the recovery prompt builder to prevent crashes."""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+from unittest.mock import MagicMock
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
+
+from modules.agent.orchestration.prompts.prompting import OrchestratorPromptBuilder
+
+
+class MockAgent:
+    """A mock agent for initializing the prompt builder."""
+
+    def __init__(self):
+        self.state = MagicMock()
+        self.config = {}
+        self.recovery_policy_resolver = MagicMock()
+        self.prompts = MagicMock()
+        self.state.active_intent = None
+        self.state.last_resumable_intent_id = ""
+        self.state.last_completed_intent_type = ""
+        self.state.task_kind = None
+
+
+@pytest.fixture
+def prompt_builder() -> OrchestratorPromptBuilder:
+    """Provides a mocked prompt builder for testing."""
+    agent = MockAgent()
+    builder = OrchestratorPromptBuilder(agent)
+    # Mock methods that are not part of RecoveryPromptBuilderMixin to isolate the test
+    builder.build_action_format_recovery_prompt = MagicMock(return_value="Generic action format recovery prompt.")
+    builder.typed_recovery_header = MagicMock(return_value="Recovery Header.")
+    builder._recovery_context = MagicMock()
+    return builder
+
+
+def test_low_value_broad_search_repeat_recovery_prompt(prompt_builder: OrchestratorPromptBuilder):
+    """
+    Tests that `low_value_broad_search_repeat` reason produces a valid string prompt.
+    """
+    reason = "low_value_broad_search_repeat"
+    stop_info = {"reason": reason}
+    prompt_builder._recovery_context.return_value = MagicMock(reason=reason, to_stop_info=lambda: stop_info)
+
+    prompt = prompt_builder.build_typed_stop_recovery_prompt(stop_info)
+
+    assert isinstance(prompt, str)
+    assert "Generic action format recovery prompt." in prompt
+    assert "For search_content, prefer explicit import patterns" in prompt
+
+
+def test_low_value_broad_search_repeat_real_action_format_prompt(prompt_builder: OrchestratorPromptBuilder):
+    """
+    Tests that `low_value_broad_search_repeat` with a real action format prompt builder
+    produces the expected detailed prompt.
+    """
+    # Un-mock the method for this specific test to test the real implementation
+    prompt_builder.build_action_format_recovery_prompt = (
+        OrchestratorPromptBuilder.build_action_format_recovery_prompt.__get__(prompt_builder, OrchestratorPromptBuilder)
+    )
+
+    reason = "low_value_broad_search_repeat"
+    stop_info = {"reason": reason}
+    prompt_builder._recovery_context.return_value = MagicMock(reason=reason, to_stop_info=lambda: stop_info)
+
+    prompt = prompt_builder.build_typed_stop_recovery_prompt(stop_info)
+
+    assert isinstance(prompt, str)
+    assert "prefer exactly one" in prompt.lower()
+    assert "read-only" in prompt.lower()
+    assert "For search_content, prefer explicit import patterns" in prompt
+
+
+def test_typed_stop_recovery_prompt_handles_none_from_helpers(prompt_builder: OrchestratorPromptBuilder):
+    """
+    Tests that `build_typed_stop_recovery_prompt` is defensive against None returns from its helpers.
+    """
+    reason = "low_value_broad_search_repeat"
+    stop_info = {"reason": reason}
+    prompt_builder._recovery_context.return_value = MagicMock(reason=reason, to_stop_info=lambda: stop_info)
+
+    # Simulate helpers returning None, which caused the original crash
+    prompt_builder.build_action_format_recovery_prompt.return_value = None
+    prompt_builder.typed_recovery_header.return_value = None
+
+    prompt = prompt_builder.build_typed_stop_recovery_prompt(stop_info)
+
+    assert isinstance(prompt, str)
+    # It should still contain the appended part, not crash
+    assert "For search_content, prefer explicit import patterns" in prompt
+
+
+def test_typed_stop_recovery_with_missing_goal(prompt_builder: OrchestratorPromptBuilder):
+    """
+    Tests that prompt building is safe when the active intent or its goal is missing.
+    """
+    reason = "planned_full_read_too_large"
+    stop_info = {"reason": reason}
+    prompt_builder._recovery_context.return_value = MagicMock(reason=reason, to_stop_info=lambda: stop_info)
+
+    # Case 1: No active intent
+    prompt_builder.state.active_intent = None
+    prompt = prompt_builder.build_typed_stop_recovery_prompt(stop_info)
+    assert isinstance(prompt, str)
+    assert "Current contract goal remains the same: ." in prompt
+
+    # Case 2: Active intent exists, but `goal` attribute is missing
+    active_intent_mock = MagicMock()
+    del active_intent_mock.goal  # Ensure it's missing
+    prompt_builder.state.active_intent = active_intent_mock
+    prompt = prompt_builder.build_typed_stop_recovery_prompt(stop_info)
+    assert isinstance(prompt, str)
+    assert "Current contract goal remains the same: ." in prompt
