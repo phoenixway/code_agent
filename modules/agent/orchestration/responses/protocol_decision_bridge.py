@@ -45,6 +45,12 @@ COMPILER_ACTION_PAYLOAD_ERROR_CODES = {
 }
 
 
+COMPILER_FILE_CONTENT_ERROR_CODES = {
+    "E_FILE_CONTENT_REQUIRES_ACTION",
+    "E_FILE_CONTENT_UNCLOSED",
+}
+
+
 def _is_compiler_valid_pre_action_text(parsed_output, parsed_action_count: int) -> bool:
     compiler_shape = str(getattr(parsed_output, "compiler_shape", "") or "").strip()
     compiler_error_code = str(getattr(parsed_output, "compiler_error_code", "") or "").strip()
@@ -77,6 +83,14 @@ def resolve_protocol_authority(parsed_output, parsed_action_count: int) -> Proto
         return ProtocolAuthorityDecision(
             source="compiler",
             reason="compiler_action_payload_diagnostic",
+            suppress_legacy_invalid_kind=False,
+            dispatch_allowed=False,
+        )
+
+    if compiler_error_code in COMPILER_FILE_CONTENT_ERROR_CODES:
+        return ProtocolAuthorityDecision(
+            source="compiler",
+            reason="compiler_file_content_diagnostic",
             suppress_legacy_invalid_kind=False,
             dispatch_allowed=False,
         )

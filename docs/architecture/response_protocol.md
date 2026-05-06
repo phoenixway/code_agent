@@ -40,6 +40,7 @@ The `ProtocolDecisionBridge` centralizes compiler-vs-legacy authority. Its rules
 - **`PLAINTEXT_ONLY` is not compiler-authoritative**: Legacy recovery policies for cases like `missing_action_or_answer` or plain-think recovery still apply to plaintext-like responses. The compiler does not yet override these.
 - **`PRE_ACTION_TEXT_AND_ACTION` authority is narrow**: The compiler is only authoritative for simple pre-action status text followed by an action. If the response also contains `<think>` or other control blocks, it falls back to legacy `mixed_visible_text_and_control_protocol` recovery.
 - **Action payload errors are compiler-authoritative**: The compiler is the authority for structural action payload errors (e.g., `E_ACTION_PAYLOAD_ARRAY`), preventing dispatch.
+- **File Content Pairing Diagnostics**: The compiler is authoritative for structural errors related to `write_file_block` and `<file_content>` pairing, such as `E_FILE_CONTENT_REQUIRES_ACTION`.
 
 ## 8. Compiler Authority Migration Backlog
 
@@ -53,6 +54,7 @@ The `ProtocolDecisionBridge` currently grants authority to the compiler for a na
 
 - **Simple `PRE_ACTION_TEXT_AND_ACTION`**: A response containing only leading visible text before a single action, without any other control blocks like `<think>`.
 - **Action Payload Diagnostics**: Structural errors in the action payload, such as `E_ACTION_PAYLOAD_ARRAY`.
+- **File Content Pairing Diagnostics**: Structural errors related to `write_file_block` and `<file_content>` pairing.
 
 #### Legacy-Governed
 
@@ -109,10 +111,10 @@ A response classified as `ACTION_ONLY` by the compiler still passes through the 
 
 A response can have `compiler_shape="ACTION_ONLY"` but still be invalid due to legacy or runtime policies.
 
-**Safe Candidates for Compiler Authority (already diagnosed by compiler):**
+**Compiler-Authoritative Diagnostics within `ACTION_ONLY`:**
 
 - Malformed action payload (e.g., not a JSON object).
-- `write_file_block` missing its `<file_content>` block.
+- `write_file_block` missing its `<file_content>` block or being unclosed.
 
 **Unsafe Candidates (must remain legacy/runtime governed for now):**
 
