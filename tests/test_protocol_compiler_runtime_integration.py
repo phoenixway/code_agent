@@ -8,16 +8,60 @@ from modules.agent.orchestration.responses import ModelResponsePipeline
 
 
 class DummyParsedOutput:
-    def __init__(self, *, has_action_segment=False, invalid_kind="", visible_text=""):
-        self.has_action_segment = has_action_segment
-        self.invalid_kind = invalid_kind
-        self.visible_text = visible_text
+    def __init__(self, **kwargs):
+        self.has_action_segment = False
+        self.invalid_kind = ""
+        self.visible_text = ""
+        self.compiler_shape = ""
+        self.compiler_error_code = ""
+        self.compiler_ir = None
+        self.response = ""
+        self.__dict__.update(kwargs)
 
 
 class LegacyPermissiveIntentResponseParser:
     def classify(self, response, segments, allow_think_autorepair=True):
+        response_str = str(response or "")
+        lower_response = response_str.lower()
+        has_action = "<action" in lower_response
+
+        if "i will now read the file" in lower_response and has_action:
+            return DummyParsedOutput(
+                response=response_str,
+                has_action_segment=True,
+                invalid_kind="mixed_visible_text_and_control_protocol",
+                visible_text="I will now read the file.",
+                compiler_shape="PRE_ACTION_TEXT_AND_ACTION",
+                compiler_error_code="",
+                compiler_ir=SimpleNamespace(
+                    action_count=1,
+                    has_pre_action_text=True,
+                    pre_action_text="I will now read the file.",
+                    action_ops=[SimpleNamespace(action_type="read_file", payload={"path": "x.py"})],
+                ),
+            )
+
+        if '"type":"read_file","path":"a.py"' in lower_response and '"type":"read_file","path":"b.py"' in lower_response:
+            return DummyParsedOutput(
+                response=response_str,
+                has_action_segment=True,
+                invalid_kind="",
+                compiler_shape="INVALID",
+                compiler_error_code="E_ACTION_PAYLOAD_ARRAY",
+            )
+
+        if '"type":"write_file_block"' in lower_response and "file_content" not in lower_response:
+            return DummyParsedOutput(
+                response=response_str,
+                has_action_segment=True,
+                invalid_kind="",
+                compiler_shape="INVALID",
+                compiler_error_code="E_FILE_CONTENT_REQUIRES_ACTION",
+            )
+
         return DummyParsedOutput(
-            has_action_segment="<action" in str(response or "").lower(),
+            response=response_str,
+            has_action_segment=has_action,
             invalid_kind="",
             visible_text="",
         )
@@ -40,6 +84,24 @@ class CapturingOutputRecovery:
     async def decide(self, parsed_output, *, malformed_action_retries, audit_marker_retries):
         self.calls.append(parsed_output)
         invalid_kind = getattr(parsed_output, "invalid_kind", "")
+
+        if invalid_kind == "mixed_visible_text_and_control_protocol":
+            compiler_shape = str(getattr(parsed_output, "compiler_shape", "") or "").strip()
+            compiler_error_code = str(getattr(parsed_output, "compiler_error_code", "") or "").strip()
+            ir = getattr(parsed_output, "compiler_ir", None)
+            has_action = (ir and ir.action_count > 0) or getattr(parsed_output, "has_action_segment", False)
+            if compiler_shape == "PRE_ACTION_TEXT_AND_ACTION" and not compiler_error_code and has_action:
+                return SimpleNamespace(
+                    handled=False,
+                    continue_loop=False,
+                    next_query=None,
+                    stop_loop=False,
+                    malformed_action_retries=0,
+                    audit_marker_retries=0,
+                    reason="",
+                    source="",
+                )
+
         if not invalid_kind:
             # Mimic real recovery logic by checking compiler error codes
             compiler_code = getattr(parsed_output, "compiler_error_code", "")
@@ -158,7 +220,8 @@ def _pipeline(output_recovery):
 async def test_compiler_validates_pre_action_text_and_action_flow():
     """
     Tests that a response with text before an action is correctly identified
-    as PRE_ACTION_TEXT_AND_ACTION and considered dispatch-ready, not a recovery case.
+    as PRE_ACTION_TEXT_AND_ACTION and, despite legacy classification as an
+    error, is allowed to proceed to dispatch due to compiler override.
     """
     recovery = CapturingOutputRecovery()
     pipeline = _pipeline(recovery)
@@ -175,8 +238,6 @@ async def test_compiler_validates_pre_action_text_and_action_flow():
     )
 
     assert outcome.reason == "dispatch_ready"
-    # Legacy recovery bookkeeping might still be triggered, but the final outcome is
-    # dispatch_ready. We only care that recovery didn't prevent dispatch.
     assert not outcome.continue_loop
 
 

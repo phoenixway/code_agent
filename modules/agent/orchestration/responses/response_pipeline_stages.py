@@ -93,6 +93,17 @@ class ResponsePipelineStagesMixin:
             after_active_intent_id=after_intent_id,
         )
 
+    def _is_compiler_valid_pre_action_text(self, parsed_output, parsed_action_count: int) -> bool:
+        compiler_shape = str(getattr(parsed_output, "compiler_shape", "") or "").strip()
+        compiler_error_code = str(getattr(parsed_output, "compiler_error_code", "") or "").strip()
+        has_action = parsed_action_count > 0 or bool(getattr(parsed_output, "has_action_segment", False))
+        return (
+            str(getattr(parsed_output, "invalid_kind", "") or "").strip() == "mixed_visible_text_and_control_protocol"
+            and compiler_shape == "PRE_ACTION_TEXT_AND_ACTION"
+            and not compiler_error_code
+            and has_action
+        )
+
     async def _run_initial_stages(self, ctx, step):
         raw_response = str(step.response or "")
         normalized = self._normalize_response_stage(
@@ -687,23 +698,31 @@ class ResponsePipelineStagesMixin:
             )
 
         if str(getattr(parsed_output, "invalid_kind", "") or "").strip() in self.STRUCTURAL_INVALID_KINDS:
-            self.stage_logger.log(
-                "response_pipeline",
-                "continue",
-                reason=parsed_output.invalid_kind,
-                source="structural_invalid_guard",
-            )
-            return ResponsePipelineOutcome.continue_with(
-                self.prompt_builder.build_missing_action_or_answer_prompt(),
-                response_text=response,
-                segments=segments,
-                parsed_output=parsed_output,
-                parsed_action_count=0,
-                malformed_action_retries=0,
-                audit_marker_retries=0,
-                reason=parsed_output.invalid_kind,
-                source="structural_invalid_guard",
-            )
+            if self._is_compiler_valid_pre_action_text(parsed_output, parsed_action_count):
+                self.stage_logger.log(
+                    "response_pipeline",
+                    "pass",
+                    reason="compiler_override_for_pre_action_text",
+                    source="structural_invalid_guard",
+                )
+            else:
+                self.stage_logger.log(
+                    "response_pipeline",
+                    "continue",
+                    reason=parsed_output.invalid_kind,
+                    source="structural_invalid_guard",
+                )
+                return ResponsePipelineOutcome.continue_with(
+                    self.prompt_builder.build_missing_action_or_answer_prompt(),
+                    response_text=response,
+                    segments=segments,
+                    parsed_output=parsed_output,
+                    parsed_action_count=0,
+                    malformed_action_retries=0,
+                    audit_marker_retries=0,
+                    reason=parsed_output.invalid_kind,
+                    source="structural_invalid_guard",
+                )
 
         try:
             action_policy_decision = await self.action_policy.decide(
