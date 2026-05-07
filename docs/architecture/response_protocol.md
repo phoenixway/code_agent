@@ -95,44 +95,59 @@ Before adding a new rule to `ProtocolDecisionBridge`, the following criteria mus
 - **Do not make `compiler_shape` alone authoritative.** The policy boundary must be clear and tested. A correct shape from the compiler does not automatically mean legacy recovery policies are wrong.
 - **`PLAINTEXT_ONLY` is a prime example.** While the compiler can identify this shape, it does not have the context to decide whether the response is a valid final answer or a case that requires `missing_action_or_answer` recovery. Authority must be granted based on more than just the shape.
 
-### ACTION_ONLY Migration Audit
+### ACTION_ONLY Safe-Subset Audit
 
-This audit assesses the feasibility of making `ACTION_ONLY` a compiler-authoritative shape.
+This audit assesses which parts of `ACTION_ONLY` validation can be safely owned by the compiler versus which must remain governed by the runtime.
 
-#### Current Flow
+**Conclusion**: `compiler_shape == "ACTION_ONLY"` alone is **never** sufficient to grant dispatch authority. The shape only describes the protocol structure (e.g., a single action with optional think/file_content). The final decision to dispatch, recover, or block the action depends on runtime policies that the compiler does not have access to.
 
-A response classified as `ACTION_ONLY` by the compiler still passes through the full legacy pipeline:
+- **Compiler Authority**: The compiler is authoritative for *precise structural diagnostics* that can occur within an `ACTION_ONLY` shape, such as a malformed payload (`E_ACTION_PAYLOAD_ARRAY`) or an action inside a think block (`E_ACTION_INSIDE_THINK`). These are invalid regardless of runtime state.
+- **Runtime Authority**: The runtime remains the final authority for all other checks, including:
+  - **ActionPolicy**: Is the action allowed by the current intent contract?
+  - **Checkpoint Policy**: Does a state-changing action have the required `<think>` and memory tags?
+  - **Dispatch Effects**: Does the action result in a no-op edit or violate other dispatch-time rules?
 
-1.  **Output Recovery**: It is checked for legacy `invalid_kind`s like `missing_memory_update_done`.
-2.  **Action Policy**: It is checked against the active intent's `allowed_actions`.
-3.  **Dispatch**: If it passes all checks, it is dispatched.
+The following table inventories various `ACTION_ONLY` cases and their authority path:
 
-#### Coexisting Invalid Kinds
+| Case | Example | Compiler Shape | Legacy `invalid_kind` | Bridge Authority | Runtime Outcome | Safe for Compiler? |
+|---|---|---|---|---|---|---|
+| **A. Valid read-only action** | `<action>{"type":"read_file"}</action>` | `ACTION_ONLY` | `null` | Legacy | Runtime Dispatch | No (ActionPolicy) |
+| **B. Action with checkpoint** | `<think>...</think><memory_update_done/><action>...</action>` | `ACTION_ONLY` | `null` | Legacy | Runtime Dispatch | No (ActionPolicy) |
+| **C. Action missing checkpoint** | `<think>...</think><action>...</action>` | `ACTION_ONLY` | `missing_memory_update_done` | Legacy | Recovery | No (Runtime policy) |
+| **D. Disallowed action** | `<action>{"type":"delete_file"}</action>` | `ACTION_ONLY` | `null` | Legacy | ActionPolicy Block | No (ActionPolicy) |
+| **E. Action not in intent** | `<action>{"type":"read_file"}</action>` | `ACTION_ONLY` | `null` | Legacy | ActionPolicy Block | No (ActionPolicy) |
+| **F. Valid `write_file_block`** | `<action>...</action><file_content>...</file_content>` | `ACTION_ONLY` | `null` | Legacy | Runtime Dispatch | No (ActionPolicy) |
+| **G. Malformed payload** | `<action>[...]</action>` | `INVALID` | `action_payload_array` | **Compiler** | Recovery | Yes (already done) |
+| **H. Action inside think** | `<think><action>...</action></think>` | `INVALID` | `action_inside_think` | **Compiler** | Recovery | Yes (already done) |
+| **I. From `PRE_ACTION_TEXT`** | `OK<action>...</action>` | `PRE_ACTION_TEXT_AND_ACTION` | `mixed_...` | **Compiler (Valid)** | Runtime Dispatch | Yes (already done) |
+| **J. In atomic bundle** | `<intent>...</intent><action>...</action>` | `INTENT_ACTION_BUNDLE` | `null` | Legacy | Runtime Dispatch | No (ActionPolicy) |
 
-A response can have `compiler_shape="ACTION_ONLY"` but still be invalid due to legacy or runtime policies.
+### PLAINTEXT_ONLY Final-Answer Boundary Audit
 
-**Compiler-Authoritative Diagnostics within `ACTION_ONLY`:**
+This audit assesses whether `compiler_shape == "PLAINTEXT_ONLY"` can ever be sufficient to determine that a response is a valid final answer.
 
-- Malformed action payload (e.g., not a JSON object).
-- `write_file_block` pairing errors: missing its `<file_content>` block, unclosed block, wrong order, or paired with an action that doesn't require it.
+**Conclusion**: `compiler_shape == "PLAINTEXT_ONLY"` is **never** sufficient to prove answer correctness or intent completion. The shape only indicates the absence of protocol control blocks. The runtime remains the final authority for deciding if a plaintext response is a valid final answer, a premature conclusion requiring recovery, or a non-sequitur.
 
-**Unsafe Candidates (must remain legacy/runtime governed for now):**
+- **Compiler Authority**: The compiler's role is purely structural. It identifies that the response contains only visible text (and possibly non-structural elements like think blocks that are stripped).
+- **Runtime Authority**: The runtime is responsible for all semantic and policy-level validation, including:
+  - **Evidence Sufficiency**: Does the agent have enough information to answer the user's question? (e.g., `modify_completion_claim_without_state_change_proof` recovery).
+  - **Intent Completion**: Does the plaintext answer satisfy the goal of the active intent?
+  - **Contextual Appropriateness**: Is a plaintext answer appropriate at this stage of the task, or is an action required? (e.g., `missing_action_or_answer` recovery).
 
-- **Missing memory checkpoint**: Policies like `missing_memory_update_done` or `state_changing_action_requires_think_reflection` are runtime-dependent and not purely structural.
-- **Action not allowed by intent**: This is a core `ActionPolicy` check based on the active intent's contract.
-- **No-op edits**: A runtime check to prevent actions that have no effect.
-- **Edit retries requiring fresh reads**: A runtime policy to ensure data consistency.
+The following table inventories various `PLAINTEXT_ONLY` cases and their authority path, demonstrating why runtime governance is essential.
 
-#### Path to Migration
-
-Before `ACTION_ONLY` can become compiler-authoritative, even for a subset of cases, the following tests are required:
-
-1.  A test proving that a valid `ACTION_ONLY` response with a legacy `invalid_kind` (e.g., `missing_memory_update_done`) is **not** overridden by the compiler and still triggers recovery.
-2.  A test proving that a valid `ACTION_ONLY` response that is disallowed by `ActionPolicy` is **not** dispatched.
-
-#### Warning
-
-`compiler_shape == "ACTION_ONLY"` alone is insufficient to grant authority. It must not suppress legacy `invalid_kind`s related to runtime policy, such as missing checkpoints or disallowed actions. Any future authority rule must be extremely narrow, likely combined with other compiler diagnostics.
+| Case | Example | Compiler Shape | Legacy/Runtime Decision | Bridge Authority | Safe for Compiler? |
+|---|---|---|---|---|---|
+| **A. Valid answer, no intent** | `Hello world.` | `PLAINTEXT_ONLY` | Dispatch as final answer | Legacy | No (Runtime policy) |
+| **B. Valid answer, sufficient evidence** | `The answer is 42.` | `PLAINTEXT_ONLY` | Dispatch as final answer | Legacy | No (Runtime policy) |
+| **C. Answer, missing evidence** | `The answer is 42.` | `PLAINTEXT_ONLY` | Recover (`modify_completion_claim_without_state_change_proof`) | Legacy | No (Runtime policy) |
+| **D. Answer after noisy tool result** | `The search was noisy.` | `PLAINTEXT_ONLY` | Recover (`missing_action_or_answer`) | Legacy | No (Runtime policy) |
+| **E. Answer after recovery prompt** | `OK.` | `PLAINTEXT_ONLY` | Recover (`missing_action_or_answer`) | Legacy | No (Runtime policy) |
+| **F. Protocol-like literal** | `Use \`<action>\`` | `PLAINTEXT_ONLY` | Dispatch as final answer | Legacy | No (Runtime policy) |
+| **G. `complete` intent + visible text** | `<intent mode="complete"/>OK` | `PLAINTEXT_ONLY` | Dispatch as final answer (legacy path) | Legacy | No (Runtime policy) |
+| **H. Terminal fallback** | `I am stuck.` | `PLAINTEXT_ONLY` | Dispatch as final answer | Legacy | No (Runtime policy) |
+| **I. Plaintext after malformed step** | `OK.` | `PLAINTEXT_ONLY` | Recover (`missing_action_or_answer`) | Legacy | No (Runtime policy) |
+| **J. User-forced final answer** | `The answer is 42.` | `PLAINTEXT_ONLY` | Dispatch as final answer | Legacy | No (Runtime policy) |
 
 ### Mixed Visible/Control Migration Split
 

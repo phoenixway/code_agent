@@ -81,6 +81,25 @@ class LegacyPermissiveIntentResponseParser:
                 compiler_error_code="E_FILE_CONTENT_ACTION_MISMATCH",
             )
 
+        if "action_only_missing_checkpoint" in lower_response:
+            return DummyParsedOutput(
+                response=response_str,
+                has_action_segment=True,
+                invalid_kind="missing_memory_update_done",
+                compiler_shape="ACTION_ONLY",
+                compiler_error_code="",
+                compiler_ir=SimpleNamespace(
+                    action_count=1,
+                    has_action=True,
+                    has_think=False,
+                    has_checkpoint=False,
+                    has_pre_action_text=False,
+                    pre_action_text="",
+                    has_visible_answer=False,
+                    action_ops=[SimpleNamespace(action_type="edit_file", payload={"path": "x.py"})],
+                ),
+            )
+
         return DummyParsedOutput(
             response=response_str,
             has_action_segment=has_action,
@@ -344,3 +363,30 @@ async def test_compiler_drives_file_content_mismatch_recovery():
 
     assert outcome.reason == "file_content_must_follow_action"
     assert recovery.calls[-1].compiler_error_code == "E_FILE_CONTENT_ACTION_MISMATCH"
+
+
+@pytest.mark.asyncio
+async def test_action_only_with_legacy_invalid_kind_is_recovered():
+    """
+    Tests that an ACTION_ONLY shape with a legacy invalid_kind is not
+    dispatched and instead goes to recovery, proving compiler shape alone
+    does not grant authority.
+    """
+    recovery = CapturingOutputRecovery()
+    pipeline = _pipeline(recovery)
+
+    step = SimpleNamespace(
+        response='<action>{"type":"edit_file","path":"x.py","comment":"action_only_missing_checkpoint"}</action>',
+        intent_payload=None,
+        intent_error=None,
+        model_stop_reason="",
+    )
+    outcome = await pipeline.run_step(
+        SimpleNamespace(state_machine=None, malformed_action_retries=0, audit_marker_retries=0),
+        step,
+    )
+
+    assert outcome.continue_loop is True
+    assert outcome.reason == "missing_memory_update_done"
+    assert recovery.calls[-1].invalid_kind == "missing_memory_update_done"
+    assert recovery.calls[-1].compiler_shape == "ACTION_ONLY"
