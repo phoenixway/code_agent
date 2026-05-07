@@ -142,7 +142,7 @@ Note: Some structural errors may have compiler diagnostics and recovery mappings
 
 | Error Code | `invalid_kind` Mapping | Category | Bridge Authority | Notes |
 |---|---|---|---|---|
-| `E_UNCLOSED_THINK` | `malformed_incomplete_think` | Structural | Legacy | Has recovery mapping but is not yet compiler-authoritative. |
+| `E_UNCLOSED_THINK` | `malformed_incomplete_think` | Structural | Compiler | Purely structural error. |
 | `E_ACTION_INSIDE_THINK` | `action_inside_think` | Structural | Compiler | Purely structural error. |
 | `E_INTENT_INSIDE_THINK` | `intent_inside_think` | Structural | Compiler | Purely structural error. |
 | `E_FILE_CONTENT_INSIDE_THINK` | `file_content_inside_think` | Structural | Compiler | Purely structural error. |

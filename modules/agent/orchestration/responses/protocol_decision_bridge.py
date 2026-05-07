@@ -58,6 +58,11 @@ COMPILER_TAGS_INSIDE_THINK_ERROR_CODES = {
 }
 
 
+COMPILER_UNCLOSED_TAG_ERROR_CODES = {
+    "E_UNCLOSED_THINK",
+}
+
+
 def _is_compiler_valid_pre_action_text(parsed_output, parsed_action_count: int) -> bool:
     compiler_shape = str(getattr(parsed_output, "compiler_shape", "") or "").strip()
     compiler_error_code = str(getattr(parsed_output, "compiler_error_code", "") or "").strip()
@@ -106,6 +111,14 @@ def resolve_protocol_authority(parsed_output, parsed_action_count: int) -> Proto
         return ProtocolAuthorityDecision(
             source="compiler",
             reason="compiler_tag_inside_think_diagnostic",
+            suppress_legacy_invalid_kind=False,
+            dispatch_allowed=False,
+        )
+
+    if compiler_error_code in COMPILER_UNCLOSED_TAG_ERROR_CODES:
+        return ProtocolAuthorityDecision(
+            source="compiler",
+            reason="compiler_unclosed_tag_diagnostic",
             suppress_legacy_invalid_kind=False,
             dispatch_allowed=False,
         )

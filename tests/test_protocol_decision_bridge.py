@@ -138,16 +138,18 @@ class ProtocolDecisionBridgeTests(unittest.TestCase):
         self.assertFalse(decision.suppress_legacy_invalid_kind)
         self.assertFalse(decision.dispatch_allowed)
 
-    def test_unclosed_think_is_legacy_authoritative(self):
+    def test_unclosed_think_is_compiler_authoritative_invalid(self):
         """
-        E_UNCLOSED_THINK is not yet compiler-authoritative.
+        Compiler is authoritative for an unclosed <think> tag.
         """
         parsed_output = DummyParsedOutput(
             compiler_error_code="E_UNCLOSED_THINK",
         )
         decision = resolve_protocol_authority(parsed_output, parsed_action_count=0)
-        self.assertEqual("legacy", decision.source)
-        self.assertEqual("legacy_default", decision.reason)
+        self.assertEqual("compiler", decision.source)
+        self.assertEqual("compiler_unclosed_tag_diagnostic", decision.reason)
+        self.assertFalse(decision.suppress_legacy_invalid_kind)
+        self.assertFalse(decision.dispatch_allowed)
 
     def test_unknown_compiler_data_is_legacy_default(self):
         """
