@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from .lowerer import ProtocolLowerer
 from .models import (
     ActionNode,
@@ -49,6 +51,13 @@ class ProtocolCompiler:
         self.parser = ProtocolParser(spec)
         self.lowerer = ProtocolLowerer(spec)
 
+    def _mask_code_in_think(self, content: str) -> str:
+        # Mask fenced code blocks
+        masked = re.sub(r"```.*?```", "", content, flags=re.DOTALL)
+        # Mask inline code
+        masked = re.sub(r"`[^`]*`", "", masked)
+        return masked
+
     def analyze(self, raw: str) -> CompilerAnalysis:
         ast, error, tokens = self.parser.parse(raw)
         if error is not None:
@@ -62,6 +71,16 @@ class ProtocolCompiler:
 
     def _classify(self, ast: ResponseAst) -> tuple[ResponseShape, ErrorValue | None]:
         nodes = list(ast.nodes)
+        for node in nodes:
+            if isinstance(node, ThinkNode):
+                masked_content = self._mask_code_in_think(node.content)
+                if "<action" in masked_content:
+                    return ResponseShape.INVALID, self._error("E_ACTION_INSIDE_THINK", node.span, invalid_part="action")
+                if "<file_content" in masked_content:
+                    return ResponseShape.INVALID, self._error("E_FILE_CONTENT_INSIDE_THINK", node.span, invalid_part="file_content")
+                if "<intent" in masked_content:
+                    return ResponseShape.INVALID, self._error("E_INTENT_INSIDE_THINK", node.span, invalid_part="intent")
+
         visible_nodes = [node for node in nodes if isinstance(node, VisibleTextNode) and node.text.strip()]
         action_nodes = [node for node in nodes if isinstance(node, ActionNode)]
         intent_nodes = [node for node in nodes if isinstance(node, IntentNode)]

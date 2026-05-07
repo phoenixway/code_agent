@@ -3,8 +3,8 @@ input: |
   <think>Need to inspect <action>{"action":"read_file","args":{"path":"x.py"}}</action></think>
 expected:
   shape: INVALID
-  error_code: E_AMBIGUOUS_PROTOCOL_SYNTAX
-  recovery_id: not_null
+  error_code: E_ACTION_INSIDE_THINK
+  recovery_id: action_inside_think
   has_ir: false
   action_count: 0
   has_visible_answer: false

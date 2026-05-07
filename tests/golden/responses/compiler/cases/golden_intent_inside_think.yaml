@@ -1,0 +1,15 @@
+description: "Compiler emits E_INTENT_INSIDE_THINK for <intent> inside <think>."
+input: |
+  <think>
+  I should switch intent.
+  <intent mode="activate">{"intent_id":"x"}</intent>
+  </think>
+expected:
+  shape: INVALID
+  error_code: E_INTENT_INSIDE_THINK
+  has_ir: false
+expected_shadow_mismatches:
+  - invalid_kind
+  - has_think
+  - has_action
+  - action_count

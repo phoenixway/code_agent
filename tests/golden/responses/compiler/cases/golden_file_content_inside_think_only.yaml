@@ -1,0 +1,16 @@
+description: "Compiler emits E_FILE_CONTENT_INSIDE_THINK for file_content alone inside think."
+input: |
+  <think>
+  <file_content>
+  bad
+  </file_content>
+  </think>
+expected:
+  shape: INVALID
+  error_code: E_FILE_CONTENT_INSIDE_THINK
+  has_ir: false
+expected_shadow_mismatches:
+  - invalid_kind
+  - has_think
+  - has_action
+  - action_count

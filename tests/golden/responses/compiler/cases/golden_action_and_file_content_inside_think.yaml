@@ -1,0 +1,17 @@
+description: "Compiler emits E_ACTION_INSIDE_THINK for action and file_content inside think."
+input: |
+  <think>
+  <action>{"type":"write_file_block","path":"x.txt","overwrite":true}</action>
+  <file_content>
+  bad
+  </file_content>
+  </think>
+expected:
+  shape: INVALID
+  error_code: E_ACTION_INSIDE_THINK
+  has_ir: false
+expected_shadow_mismatches:
+  - invalid_kind
+  - has_think
+  - has_action
+  - action_count
