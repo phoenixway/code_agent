@@ -91,6 +91,13 @@ class ProtocolCompiler:
             if isinstance(node, (ThinkNode, MemoryNode, MarkerNode, ActionNode, IntentNode, FileContentNode, LiteralProtocolTagNode))
         ]
 
+        if len(intent_nodes) > 1:
+            return ResponseShape.INVALID, self._error(
+                "E_MULTIPLE_INTENTS",
+                intent_nodes[1].span,
+                invalid_part="intent",
+            )
+
         if file_nodes and not action_nodes:
             return ResponseShape.INVALID, self._error(
                 "E_FILE_CONTENT_REQUIRES_ACTION",
@@ -113,6 +120,16 @@ class ProtocolCompiler:
                 nodes[last_visible_idx].span,
                 invalid_part="visible_text_after_action",
             )
+
+        first_intent_idx = next((i for i, n in enumerate(nodes) if isinstance(n, IntentNode)), -1)
+        if first_intent_idx != -1 and last_visible_idx > first_intent_idx:
+            intent_node = nodes[first_intent_idx]
+            if self._intent_mode(intent_node) != "complete":
+                return ResponseShape.INVALID, self._error(
+                    "E_VISIBLE_TEXT_AFTER_INTENT",
+                    nodes[last_visible_idx].span,
+                    invalid_part="visible_text_after_intent",
+                )
 
         if visible_nodes and len(action_nodes) == 1 and not intent_nodes:
             return ResponseShape.PRE_ACTION_TEXT_AND_ACTION, None

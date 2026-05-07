@@ -15,6 +15,7 @@ class ResponsePipelinePrevalidationMixin:
         "file_content_inside_think",
         "malformed_incomplete_file_content",
         "mixed_visible_text_and_control_protocol",
+        "mixed_intent_transition_and_visible_answer",
         "action_payload_array",
         "action_payload_xml_fields",
         "action_payload_tool_code",
@@ -22,6 +23,7 @@ class ResponsePipelinePrevalidationMixin:
         "protocol_tag_in_json_string",
         "multiple_actions",
         "file_content_must_follow_action",
+        "conflicting_intent_transitions",
     }
 
     def _normalize_response_if_supported(self, response: str, *, allow_autorepair: bool) -> NormalizedModelResponse:

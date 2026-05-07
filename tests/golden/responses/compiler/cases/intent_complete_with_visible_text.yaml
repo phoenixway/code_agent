@@ -1,0 +1,13 @@
+input: |
+  <intent mode="complete" />
+  This is the final answer.
+expected:
+  shape: PLAINTEXT_ONLY
+  error_code: null
+  has_ir: true
+  action_count: 0
+  has_visible_answer: true
+  has_think: false
+  has_checkpoint: false
+expected_shadow_mismatches:
+  - invalid_kind

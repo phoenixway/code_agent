@@ -83,6 +83,50 @@ def test_build_execution_plan_for_action_only(response_pipeline_stages_mixin: Re
     assert len(plan.output_effects) == 0
 
 
+def test_build_execution_plan_sets_action_dispatched_false_for_generic_dispatch(
+    response_pipeline_stages_mixin: ResponsePipelineStagesMixin,
+):
+    """
+    Documents that ExecutionPlan.action_dispatched is False for generic
+    dispatch-ready outcomes, as it's specific to atomic bundles.
+    """
+    mock_step = SimpleNamespace(intent_payload={"mode": "activate"})
+    mock_ir = SimpleNamespace(
+        has_pre_action_text=False,
+        pre_action_text="",
+        action_ops=[SimpleNamespace(action_type="test_action")],
+    )
+    mock_parsed_output = SimpleNamespace(compiler_shape="ACTION_ONLY", compiler_ir=mock_ir)
+
+    plan = response_pipeline_stages_mixin._build_execution_plan(mock_step, mock_parsed_output, parsed_action_count=1)
+
+    assert isinstance(plan, ExecutionPlan)
+    assert len(plan.action_effects) == 1
+    assert not plan.action_dispatched
+
+
+def test_build_execution_plan_for_atomic_bundle_is_still_false(
+    response_pipeline_stages_mixin: ResponsePipelineStagesMixin,
+):
+    """
+    Documents that ExecutionPlan.action_dispatched is False even for
+    atomic bundles, as this flag is not populated by the current plan builder.
+    """
+    mock_step = SimpleNamespace(intent_payload={"mode": "activate"})
+    mock_ir = SimpleNamespace(
+        has_pre_action_text=False,
+        pre_action_text="",
+        action_ops=[SimpleNamespace(action_type="test_action")],
+    )
+    mock_parsed_output = SimpleNamespace(compiler_shape="INTENT_ACTION_BUNDLE", compiler_ir=mock_ir)
+
+    plan = response_pipeline_stages_mixin._build_execution_plan(mock_step, mock_parsed_output, parsed_action_count=1)
+
+    assert isinstance(plan, ExecutionPlan)
+    assert len(plan.action_effects) == 1
+    assert not plan.action_dispatched
+
+
 # --- Tests for DispatchPipeline.run_iteration ---
 
 

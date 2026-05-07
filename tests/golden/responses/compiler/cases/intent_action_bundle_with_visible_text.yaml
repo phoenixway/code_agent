@@ -1,0 +1,16 @@
+input: |
+  <intent mode="activate">{"goal": "test"}</intent>
+  <action>{"type":"read_file_skeleton","path":"x.py"}</action>
+  Done.
+expected:
+  shape: INVALID
+  error_code: E_VISIBLE_TEXT_AFTER_ACTION
+  recovery_id: visible_text_after_action
+  invalid_part: visible_text_after_action
+  has_ir: false
+  action_count: 0
+  has_visible_answer: true
+  has_think: false
+  has_checkpoint: false
+expected_shadow_mismatches:
+  - invalid_kind

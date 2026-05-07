@@ -16,7 +16,7 @@ This document outlines key invariants of the model response protocol, particular
 
 ## 3. Invalid Post-Action Text
 
-- **Visible text after `<action>` is invalid**: Any user-visible text that appears after an `<action>` tag is considered a protocol violation.
+- **Visible text after `<action>` is invalid**: Any user-visible text that appears after an `<action>` tag is considered a protocol violation. This rule applies even if the action is part of an atomic `<intent>`+`<action>` bundle.
 - **Reasoning**: This text would be describing the results of an action before that action has actually executed, which is a logical paradox.
 - **Normalization**: This invalid post-action text must not be normalized or re-interpreted as pre-action text.
 
@@ -144,8 +144,23 @@ This audit inventories the different cases of mixed visible text and control pro
 | **Visible + Think + Action** | `OK<think>...</think><action>...</action>` | `E_MIXED_VISIBLE_TEXT_AND_CONTROL` | `mixed_visible_text_and_control_protocol` | Legacy | Compiler | Medium |
 | **Visible + Checkpoint + Action** | `OK<progress>...</progress><action>...</action>` | `E_MIXED_VISIBLE_TEXT_AND_CONTROL` | `mixed_visible_text_and_control_protocol` | Legacy | Compiler | Medium |
 | **Visible Text After Action** | `<action>...</action>OK` | `E_VISIBLE_TEXT_AFTER_ACTION` | `mixed_visible_text_and_control_protocol` | **Compiler** | Compiler | Low |
-| **Visible Text After Intent** | `<intent>...</intent>OK` | `E_MIXED_VISIBLE_TEXT_AND_CONTROL` | `mixed_intent_transition_and_visible_answer` | Legacy | Compiler | Low |
+| **Visible Text After Intent** | `<intent>...</intent>OK` | `E_VISIBLE_TEXT_AFTER_INTENT` | `mixed_intent_transition_and_visible_answer` | **Compiler** | Compiler | Low |
 | **Literal Tag in Code** | `<think>Use \`<action>\`</think><action>...</action>` | `ACTION_ONLY` | `null` or `action_inside_think` | Legacy | Compiler | Medium |
+
+### Atomic Bundle Migration Audit
+
+This audit assesses the feasibility of making atomic intent/action bundle diagnostics compiler-authoritative.
+
+| Case | Example | Compiler | Legacy `invalid_kind` | Bridge Authority | Notes |
+|---|---|---|---|---|---|
+| **Valid Bundle** | `<intent>...</intent><action>...</action>` | `INTENT_ACTION_BUNDLE` | `null` | Legacy | Valid bundle, but remains legacy-governed to allow `ActionPolicy` checks. |
+| **Multiple Actions** | `<intent>...</intent><action>...</action><action>...</action>` | `E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION` | `multiple_actions` | **Compiler** | Precise structural error. |
+| **Action Array** | `<intent>...</intent><action>[...]</action>` | `E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION` | `action_payload_array` | **Compiler** | Precise structural error. Covered by atomic bundle authority. |
+| **Multiple Intents** | `<intent>...</intent><intent>...</intent><action>...</action>` | `E_MULTIPLE_INTENTS` | `conflicting_intent_transitions` | **Compiler** | Precise structural error. |
+| **Complete + Action** | `<intent mode="complete">...</intent><action>...</action>` | `E_AMBIGUOUS_PROTOCOL_SYNTAX` | `intent_complete_with_action_not_allowed` | Legacy | Policy-level decision. Not yet safe for compiler authority. |
+| **Bundle + Visible Text** | `<intent>...</intent><action>...</action>OK` | `E_VISIBLE_TEXT_AFTER_ACTION` | `mixed_visible_text_and_control_protocol` | **Compiler** | Covered by existing visible-text-after-action authority. |
+
+**Conclusion**: Precise structural errors related to atomic bundles, such as multiple actions or multiple intents, are now compiler-authoritative. The valid `INTENT_ACTION_BUNDLE` shape remains legacy-governed to ensure runtime policy checks (e.g., `ActionPolicy`) are not bypassed.
 
 ### Intent + Visible Text Migration Audit
 
@@ -153,13 +168,13 @@ This audit assesses the feasibility of making intent-plus-visible-text cases com
 
 | Case | Example | Compiler | Legacy `invalid_kind` | Bridge Authority | Notes |
 |---|---|---|---|---|---|
-| **Activate + Visible** | `<intent mode="activate">...</intent>OK` | `E_MIXED_VISIBLE_TEXT_AND_CONTROL` | `mixed_intent_transition_and_visible_answer` | Legacy | Invalid. Should recover. |
-| **Complete + Visible** | `<intent mode="complete">...</intent>OK` | `INTENT_COMPLETE_WITH_TEXT` | `mixed_intent_transition_and_visible_answer` | Legacy | Valid completion shape. |
+| **Activate + Visible** | `<intent mode="activate">...</intent>OK` | `E_VISIBLE_TEXT_AFTER_INTENT` | `mixed_intent_transition_and_visible_answer` | **Compiler** | Invalid. Should recover. |
+| **Complete + Visible** | `<intent mode="complete">...</intent>OK` | `PLAINTEXT_ONLY` | `mixed_intent_transition_and_visible_answer` | Legacy | Current compiler behavior treats complete-intent + visible answer as plaintext/final-answer path; this remains legacy/runtime governed. |
 | **Activate + Action** | `<intent mode="activate">...</intent><action>...</action>` | `INTENT_ACTION_BUNDLE` | `null` | Legacy | Valid atomic bundle. |
 
-**Conclusion**: The compiler currently emits the broad `E_MIXED_VISIBLE_TEXT_AND_CONTROL` error for invalid mixes of intent transitions and visible text. This error code is not safe to make compiler-authoritative, as it also covers cases like `Visible + Think + Action` that have different recovery paths and risks.
+**Conclusion**: The compiler now emits a precise `E_VISIBLE_TEXT_AFTER_INTENT` error for invalid mixes of non-`complete` intent transitions and visible text. This error code is compiler-authoritative. The broad `E_MIXED_VISIBLE_TEXT_AND_CONTROL` error is still not safe to make compiler-authoritative, as it covers other cases like `Visible + Think + Action` that have different recovery paths and risks.
 
-**Path to Migration**: Before this can be migrated, the compiler must emit a more precise error code, such as `E_VISIBLE_TEXT_AFTER_INTENT`, for these specific structural violations. Until then, these cases remain legacy-governed.
+**Path to Migration**: The `E_VISIBLE_TEXT_AFTER_INTENT` diagnostic is now compiler-authoritative. Other mixed content cases remain legacy-governed until they also have precise, tested diagnostics.
 
 ## 8. Compiler Error Code Authority Matrix
 
@@ -180,9 +195,11 @@ Note: Some structural errors may have compiler diagnostics and recovery mappings
 | `E_ACTION_PAYLOAD_XML_FIELDS` | `action_payload_xml_fields` | Structural | Compiler | Action payload shape is structural. |
 | `E_ACTION_PAYLOAD_TOOL_CODE` | `action_payload_tool_code` | Structural | Compiler | Action payload shape is structural. |
 | `E_PROTOCOL_TAG_IN_JSON_STRING` | `protocol_tag_in_json_string` | Structural | Compiler | Action payload content is structural. |
-| `E_VISIBLE_TEXT_AFTER_ACTION` | `mixed_visible_text_and_control_protocol` | Structural | Compiler | Visible text after an action is a logical paradox. |
+| `E_VISIBLE_TEXT_AFTER_ACTION` | `mixed_visible_text_and_control_protocol` | Structural | Compiler | Visible text after an action is a logical paradox. This includes text after an `intent`+`action` bundle. |
+| `E_VISIBLE_TEXT_AFTER_INTENT` | `mixed_intent_transition_and_visible_answer` | Structural | Compiler | Visible text after a non-complete intent is invalid. |
 | `E_MIXED_VISIBLE_TEXT_AND_CONTROL` | `mixed_visible_text_and_control_protocol` | Structural | Legacy | Authority is narrow; only simple `PRE_ACTION_TEXT_AND_ACTION` is compiler-authoritative. |
-| `E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION` | `action_payload_array` or `multiple_actions` | Runtime Policy | Legacy | Related to atomic bundle policy, which is runtime-dependent. |
+| `E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION` | `action_payload_array` or `multiple_actions` | Structural | **Compiler** | Precise structural error related to bundle shape. |
+| `E_MULTIPLE_INTENTS` | `conflicting_intent_transitions` | Structural | **Compiler** | Precise structural error. |
 
 ## 9. Inventory Consistency Rules
 

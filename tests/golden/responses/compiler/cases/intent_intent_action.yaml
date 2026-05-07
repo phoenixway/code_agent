@@ -1,0 +1,17 @@
+input: |
+  <intent mode="activate">{"goal": "a"}</intent>
+  <intent mode="activate">{"goal": "b"}</intent>
+  <action>{"type":"read_file","path":"x.py"}</action>
+expected:
+  shape: INVALID
+  error_code: E_MULTIPLE_INTENTS
+  recovery_id: conflicting_intent_transitions
+  invalid_part: intent
+  has_ir: false
+  action_count: 0
+  has_visible_answer: false
+  has_think: false
+  has_checkpoint: false
+expected_shadow_mismatches:
+  - invalid_kind
+  - has_visible_answer

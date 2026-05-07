@@ -192,11 +192,23 @@ PROTOCOL_SPEC = ProtocolSpec(
             recovery_id="atomic_bundle_exactly_one_action",
             default_message="Atomic intent/action bundles require exactly one action.",
         ),
+        "E_MULTIPLE_INTENTS": ErrorSpec(
+            code="E_MULTIPLE_INTENTS",
+            phase="shape",
+            recovery_id="conflicting_intent_transitions",
+            default_message="Response cannot contain multiple intent transitions.",
+        ),
         "E_VISIBLE_TEXT_AFTER_ACTION": ErrorSpec(
             code="E_VISIBLE_TEXT_AFTER_ACTION",
             phase="shape",
             recovery_id="visible_text_after_action",
             default_message="Visible text cannot appear after an action.",
+        ),
+        "E_VISIBLE_TEXT_AFTER_INTENT": ErrorSpec(
+            code="E_VISIBLE_TEXT_AFTER_INTENT",
+            phase="shape",
+            recovery_id="mixed_intent_transition_and_visible_answer",
+            default_message="Visible text cannot appear after an intent transition.",
         ),
         "E_FILE_CONTENT_REQUIRES_ACTION": ErrorSpec(
             code="E_FILE_CONTENT_REQUIRES_ACTION",

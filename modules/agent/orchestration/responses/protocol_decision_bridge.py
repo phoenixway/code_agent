@@ -34,6 +34,13 @@ COMPILER_INVALID_KIND_BY_CODE = {
     "E_ACTION_PAYLOAD_NOT_OBJECT": "action_payload_not_object",
     "E_PROTOCOL_TAG_IN_JSON_STRING": "protocol_tag_in_json_string",
     "E_VISIBLE_TEXT_AFTER_ACTION": "mixed_visible_text_and_control_protocol",
+    "E_VISIBLE_TEXT_AFTER_INTENT": "mixed_intent_transition_and_visible_answer",
+    "E_MULTIPLE_INTENTS": "conflicting_intent_transitions",
+}
+
+
+COMPILER_ATOMIC_BUNDLE_ERROR_CODES = {
+    "E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION",
 }
 
 
@@ -43,6 +50,11 @@ COMPILER_ACTION_PAYLOAD_ERROR_CODES = {
     "E_ACTION_PAYLOAD_XML_FIELDS",
     "E_ACTION_PAYLOAD_TOOL_CODE",
     "E_PROTOCOL_TAG_IN_JSON_STRING",
+}
+
+
+COMPILER_INTENT_COUNT_ERROR_CODES = {
+    "E_MULTIPLE_INTENTS",
 }
 
 
@@ -66,6 +78,7 @@ COMPILER_UNCLOSED_TAG_ERROR_CODES = {
 
 COMPILER_VISIBLE_TEXT_POSITION_ERROR_CODES = {
     "E_VISIBLE_TEXT_AFTER_ACTION",
+    "E_VISIBLE_TEXT_AFTER_INTENT",
 }
 
 
@@ -155,6 +168,22 @@ def resolve_protocol_authority(parsed_output, parsed_action_count: int) -> Proto
         return ProtocolAuthorityDecision(
             source="compiler",
             reason="compiler_visible_text_position_diagnostic",
+            suppress_legacy_invalid_kind=False,
+            dispatch_allowed=False,
+        )
+
+    if compiler_error_code in COMPILER_ATOMIC_BUNDLE_ERROR_CODES:
+        return ProtocolAuthorityDecision(
+            source="compiler",
+            reason="compiler_atomic_bundle_diagnostic",
+            suppress_legacy_invalid_kind=False,
+            dispatch_allowed=False,
+        )
+
+    if compiler_error_code in COMPILER_INTENT_COUNT_ERROR_CODES:
+        return ProtocolAuthorityDecision(
+            source="compiler",
+            reason="compiler_intent_count_diagnostic",
             suppress_legacy_invalid_kind=False,
             dispatch_allowed=False,
         )

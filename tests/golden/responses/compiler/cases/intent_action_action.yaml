@@ -1,0 +1,17 @@
+input: |
+  <intent mode="activate">{"goal": "test"}</intent>
+  <action>{"type":"read_file","path":"a.py"}</action>
+  <action>{"type":"read_file","path":"b.py"}</action>
+expected:
+  shape: INVALID
+  error_code: E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION
+  recovery_id: atomic_bundle_exactly_one_action
+  invalid_part: action
+  has_ir: false
+  action_count: 0
+  has_visible_answer: false
+  has_think: false
+  has_checkpoint: false
+expected_shadow_mismatches:
+  - invalid_kind
+  - has_visible_answer
