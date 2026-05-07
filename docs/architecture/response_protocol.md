@@ -225,6 +225,8 @@ This audit assesses the feasibility of making intent-plus-visible-text cases com
 
 To maintain performance and guide the model toward efficient investigation, the runtime enforces a policy to distinguish between allowed reconnaissance and disallowed low-value searches.
 
+-   **Search Quality Diagnostics**: Before dispatch, a diagnostic-only classifier assesses each search action. It classifies searches into categories like `bounded_recon` (good) versus `unbounded_broad` (warning). This is currently a diagnostic-only phase; warnings do not block dispatch. Future phases may use repeated warnings to trigger recovery.
+
 -   **Bounded Reconnaissance is Allowed**: When exact file paths are unknown, a single, well-bounded reconnaissance search is permitted to discover candidate files. A search is considered "bounded" if it uses at least two of the following narrowing techniques:
     -   A specific path/source root (not just `.`).
     -   A specific symbol, class name, or search pattern.

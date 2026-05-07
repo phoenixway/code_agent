@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from ...intent_runtime import IntentRuntime
 from .action_policy_state import ActionPolicyStateAdapter
+from .search_quality import classify_search_action_quality
 from ..responses.stage_logging import OrchestrationStageLogger
 from ..shared.decision_models import ActionPolicyDecision
 
@@ -65,6 +66,7 @@ class ActionPolicyHandler:
         self.intent_guard = intent_guard
         self.prompt_builder = prompt_builder
         self.stage_logger = OrchestrationStageLogger(getattr(agent, "log", None), self.state)
+        self._classify_search_quality = classify_search_action_quality
 
     def _is_state_changing_file_action(self, content: dict) -> bool:
         if not isinstance(content, dict):
@@ -566,11 +568,31 @@ class ActionPolicyHandler:
 
         return AtomicBundleActionValidationResult(True)
 
+    def _log_search_quality(self, command: dict):
+        quality = self._classify_search_quality(command)
+        if not quality.get("is_search"):
+            return
+
+        self.stage_logger.log(
+            "search_quality",
+            "warn" if quality["severity"] == "warn" else "snapshot",
+            kind=quality["kind"],
+            severity=quality["severity"],
+            reason=quality["reason"],
+            tool_type=quality["tool_type"],
+            path=quality["path"],
+            pattern_excerpt=str(quality.get("pattern", "") or "")[:100],
+            bound_count=quality["bound_count"],
+            missing_bounds=quality["missing_bounds"],
+        )
+
     async def decide(self, ctx, segments, *, intent_payload: dict | None, parsed_output=None) -> ActionPolicyDecision:
         action_segments = [
             seg for seg in segments if getattr(seg, "type", "") == "action" and isinstance(getattr(seg, "content", None), dict)
         ]
         candidate_commands = self._atomic_bundle_candidate_commands(segments, parsed_output=parsed_output)
+        for command in candidate_commands:
+            self._log_search_quality(command)
         parsed_action_count = len(candidate_commands) if candidate_commands else len(action_segments)
 
         if not candidate_commands:

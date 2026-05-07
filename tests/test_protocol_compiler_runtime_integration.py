@@ -437,3 +437,5 @@ async def test_compiler_invalid_unclosed_think_blocks_legacy_action_dispatch():
     assert snapshot.error_code == "E_ACTION_INSIDE_THINK"
     assert snapshot.has_action is False
     assert snapshot.action_count == 0
+
+
