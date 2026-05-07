@@ -370,6 +370,22 @@ This audit inventories the dependencies of the `output_recovery` stage to determ
 -   The top-level `_resolved_invalid_kind` helper and overall output recovery decisions remain unchanged.
 -   Action presence, `action_count`, checkpoint, and state-changing checks are not migrated.
 
+##### Phase 3A-close: Consolidate Compiler Metadata Reads
+
+-   **Status: Done.** This phase completes the audit of compiler metadata reads within the output recovery stage.
+-   All compiler strategy handlers now receive compiler metadata (`error_code`, `recovery_id`) via a shared helper, ensuring consistent data sourcing with fallback to legacy fields.
+-   The `_compiler_repeat_fingerprint` helper was updated to use this shared source, preserving its logic while centralizing the metadata read.
+-   This was a behavior-preserving refactor. No output recovery decisions, dispatch behaviors, or authority boundaries were changed.
+-   Runtime-owned checks for action presence, action count, and semantic policies remain unchanged and are not sourced from `RuntimeProtocolSemantics` at this time.
+
+##### Phase 3A Documentation Boundary
+
+-   **Status: Done.** The Phase 3A metadata-only migration is complete.
+-   The `output_recovery` stage may use the `RuntimeProtocolSemantics`-backed helper for compiler metadata (`error_code`, `recovery_id`, `invalid_kind`).
+-   Runtime-owned decisions remain runtime-owned.
+-   `has_action` and `action_count` are not authoritative from `RuntimeProtocolSemantics` at this time.
+-   Future migration of action presence/action_count requires a separate design audit, as compiler-invalid responses can intentionally disagree with legacy action detection.
+
 ##### Proposed Phase 3A Scope
 
 The first implementation phase for migrating `output_recovery` should be narrow and focused on structural checks.

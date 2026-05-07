@@ -727,6 +727,7 @@ class OutputRecoveryRoutingMixin:
             invalid_kind=invalid_kind,
             malformed_action_retries=malformed_action_retries,
             audit_marker_retries=audit_marker_retries,
+            compiler_meta=compiler_meta,
         )
 
     def _compiler_strategy_malformed_think(
@@ -736,6 +737,7 @@ class OutputRecoveryRoutingMixin:
         invalid_kind: str,
         malformed_action_retries: int,
         audit_marker_retries: int,
+        compiler_meta: dict,
     ) -> OutputRecoveryDecision:
         raw_chars = len(str(getattr(parsed_output, "response", "") or ""))
         if raw_chars > 10000:
@@ -761,8 +763,8 @@ class OutputRecoveryRoutingMixin:
             source="compiler_recovery_strategy",
             universe=self._intent_universe_label(),
             repeat_count=repeat_count,
-            compiler_error_code=str(getattr(parsed_output, "compiler_error_code", "") or ""),
-            compiler_recovery_id=str(getattr(parsed_output, "compiler_recovery_id", "") or ""),
+            compiler_error_code=compiler_meta["error_code"],
+            compiler_recovery_id=compiler_meta["recovery_id"],
         )
         return OutputRecoveryDecision.continue_with(
             prompt,
@@ -779,6 +781,7 @@ class OutputRecoveryRoutingMixin:
         invalid_kind: str,
         malformed_action_retries: int,
         audit_marker_retries: int,
+        compiler_meta: dict,
     ) -> OutputRecoveryDecision:
         self.stage_logger.log(
             "output_recovery",
@@ -786,8 +789,8 @@ class OutputRecoveryRoutingMixin:
             reason=invalid_kind,
             source="compiler_recovery_strategy",
             universe=self._intent_universe_label(),
-            compiler_error_code=str(getattr(parsed_output, "compiler_error_code", "") or ""),
-            compiler_recovery_id=str(getattr(parsed_output, "compiler_recovery_id", "") or ""),
+            compiler_error_code=compiler_meta["error_code"],
+            compiler_recovery_id=compiler_meta["recovery_id"],
         )
         return OutputRecoveryDecision.continue_with(
             self.prompt_builder.build_incomplete_file_content_recovery_prompt(),
@@ -804,8 +807,12 @@ class OutputRecoveryRoutingMixin:
         invalid_kind: str,
         malformed_action_retries: int,
         audit_marker_retries: int,
+        compiler_meta: dict,
     ) -> OutputRecoveryDecision:
-        repeat_fingerprint = self._compiler_repeat_fingerprint(parsed_output, invalid_kind=invalid_kind)
+        repeat_fingerprint = self._compiler_repeat_fingerprint(
+            invalid_kind=invalid_kind,
+            compiler_meta=compiler_meta,
+        )
         repeat_count = self._note_compiler_recovery_fingerprint(repeat_fingerprint)
         builder = getattr(self.prompt_builder, "build_mixed_visible_text_and_control_protocol_prompt", None)
         prompt = (
@@ -835,8 +842,8 @@ class OutputRecoveryRoutingMixin:
             universe=self._intent_universe_label(),
             repeat_count=repeat_count,
             repeat_fingerprint=repeat_fingerprint,
-            compiler_error_code=str(getattr(parsed_output, "compiler_error_code", "") or ""),
-            compiler_recovery_id=str(getattr(parsed_output, "compiler_recovery_id", "") or ""),
+            compiler_error_code=compiler_meta["error_code"],
+            compiler_recovery_id=compiler_meta["recovery_id"],
         )
         return OutputRecoveryDecision.continue_with(
             prompt,
@@ -853,6 +860,7 @@ class OutputRecoveryRoutingMixin:
         invalid_kind: str,
         malformed_action_retries: int,
         audit_marker_retries: int,
+        compiler_meta: dict,
     ) -> OutputRecoveryDecision:
         self.stage_logger.log(
             "output_recovery",
@@ -860,8 +868,8 @@ class OutputRecoveryRoutingMixin:
             reason=invalid_kind,
             source="compiler_recovery_strategy",
             universe=self._intent_universe_label(),
-            compiler_error_code=str(getattr(parsed_output, "compiler_error_code", "") or ""),
-            compiler_recovery_id=str(getattr(parsed_output, "compiler_recovery_id", "") or ""),
+            compiler_error_code=compiler_meta["error_code"],
+            compiler_recovery_id=compiler_meta["recovery_id"],
         )
         return OutputRecoveryDecision.continue_with(
             self.prompt_builder.build_file_content_must_follow_action_prompt(),
@@ -878,8 +886,12 @@ class OutputRecoveryRoutingMixin:
         invalid_kind: str,
         malformed_action_retries: int,
         audit_marker_retries: int,
+        compiler_meta: dict,
     ) -> OutputRecoveryDecision:
-        repeat_fingerprint = self._compiler_repeat_fingerprint(parsed_output, invalid_kind=invalid_kind)
+        repeat_fingerprint = self._compiler_repeat_fingerprint(
+            invalid_kind=invalid_kind,
+            compiler_meta=compiler_meta,
+        )
         repeat_count = self._note_compiler_recovery_fingerprint(repeat_fingerprint)
         if repeat_count >= 3:
             return self._terminal_recovery_loop_decision(invalid_kind)
@@ -899,8 +911,8 @@ class OutputRecoveryRoutingMixin:
             universe=self._intent_universe_label(),
             repeat_count=repeat_count,
             repeat_fingerprint=repeat_fingerprint,
-            compiler_error_code=str(getattr(parsed_output, "compiler_error_code", "") or ""),
-            compiler_recovery_id=str(getattr(parsed_output, "compiler_recovery_id", "") or ""),
+            compiler_error_code=compiler_meta["error_code"],
+            compiler_recovery_id=compiler_meta["recovery_id"],
         )
         return OutputRecoveryDecision.continue_with(
             prompt,
@@ -917,8 +929,12 @@ class OutputRecoveryRoutingMixin:
         invalid_kind: str,
         malformed_action_retries: int,
         audit_marker_retries: int,
+        compiler_meta: dict,
     ) -> OutputRecoveryDecision:
-        repeat_fingerprint = self._compiler_repeat_fingerprint(parsed_output, invalid_kind=invalid_kind)
+        repeat_fingerprint = self._compiler_repeat_fingerprint(
+            invalid_kind=invalid_kind,
+            compiler_meta=compiler_meta,
+        )
         repeat_count = self._note_compiler_recovery_fingerprint(repeat_fingerprint)
         if repeat_count >= 3:
             return self._terminal_recovery_loop_decision(invalid_kind)
@@ -938,8 +954,8 @@ class OutputRecoveryRoutingMixin:
             universe=self._intent_universe_label(),
             repeat_count=repeat_count,
             repeat_fingerprint=repeat_fingerprint,
-            compiler_error_code=str(getattr(parsed_output, "compiler_error_code", "") or ""),
-            compiler_recovery_id=str(getattr(parsed_output, "compiler_recovery_id", "") or ""),
+            compiler_error_code=compiler_meta["error_code"],
+            compiler_recovery_id=compiler_meta["recovery_id"],
         )
         return OutputRecoveryDecision.continue_with(
             prompt,
@@ -949,9 +965,9 @@ class OutputRecoveryRoutingMixin:
             audit_marker_retries=audit_marker_retries,
         )
 
-    def _compiler_repeat_fingerprint(self, parsed_output: ParsedModelOutput, *, invalid_kind: str) -> str:
-        compiler_code = str(getattr(parsed_output, "compiler_error_code", "") or "").strip()
-        compiler_recovery_id = str(getattr(parsed_output, "compiler_recovery_id", "") or "").strip()
+    def _compiler_repeat_fingerprint(self, *, invalid_kind: str, compiler_meta: dict) -> str:
+        compiler_code = compiler_meta["error_code"]
+        compiler_recovery_id = compiler_meta["recovery_id"]
         return "|".join(
             part
             for part in (
