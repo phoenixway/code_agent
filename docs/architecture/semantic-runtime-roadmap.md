@@ -162,7 +162,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ### Next Accessor Batch Implementation
 
-- **Status**: Not started.
+- **Status**: Done.
 - **Goal**: Implement the two approved accessors with full test coverage.
 - **Allowed**:
     - Add `is_leaked_system_result` to `semantic_accessors.py`.
@@ -176,6 +176,18 @@ This document outlines the phased plan to migrate the runtime from legacy respon
     - The two accessors are implemented.
     - Tests confirm their behavior matches the design.
     - All relevant tests pass.
+
+---
+
+### Phase 4 Batch 2 Migration Plan
+
+- **Status**: Not started.
+- **Goal**: Design the consumer migration batch for the new accessors.
+- **Scope**:
+    - `ResponsePipelineStagesMixin` -> `is_leaked_system_result`
+    - `ResponseGuardPolicy.is_nonproductive_thinking_turn` -> `has_substantial_think`
+- **Forbidden**: Implementation before plan approval.
+- **Done When**: The batch migration plan is reviewed and approved.
 
 ---
 

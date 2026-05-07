@@ -38,6 +38,11 @@ This document is the single source of truth for the current state of the Semanti
   - Migrated `ModelOutputRecoveryHandler._has_any_action_proposal` to use `has_any_action_proposal_compat`.
   - The `output_recovery_compiler_metadata` helper was preserved.
   - No other consumers were migrated, and runtime behavior was unchanged.
+- **Next Accessor Batch (Implementation)**
+  - Implemented `is_leaked_system_result` and `has_substantial_think` in `semantic_accessors.py`.
+  - Added dedicated unit tests, which passed.
+  - `get_visible_text` was not implemented and remains deferred.
+  - No consumers were migrated, and no runtime behavior was changed.
 
 ## Known Authority Boundaries
 
@@ -53,9 +58,8 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- The design for the next accessor batch (`is_leaked_system_result`, `has_substantial_think`) is approved.
-- The next step is to implement only these two accessors with dedicated tests.
-- Consumer migration is not approved and is explicitly forbidden in this step.
+- Design the consumer migration batch for the newly implemented accessors (`is_leaked_system_result`, `has_substantial_think`).
+- Do not approve implementation automatically.
 
 ## Test Status
 

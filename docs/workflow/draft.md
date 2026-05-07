@@ -12,4 +12,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 8. Phase 4 Batch 1 implementation: done.
 9. Fast-lane migrations complete.
 10. Next accessor batch design: approved.
-11. Next: Implement only `is_leaked_system_result` and `has_substantial_think` with tests.
+11. Next accessor batch implementation: done.
+12. Next: Design consumer migration batch for new accessors.
