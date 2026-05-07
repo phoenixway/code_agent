@@ -33,6 +33,7 @@ COMPILER_INVALID_KIND_BY_CODE = {
     "E_ACTION_PAYLOAD_TOOL_CODE": "action_payload_tool_code",
     "E_ACTION_PAYLOAD_NOT_OBJECT": "action_payload_not_object",
     "E_PROTOCOL_TAG_IN_JSON_STRING": "protocol_tag_in_json_string",
+    "E_VISIBLE_TEXT_AFTER_ACTION": "mixed_visible_text_and_control_protocol",
 }
 
 
@@ -61,6 +62,33 @@ COMPILER_TAGS_INSIDE_THINK_ERROR_CODES = {
 COMPILER_UNCLOSED_TAG_ERROR_CODES = {
     "E_UNCLOSED_THINK",
 }
+
+
+COMPILER_VISIBLE_TEXT_POSITION_ERROR_CODES = {
+    "E_VISIBLE_TEXT_AFTER_ACTION",
+}
+
+
+def compiler_action_array_hint(parsed_output, *, response_text: str, recovery_id: str) -> bool:
+    legacy_invalid_kind = str(getattr(parsed_output, "invalid_kind", "") or "").strip()
+    if legacy_invalid_kind == "action_payload_array":
+        return True
+    if recovery_id == "atomic_bundle_exactly_one_action":
+        compact = "".join(str(response_text or "").split())
+        if "<action>[" in compact.lower():
+            return True
+    return False
+
+
+def compiler_invalid_kind_for_output(parsed_output) -> str:
+    compiler_code = str(getattr(parsed_output, "compiler_error_code", "") or "").strip()
+    if compiler_code == "E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION":
+        recovery_id = str(getattr(parsed_output, "compiler_recovery_id", "") or "").strip()
+        response_text = str(getattr(parsed_output, "response", "") or "")
+        if compiler_action_array_hint(parsed_output, response_text=response_text, recovery_id=recovery_id):
+            return "action_payload_array"
+        return "multiple_actions"
+    return COMPILER_INVALID_KIND_BY_CODE.get(compiler_code, "")
 
 
 def _is_compiler_valid_pre_action_text(parsed_output, parsed_action_count: int) -> bool:
@@ -119,6 +147,14 @@ def resolve_protocol_authority(parsed_output, parsed_action_count: int) -> Proto
         return ProtocolAuthorityDecision(
             source="compiler",
             reason="compiler_unclosed_tag_diagnostic",
+            suppress_legacy_invalid_kind=False,
+            dispatch_allowed=False,
+        )
+
+    if compiler_error_code in COMPILER_VISIBLE_TEXT_POSITION_ERROR_CODES:
+        return ProtocolAuthorityDecision(
+            source="compiler",
+            reason="compiler_visible_text_position_diagnostic",
             suppress_legacy_invalid_kind=False,
             dispatch_allowed=False,
         )

@@ -143,7 +143,7 @@ This audit inventories the different cases of mixed visible text and control pro
 | **Simple Pre-Action Text** | `OK<action>...</action>` | `PRE_ACTION_TEXT_AND_ACTION` | `mixed_visible_text_and_control_protocol` | **Compiler (Valid)** | Compiler | Low |
 | **Visible + Think + Action** | `OK<think>...</think><action>...</action>` | `E_MIXED_VISIBLE_TEXT_AND_CONTROL` | `mixed_visible_text_and_control_protocol` | Legacy | Compiler | Medium |
 | **Visible + Checkpoint + Action** | `OK<progress>...</progress><action>...</action>` | `E_MIXED_VISIBLE_TEXT_AND_CONTROL` | `mixed_visible_text_and_control_protocol` | Legacy | Compiler | Medium |
-| **Visible Text After Action** | `<action>...</action>OK` | `E_VISIBLE_TEXT_AFTER_ACTION` | `mixed_visible_text_and_control_protocol` | Legacy | Compiler | Low |
+| **Visible Text After Action** | `<action>...</action>OK` | `E_VISIBLE_TEXT_AFTER_ACTION` | `mixed_visible_text_and_control_protocol` | **Compiler** | Compiler | Low |
 | **Visible Text After Intent** | `<intent>...</intent>OK` | `E_MIXED_VISIBLE_TEXT_AND_CONTROL` | `mixed_intent_transition_and_visible_answer` | Legacy | Compiler | Low |
 | **Literal Tag in Code** | `<think>Use \`<action>\`</think><action>...</action>` | `ACTION_ONLY` | `null` or `action_inside_think` | Compiler (by shape) | Compiler | Low |
 
@@ -166,6 +166,7 @@ Note: Some structural errors may have compiler diagnostics and recovery mappings
 | `E_ACTION_PAYLOAD_XML_FIELDS` | `action_payload_xml_fields` | Structural | Compiler | Action payload shape is structural. |
 | `E_ACTION_PAYLOAD_TOOL_CODE` | `action_payload_tool_code` | Structural | Compiler | Action payload shape is structural. |
 | `E_PROTOCOL_TAG_IN_JSON_STRING` | `protocol_tag_in_json_string` | Structural | Compiler | Action payload content is structural. |
+| `E_VISIBLE_TEXT_AFTER_ACTION` | `mixed_visible_text_and_control_protocol` | Structural | Compiler | Visible text after an action is a logical paradox. |
 | `E_MIXED_VISIBLE_TEXT_AND_CONTROL` | `mixed_visible_text_and_control_protocol` | Structural | Legacy | Authority is narrow; only simple `PRE_ACTION_TEXT_AND_ACTION` is compiler-authoritative. |
 | `E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION` | `action_payload_array` or `multiple_actions` | Runtime Policy | Legacy | Related to atomic bundle policy, which is runtime-dependent. |
 

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from ..shared.decision_models import ExecutionPlan
 from ..shared.decision_models import ResponsePipelineOutcome
 from ..shared.trace import compact_compiler_replay
-from .protocol_decision_bridge import resolve_protocol_authority
+from .protocol_decision_bridge import compiler_invalid_kind_for_output, resolve_protocol_authority
 
 
 @dataclass
@@ -620,6 +620,10 @@ class ResponsePipelineStagesMixin:
                 source=f"protocol_authority:{authority.source}",
             )
             parsed_output.invalid_kind = ""
+        elif authority.dispatch_allowed is False:
+            compiler_invalid_kind = compiler_invalid_kind_for_output(parsed_output)
+            if compiler_invalid_kind:
+                parsed_output.invalid_kind = compiler_invalid_kind
 
         recovery_decision = await self.output_recovery.decide(
             parsed_output,
@@ -700,17 +704,6 @@ class ResponsePipelineStagesMixin:
                 )
         else:
             self.guards.set_nonproductive_thinking_state(False)
-
-        if authority.dispatch_allowed is False:
-            compiler_invalid_kind = self.output_recovery._compiler_invalid_kind_from_output(parsed_output)
-            if compiler_invalid_kind:
-                parsed_output.invalid_kind = compiler_invalid_kind
-            self.stage_logger.log(
-                "response_pipeline",
-                "pass",
-                reason=f"compiler_authority_block:{authority.reason}",
-                source=f"protocol_authority:{authority.source}",
-            )
 
         if str(getattr(parsed_output, "invalid_kind", "") or "").strip() in self.STRUCTURAL_INVALID_KINDS:
             if authority.suppress_legacy_invalid_kind:

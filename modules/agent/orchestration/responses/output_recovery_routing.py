@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ..shared.decision_models import OutputRecoveryDecision, ParsedModelOutput
-from .protocol_decision_bridge import COMPILER_INVALID_KIND_BY_CODE
+from .protocol_decision_bridge import COMPILER_INVALID_KIND_BY_CODE, compiler_invalid_kind_for_output
 
 
 class OutputRecoveryRoutingMixin:
@@ -668,7 +668,7 @@ class OutputRecoveryRoutingMixin:
     def _resolved_invalid_kind(self, parsed_output: ParsedModelOutput) -> str:
         legacy_invalid_kind = str(getattr(parsed_output, "invalid_kind", "") or "").strip()
         compiler_code = str(getattr(parsed_output, "compiler_error_code", "") or "").strip()
-        compiler_invalid_kind = self._compiler_invalid_kind_from_output(parsed_output)
+        compiler_invalid_kind = compiler_invalid_kind_for_output(parsed_output)
         if compiler_invalid_kind and (not legacy_invalid_kind or legacy_invalid_kind in self.COMPILER_ROUTED_INVALID_KINDS):
             return compiler_invalid_kind
         if legacy_invalid_kind:
@@ -677,25 +677,6 @@ class OutputRecoveryRoutingMixin:
             return compiler_invalid_kind
         return ""
 
-    def _compiler_invalid_kind_from_output(self, parsed_output: ParsedModelOutput) -> str:
-        compiler_code = str(getattr(parsed_output, "compiler_error_code", "") or "").strip()
-        if compiler_code == "E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION":
-            recovery_id = str(getattr(parsed_output, "compiler_recovery_id", "") or "").strip()
-            response_text = str(getattr(parsed_output, "response", "") or "")
-            if self._compiler_action_array_hint(parsed_output, response_text=response_text, recovery_id=recovery_id):
-                return "action_payload_array"
-            return "multiple_actions"
-        return COMPILER_INVALID_KIND_BY_CODE.get(compiler_code, "")
-
-    def _compiler_action_array_hint(self, parsed_output: ParsedModelOutput, *, response_text: str, recovery_id: str) -> bool:
-        legacy_invalid_kind = str(getattr(parsed_output, "invalid_kind", "") or "").strip()
-        if legacy_invalid_kind == "action_payload_array":
-            return True
-        if recovery_id == "atomic_bundle_exactly_one_action":
-            compact = "".join(str(response_text or "").split())
-            if "<action>[" in compact.lower():
-                return True
-        return False
 
     def _compiler_strategy_decision(
         self,

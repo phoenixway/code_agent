@@ -190,16 +190,30 @@ class ProtocolDecisionBridgeTests(unittest.TestCase):
         self.assertFalse(decision.suppress_legacy_invalid_kind)
         self.assertFalse(decision.dispatch_allowed)
 
-    def test_visible_text_after_action_is_legacy_authoritative(self):
+    def test_visible_text_after_action_is_compiler_authoritative_invalid(self):
         """
-        E_VISIBLE_TEXT_AFTER_ACTION is not yet compiler-authoritative.
+        Compiler is authoritative for E_VISIBLE_TEXT_AFTER_ACTION.
         """
         parsed_output = DummyParsedOutput(
             compiler_error_code="E_VISIBLE_TEXT_AFTER_ACTION",
         )
         decision = resolve_protocol_authority(parsed_output, parsed_action_count=1)
-        self.assertEqual("legacy", decision.source)
-        self.assertEqual("legacy_default", decision.reason)
+        self.assertEqual("compiler", decision.source)
+        self.assertEqual("compiler_visible_text_position_diagnostic", decision.reason)
+        self.assertFalse(decision.suppress_legacy_invalid_kind)
+        self.assertFalse(decision.dispatch_allowed)
+
+    def test_compiler_invalid_kind_for_output_maps_visible_text_after_action(self):
+        """
+        Tests that compiler_invalid_kind_for_output correctly maps the error code.
+        """
+        from modules.agent.orchestration.responses.protocol_decision_bridge import compiler_invalid_kind_for_output
+
+        parsed_output = DummyParsedOutput(
+            compiler_error_code="E_VISIBLE_TEXT_AFTER_ACTION",
+        )
+        invalid_kind = compiler_invalid_kind_for_output(parsed_output)
+        self.assertEqual("mixed_visible_text_and_control_protocol", invalid_kind)
 
     def test_unknown_compiler_data_is_legacy_default(self):
         """
