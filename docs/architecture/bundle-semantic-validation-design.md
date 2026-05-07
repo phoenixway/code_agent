@@ -1,8 +1,10 @@
 # Phase 6 Design: Bundle Semantic Validation Pass
 
-- **Status**: Design in Review
-- **Scope**: Design for Step 2 (Compiler-Only Logic) only. Implementation is not authorized.
-- **Implementation Scope**: The approved implementation scope for this design is **Step 1 (Scaffolding and Type Definition) only**. Step 2 implementation requires separate approval of this design.
+- **Phase 6 Status**: Approved
+- **Step 1 (Scaffolding) Status**: Done
+- **Step 2 (Compiler-Only Logic) Status**: Design in Review
+- **Step 2 Scope**: Design for compiler-only classification logic.
+- **Step 2 Implementation**: Not authorized. Requires separate approval of this design.
 
 ## 1. Purpose and Guiding Principles
 
