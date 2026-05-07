@@ -135,11 +135,12 @@ Implementation of this design will be a separate, future task, broken into safe,
   - No logic was migrated.
   - **Next**: Design Step 2A.
 
-- **Phase 5 Step 2A: Core Structural Logic Migration**
-  - Migrate the core structural classification logic for `NO_FOLLOWUP`, `FOLLOWUP_ACTION`, and `FOLLOWUP_CONFLICT` from `IntentTransitionHandler`'s private methods into the `validate` method.
-  - The validator will use the existing `TransitionFollowupSemantics` as a helper.
-  - Add extensive unit tests and parity tests for these specific result kinds.
-  - **No consumer migration.**
+- **Phase 5 Step 2A: Core Structural Logic Migration (Done)**
+  - Implemented the core structural classification logic for `NO_FOLLOWUP`, `FOLLOWUP_ACTION`, and `FOLLOWUP_CONFLICT` inside `TransitionSemanticValidator`.
+  - Added unit and parity tests, which passed.
+  - No consumers were migrated, and no old helpers were modified.
+  - Runtime behavior is unchanged.
+  - **Next**: Design Step 2B.
 
 ---
 
