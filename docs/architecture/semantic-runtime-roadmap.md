@@ -384,7 +384,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 6 Step 1: Scaffolding and Type Definition
 
-- **Status**: Not Started.
+- **Status**: Done.
 - **Goal**: Create the initial file, types, and class scaffold for the `BundleSemanticValidator`.
 - **Allowed**:
     - Create `modules/agent/orchestration/responses/bundle_semantic_validator.py`.
@@ -398,6 +398,21 @@ This document outlines the phased plan to migrate the runtime from legacy respon
     - `get_visible_text` implementation or `INVALID_MIXED_VISIBLE_TEXT` classification.
     - Any runtime behavior changes.
 - **Done When**: The scaffolding is in place with passing tests, and no logic has been migrated.
+
+---
+
+#### Phase 6 Step 2: Validator Implementation (Compiler-Only)
+
+- **Status**: Design in Review.
+- **Goal**: Design and document the compiler-only classification logic for `BundleSemanticValidator`.
+- **Allowed**:
+    - Update `docs/architecture/bundle-semantic-validation-design.md` with the detailed design for Step 2.
+    - The design should cover classification logic for `INVALID_ACTION_ARRAY`, `INVALID_MULTIPLE_ACTIONS`, `INVALID_FILE_CONTENT_PAIRING`, `INVALID_INTENT_COMPLETE_WITH_ACTION`, `INTENT_ACTION_BUNDLE_CANDIDATE`, and `READONLY_ACTION_BATCH_CANDIDATE` based on compiler metadata only.
+- **Forbidden**:
+    - Implementation before design approval.
+    - Designing logic that requires `ActionPolicyHandler` or runtime state.
+    - Designing logic for `INVALID_MIXED_VISIBLE_TEXT`.
+- **Done When**: The design for Step 2 is documented in `bundle-semantic-validation-design.md` and is ready for approval.
 
 ---
 
