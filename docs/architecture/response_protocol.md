@@ -143,9 +143,9 @@ Note: Some structural errors may have compiler diagnostics and recovery mappings
 | Error Code | `invalid_kind` Mapping | Category | Bridge Authority | Notes |
 |---|---|---|---|---|
 | `E_UNCLOSED_THINK` | `malformed_incomplete_think` | Structural | Legacy | Has recovery mapping but is not yet compiler-authoritative. |
-| `E_ACTION_INSIDE_THINK` | `action_inside_think` | Structural | Legacy | Has recovery mapping but is not yet compiler-authoritative. |
-| `E_INTENT_INSIDE_THINK` | `intent_inside_think` | Structural | Legacy | Has recovery mapping but is not yet compiler-authoritative. |
-| `E_FILE_CONTENT_INSIDE_THINK` | `file_content_inside_think` | Structural | Legacy | Has recovery mapping but is not yet compiler-authoritative. |
+| `E_ACTION_INSIDE_THINK` | `action_inside_think` | Structural | Compiler | Purely structural error. |
+| `E_INTENT_INSIDE_THINK` | `intent_inside_think` | Structural | Compiler | Purely structural error. |
+| `E_FILE_CONTENT_INSIDE_THINK` | `file_content_inside_think` | Structural | Compiler | Purely structural error. |
 | `E_FILE_CONTENT_UNCLOSED` | `malformed_incomplete_file_content` | Structural | Compiler | File content pairing is structural. |
 | `E_FILE_CONTENT_REQUIRES_ACTION` | `file_content_must_follow_action` | Structural | Compiler | File content pairing is structural. |
 | `E_ACTION_PAYLOAD_ARRAY` | `action_payload_array` | Structural | Compiler | Action payload shape is structural. |
@@ -166,7 +166,36 @@ To keep documentation and behavior aligned, the following rules apply:
 - **Gap matrix for gaps**: If a compiler error code exists but is not yet authoritative, it should have a `tests/golden/responses/compiler_gaps/` case to document the gap. It must not be listed as compiler-authoritative in the docs.
 - **Recovery mappings are separate**: `invalid_kind` mappings in `output_recovery_routing.py` or `response_pipeline_prevalidation.py` may exist before a code is compiler-authoritative. The docs must continue to mark these as `Legacy` authority until they are added to the bridge.
 
-## 10. Regression Testing Checklist
+## 10. Execution Telemetry Invariants
+
+This section clarifies the meaning of key telemetry fields related to action execution.
+
+### Telemetry Lifecycle
+
+1.  **Planning (`ExecutionPlan`)**: The `ResponsePipeline` creates an `ExecutionPlan` for dispatch-ready outcomes.
+    -   `plan.action_effects` lists the actions *intended* for execution.
+    -   `plan.output_effects` lists any user-visible text to be emitted before actions.
+
+2.  **Dispatch (`DispatchPipeline`)**: The `DispatchPipeline` receives the `ExecutionPlan` and attempts to execute the actions in `action_effects`.
+
+3.  **Commit (`execution_commit`)**: After execution, the `DispatchPipeline` creates an `execution_commit` containing the results.
+
+4.  **Journaling (`ExecutionCommitObserver`)**: The `ExecutionCommitObserver` processes the commit and logs a journal entry.
+    -   `committed_system_result_count` in the journal entry is the ground truth for how many tool/system results were successfully produced and committed.
+
+### `ExecutionPlan.action_dispatched`
+
+-   **Meaning**: This boolean field on the `ExecutionPlan` is currently **unused** and always `False` when the plan is created.
+-   **Note**: A separate `AtomicBundlePlan.action_dispatched` flag exists for pre-validation logging of atomic bundles, but this is not the same as the field on the final `ExecutionPlan`.
+-   **Correct Usage**: To determine if a plan includes actions intended for dispatch, check for the presence of `action_effects`. Do not rely on `action_dispatched`.
+
+### `committed_system_result_count`
+
+-   **Meaning**: This field, found in the execution commit artifacts, represents the actual number of tool results produced and committed after the `DispatchPipeline` runs.
+-   **Scope**: It is the ground truth for how many actions were successfully executed in a turn.
+-   **Example**: If `action_effects` has one item, and the tool call succeeds, `committed_system_result_count` will be `1`.
+
+## 11. Regression Testing Checklist
 
 To ensure these invariants are maintained, the following test suites must remain green after any related changes:
 
