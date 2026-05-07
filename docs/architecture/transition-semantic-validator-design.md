@@ -202,6 +202,75 @@ The implementation of Step 2A may only add logic inside `transition_semantic_val
   - Add unit tests and parity tests for these specific result kinds.
   - **No consumer migration.**
 
+---
+
+### Phase 5 Step 2B Design: Context-Sensitive Logic Migration
+
+- **Status**: In Review
+- **Scope**: Design only. Implementation is forbidden until this design is approved.
+
+#### 1. Goal
+
+To migrate the context-sensitive classification logic for followup actions that match existing context-sensitive violation classifications (e.g., `transition_only`, `reuse_only`, `complete`). This logic currently resides in `TransitionFollowupSemantics.evaluate_transition`.
+
+#### 2. Proposed Validator Implementation Structure
+
+The `TransitionSemanticValidator.validate` method will be extended. After performing the core structural analysis from Step 2A, it will apply context-sensitive rules if the structural classification is `FOLLOWUP_ACTION`.
+
+**Validator Inputs**:
+The `validate` method signature will be updated to include `completion_requested`. These flags are caller-supplied context facts used only to preserve the existing classification mapping. They must not make the validator responsible for deciding whether the policy itself applies.
+```python
+def validate(
+    self,
+    response_text: str,
+    intent_payload: dict | None = None,
+    *,
+    transition_only_required: bool = False,
+    reuse_only_required: bool = False,
+    completion_requested: bool = False, # New flag
+) -> TransitionValidationResult:
+```
+
+**Validator Logic**:
+1.  Perform core structural analysis (Step 2A).
+2.  If the result is `FOLLOWUP_ACTION`:
+    - Apply context-sensitive rules. The priority order of these checks must exactly match the existing legacy behavior in `TransitionFollowupSemantics.evaluate_transition`. If the legacy implementation has a different priority, the validator must follow the legacy priority.
+    - If `transition_only_required` is `True`, return `TRANSITION_ONLY_VIOLATION`.
+    - If `reuse_only_required` is `True`, return `REUSE_ONLY_VIOLATION`.
+    - If `completion_requested` is `True`, return `COMPLETE_WITH_ACTION_VIOLATION`.
+3.  Otherwise, return the original structural classification.
+
+This logic ensures that the validator provides a more specific classification when context is available, but it does not enforce policy. The consumer (`IntentTransitionRoutingMixin`) remains responsible for acting on the violation.
+
+#### 3. Behavior Preservation Mapping
+
+| Result Kind | Current Source (`TransitionFollowupSemantics.evaluate_transition`) | Proposed Validator Logic |
+|---|---|---|
+| `TRANSITION_ONLY_VIOLATION` | `kind="transition_only_recovery_cannot_bundle_action"` | `result.kind == FOLLOWUP_ACTION` and `transition_only_required=True` |
+| `REUSE_ONLY_VIOLATION` | `kind="reuse_only_transition_cannot_bundle_action"` | `result.kind == FOLLOWUP_ACTION` and `reuse_only_required=True` |
+| `COMPLETE_WITH_ACTION_VIOLATION` | `kind="intent_complete_with_action_not_allowed"` | `result.kind == FOLLOWUP_ACTION` and `completion_requested=True` |
+
+#### 4. Test Plan (for future implementation)
+
+-   **Unit Tests**:
+    -   Add tests to `test_transition_semantic_validator.py` that verify a `FOLLOWUP_ACTION` is re-classified as `TRANSITION_ONLY_VIOLATION` when the `transition_only_required` flag is set.
+    -   Add similar tests for `REUSE_ONLY_VIOLATION` and `COMPLETE_WITH_ACTION_VIOLATION`.
+-   **Parity Tests**:
+    -   Extend `test_transition_validator_parity.py` with fixtures that trigger these context-sensitive violations.
+    -   The parity test will compare the validator's output against the decision from `TransitionFollowupSemantics.evaluate_transition`, which is the direct source of the legacy logic. This avoids building a broad `IntentTransitionRoutingMixin` harness.
+    -   The test will verify that a `FOLLOWUP_ACTION` result from the validator, when combined with the context flags, maps correctly to the legacy decision kinds (`transition_only_recovery_cannot_bundle_action`, etc.).
+
+#### 5. Explicit Non-Goals for Step 2B
+
+-   **No Consumer Migration**: `IntentTransitionRoutingMixin` will not be changed.
+-   **No Policy Enforcement**: The validator only classifies. It does not:
+    - Decide whether policy flags (`transition_only_required`, etc.) are true.
+    - Generate recovery prompts.
+    - Mutate intent state.
+    - Grant or deny dispatch permission.
+-   **No `FOLLOWUP_PLAINTEXT`**: This remains deferred.
+-   **No Helper Deletion**: `TransitionFollowupSemantics` will not be modified.
+
 - **Phase 5 Step 2C: Defer Plaintext Followup**
   - The `FOLLOWUP_PLAINTEXT` result kind will be defined, but its implementation inside the validator is deferred.
   - The logic path for plaintext followup will remain on a legacy fallback in the consumer (`IntentTransitionRoutingMixin`) until `get_visible_text` is designed and approved in a later phase.

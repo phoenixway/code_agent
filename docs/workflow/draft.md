@@ -21,4 +21,4 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 17. Phase 5 Step 1 (scaffolding): done.
 18. Phase 5 Step 2A (core logic migration) design: approved.
 19. Phase 5 Step 2A (core logic migration) implementation: done.
-20. Next: Design Phase 5 Step 2B (context-sensitive logic migration).
+20. Phase 5 Step 2B (context-sensitive logic migration) design: in review.

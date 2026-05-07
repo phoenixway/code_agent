@@ -276,7 +276,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 5 Step 2B: Context-Sensitive Logic Migration (Design)
 
-- **Status**: Not started.
+- **Status**: In Review.
 - **Goal**: Design the migration of context-sensitive classification logic into the validator.
 - **Scope**:
     - `TRANSITION_ONLY_VIOLATION`
