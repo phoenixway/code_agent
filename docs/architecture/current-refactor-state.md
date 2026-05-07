@@ -58,9 +58,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Review and approve the "Phase 4 Batch 2" migration design.
-- The plan proposes migrating two low-risk consumers (`ResponsePipelineStagesMixin` and `ResponseGuardPolicy`) to their accessor equivalents.
-- Implementation is blocked until the plan is approved.
+- Implement the approved "Phase 4 Batch 2" migration.
+- This includes migrating the call sites in `ResponsePipelineStagesMixin` and `ResponseGuardPolicy` to their `semantic_accessors` equivalents.
+- No other migrations are authorized.
 
 ## Test Status
 

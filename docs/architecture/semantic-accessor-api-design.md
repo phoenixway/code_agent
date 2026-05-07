@@ -321,11 +321,11 @@ Implementation of these accessors is blocked until a formal API design is docume
 
 ---
 
-## Phase 4 Batch 2 Migration Design (Proposed)
+## Phase 4 Batch 2 Migration Design (Approved for Implementation)
 
-- **Status**: Design Proposed. Awaiting review and approval for implementation.
-- **Scope**: This design covers the migration of two low-risk consumers to their new accessors.
-- **Implementation**: Not approved.
+- **Status**: Reviewed / Approved for implementation.
+- **Approval Scope**: This approval applies *only* to the two call sites listed in this batch (`ResponsePipelineStagesMixin` and `ResponseGuardPolicy`). It does not authorize any other consumer migration.
+- **Implementation**: Not started.
 
 ### 1. Candidate: `ResponsePipelineStagesMixin` (leaked system result check)
 

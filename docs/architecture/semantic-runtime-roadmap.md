@@ -181,13 +181,32 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ### Phase 4 Batch 2 Migration Plan
 
-- **Status**: Design Proposed.
+- **Status**: Approved.
 - **Goal**: Design the consumer migration batch for the new accessors.
 - **Scope**:
     - `ResponsePipelineStagesMixin` -> `is_leaked_system_result`
     - `ResponseGuardPolicy.is_nonproductive_thinking_turn` -> `has_substantial_think`
 - **Forbidden**: Implementation before plan approval.
 - **Done When**: The batch migration plan is reviewed and approved.
+
+---
+
+### Phase 4 Batch 2 Implementation
+
+- **Status**: Not started.
+- **Goal**: Implement the two approved call-site migrations from the Batch 2 plan.
+- **Allowed Files**:
+    - `modules/agent/orchestration/responses/response_pipeline_stages.py`
+    - `modules/agent/orchestration/responses/response_guards.py`
+    - Test files covering these modules (implementation must locate existing tests before creating new ones).
+- **Forbidden**:
+    - Editing any other production files.
+    - Implementing `get_visible_text`.
+    - Any changes to runtime behavior, final-answer/sufficiency, stop-decisions, `ActionPolicy`, dispatch, transitions, boards, or `history.py`.
+- **Done When**:
+    - The two call sites are migrated to use the accessors.
+    - Tests confirm behavior is preserved.
+    - All relevant tests pass.
 
 ---
 
