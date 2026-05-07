@@ -4,9 +4,8 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase 3: Accessor Module (API Design)**
-- **Status**: Active.
-- **Note**: This phase is for API design and documentation only. Implementation must not start automatically.
+- **Phase 3: Accessor Module (Implementation Preparation)**
+- **Status**: API Design Approved. Next step is implementation of `semantic_accessors.py` with tests only.
 
 ## Completed Governance
 
@@ -41,8 +40,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Complete the API design for the Phase 3 Accessor Module in `docs/architecture/semantic-accessor-api-design.md`.
-- Do not start Phase 3 implementation automatically.
+- Implement `modules/agent/orchestration/responses/semantic_accessors.py`.
+- Add dedicated unit tests for the initial accessor set.
+- Do not migrate any existing consumer.
+- Do not change runtime behavior.
 
 ## Test Status
 

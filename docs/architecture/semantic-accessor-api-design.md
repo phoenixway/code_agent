@@ -1,5 +1,21 @@
 # Semantic Accessor API Design (Phase 3)
 
+- **Status**: Reviewed / Approved for initial implementation.
+- **Scope approved only for**:
+  - `get_compiler_metadata`
+  - `has_any_action_proposal_compat`
+  - `is_compiler_invalid`
+  - `is_compiler_invalid_with_legacy_action`
+- **Approval does not authorize**:
+  - consumer migration
+  - runtime policy changes
+  - dispatch behavior changes
+  - final-answer/sufficiency changes
+  - intent transition changes
+  - memory/plan board changes
+
+---
+
 This document defines the API for the `semantic_accessors` module, which is the core of the Semantic Runtime Migration.
 
 ## 1. Purpose and Guiding Principles

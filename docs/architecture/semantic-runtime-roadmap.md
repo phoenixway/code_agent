@@ -33,15 +33,36 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
-### Phase 3: Accessor Module (Active: API Design)
+### Phase 3: Accessor Module (API Design: Done)
 
 - **Goal**: Design and document the API for the new semantic accessor functions in a dedicated module.
 - **Allowed**: Create API documentation and design for a new module (e.g., `modules/agent/orchestration/responses/semantic_accessors.py`). The canonical design lives in `docs/architecture/semantic-accessor-api-design.md`.
 - **Forbidden**: No implementation of the module or its functions. Migrating any existing consumer to use the new accessors.
-- **Done When**: The API design in `semantic-accessor-api-design.md` is complete, reviewed, and approved. Implementation will be a separate phase.
+- **Done When**: The API design in `semantic-accessor-api-design.md` is complete, reviewed, and approved.
 
 ---
-**NOTE on Phase 3 Progress**: A sub-part of this migration, **Phase 3A**, was completed to support `output_recovery` improvements. This work is documented in `current-refactor-state.md` and `response_protocol.md`. It focused on migrating compiler metadata reads (`error_code`, `recovery_id`, `invalid_kind`) and is considered **Done**. The main "Accessor Module" work is now considered **Phase 3B** and has not yet started.
+
+### Phase 3 Implementation: `semantic_accessors.py` + tests only
+
+- **Status**: Not started.
+- **Goal**: Implement the initial set of approved semantic accessors with full test coverage.
+- **Allowed**:
+    - Create `modules/agent/orchestration/responses/semantic_accessors.py`.
+    - Add tests for the four approved accessors.
+- **Forbidden**:
+    - Consumer migration.
+    - `ActionPolicy` changes.
+    - Dispatch behavior changes.
+    - Output recovery behavior changes.
+    - Final-answer/sufficiency changes.
+    - Intent transition changes.
+    - Memory/plan board changes.
+    - Touching `history.py`.
+- **Done When**:
+    - `semantic_accessors.py` exists.
+    - Tests cover the API design requirements.
+    - All relevant tests pass.
+    - No consumers have been migrated.
 
 ---
 
