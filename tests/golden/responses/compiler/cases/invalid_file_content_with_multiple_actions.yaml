@@ -1,0 +1,17 @@
+description: "File content cannot be paired with multiple actions."
+input: |
+  <action>{"type":"write_file_block","path":"a.py"}</action>
+  <action>{"type":"write_file_block","path":"b.py"}</action>
+  <file_content>body</file_content>
+expected:
+  shape: INVALID
+  error_code: E_FILE_CONTENT_ACTION_MISMATCH
+  recovery_id: file_content_must_follow_action
+  invalid_part: file_content_multiple_actions
+  has_ir: false
+  action_count: 0
+  has_visible_answer: false
+  has_think: false
+  has_checkpoint: false
+expected_shadow_mismatches:
+  - action_count

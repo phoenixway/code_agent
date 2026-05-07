@@ -174,6 +174,18 @@ PROTOCOL_SPEC = ProtocolSpec(
             recovery_id="file_content_unclosed",
             default_message="File content block was not closed.",
         ),
+        "E_FILE_CONTENT_ACTION_MISMATCH": ErrorSpec(
+            code="E_FILE_CONTENT_ACTION_MISMATCH",
+            phase="shape",
+            recovery_id="file_content_must_follow_action",
+            default_message="File content can only be paired with a single action that requires it, like write_file_block.",
+        ),
+        "E_INTENT_COMPLETE_WITH_ACTION": ErrorSpec(
+            code="E_INTENT_COMPLETE_WITH_ACTION",
+            phase="shape",
+            recovery_id="intent_complete_with_action_not_allowed",
+            default_message="A complete intent transition cannot be combined with an action.",
+        ),
         "E_AMBIGUOUS_PROTOCOL_SYNTAX": ErrorSpec(
             code="E_AMBIGUOUS_PROTOCOL_SYNTAX",
             phase="parse",
@@ -213,8 +225,8 @@ PROTOCOL_SPEC = ProtocolSpec(
         "E_FILE_CONTENT_REQUIRES_ACTION": ErrorSpec(
             code="E_FILE_CONTENT_REQUIRES_ACTION",
             phase="shape",
-            recovery_id="file_content_requires_action",
-            default_message="File content cannot appear without an action.",
+            recovery_id="file_content_must_follow_action",
+            default_message="File content cannot appear without an action, must follow it, and be paired correctly.",
         ),
     },
 )

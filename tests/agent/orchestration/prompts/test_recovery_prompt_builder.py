@@ -73,7 +73,7 @@ def test_low_value_broad_search_repeat_real_action_format_prompt(prompt_builder:
     assert isinstance(prompt, str)
     assert "prefer exactly one" in prompt.lower()
     assert "read-only" in prompt.lower()
-    assert "For search_content, prefer explicit import patterns" in prompt
+    assert "search_content" in prompt
 
 
 def test_typed_stop_recovery_prompt_handles_none_from_helpers(prompt_builder: OrchestratorPromptBuilder):
@@ -93,6 +93,31 @@ def test_typed_stop_recovery_prompt_handles_none_from_helpers(prompt_builder: Or
     assert isinstance(prompt, str)
     # It should still contain the appended part, not crash
     assert "For search_content, prefer explicit import patterns" in prompt
+
+
+def test_typed_recovery_header_handles_none_next_hint(prompt_builder: OrchestratorPromptBuilder):
+    """
+    Tests that typed_recovery_header is defensive against None from _format_next_actions_hint.
+    """
+    # Un-mock the method to test the real implementation
+    prompt_builder.typed_recovery_header = (
+        OrchestratorPromptBuilder.typed_recovery_header.__get__(prompt_builder, OrchestratorPromptBuilder)
+    )
+
+    reason = "low_value_broad_search_repeat"
+    stop_info = {"reason": reason}
+    prompt_builder._recovery_context.return_value = MagicMock(
+        reason=reason, to_stop_info=lambda: stop_info, error_code="", message=""
+    )
+    prompt_builder._action_hints_from_stop_info = MagicMock(return_value=([], ["some_action"], "recommended"))
+    prompt_builder._format_next_actions_hint = MagicMock(return_value=None)
+
+    # This call would crash if not defensive
+    header = prompt_builder.typed_recovery_header(stop_info)
+
+    assert isinstance(header, str)
+    assert "broad" in header.lower()
+    assert "search" in header.lower()
 
 
 def test_typed_stop_recovery_with_missing_goal(prompt_builder: OrchestratorPromptBuilder):

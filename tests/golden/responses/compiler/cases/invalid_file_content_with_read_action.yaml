@@ -1,0 +1,16 @@
+description: "File content cannot be paired with an action that does not require it."
+input: |
+  <action>{"type":"read_file","path":"a.py"}</action>
+  <file_content>body</file_content>
+expected:
+  shape: INVALID
+  error_code: E_FILE_CONTENT_ACTION_MISMATCH
+  recovery_id: file_content_must_follow_action
+  invalid_part: file_content_action_mismatch
+  has_ir: false
+  action_count: 0
+  has_visible_answer: false
+  has_think: false
+  has_checkpoint: false
+expected_shadow_mismatches:
+  - action_count

@@ -54,7 +54,7 @@ The `ProtocolDecisionBridge` currently grants authority to the compiler for a na
 
 - **Simple `PRE_ACTION_TEXT_AND_ACTION`**: A response containing only leading visible text before a single action, without any other control blocks like `<think>`.
 - **Action Payload Diagnostics**: Structural errors in the action payload, such as `E_ACTION_PAYLOAD_ARRAY`.
-- **File Content Pairing Diagnostics**: Structural errors related to `write_file_block` and `<file_content>` pairing.
+- **File Content Pairing Diagnostics**: Structural errors related to `write_file_block` and `<file_content>` pairing (e.g., missing action, wrong order, action mismatch).
 
 #### Legacy-Governed
 
@@ -114,7 +114,7 @@ A response can have `compiler_shape="ACTION_ONLY"` but still be invalid due to l
 **Compiler-Authoritative Diagnostics within `ACTION_ONLY`:**
 
 - Malformed action payload (e.g., not a JSON object).
-- `write_file_block` missing its `<file_content>` block or being unclosed.
+- `write_file_block` pairing errors: missing its `<file_content>` block, unclosed block, wrong order, or paired with an action that doesn't require it.
 
 **Unsafe Candidates (must remain legacy/runtime governed for now):**
 
@@ -157,7 +157,7 @@ This audit assesses the feasibility of making atomic intent/action bundle diagno
 | **Multiple Actions** | `<intent>...</intent><action>...</action><action>...</action>` | `E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION` | `multiple_actions` | **Compiler** | Precise structural error. |
 | **Action Array** | `<intent>...</intent><action>[...]</action>` | `E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION` | `action_payload_array` | **Compiler** | Precise structural error. Covered by atomic bundle authority. |
 | **Multiple Intents** | `<intent>...</intent><intent>...</intent><action>...</action>` | `E_MULTIPLE_INTENTS` | `conflicting_intent_transitions` | **Compiler** | Precise structural error. |
-| **Complete + Action** | `<intent mode="complete">...</intent><action>...</action>` | `E_AMBIGUOUS_PROTOCOL_SYNTAX` | `intent_complete_with_action_not_allowed` | Legacy | Policy-level decision. Not yet safe for compiler authority. |
+| **Complete + Action** | `<intent mode="complete">...</intent><action>...</action>` | `E_INTENT_COMPLETE_WITH_ACTION` | `intent_complete_with_action_not_allowed` | **Compiler** | Contradictory structure. |
 | **Bundle + Visible Text** | `<intent>...</intent><action>...</action>OK` | `E_VISIBLE_TEXT_AFTER_ACTION` | `mixed_visible_text_and_control_protocol` | **Compiler** | Covered by existing visible-text-after-action authority. |
 
 **Conclusion**: Precise structural errors related to atomic bundles, such as multiple actions or multiple intents, are now compiler-authoritative. The valid `INTENT_ACTION_BUNDLE` shape remains legacy-governed to ensure runtime policy checks (e.g., `ActionPolicy`) are not bypassed.
@@ -189,7 +189,8 @@ Note: Some structural errors may have compiler diagnostics and recovery mappings
 | `E_INTENT_INSIDE_THINK` | `intent_inside_think` | Structural | Compiler | Purely structural error. |
 | `E_FILE_CONTENT_INSIDE_THINK` | `file_content_inside_think` | Structural | Compiler | Purely structural error. |
 | `E_FILE_CONTENT_UNCLOSED` | `malformed_incomplete_file_content` | Structural | Compiler | File content pairing is structural. |
-| `E_FILE_CONTENT_REQUIRES_ACTION` | `file_content_must_follow_action` | Structural | Compiler | File content pairing is structural. |
+| `E_FILE_CONTENT_REQUIRES_ACTION` | `file_content_must_follow_action` | Structural | Compiler | File content pairing is structural (e.g., missing action, wrong order). |
+| `E_FILE_CONTENT_ACTION_MISMATCH` | `file_content_must_follow_action` | Structural | Compiler | File content can only be paired with a single action that requires it. |
 | `E_ACTION_PAYLOAD_ARRAY` | `action_payload_array` | Structural | Compiler | Action payload shape is structural. |
 | `E_ACTION_PAYLOAD_NOT_OBJECT` | `action_payload_not_object` | Structural | Compiler | Action payload shape is structural. |
 | `E_ACTION_PAYLOAD_XML_FIELDS` | `action_payload_xml_fields` | Structural | Compiler | Action payload shape is structural. |
@@ -199,6 +200,7 @@ Note: Some structural errors may have compiler diagnostics and recovery mappings
 | `E_VISIBLE_TEXT_AFTER_INTENT` | `mixed_intent_transition_and_visible_answer` | Structural | Compiler | Visible text after a non-complete intent is invalid. |
 | `E_MIXED_VISIBLE_TEXT_AND_CONTROL` | `mixed_visible_text_and_control_protocol` | Structural | Legacy | Authority is narrow; only simple `PRE_ACTION_TEXT_AND_ACTION` is compiler-authoritative. |
 | `E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION` | `action_payload_array` or `multiple_actions` | Structural | **Compiler** | Precise structural error related to bundle shape. |
+| `E_INTENT_COMPLETE_WITH_ACTION` | `intent_complete_with_action_not_allowed` | Structural | **Compiler** | A complete intent cannot be combined with an action. |
 | `E_MULTIPLE_INTENTS` | `conflicting_intent_transitions` | Structural | **Compiler** | Precise structural error. |
 
 ## 9. Inventory Consistency Rules

@@ -36,6 +36,8 @@ COMPILER_INVALID_KIND_BY_CODE = {
     "E_VISIBLE_TEXT_AFTER_ACTION": "mixed_visible_text_and_control_protocol",
     "E_VISIBLE_TEXT_AFTER_INTENT": "mixed_intent_transition_and_visible_answer",
     "E_MULTIPLE_INTENTS": "conflicting_intent_transitions",
+    "E_INTENT_COMPLETE_WITH_ACTION": "intent_complete_with_action_not_allowed",
+    "E_FILE_CONTENT_ACTION_MISMATCH": "file_content_must_follow_action",
 }
 
 
@@ -58,9 +60,15 @@ COMPILER_INTENT_COUNT_ERROR_CODES = {
 }
 
 
+COMPILER_INTENT_ACTION_CONFLICT_ERROR_CODES = {
+    "E_INTENT_COMPLETE_WITH_ACTION",
+}
+
+
 COMPILER_FILE_CONTENT_ERROR_CODES = {
     "E_FILE_CONTENT_REQUIRES_ACTION",
     "E_FILE_CONTENT_UNCLOSED",
+    "E_FILE_CONTENT_ACTION_MISMATCH",
 }
 
 
@@ -184,6 +192,14 @@ def resolve_protocol_authority(parsed_output, parsed_action_count: int) -> Proto
         return ProtocolAuthorityDecision(
             source="compiler",
             reason="compiler_intent_count_diagnostic",
+            suppress_legacy_invalid_kind=False,
+            dispatch_allowed=False,
+        )
+
+    if compiler_error_code in COMPILER_INTENT_ACTION_CONFLICT_ERROR_CODES:
+        return ProtocolAuthorityDecision(
+            source="compiler",
+            reason="compiler_intent_action_conflict_diagnostic",
             suppress_legacy_invalid_kind=False,
             dispatch_allowed=False,
         )

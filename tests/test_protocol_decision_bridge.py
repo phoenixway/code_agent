@@ -242,6 +242,19 @@ class ProtocolDecisionBridgeTests(unittest.TestCase):
         self.assertFalse(decision.suppress_legacy_invalid_kind)
         self.assertFalse(decision.dispatch_allowed)
 
+    def test_intent_complete_with_action_is_compiler_authoritative_invalid(self):
+        """
+        Compiler is authoritative for E_INTENT_COMPLETE_WITH_ACTION.
+        """
+        parsed_output = DummyParsedOutput(
+            compiler_error_code="E_INTENT_COMPLETE_WITH_ACTION",
+        )
+        decision = resolve_protocol_authority(parsed_output, parsed_action_count=1)
+        self.assertEqual("compiler", decision.source)
+        self.assertEqual("compiler_intent_action_conflict_diagnostic", decision.reason)
+        self.assertFalse(decision.suppress_legacy_invalid_kind)
+        self.assertFalse(decision.dispatch_allowed)
+
     def test_mixed_visible_text_and_control_is_legacy_authoritative(self):
         """
         The broad E_MIXED_VISIBLE_TEXT_AND_CONTROL is not compiler-authoritative.
@@ -289,6 +302,42 @@ class ProtocolDecisionBridgeTests(unittest.TestCase):
         invalid_kind = compiler_invalid_kind_for_output(parsed_output)
         self.assertEqual("conflicting_intent_transitions", invalid_kind)
 
+    def test_compiler_invalid_kind_for_output_maps_intent_complete_with_action(self):
+        """
+        Tests that compiler_invalid_kind_for_output correctly maps the error code.
+        """
+        from modules.agent.orchestration.responses.protocol_decision_bridge import compiler_invalid_kind_for_output
+
+        parsed_output = DummyParsedOutput(
+            compiler_error_code="E_INTENT_COMPLETE_WITH_ACTION",
+        )
+        invalid_kind = compiler_invalid_kind_for_output(parsed_output)
+        self.assertEqual("intent_complete_with_action_not_allowed", invalid_kind)
+
+    def test_compiler_invalid_kind_for_output_maps_file_content_action_mismatch(self):
+        """
+        Tests that compiler_invalid_kind_for_output correctly maps the error code.
+        """
+        from modules.agent.orchestration.responses.protocol_decision_bridge import compiler_invalid_kind_for_output
+
+        parsed_output = DummyParsedOutput(
+            compiler_error_code="E_FILE_CONTENT_ACTION_MISMATCH",
+        )
+        invalid_kind = compiler_invalid_kind_for_output(parsed_output)
+        self.assertEqual("file_content_must_follow_action", invalid_kind)
+
+    def test_compiler_invalid_kind_for_output_maps_file_content_requires_action(self):
+        """
+        Tests that compiler_invalid_kind_for_output correctly maps the error code.
+        """
+        from modules.agent.orchestration.responses.protocol_decision_bridge import compiler_invalid_kind_for_output
+
+        parsed_output = DummyParsedOutput(
+            compiler_error_code="E_FILE_CONTENT_REQUIRES_ACTION",
+        )
+        invalid_kind = compiler_invalid_kind_for_output(parsed_output)
+        self.assertEqual("file_content_must_follow_action", invalid_kind)
+
     def test_unknown_compiler_data_is_legacy_default(self):
         """
         If compiler provides no specific shape or error, legacy is default.
@@ -321,6 +370,19 @@ class ProtocolDecisionBridgeTests(unittest.TestCase):
         """
         parsed_output = DummyParsedOutput(
             compiler_error_code="E_FILE_CONTENT_UNCLOSED",
+        )
+        decision = resolve_protocol_authority(parsed_output, parsed_action_count=1)
+        self.assertEqual("compiler", decision.source)
+        self.assertEqual("compiler_file_content_diagnostic", decision.reason)
+        self.assertFalse(decision.suppress_legacy_invalid_kind)
+        self.assertFalse(decision.dispatch_allowed)
+
+    def test_file_content_mismatch_is_compiler_authoritative_invalid(self):
+        """
+        Compiler is authoritative for file_content with a mismatched action.
+        """
+        parsed_output = DummyParsedOutput(
+            compiler_error_code="E_FILE_CONTENT_ACTION_MISMATCH",
         )
         decision = resolve_protocol_authority(parsed_output, parsed_action_count=1)
         self.assertEqual("compiler", decision.source)

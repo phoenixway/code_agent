@@ -23,6 +23,7 @@ class OutputRecoveryRoutingMixin:
         "multiple_actions",
         "file_content_must_follow_action",
         "conflicting_intent_transitions",
+        "intent_complete_with_action_not_allowed",
     }
 
     async def decide(

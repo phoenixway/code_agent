@@ -24,6 +24,7 @@ class ResponsePipelinePrevalidationMixin:
         "multiple_actions",
         "file_content_must_follow_action",
         "conflicting_intent_transitions",
+        "intent_complete_with_action_not_allowed",
     }
 
     def _normalize_response_if_supported(self, response: str, *, allow_autorepair: bool) -> NormalizedModelResponse:

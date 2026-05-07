@@ -1,0 +1,17 @@
+description: "File content cannot appear before the action that requires it."
+input: |
+  <file_content>body</file_content>
+  <action>{"type":"write_file_block","path":"a.py"}</action>
+expected:
+  shape: INVALID
+  error_code: E_FILE_CONTENT_REQUIRES_ACTION
+  recovery_id: file_content_must_follow_action
+  invalid_part: file_content_order
+  has_ir: false
+  action_count: 0
+  has_visible_answer: false
+  has_think: false
+  has_checkpoint: false
+expected_shadow_mismatches:
+  - action_count
+  - has_action

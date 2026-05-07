@@ -98,12 +98,44 @@ class ProtocolCompiler:
                 invalid_part="intent",
             )
 
-        if file_nodes and not action_nodes:
+        if len(intent_nodes) == 1 and self._intent_mode(intent_nodes[0]) == "complete" and action_nodes:
             return ResponseShape.INVALID, self._error(
-                "E_FILE_CONTENT_REQUIRES_ACTION",
-                file_nodes[0].span,
-                invalid_part="file_content",
+                "E_INTENT_COMPLETE_WITH_ACTION",
+                intent_nodes[0].span,
+                invalid_part="intent",
             )
+
+        if file_nodes:
+            if not action_nodes:
+                return ResponseShape.INVALID, self._error(
+                    "E_FILE_CONTENT_REQUIRES_ACTION",
+                    file_nodes[0].span,
+                    invalid_part="file_content_missing_action",
+                )
+
+            first_file_idx = next((i for i, n in enumerate(nodes) if isinstance(n, FileContentNode)), -1)
+            first_action_idx = next((i for i, n in enumerate(nodes) if isinstance(n, ActionNode)), -1)
+
+            if first_file_idx < first_action_idx:
+                return ResponseShape.INVALID, self._error(
+                    "E_FILE_CONTENT_REQUIRES_ACTION",
+                    file_nodes[0].span,
+                    invalid_part="file_content_order",
+                )
+
+            if len(action_nodes) > 1:
+                return ResponseShape.INVALID, self._error(
+                    "E_FILE_CONTENT_ACTION_MISMATCH",
+                    file_nodes[0].span,
+                    invalid_part="file_content_multiple_actions",
+                )
+
+            if not self._needs_file_content(action_nodes[0]):
+                return ResponseShape.INVALID, self._error(
+                    "E_FILE_CONTENT_ACTION_MISMATCH",
+                    action_nodes[0].span,
+                    invalid_part="file_content_action_mismatch",
+                )
 
         if visible_nodes and len(intent_nodes) == 1 and not action_nodes:
             if self._intent_mode(intent_nodes[0]) == "complete":

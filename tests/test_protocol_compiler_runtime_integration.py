@@ -54,6 +54,15 @@ class LegacyPermissiveIntentResponseParser:
                 compiler_error_code="E_ACTION_PAYLOAD_ARRAY",
             )
 
+        if '<intent mode="complete">' in lower_response and "<action" in lower_response:
+            return DummyParsedOutput(
+                response=response_str,
+                has_action_segment=True,
+                invalid_kind="",
+                compiler_shape="INVALID",
+                compiler_error_code="E_INTENT_COMPLETE_WITH_ACTION",
+            )
+
         if '"type":"write_file_block"' in lower_response and "file_content" not in lower_response:
             return DummyParsedOutput(
                 response=response_str,
@@ -61,6 +70,15 @@ class LegacyPermissiveIntentResponseParser:
                 invalid_kind="",
                 compiler_shape="INVALID",
                 compiler_error_code="E_FILE_CONTENT_REQUIRES_ACTION",
+            )
+
+        if '"type":"read_file"' in lower_response and "file_content" in lower_response:
+            return DummyParsedOutput(
+                response=response_str,
+                has_action_segment=True,
+                invalid_kind="",
+                compiler_shape="INVALID",
+                compiler_error_code="E_FILE_CONTENT_ACTION_MISMATCH",
             )
 
         return DummyParsedOutput(
@@ -286,3 +304,43 @@ async def test_compiler_drives_missing_file_content_pairing_recovery():
 
     assert outcome.reason == "file_content_must_follow_action"
     assert recovery.calls[-1].compiler_error_code == "E_FILE_CONTENT_REQUIRES_ACTION"
+
+
+@pytest.mark.asyncio
+async def test_compiler_drives_intent_complete_with_action_recovery():
+    recovery = CapturingOutputRecovery()
+    pipeline = _pipeline(recovery)
+
+    step = SimpleNamespace(
+        response='<intent mode="complete">{"intent_id":"x"}</intent>\n<action>{"type":"read_file","path":"a.py"}</action>',
+        intent_payload=None,
+        intent_error=None,
+        model_stop_reason="",
+    )
+    outcome = await pipeline.run_step(
+        SimpleNamespace(state_machine=None, malformed_action_retries=0, audit_marker_retries=0),
+        step,
+    )
+
+    assert outcome.reason == "intent_complete_with_action_not_allowed"
+    assert recovery.calls[-1].compiler_error_code == "E_INTENT_COMPLETE_WITH_ACTION"
+
+
+@pytest.mark.asyncio
+async def test_compiler_drives_file_content_mismatch_recovery():
+    recovery = CapturingOutputRecovery()
+    pipeline = _pipeline(recovery)
+
+    step = SimpleNamespace(
+        response='<action>{"type":"read_file","path":"a.py"}</action>\n<file_content>body</file_content>',
+        intent_payload=None,
+        intent_error=None,
+        model_stop_reason="",
+    )
+    outcome = await pipeline.run_step(
+        SimpleNamespace(state_machine=None, malformed_action_retries=0, audit_marker_retries=0),
+        step,
+    )
+
+    assert outcome.reason == "file_content_must_follow_action"
+    assert recovery.calls[-1].compiler_error_code == "E_FILE_CONTENT_ACTION_MISMATCH"

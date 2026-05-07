@@ -644,7 +644,7 @@ class ActionFormatPromptBuilderMixin:
             "reread_already_in_history",
             "reread_already_in_history_use_existing_content",
         } and ctx.message:
-            return str(ctx.message).strip() + next_hint
+            return str(ctx.message).strip() + (next_hint or "")
 
         headers = {
             "reread_after_summary": "You just summarized context and then tried to re-read a file already in history without a specific reason. Use existing context instead.",
@@ -667,46 +667,46 @@ class ActionFormatPromptBuilderMixin:
             "full_read_confirmation_required": "Full read of a very large file requires explicit confirmation. Prefer skeleton or chunked read first.",
         }
         if reason in headers:
-            return headers[reason] + next_hint
+            return headers[reason] + (next_hint or "")
         if code == "FILE_ALREADY_AVAILABLE_USE_EXISTING_CONTEXT":
-            return "This file is already available in history at the current version. Re-reading it without a specific reason is blocked." + next_hint
+            return "This file is already available in history at the current version. Re-reading it without a specific reason is blocked." + (next_hint or "")
         if code == "LIST_DIRECTORY_MISSING_PATH":
-            return "list_directory requires an explicit path. Root fallback is blocked in recovery." + next_hint
+            return "list_directory requires an explicit path. Root fallback is blocked in recovery." + (next_hint or "")
         if code == "TOO_BROAD_SEARCH":
             return (
                 "Your search was too broad or too noisy. "
                 "Return one narrower search only. Prefer a more specific pattern, a narrower path, or stricter excludes."
-            ) + next_hint
+            ) + (next_hint or "")
         if code == "LOW_VALUE_BROAD_SEARCH_REPEAT":
             return (
                 "You are repeating broad low-value searches. "
                 "Do not batch more broad searches. Return one targeted search or conclude with current evidence."
-            ) + next_hint
+            ) + (next_hint or "")
         if code == "HISTORY_SELF_REFERENCE_HIT":
             return (
                 "Your search matched only self-referential artifact/history content. "
                 "That is not real usage evidence. Return one narrower search that excludes artifact files."
-            ) + next_hint
+            ) + (next_hint or "")
         if code == "SEARCH_BATCH_ABORTED_AFTER_FIRST_ACTION":
             return (
                 "Your previous read-only search batch was aborted after the first action. "
                 "Do not send another batch. Return one narrower search_content action, or answer from current evidence if enough is already known."
-            ) + next_hint
+            ) + (next_hint or "")
         if code == "INTENT_FORCE_PLAINTEXT_COMPLETION":
             return (
                 "User requested final answer from already gathered evidence. "
                 "Do not use more tools under this intent contract now. Return plain text only."
-            ) + next_hint
+            ) + (next_hint or "")
         if code == "FULL_READ_CONFIRMATION_REQUIRED":
             return (
                 "Full read of a very large file requires explicit confirmation. "
                 "Prefer read_file_skeleton first, or use read_chunk with line ranges. "
                 "If full content is truly required, repeat read_file with confirm_large_read=true."
-            ) + next_hint
+            ) + (next_hint or "")
         return (
             "Previous action violated orchestration policy. "
             "Choose a different valid next step consistent with the current contract and current evidence."
-        ) + next_hint
+        ) + (next_hint or "")
 
     def _format_next_actions_hint(self, next_actions: list[str] | None, source: str = "") -> str:
         actions = next_actions or []
