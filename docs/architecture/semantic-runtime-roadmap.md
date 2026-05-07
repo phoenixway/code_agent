@@ -234,10 +234,29 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 5 Design
 
-- **Status**: In Review.
+- **Status**: Approved.
 - **Goal**: Create the formal design for the `TransitionSemanticValidator`.
 - **Forbidden**: Implementation before design approval.
 - **Done When**: The `transition-semantic-validator-design.md` document is approved.
+
+---
+
+#### Phase 5 Step 1: Scaffolding and Type Definition
+
+- **Status**: Not started.
+- **Goal**: Create the initial file, types, and class scaffold for the `TransitionSemanticValidator`.
+- **Allowed**:
+    - Create `modules/agent/orchestration/transitions/transition_semantic_validator.py`.
+    - Add `TransitionResultKind` enum, `TransitionValidationResult` dataclass, and `TransitionSemanticValidator` class.
+    - The `validate` method must initially return `kind=UNKNOWN`.
+    - Add basic unit tests for the new types.
+- **Forbidden**:
+    - Migrating any logic from `IntentTransitionHandler`.
+    - Migrating any consumers.
+    - Implementing `get_visible_text` or plaintext followup logic.
+    - Deleting any old helpers.
+    - Any runtime behavior changes.
+- **Done When**: The scaffolding is in place with passing tests, and no logic has been migrated.
 
 ---
 

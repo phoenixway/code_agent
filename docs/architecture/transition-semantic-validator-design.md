@@ -1,7 +1,13 @@
 # Phase 5 Design: TransitionSemanticValidator
 
-- **Status**: In Review
-- **Scope**: Design only. Implementation is forbidden until this design is approved.
+- **Status**: Approved
+- **Scope**: Design approved. Implementation is authorized for Step 1 only.
+
+**Approved Implementation Scope: Step 1 Only**
+
+This approval authorizes **only Phase 5 Step 1 (Scaffolding and Type Definition)**.
+- Implementation of Step 2A, 2B, and 3 requires separate approval.
+- Step 2C (plaintext followup) remains deferred until `get_visible_text` is designed.
 
 ## 1. Purpose and Guiding Principles
 
