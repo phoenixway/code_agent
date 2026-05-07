@@ -150,7 +150,7 @@ The following classifications are in scope for Step 2. They map directly to exis
 | `_reject_compiler_invalid_atomic_bundle_before_transition` | `compiler_error_code` = `E_FILE_CONTENT_REQUIRES_ACTION` or `E_FILE_CONTENT_ACTION_MISMATCH` | `INVALID_FILE_CONTENT_PAIRING` | reason: "write_file_block requires a complete <file_content>...</file_content> block immediately after </action>." |
 | `ProtocolCompiler._classify` | `compiler_ir.shape` = `INTENT_ACTION_BUNDLE` (no errors) | `INTENT_ACTION_BUNDLE_CANDIDATE` | This is a structural candidate, not a policy approval. |
 | `ProtocolCompiler._classify` | `compiler_ir.shape` = `READ_ONLY_BATCH_CANDIDATE` (no errors) | `READONLY_ACTION_BATCH_CANDIDATE` | This is a structural shape candidate. `ActionPolicy` still owns the final decision on whether the batch is safe to dispatch. |
-| `ProtocolCompiler._classify` | `compiler_ir.shape` is `INTENT_ONLY` or `ACTION_ONLY` | `NO_BUNDLE_SHAPE` | These shapes are not bundles. Shapes with visible text (`PLAINTEXT_ONLY`, etc.) are deferred and must return `UNKNOWN`. |
+| `ProtocolCompiler._classify` | `compiler_ir.shape` is `INTENT_ONLY` | `NO_BUNDLE_SHAPE` | This shape is not a bundle. `ACTION_ONLY` is also a non-bundle shape, but because it is action-bearing, it will remain `UNKNOWN` in this step. |
 
 ### 8.3. Deferred Classifications
 
@@ -176,6 +176,52 @@ To ensure a safe and incremental implementation, Step 2 should be broken down fu
 - **Step 2A: Error-Code-Driven Classification (Done)**: Implemented classifications based on `compiler_error_code` that map to logic currently in `_reject_compiler_invalid_atomic_bundle_before_transition`. This includes: `INVALID_ACTION_ARRAY`, `INVALID_MULTIPLE_ACTIONS`, and `INVALID_FILE_CONTENT_PAIRING`.
 - **Step 2B: Shape-Driven Classification (Design in Review)**: Implement the classifications based on `compiler_ir.shape` for clear bundle or non-bundle shapes: `INTENT_ACTION_BUNDLE_CANDIDATE`, `READONLY_ACTION_BATCH_CANDIDATE`, and `NO_BUNDLE_SHAPE` (for safe shapes like `INTENT_ONLY`).
 - **Step 2C: Parity Testing (Design in Review)**: Implement the parity tests described in the test strategy to prove behavioral equivalence before any consumer is migrated.
+
+### 8.6. Step 2B Design: Shape-Driven Classification
+
+This section details the design for Step 2B. Implementation is not authorized until this design is approved.
+
+#### 8.6.1. Scope and Boundaries
+
+Step 2B is strictly limited to implementing classification logic based on the compiler-assigned response shape.
+
+- **Precedence**: Shape-driven logic must only run if no error-code-driven classification from Step 2A was found.
+- **Allowed Inputs**: The `validate` method may read the compiler shape only from compiler metadata in `parsed_output`. The implementation must normalize the shape source, tolerating it as an enum, a string, or an object with a `.name` attribute. The preferred source is `runtime_protocol_semantics.shape`, with fallbacks to `compiler_ir.shape` or `compiler_shape`.
+- **Forbidden Inputs**: The validator **must not** inspect `segments`, call `ActionPolicyHandler`, or access runtime state.
+- **Fallback**: If the shape is missing, unknown, or corresponds to a deferred classification (e.g., contains visible text), the validator must return `BundleValidationResult(kind=BundleResultKind.UNKNOWN)`.
+
+#### 8.6.2. Classification Mapping
+
+| Compiler Shape | Proposed `BundleResultKind` | Notes |
+|---|---|---|
+| `INTENT_ACTION_BUNDLE` | `INTENT_ACTION_BUNDLE_CANDIDATE` | Structural candidate only. Not policy approval. |
+| `READ_ONLY_BATCH_CANDIDATE` | `READONLY_ACTION_BATCH_CANDIDATE` | Structural candidate only. `ActionPolicy` owns safety decision. |
+| `INTENT_ONLY` | `NO_BUNDLE_SHAPE` | Safe non-bundle shape. |
+
+#### 8.6.3. Deferred Classifications
+
+The following shapes are **out of scope** for Step 2B and must result in `UNKNOWN`. This list is not exhaustive; any unknown, ambiguous, or text-bearing shape must also return `UNKNOWN`.
+- `ACTION_ONLY`: This is a non-bundle shape, but because it is action-bearing, it must remain `UNKNOWN` in this step and not be classified as `NO_BUNDLE_SHAPE`.
+- `PLAINTEXT_ONLY`
+- `INTENT_COMPLETE_WITH_TEXT`
+- `MEMORY_TEXT`
+- `PRE_ACTION_TEXT_AND_ACTION`
+- Any other shape that implies visible text.
+
+#### 8.6.4. Test Strategy for Step 2B
+
+- **Unit Tests**: Add tests to `test_bundle_semantic_validator.py` for each approved shape mapping.
+- **Precedence Tests**: Add tests to prove that Step 2A error-code classifications take precedence (e.g., a response with shape `INTENT_ACTION_BUNDLE` but an `E_ATOMIC_BUNDLE...` error should result in `INVALID_ACTION_ARRAY`, not `INTENT_ACTION_BUNDLE_CANDIDATE`).
+- **Deferred Shape Tests**: Add tests to prove that visible-text shapes (`PLAINTEXT_ONLY`, etc.) result in `UNKNOWN`.
+- **Fallback Tests**: Add tests to ensure that `validate` returns `UNKNOWN` for missing or unrecognized shapes.
+- **Boundary Tests**: Ensure existing tests prove `ActionPolicyHandler` is not called and `segments` are ignored.
+
+#### 8.6.5. Proposed Implementation Slicing for Step 2B
+
+To ensure a safe and incremental implementation, Step 2B can be broken down:
+- **Step 2B.1**: Implement `INTENT_ACTION_BUNDLE_CANDIDATE` classification.
+- **Step 2B.2**: Implement `READONLY_ACTION_BATCH_CANDIDATE` classification.
+- **Step 2B.3**: Implement `NO_BUNDLE_SHAPE` classification for `INTENT_ONLY`.
 
 ## 9. Explicitly Deferred
 
