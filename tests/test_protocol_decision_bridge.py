@@ -203,6 +203,17 @@ class ProtocolDecisionBridgeTests(unittest.TestCase):
         self.assertFalse(decision.suppress_legacy_invalid_kind)
         self.assertFalse(decision.dispatch_allowed)
 
+    def test_mixed_visible_text_and_control_is_legacy_authoritative(self):
+        """
+        The broad E_MIXED_VISIBLE_TEXT_AND_CONTROL is not compiler-authoritative.
+        """
+        parsed_output = DummyParsedOutput(
+            compiler_error_code="E_MIXED_VISIBLE_TEXT_AND_CONTROL",
+        )
+        decision = resolve_protocol_authority(parsed_output, parsed_action_count=1)
+        self.assertEqual("legacy", decision.source)
+        self.assertEqual("legacy_default", decision.reason)
+
     def test_compiler_invalid_kind_for_output_maps_visible_text_after_action(self):
         """
         Tests that compiler_invalid_kind_for_output correctly maps the error code.

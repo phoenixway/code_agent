@@ -145,7 +145,21 @@ This audit inventories the different cases of mixed visible text and control pro
 | **Visible + Checkpoint + Action** | `OK<progress>...</progress><action>...</action>` | `E_MIXED_VISIBLE_TEXT_AND_CONTROL` | `mixed_visible_text_and_control_protocol` | Legacy | Compiler | Medium |
 | **Visible Text After Action** | `<action>...</action>OK` | `E_VISIBLE_TEXT_AFTER_ACTION` | `mixed_visible_text_and_control_protocol` | **Compiler** | Compiler | Low |
 | **Visible Text After Intent** | `<intent>...</intent>OK` | `E_MIXED_VISIBLE_TEXT_AND_CONTROL` | `mixed_intent_transition_and_visible_answer` | Legacy | Compiler | Low |
-| **Literal Tag in Code** | `<think>Use \`<action>\`</think><action>...</action>` | `ACTION_ONLY` | `null` or `action_inside_think` | Compiler (by shape) | Compiler | Low |
+| **Literal Tag in Code** | `<think>Use \`<action>\`</think><action>...</action>` | `ACTION_ONLY` | `null` or `action_inside_think` | Legacy | Compiler | Medium |
+
+### Intent + Visible Text Migration Audit
+
+This audit assesses the feasibility of making intent-plus-visible-text cases compiler-authoritative.
+
+| Case | Example | Compiler | Legacy `invalid_kind` | Bridge Authority | Notes |
+|---|---|---|---|---|---|
+| **Activate + Visible** | `<intent mode="activate">...</intent>OK` | `E_MIXED_VISIBLE_TEXT_AND_CONTROL` | `mixed_intent_transition_and_visible_answer` | Legacy | Invalid. Should recover. |
+| **Complete + Visible** | `<intent mode="complete">...</intent>OK` | `INTENT_COMPLETE_WITH_TEXT` | `mixed_intent_transition_and_visible_answer` | Legacy | Valid completion shape. |
+| **Activate + Action** | `<intent mode="activate">...</intent><action>...</action>` | `INTENT_ACTION_BUNDLE` | `null` | Legacy | Valid atomic bundle. |
+
+**Conclusion**: The compiler currently emits the broad `E_MIXED_VISIBLE_TEXT_AND_CONTROL` error for invalid mixes of intent transitions and visible text. This error code is not safe to make compiler-authoritative, as it also covers cases like `Visible + Think + Action` that have different recovery paths and risks.
+
+**Path to Migration**: Before this can be migrated, the compiler must emit a more precise error code, such as `E_VISIBLE_TEXT_AFTER_INTENT`, for these specific structural violations. Until then, these cases remain legacy-governed.
 
 ## 8. Compiler Error Code Authority Matrix
 
