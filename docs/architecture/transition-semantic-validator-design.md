@@ -282,24 +282,34 @@ This logic ensures that the validator provides a more specific classification wh
   - The `FOLLOWUP_PLAINTEXT` result kind will be defined, but its implementation inside the validator is deferred.
   - The logic path for plaintext followup will remain on a legacy fallback in the consumer (`IntentTransitionRoutingMixin`) until `get_visible_text` is designed and approved in a later phase.
 
-- **Phase 5 Step 3: Consumer Migration**
-  - Refactor `IntentTransitionRoutingMixin.handle_model_step` to:
-    1. Call `validator.validate(...)`.
-    2. Use a `match/case` or `if/elif` block on the `result.kind` to route to the correct logic (e.g., generate prompt, pass through).
-  - This will replace the multiple calls to the old private helpers.
-  - The old private helpers in `IntentTransitionHandler` will remain until all migrated paths have established parity and a separate cleanup is approved.
+- **Phase 5 Step 3: Consumer Migration (Done)**
+  - Migrated the first narrow slice of `IntentTransitionRoutingMixin` to use the validator for recovery/violation classifications (`TRANSITION_ONLY_VIOLATION`, `REUSE_ONLY_VIOLATION`, `COMPLETE_WITH_ACTION_VIOLATION`, `FOLLOWUP_CONFLICT`).
+  - A fallback to legacy logic is preserved for all other cases.
+  - Runtime behavior is unchanged.
+- **Phase 5 Review: Next Migration Slice (Done)**
+  - The review of remaining fallback paths is complete.
+  - `NO_FOLLOWUP` and `FOLLOWUP_ACTION` are approved as safe candidates for a second migration slice.
+  - `FOLLOWUP_PLAINTEXT` is deferred. `UNKNOWN` will remain a fallback.
+  - **Next**: Design Step 4 (Second Consumer Migration).
 
 ---
 
-### Phase 5 Step 3 Design: Consumer Migration
+### Phase 5 Step 3: Consumer Migration (Implementation)
 
-- **Status**: Approved for Implementation
-- **Scope**: Design approved. Implementation is authorized for the first narrow slice only.
-- **Implementation Scope**:
-    - Implementation may migrate **only** the recovery/violation classifications in `IntentTransitionRoutingMixin`.
-    - All other result kinds (`NO_FOLLOWUP`, `FOLLOWUP_ACTION`, `FOLLOWUP_PLAINTEXT`, `UNKNOWN`) **must** remain on the legacy fallback path.
-    - Existing helpers must not be changed.
-    - No consumer migration outside the approved slice is authorized.
+- **Status**: Done.
+- **Scope**: The first narrow slice of consumer migration in `IntentTransitionRoutingMixin` is complete.
+- **Implementation Details**:
+    - The `handle_model_step` method in `IntentTransitionRoutingMixin` was refactored to call `validator.validate`.
+    - A `match/case` on the `result.kind` was used to route to the appropriate logic block for the approved first slice: `TRANSITION_ONLY_VIOLATION`, `REUSE_ONLY_VIOLATION`, `COMPLETE_WITH_ACTION_VIOLATION`, `FOLLOWUP_CONFLICT`.
+    - A fallback to the legacy `evaluate_transition` path was preserved for all other kinds: `NO_FOLLOWUP`, `FOLLOWUP_ACTION`, `FOLLOWUP_PLAINTEXT`, `UNKNOWN`.
+    - All tests passed, and runtime behavior is unchanged.
+
+---
+
+### Phase 5 Step 4 Design: Second Consumer Migration
+
+- **Status**: Not started.
+- **Scope**: Design the migration of `NO_FOLLOWUP` and `FOLLOWUP_ACTION` paths in `IntentTransitionRoutingMixin` to use the validator.
 
 #### 1. Goal
 

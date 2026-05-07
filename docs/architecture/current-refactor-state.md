@@ -87,6 +87,17 @@ This document is the single source of truth for the current state of the Semanti
   - The design for migrating the first narrow slice of `IntentTransitionRoutingMixin` (recovery/violation classifications) to use the `TransitionSemanticValidator` is approved.
   - The design uses a fallback to legacy logic for all other cases to ensure behavior preservation and defer `get_visible_text`.
   - Implementation is authorized for the first narrow slice only.
+- **Phase 5 Step 3: Consumer Migration (Implementation)**
+  - Migrated the first narrow slice of `IntentTransitionRoutingMixin` to use the `TransitionSemanticValidator` for recovery/violation classifications.
+  - Migrated kinds: `TRANSITION_ONLY_VIOLATION`, `REUSE_ONLY_VIOLATION`, `COMPLETE_WITH_ACTION_VIOLATION`, `FOLLOWUP_CONFLICT`.
+  - Fallback to legacy logic preserved for `NO_FOLLOWUP`, `FOLLOWUP_ACTION`, `FOLLOWUP_PLAINTEXT`, and `UNKNOWN`.
+  - Tests passed, and runtime behavior is unchanged.
+- **Phase 5 Review: Next Migration Slice**
+  - Reviewed the remaining fallback paths (`NO_FOLLOWUP`, `FOLLOWUP_ACTION`, `FOLLOWUP_PLAINTEXT`, `UNKNOWN`).
+  - Conclusion: `NO_FOLLOWUP` and `FOLLOWUP_ACTION` are safe candidates for a second narrow migration slice.
+  - `FOLLOWUP_PLAINTEXT` remains deferred due to the `get_visible_text` dependency.
+  - `UNKNOWN` must remain a fallback to preserve behavior for unhandled cases.
+  - Recommendation: Proceed with designing the second migration slice for `NO_FOLLOWUP` and `FOLLOWUP_ACTION`.
 
 ## Known Authority Boundaries
 
@@ -102,9 +113,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Implement Phase 5, Step 3: First Consumer Migration Slice.
-- This step is limited to migrating the recovery/violation classifications in `IntentTransitionRoutingMixin`.
-- No broad migration or behavior change is authorized.
+- Design Phase 5 Step 4: Second Consumer Migration Slice.
+- This step will cover the design for migrating `NO_FOLLOWUP` and `FOLLOWUP_ACTION` classifications in `IntentTransitionRoutingMixin` to use the `TransitionSemanticValidator`.
+- Implementation is not authorized until the design is approved.
 
 ## Test Status
 

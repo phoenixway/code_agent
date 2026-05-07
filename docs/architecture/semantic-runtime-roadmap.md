@@ -310,7 +310,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 5 Step 3: Consumer Migration (Implementation)
 
-- **Status**: Not started.
+- **Status**: Done.
 - **Goal**: Implement the first narrow consumer migration slice in `IntentTransitionRoutingMixin`.
 - **Allowed**:
     - Update `IntentTransitionRoutingMixin` to use the validator **only** for the approved recovery/violation slice (`TRANSITION_ONLY_VIOLATION`, `REUSE_ONLY_VIOLATION`, `COMPLETE_WITH_ACTION_VIOLATION`, `FOLLOWUP_CONFLICT`).
@@ -321,7 +321,28 @@ This document outlines the phased plan to migrate the runtime from legacy respon
     - Deleting or modifying old helpers.
     - Changing prompts, reason strings, or source markers.
     - Any runtime behavior changes.
-- **Done When**: The first slice is migrated with a fallback for all other cases, and tests pass.
+- **Done When**: The first slice in `IntentTransitionRoutingMixin` was migrated to use the validator for recovery/violation classifications. A fallback to legacy logic was preserved for all other cases (`NO_FOLLOWUP`, `FOLLOWUP_ACTION`, `FOLLOWUP_PLAINTEXT`, `UNKNOWN`). All tests passed, and runtime behavior is unchanged.
+
+---
+
+#### Phase 5 Review: Next Migration Slice
+
+- **Status**: Done.
+- **Goal**: Review whether Phase 5 should continue with a second consumer migration slice for `NO_FOLLOWUP` and `FOLLOWUP_ACTION`.
+- **Forbidden**: Implementation before a new design or review conclusion is approved.
+- **Done When**: The review was completed. `NO_FOLLOWUP` and `FOLLOWUP_ACTION` were approved as safe candidates for a second migration slice. `FOLLOWUP_PLAINTEXT` remains deferred, and `UNKNOWN` remains a fallback.
+
+---
+
+#### Phase 5 Step 4: Second Consumer Migration (Design)
+
+- **Status**: Not started.
+- **Goal**: Design the migration of `IntentTransitionRoutingMixin` to use the validator for `NO_FOLLOWUP` and `FOLLOWUP_ACTION`.
+- **Forbidden**:
+    - Implementation before design approval.
+    - Migrating `FOLLOWUP_PLAINTEXT` or `UNKNOWN`.
+    - Deleting old helpers.
+- **Done When**: The design for Step 4 is approved.
 
 ---
 

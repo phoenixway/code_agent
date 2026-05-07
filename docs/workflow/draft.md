@@ -24,4 +24,6 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 20. Phase 5 Step 2B (context-sensitive logic migration) design: approved.
 21. Phase 5 Step 2B (context-sensitive logic migration) implementation: done.
 22. Phase 5 Step 3 (consumer migration) design: approved for first narrow slice.
-23. Next: Implement Phase 5 Step 3 (first narrow slice) only.
+23. Phase 5 Step 3 (consumer migration) implementation: done for first narrow slice.
+24. Phase 5 review (next slice): done. Approved `NO_FOLLOWUP` and `FOLLOWUP_ACTION` for Step 4.
+25. Next: Design Phase 5 Step 4.

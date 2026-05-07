@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ..shared.decision_models import IntentHandlingDecision
+from .transition_semantic_validator import TransitionResultKind, TransitionSemanticValidator
 
 
 class IntentTransitionRoutingMixin:
@@ -220,6 +221,93 @@ class IntentTransitionRoutingMixin:
 
         self._inherit_memory_to_successor(intent_decision)
         self._clear_transition_defect()
+
+        # --- Phase 5 Step 3: Consumer Migration (First Slice) ---
+        validator = TransitionSemanticValidator()
+        validator_result = validator.validate(
+            response_text=response_text,
+            intent_payload=intent_payload,
+            transition_only_required=self._transition_only_intent_required(),
+            reuse_only_required=self._reuse_only_intent_required(),
+            completion_requested=bool(intent_decision.completion_requested),
+        )
+
+        # Approved first slice: recovery/violation classifications
+        if validator_result.kind == TransitionResultKind.TRANSITION_ONLY_VIOLATION:
+            blocked_action = str(getattr(self.state, "transition_only_blocked_action", "") or "").strip()
+            self._clear_transition_only_intent_required()
+            if str((intent_payload or {}).get("mode") or "").strip().lower() == "reuse":
+                self._clear_reuse_only_intent_required()
+            self.stage_logger.log(
+                "intent_transition",
+                "continue",
+                reason="transition_only_recovery_cannot_bundle_action",
+                source="intent_runtime:validator",
+                universe="transition_in_progress",
+            )
+            return IntentHandlingDecision(
+                handled=True,
+                next_query=self.prompt_builder.build_transition_only_intent_cannot_bundle_action_prompt(
+                    blocked_action=blocked_action
+                ),
+                reason="transition_only_recovery_cannot_bundle_action",
+            )
+
+        if validator_result.kind == TransitionResultKind.REUSE_ONLY_VIOLATION:
+            blocked_action = str(getattr(self.state, "reuse_only_blocked_action", "") or "").strip()
+            self._clear_reuse_only_intent_required()
+            self.stage_logger.log(
+                "intent_transition",
+                "continue",
+                reason="reuse_only_transition_cannot_bundle_action",
+                source="intent_runtime:validator",
+                universe="transition_in_progress",
+            )
+            return IntentHandlingDecision(
+                handled=True,
+                next_query=self.prompt_builder.build_reuse_only_transition_cannot_bundle_action_prompt(
+                    blocked_action=blocked_action
+                ),
+                reason="reuse_only_transition_cannot_bundle_action",
+            )
+
+        if validator_result.kind == TransitionResultKind.COMPLETE_WITH_ACTION_VIOLATION:
+            self.stage_logger.log(
+                "intent_transition",
+                "continue",
+                reason="intent_complete_with_action_not_allowed",
+                source="intent_runtime:validator",
+                universe="transition_in_progress",
+                transition=intent_decision.transition_info.get("transition", ""),
+                before_active_intent_id=intent_decision.transition_info.get("before_active_intent_id", ""),
+                after_active_intent_id=intent_decision.transition_info.get("after_active_intent_id", ""),
+            )
+            return IntentHandlingDecision(
+                handled=True,
+                next_query=self.prompt_builder.build_completion_with_action_not_allowed_prompt(),
+                clear_pending_stop=True,
+                reason="intent_complete_with_action_not_allowed",
+            )
+
+        if validator_result.kind == TransitionResultKind.FOLLOWUP_CONFLICT:
+            self.stage_logger.log(
+                "intent_transition",
+                "continue",
+                reason=validator_result.conflict_reason,
+                source="intent_runtime:validator",
+                universe="transition_in_progress",
+                transition=intent_decision.transition_info.get("transition", ""),
+                before_active_intent_id=intent_decision.transition_info.get("before_active_intent_id", ""),
+                after_active_intent_id=intent_decision.transition_info.get("after_active_intent_id", ""),
+            )
+            return IntentHandlingDecision(
+                handled=True,
+                next_query=self.prompt_builder.build_followup_conflict_prompt(validator_result.conflict_reason),
+                clear_pending_stop=True,
+                reason=validator_result.conflict_reason,
+            )
+
+        # --- Fallback to legacy path for all other cases ---
 
         if state_machine is not None:
             state_machine.intent_runtime = getattr(self.state, "intent_runtime", None)
