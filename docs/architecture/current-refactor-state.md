@@ -65,6 +65,9 @@ This document is the single source of truth for the current state of the Semanti
   - The `validate` method returns `UNKNOWN` by default.
   - Tests passed.
   - No logic was migrated, and no runtime behavior was changed.
+- **Phase 5 Step 2A: Core Structural Logic Migration (Design)**
+  - Created the design for migrating the core structural classification logic (`NO_FOLLOWUP`, `FOLLOWUP_ACTION`, `FOLLOWUP_CONFLICT`) into the `TransitionSemanticValidator`.
+  - The design is in review; implementation is not yet approved.
 
 ## Known Authority Boundaries
 
@@ -80,9 +83,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Design and approve Phase 5, Step 2A: Core Structural Logic Migration.
-- This step will cover the design for migrating `NO_FOLLOWUP`, `FOLLOWUP_ACTION`, and `FOLLOWUP_CONFLICT` classification logic.
-- No implementation is authorized until the design for Step 2A is approved.
+- Review and approve the design for Phase 5, Step 2A: Core Structural Logic Migration.
+- Once approved, plan the implementation of Step 2A.
+- No implementation is authorized until the design is approved.
 
 ## Test Status
 

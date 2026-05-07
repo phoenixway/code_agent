@@ -141,6 +141,55 @@ Implementation of this design will be a separate, future task, broken into safe,
   - Add extensive unit tests and parity tests for these specific result kinds.
   - **No consumer migration.**
 
+---
+
+### Phase 5 Step 2A Design: Core Structural Logic Migration
+
+- **Status**: In Review
+- **Scope**: Design only. Implementation is forbidden until this design is approved. This design covers only the migration of the core structural classification logic.
+
+#### 1. Goal
+
+To migrate the fundamental, context-free structural analysis of the post-intent followup surface from the private methods of `IntentTransitionHandler` into the `TransitionSemanticValidator`. This step populates the validator with its core logic but does not yet migrate any consumers.
+
+#### 2. Proposed Validator Implementation Structure
+
+The `TransitionSemanticValidator.validate` method will be implemented to perform the following sequence:
+
+1.  **Isolate Followup Surface**: Replicate the logic from `IntentTransitionHandler._strip_matching_current_intent_block` to remove the current `<intent>` block from the `response_text`.
+2.  **Summarize Surface**: Replicate the logic from `IntentTransitionHandler._followup_surface_summary` to analyze the remaining text using `ProtocolCompiler` and `TransitionFollowupSemantics`. This produces a structured summary (node counts, shape, conflict reason).
+3.  **Classify**: Based on the summary, classify the result into one of the core structural kinds.
+
+The helper methods from `IntentTransitionHandler` (`_strip_matching_current_intent_block`, `_followup_surface_summary`, etc.) will be moved into `TransitionSemanticValidator` as private methods during implementation.
+
+#### 3. Behavior Preservation Mapping
+
+| Result Kind | Current Source (`IntentTransitionHandler`) | Proposed Validator Logic |
+|---|---|---|
+| `NO_FOLLOWUP` | `_has_no_followup_after_intent` | After stripping the intent, check if the surface summary has `has_substantive_nodes: False`. |
+| `FOLLOWUP_ACTION` | `_current_transition_has_inline_action_only` | After stripping the intent, check if the summary shows `shape=ACTION_ONLY`, `action_count=1`, `intent_count=0`, and `visible_count=0`. |
+| `FOLLOWUP_CONFLICT` | `_followup_conflict_reason_after_current_transition` | After stripping the intent, check if the summary contains a non-empty `conflict_reason`. The reason will be propagated to the result. |
+
+#### 4. Test Plan (for future implementation)
+
+-   **Unit Tests**:
+    -   Add dedicated tests for `validate` that produce `NO_FOLLOWUP` for responses with only an intent block.
+    -   Add tests that produce `FOLLOWUP_ACTION` for valid intent-action bundles.
+    -   Add tests that produce `FOLLOWUP_CONFLICT` for responses with multiple actions, mixed action/text, etc., and verify the `conflict_reason` is preserved.
+-   **Parity Tests**:
+    -   Create a new test file (`tests/test_transition_validator_parity.py`).
+    -   This test will load a corpus of real-world response strings.
+    -   For each response, it will call the old `IntentTransitionHandler` helpers and the new `validator.validate` method.
+    -   It will assert that the results are equivalent (e.g., `_has_no_followup_after_intent() == True` maps to `result.kind == NO_FOLLOWUP`).
+    -   Any disagreements will be logged for analysis.
+
+#### 5. Explicit Non-Goals for Step 2A
+
+-   **No `FOLLOWUP_PLAINTEXT`**: The logic for detecting plaintext answers (`_reuse_has_inline_plaintext_answer`) is deferred until `get_visible_text` is designed. The validator will not return this kind in Step 2A.
+-   **No Context-Sensitive Logic**: The logic for `TRANSITION_ONLY_VIOLATION`, `REUSE_ONLY_VIOLATION`, etc., which depends on runtime state flags, is deferred to Step 2B.
+-   **No Consumer Migration**: `IntentTransitionRoutingMixin` will not be changed to call the validator in this step.
+-   **No Helper Deletion**: The original private methods on `IntentTransitionHandler` will not be removed until consumer migration is complete and verified.
+
 - **Phase 5 Step 2B: Context-Sensitive Logic Migration**
   - Migrate the logic for context-sensitive violations: `TRANSITION_ONLY_VIOLATION`, `REUSE_ONLY_VIOLATION`, and `COMPLETE_WITH_ACTION_VIOLATION`.
   - This step depends on finalizing the design for how context flags are passed to the validator.
