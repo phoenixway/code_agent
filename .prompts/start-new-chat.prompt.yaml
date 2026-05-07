@@ -1,0 +1,14 @@
+schemaVersion: 1
+id: 2c9d7ca7-3c48-4f78-9696-3082f4976766
+title: start new chat
+description: ""
+category: Workflow
+tags: []
+body: |-
+  # start new chat
+
+  Use editor context variables like {{selection}}, {{filepath}}, {{lang}}, and {{file_content}}.
+
+  Write the prompt body here.
+createdAt: "2026-05-07T10:22:57.815Z"
+updatedAt: "2026-05-07T10:22:57.815Z"

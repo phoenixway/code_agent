@@ -30,6 +30,7 @@ class ParsedModelOutput:
     compiler_error_code: str = ""
     compiler_recovery_id: str = ""
     compiler_ir: Any = None
+    runtime_protocol_semantics: Any = None
 
 
 @dataclass

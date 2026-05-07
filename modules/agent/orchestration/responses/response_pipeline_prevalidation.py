@@ -5,6 +5,7 @@ from __future__ import annotations
 from ..shared.decision_models import AtomicBundlePlan, NormalizedModelResponse, ResponsePipelineOutcome
 from ..parsers.visible_text import sanitize_visible_text_for_user, terminal_plaintext_completion_status
 from .protocol_decision_bridge import COMPILER_INVALID_KIND_BY_CODE
+from .runtime_protocol_semantics import runtime_semantics_from_compiler_analysis
 
 
 class ResponsePipelinePrevalidationMixin:
@@ -151,6 +152,10 @@ class ResponsePipelinePrevalidationMixin:
         parsed_output.compiler_recovery_id = str(getattr(compiler_analysis.error, "recovery_id", "") or "")
         parsed_output.compiler_ir = getattr(compiler_analysis, "ir", None)
         compiler_invalid_kind = self._compiler_invalid_kind(compiler_analysis)
+        parsed_output.runtime_protocol_semantics = runtime_semantics_from_compiler_analysis(
+            compiler_analysis,
+            invalid_kind=compiler_invalid_kind,
+        )
         if compiler_invalid_kind:
             legacy_invalid_kind = str(getattr(parsed_output, "invalid_kind", "") or "").strip()
             has_plain_think_prefix = False

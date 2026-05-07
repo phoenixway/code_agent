@@ -318,9 +318,7 @@ class RuntimeProtocolSemantics:
 #### Phased Migration Plan
 
 1.  **Phase 1: Introduce Adapter (No Behavior Change)**
-    -   Create the `RuntimeProtocolSemantics` adapter.
-    -   Populate it from `CompilerAnalysis` within the response pipeline.
-    -   Pass it alongside the existing `ParsedModelOutput` to downstream stages. No consumers will use it yet.
+    -   **Status: Done.** This phase introduces the `RuntimeProtocolSemantics` adapter as an additive, read-only snapshot of compiler IR semantics. It is populated in the response pipeline but not yet consumed by any runtime logic. Existing consumers still use legacy fields or direct `compiler_ir` reads. No behavior or authority boundaries have changed.
 
 2.  **Phase 2: Adopt in Read-Only Diagnostics**
     -   Update non-behavior-changing consumers like logging (`_log_semantic_shadow_disagreements`) and tests (`test_semantic_shadow.py`) to use the new adapter. This provides a safe environment to validate the adapter's data.

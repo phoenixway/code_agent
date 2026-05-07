@@ -1,20 +1,9 @@
- коли показує текстовий результат і там треба показувати теги - замість них пусте місце
-
 ***
-можна зробити такий цикл прийняття агента:
-1. Sufficiency Check
-2. State Review
-3. Memory/Subgoal Update
-4. Action or Answer << додати в промпт в ## CORE EXECUTION MODEL
-
-***
-
-ще один спосіб детектити лупи - багато кроків без зміни статусу підцілей
-
-***
-
-хочу перенести розмову в новий чат щоб зменшити навантаження на тебе по розміру контексту. дай запит який переносить весь контекст цієї розмови і тих завдань які в ній випливають. щоб в новому чаті весь ціннний і важливий контекст зберігався
 
 codex resume 019de4e4-fc1a-7e81-9826-95de1e7ddc52
 
 ***
+When updating docs, keep the wording aligned with the existing response_protocol.md boundary:
+RuntimeProtocolSemantics is not a semantic validator and not a policy authority.
+It is only a read-only adapter/snapshot over compiler IR for future migration.
+
