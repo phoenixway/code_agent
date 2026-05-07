@@ -29,4 +29,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 25. Phase 5 Step 4 (second consumer migration) design: approved.
 26. Phase 5 Step 4 (second consumer migration) implementation: done.
 27. Phase 5 boundary review: done. Phase 5 is complete.
-28. Next: Plan for Phase 6.
+28. Phase 6 (Bundle Semantic Validation Pass) design: approved.
+29. Next: Implement Phase 6 Step 1 (scaffolding only).

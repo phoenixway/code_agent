@@ -374,10 +374,30 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ### Phase 6: Bundle Semantic Validation Pass
 
-- **Goal**: Centralize atomic bundle validation using semantic accessors.
-- **Allowed**: Refactor `_reject_invalid_atomic_bundle_before_transition` to use a new validation pass composed of semantic accessor calls.
-- **Forbidden**: Changing the logic of what constitutes a valid bundle.
-- **Done When**: Bundle pre-validation is free of direct `ParsedModelOutput` reads.
+- **Status**: Design Approved.
+- **Goal**: Centralize atomic bundle validation logic into a new `BundleSemanticValidator`.
+- **Allowed**: Create a design for the `BundleSemanticValidator` that classifies bundle structure and safety.
+- **Forbidden**: Implementation before design approval. Changing the logic of what constitutes a valid bundle.
+- **Done When**: The design for the `BundleSemanticValidator` is approved.
+
+---
+
+#### Phase 6 Step 1: Scaffolding and Type Definition
+
+- **Status**: Not Started.
+- **Goal**: Create the initial file, types, and class scaffold for the `BundleSemanticValidator`.
+- **Allowed**:
+    - Create `modules/agent/orchestration/responses/bundle_semantic_validator.py`.
+    - Add `BundleResultKind` enum, `BundleValidationResult` dataclass, and `BundleSemanticValidator` class scaffold.
+    - The `validate` method returns `UNKNOWN` by default.
+    - Add basic unit tests for the scaffolding and types.
+- **Forbidden**:
+    - Implementing any classification logic.
+    - Migrating any consumers.
+    - `ActionPolicy` or `DispatchPipeline` changes.
+    - `get_visible_text` implementation or `INVALID_MIXED_VISIBLE_TEXT` classification.
+    - Any runtime behavior changes.
+- **Done When**: The scaffolding is in place with passing tests, and no logic has been migrated.
 
 ---
 

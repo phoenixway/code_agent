@@ -110,6 +110,10 @@ This document is the single source of truth for the current state of the Semanti
   - Reviewed the remaining fallback paths (`FOLLOWUP_PLAINTEXT`, `UNKNOWN`).
   - Conclusion: The `FOLLOWUP_PLAINTEXT` path is deeply tied to final-answer/sufficiency policy and the `get_visible_text` accessor. Migrating it would significantly expand the scope of Phase 5.
   - Recommendation: Conclude Phase 5. The `TransitionSemanticValidator` has successfully migrated the vast majority of transition classifications. The remaining `FOLLOWUP_PLAINTEXT` and `UNKNOWN` paths will be kept on the legacy fallback, and the old helpers will be preserved. `get_visible_text` will be deferred to a potential future phase.
+- **Phase 6: Bundle Semantic Validation Pass (Design)**
+  - The design for the `BundleSemanticValidator` is approved.
+  - The validator will centralize classification of action bundle structure and safety.
+  - Implementation is authorized for Step 1 (scaffolding) only.
 
 ## Known Authority Boundaries
 
@@ -125,7 +129,7 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Conclude Phase 5 and begin planning for Phase 6 (`Bundle Semantic Validation Pass`).
+- Implement Phase 6 Step 1 (`BundleSemanticValidator` scaffolding).
 
 ## Test Status
 
