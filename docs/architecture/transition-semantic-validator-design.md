@@ -196,11 +196,12 @@ The implementation of Step 2A may only add logic inside `transition_semantic_val
 -   **No Consumer Migration**: `IntentTransitionRoutingMixin` will not be changed to call the validator in this step.
 -   **No Helper Modification or Deletion**: The original private methods on `IntentTransitionHandler` must not be removed, renamed, or changed. Physical helper cleanup requires separate approval after consumer migration and parity tests are complete.
 
-- **Phase 5 Step 2B: Context-Sensitive Logic Migration**
-  - Migrate the logic for context-sensitive violations: `TRANSITION_ONLY_VIOLATION`, `REUSE_ONLY_VIOLATION`, and `COMPLETE_WITH_ACTION_VIOLATION`.
-  - This step depends on finalizing the design for how context flags are passed to the validator.
-  - Add unit tests and parity tests for these specific result kinds.
-  - **No consumer migration.**
+- **Phase 5 Step 2B: Context-Sensitive Logic Migration (Done)**
+  - Implemented the context-sensitive classification logic for `TRANSITION_ONLY_VIOLATION`, `REUSE_ONLY_VIOLATION`, and `COMPLETE_WITH_ACTION_VIOLATION` inside `TransitionSemanticValidator`.
+  - Added unit and parity tests, which passed.
+  - No consumers were migrated, and no old helpers were modified.
+  - Runtime behavior is unchanged.
+  - **Next**: Design Step 3 (Consumer Migration).
 
 ---
 

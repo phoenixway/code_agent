@@ -291,18 +291,20 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 5 Step 2B: Context-Sensitive Logic Migration (Implementation)
 
-- **Status**: Not started.
+- **Status**: Done.
 - **Goal**: Implement the context-sensitive classification logic in `TransitionSemanticValidator`.
-- **Allowed**:
-    - Add logic for `TRANSITION_ONLY_VIOLATION`, `REUSE_ONLY_VIOLATION`, and `COMPLETE_WITH_ACTION_VIOLATION` to `transition_semantic_validator.py`.
-    - Add unit tests and targeted parity test fixtures.
-- **Forbidden**:
-    - Consumer migration.
-    - Changing `IntentTransitionHandler`, `IntentTransitionRoutingMixin`, or `TransitionFollowupSemantics`.
-    - Implementing `get_visible_text` or `FOLLOWUP_PLAINTEXT` logic.
-    - Deleting or modifying old helpers.
-    - Any runtime behavior changes.
 - **Done When**: The Step 2B logic is implemented in the validator with passing parity tests, and no consumers are migrated.
+
+---
+
+#### Phase 5 Step 3: Consumer Migration (Design)
+
+- **Status**: Not started.
+- **Goal**: Design the migration of `IntentTransitionRoutingMixin` to use the `TransitionSemanticValidator`.
+- **Forbidden**:
+    - Implementation before design approval.
+    - Deleting old helpers from `IntentTransitionHandler`.
+- **Done When**: The design for Step 3 is approved.
 
 ---
 

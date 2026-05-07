@@ -77,6 +77,12 @@ This document is the single source of truth for the current state of the Semanti
 - **Phase 5 Step 2B: Context-Sensitive Logic Migration (Design)**
   - The design for migrating context-sensitive violation classifications (`TRANSITION_ONLY_VIOLATION`, etc.) into the `TransitionSemanticValidator` is approved.
   - Implementation is authorized for Step 2B only.
+- **Phase 5 Step 2B: Context-Sensitive Logic Migration (Implementation)**
+  - Implemented context-sensitive classifications (`TRANSITION_ONLY_VIOLATION`, `REUSE_ONLY_VIOLATION`, `COMPLETE_WITH_ACTION_VIOLATION`) inside `TransitionSemanticValidator`.
+  - Added unit and parity tests, which passed.
+  - No consumers were migrated, and no old helpers were modified.
+  - `get_visible_text` and `FOLLOWUP_PLAINTEXT` were not implemented.
+  - Runtime behavior is unchanged.
 
 ## Known Authority Boundaries
 
@@ -92,9 +98,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Implement Phase 5, Step 2B: Context-Sensitive Logic Migration.
-- This step is limited to adding logic to `TransitionSemanticValidator` and its tests.
-- No consumer migration or behavior change is authorized.
+- Design and approve Phase 5, Step 3: Consumer Migration.
+- This step will cover the design for migrating `IntentTransitionRoutingMixin` to use the `TransitionSemanticValidator`.
+- No implementation is authorized until the design for Step 3 is approved.
 
 ## Test Status
 
