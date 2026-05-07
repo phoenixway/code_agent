@@ -336,7 +336,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 5 Step 4: Second Consumer Migration (Design)
 
-- **Status**: Not started.
+- **Status**: In Review.
 - **Goal**: Design the migration of `IntentTransitionRoutingMixin` to use the validator for `NO_FOLLOWUP` and `FOLLOWUP_ACTION`.
 - **Forbidden**:
     - Implementation before design approval.

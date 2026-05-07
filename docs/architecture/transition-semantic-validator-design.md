@@ -308,67 +308,69 @@ This logic ensures that the validator provides a more specific classification wh
 
 ### Phase 5 Step 4 Design: Second Consumer Migration
 
-- **Status**: Not started.
+- **Status**: In Review
 - **Scope**: Design the migration of `NO_FOLLOWUP` and `FOLLOWUP_ACTION` paths in `IntentTransitionRoutingMixin` to use the validator.
+- **Implementation**: Not authorized until design is approved.
 
 #### 1. Goal
 
-To perform the first, narrowest consumer migration slice for the `TransitionSemanticValidator`. This first slice may use the validator **only** for recovery/violation-style classifications.
+To perform the second narrow consumer migration slice for the `TransitionSemanticValidator`. This slice will migrate the `NO_FOLLOWUP` and `FOLLOWUP_ACTION` classifications, which represent the primary "happy paths" for post-transition followup.
 
 #### 2. Proposed Implementation Structure
 
-The `handle_model_step` method in `IntentTransitionRoutingMixin` will be refactored to:
+The `handle_model_step` method in `IntentTransitionRoutingMixin` will be refactored to expand the `match/case` on the `validator_result.kind`:
 
-1.  Obtain an instance of `TransitionSemanticValidator` using the least invasive construction pattern consistent with existing transition code. If no injection path exists, local construction is allowed only as a minimal implementation detail for this step.
-2.  Call `validator.validate(...)` with the `response_text` and all necessary context flags (`transition_only_required`, `reuse_only_required`, `completion_requested`).
-3.  Use a `match/case` on the `result.kind` to route to the appropriate logic block, but **only for the approved first slice**:
-    - `TRANSITION_ONLY_VIOLATION`
-    - `REUSE_ONLY_VIOLATION`
-    - `COMPLETE_WITH_ACTION_VIOLATION`
-    - `FOLLOWUP_CONFLICT`
-4.  **Fallback for all other kinds**: For any validator result kind outside the approved first slice (`NO_FOLLOWUP`, `FOLLOWUP_ACTION`, `FOLLOWUP_PLAINTEXT`, `UNKNOWN`), the implementation **must** fall back to the existing legacy `evaluate_transition` path. This ensures:
-    - The happy paths (`NO_FOLLOWUP`, `FOLLOWUP_ACTION`) and the plaintext path remain on legacy logic for this slice.
-    - Any edge case not yet covered by the validator is handled by the legacy logic, preserving behavior.
+1.  **Add `case TransitionResultKind.NO_FOLLOWUP`**: This block will replicate the logic currently found in the legacy path for `transition_semantic.kind == "no_followup"`. Behavior preservation must be exact:
+    -   The `intent_accepted_without_followup` prompt must be generated using the existing `prompt_builder` method.
+    -   The returned `IntentHandlingDecision` must have `handled=True` and `reason="intent_accepted_without_followup"`.
+    -   All existing side effects (`state.note_intent_only_response()`, `stage_logger.log(...)`) must be preserved.
+
+2.  **Add `case TransitionResultKind.FOLLOWUP_ACTION`**: This block will replicate the pass-through logic for `transition_semantic.kind` in (`intent_applied_with_followup_action`, `intent_reuse_applied_with_inline_followup_action`). Behavior preservation must be exact:
+    -   The returned `IntentHandlingDecision` must be `handled=False` to allow the response to proceed to dispatch.
+    -   The existing stage logging for this path must be preserved.
+    -   This migration does not grant dispatch authority; it only routes the response to the next stage (`ActionPolicyHandler`).
+
+3.  **Fallback for remaining kinds**: The fallback path for `FOLLOWUP_PLAINTEXT` and `UNKNOWN` will be preserved, ensuring they continue to use the legacy `evaluate_transition` logic. This is critical for preserving complex final-answer and plaintext-reuse behaviors.
 
 #### 3. Behavior Preservation Mapping
 
-The new `match/case` block will map the validator's result kind to the existing logic blocks. Existing prompts, reason strings, source markers, transition decision kinds, and pass-through behavior must remain unchanged.
+The `match/case` block will be extended to map the new validator result kinds to the existing logic blocks. All existing prompts, reason strings, source markers, and pass-through behavior must be preserved exactly.
 
-**Approved First Slice:**
+**Proposed Second Slice:**
 
 | `validator.kind` | Legacy `transition_semantic.kind` | Action |
 |---|---|---|
-| `TRANSITION_ONLY_VIOLATION` | `transition_only_recovery_cannot_bundle_action` | Build and return `transition_only...` prompt. |
-| `REUSE_ONLY_VIOLATION` | `reuse_only_transition_cannot_bundle_action` | Build and return `reuse_only...` prompt. |
-| `COMPLETE_WITH_ACTION_VIOLATION` | `intent_complete_with_action_not_allowed` | Build and return `completion_with_action...` prompt. |
-| `FOLLOWUP_CONFLICT` | `followup_conflict` | Build and return `followup_conflict` prompt. |
+| `NO_FOLLOWUP` | `no_followup` | Build and return `intent_accepted_without_followup` prompt. Preserve all side effects (logging, state updates). |
+| `FOLLOWUP_ACTION` | `intent_applied_with_followup_action`, `intent_reuse_applied_with_inline_followup_action` | Return `IntentHandlingDecision(handled=False)` to pass through to dispatch. Preserve all logging. |
 
 **Deferred / Fallback to Legacy Path:**
 
-| `validator.kind` | Action |
-|---|---|
-| `NO_FOLLOWUP` | Fall back to legacy `evaluate_transition` path. |
-| `FOLLOWUP_ACTION` | Fall back to legacy `evaluate_transition` path. |
-| `FOLLOWUP_PLAINTEXT` | Fall back to legacy `evaluate_transition` path. |
-| `UNKNOWN` | Fall back to legacy `evaluate_transition` path. |
+| `validator.kind` | Legacy Path | Action |
+|---|---|---|
+| `FOLLOWUP_PLAINTEXT` | `evaluate_transition` | Fall back to legacy path to preserve `intent_reuse_applied_with_inline_plaintext_answer` and `intent_completed_with_plaintext_answer` logic. |
+| `UNKNOWN` | `evaluate_transition` | Fall back to legacy path to preserve behavior for unhandled edge cases. |
 
 #### 4. Test Plan (for future implementation)
 
 -   **Allowed Files**:
     -   `modules/agent/orchestration/transitions/intent_transition_routing.py`
-    -   `tests/test_intent_transition_routing.py` (or equivalent)
+    -   `tests/test_orchestration_components.py` (for `IntentTransitionHandlerTests`)
 -   **Unit Tests**:
-    -   Update tests for `handle_model_step` to use mocks for `validator.validate`. No broad new routing harness should be built; existing tests should be adapted.
-    -   Add mock-based routing tests for each result kind in the approved first slice (`TRANSITION_ONLY_VIOLATION`, etc.).
-    -   Add specific fallback tests for `UNKNOWN`, `FOLLOWUP_PLAINTEXT`, `NO_FOLLOWUP`, and `FOLLOWUP_ACTION` to prove they trigger the legacy path.
-    -   Add a regression test proving the `intent_reuse_applied_with_inline_plaintext_answer` path remains on the legacy logic.
--   **Parity**: The existing parity tests for the validator already ensure its output matches the legacy logic. No new parity tests are needed for this step.
+    -   Update `IntentTransitionHandlerTests` to use mocks for `validator.validate`.
+    -   Add a mock-based routing test for `NO_FOLLOWUP` to verify it triggers the correct prompt-generating `IntentHandlingDecision`.
+    -   Add a mock-based routing test for `FOLLOWUP_ACTION` to verify it returns a pass-through decision (`handled=False`).
+    -   Ensure existing fallback tests for `FOLLOWUP_PLAINTEXT` and `UNKNOWN` are still valid and passing.
+-   **Parity**: The existing parity tests for the validator (`tests/test_transition_validator_parity.py`) already ensure its output for `NO_FOLLOWUP` and `FOLLOWUP_ACTION` matches the legacy logic. No new parity tests are needed for this step.
 
-#### 5. Explicit Non-Goals for Step 3
+#### 5. Explicit Non-Goals for Step 4
 
 -   **No `get_visible_text`**: The fallback mechanism ensures the plaintext path is untouched.
 -   **No Helper Deletion**: The old helpers in `IntentTransitionHandler` and `TransitionFollowupSemantics` will remain. They will be used by the fallback path.
--   **No Change to Prompts**: The migration will reuse the existing prompt-building logic for each case.
+-   **No Change to Prompts/Reasons**: The migration will reuse the existing prompt-building logic and reason strings.
+-   **No `ActionPolicy` or Dispatch Changes**: The `FOLLOWUP_ACTION` path is a simple pass-through and does not grant dispatch authority.
+-   **No Final-Answer/Sufficiency Changes**.
+-   **No `history.py` modifications**.
+
 
 ## 8. Explicitly Deferred
 
