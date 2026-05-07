@@ -152,3 +152,25 @@ def runtime_semantics_from_parsed_output(parsed_output: Any) -> RuntimeProtocolS
         file_content="",
         effects_preview=(),
     )
+
+
+def compact_runtime_protocol_semantics(snapshot: RuntimeProtocolSemantics | None) -> dict[str, Any]:
+    """Creates a compact, log-friendly dictionary from a semantic snapshot."""
+    if not isinstance(snapshot, RuntimeProtocolSemantics):
+        return {"source": "not_a_snapshot"}
+
+    return {
+        "source": snapshot.source,
+        "shape": snapshot.shape,
+        "is_valid": snapshot.is_valid,
+        "error_code": snapshot.error_code,
+        "recovery_id": snapshot.recovery_id,
+        "invalid_kind": snapshot.invalid_kind,
+        "action_count": snapshot.action_count,
+        "has_action": snapshot.has_action,
+        "intent_count": len(snapshot.intent_ops),
+        "has_visible_answer": snapshot.has_visible_answer,
+        "has_pre_action_text": snapshot.has_pre_action_text,
+        "has_file_content": snapshot.has_file_content,
+        "effects_preview_count": len(snapshot.effects_preview),
+    }

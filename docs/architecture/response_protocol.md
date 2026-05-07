@@ -321,7 +321,7 @@ class RuntimeProtocolSemantics:
     -   **Status: Done.** This phase introduces the `RuntimeProtocolSemantics` adapter as an additive, read-only snapshot of compiler IR semantics. It is populated in the response pipeline but not yet consumed by any runtime logic. Existing consumers still use legacy fields or direct `compiler_ir` reads. No behavior or authority boundaries have changed.
 
 2.  **Phase 2: Adopt in Read-Only Diagnostics**
-    -   Update non-behavior-changing consumers like logging (`_log_semantic_shadow_disagreements`) and tests (`test_semantic_shadow.py`) to use the new adapter. This provides a safe environment to validate the adapter's data.
+    -   **Status: In Progress.** This phase uses the `RuntimeProtocolSemantics` adapter for read-only diagnostics and test-time validation. A compact snapshot of the adapter's state is now logged to the orchestration trace. Parity tests have been added to confirm the adapter's fields are consistent with the raw compiler output. No runtime consumers have been switched to use the adapter yet.
 
 3.  **Phase 3: Migrate Output Recovery**
     -   Refactor `OutputRecoveryRoutingMixin` to consume the `RuntimeProtocolSemantics` adapter for structural checks (e.g., `has_action`, `action_count`) instead of legacy fields or `ResponseSemantics` helpers.

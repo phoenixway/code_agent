@@ -5,7 +5,7 @@ from __future__ import annotations
 from ..shared.decision_models import AtomicBundlePlan, NormalizedModelResponse, ResponsePipelineOutcome
 from ..parsers.visible_text import sanitize_visible_text_for_user, terminal_plaintext_completion_status
 from .protocol_decision_bridge import COMPILER_INVALID_KIND_BY_CODE
-from .runtime_protocol_semantics import runtime_semantics_from_compiler_analysis
+from .runtime_protocol_semantics import compact_runtime_protocol_semantics, runtime_semantics_from_compiler_analysis
 
 
 class ResponsePipelinePrevalidationMixin:
@@ -156,6 +156,13 @@ class ResponsePipelinePrevalidationMixin:
             compiler_analysis,
             invalid_kind=compiler_invalid_kind,
         )
+        stage_logger = getattr(self, "stage_logger", None)
+        if stage_logger and parsed_output.runtime_protocol_semantics:
+            stage_logger.log(
+                "runtime_protocol_semantics",
+                "snapshot",
+                **compact_runtime_protocol_semantics(parsed_output.runtime_protocol_semantics),
+            )
         if compiler_invalid_kind:
             legacy_invalid_kind = str(getattr(parsed_output, "invalid_kind", "") or "").strip()
             has_plain_think_prefix = False

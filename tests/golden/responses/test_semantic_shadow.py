@@ -32,6 +32,7 @@ from modules.agent.orchestration.protocol.models import (
     VisibleTextNode,
 )
 from modules.agent.orchestration.responses.response_semantics import ResponseSemantics
+from modules.agent.orchestration.responses.runtime_protocol_semantics import runtime_semantics_from_compiler_analysis
 
 # --- Test setup ---
 
@@ -61,6 +62,16 @@ def get_compiler_semantics(analysis: CompilerAnalysis) -> SemanticSnapshot:
     Extract a semantic snapshot from a CompilerAnalysis object.
     Prefers ResponseIR fields, but falls back to AST for diagnostics.
     """
+    # Phase 2: Add internal parity check for the new adapter
+    adapter_snapshot = runtime_semantics_from_compiler_analysis(analysis)
+    assert adapter_snapshot.shape == (analysis.shape.name if analysis.shape else "")
+    assert adapter_snapshot.error_code == (analysis.error.code if analysis.error else "")
+    assert adapter_snapshot.recovery_id == (analysis.error.recovery_id if analysis.error else "")
+    if analysis.ir:
+        assert adapter_snapshot.action_count == analysis.ir.action_count
+        assert adapter_snapshot.has_action == analysis.ir.has_action
+        assert adapter_snapshot.has_visible_answer == analysis.ir.has_visible_answer
+
     if analysis.ir:
         # Prefer new semantic fields from IR
         return SemanticSnapshot(

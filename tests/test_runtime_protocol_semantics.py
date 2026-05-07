@@ -5,6 +5,7 @@ from modules.agent.orchestration.protocol import ProtocolCompiler
 from modules.agent.orchestration.responses.response_pipeline_prevalidation import ResponsePipelinePrevalidationMixin
 from modules.agent.orchestration.responses.runtime_protocol_semantics import (
     RuntimeProtocolSemantics,
+    compact_runtime_protocol_semantics,
     runtime_semantics_from_compiler_analysis,
     runtime_semantics_from_parsed_output,
 )
@@ -117,3 +118,30 @@ class TestRuntimeProtocolSemantics(unittest.TestCase):
         self.assertEqual("ACTION_ONLY", parsed_output.runtime_protocol_semantics.shape)
         self.assertEqual(1, parsed_output.runtime_protocol_semantics.action_count)
         self.assertEqual(parsed_output.compiler_shape, parsed_output.runtime_protocol_semantics.shape)
+        self.assertEqual(parsed_output.compiler_error_code, parsed_output.runtime_protocol_semantics.error_code)
+        self.assertEqual(parsed_output.compiler_recovery_id, parsed_output.runtime_protocol_semantics.recovery_id)
+        if parsed_output.compiler_ir:
+            self.assertEqual(
+                parsed_output.compiler_ir.action_count,
+                parsed_output.runtime_protocol_semantics.action_count,
+            )
+
+    def test_compact_snapshot_handles_none(self):
+        compact = compact_runtime_protocol_semantics(None)
+        self.assertEqual("not_a_snapshot", compact["source"])
+
+    def test_compact_snapshot_includes_key_fields(self):
+        analysis = self.compiler.analyze('<action>{"type":"read_file","path":"a.py"}</action>')
+        snapshot = runtime_semantics_from_compiler_analysis(analysis)
+        compact = compact_runtime_protocol_semantics(snapshot)
+
+        self.assertEqual("compiler", compact["source"])
+        self.assertEqual("ACTION_ONLY", compact["shape"])
+        self.assertTrue(compact["is_valid"])
+        self.assertEqual(1, compact["action_count"])
+        self.assertTrue(compact["has_action"])
+        self.assertEqual(0, compact["intent_count"])
+        self.assertFalse(compact["has_visible_answer"])
+        self.assertFalse(compact["has_pre_action_text"])
+        self.assertFalse(compact["has_file_content"])
+        self.assertEqual(1, compact["effects_preview_count"])
