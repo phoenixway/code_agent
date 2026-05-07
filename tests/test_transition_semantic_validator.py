@@ -9,8 +9,12 @@ from modules.agent.orchestration.transitions.transition_semantic_validator impor
 )
 
 
-class TestTransitionSemanticValidatorScaffolding(unittest.TestCase):
+class TestTransitionSemanticValidator(unittest.TestCase):
     """Tests for the Phase 5, Step 1 scaffolding of TransitionSemanticValidator."""
+
+    def setUp(self):
+        """Set up the test case."""
+        self.validator = TransitionSemanticValidator()
 
     def test_result_kind_enum_values_exist(self):
         """Tests that the key enum values are defined."""
@@ -42,30 +46,42 @@ class TestTransitionSemanticValidatorScaffolding(unittest.TestCase):
         self.assertIn("key", result1.details)
         self.assertNotIn("key", result2.details)
 
-    def test_validator_scaffold_returns_unknown(self):
-        """Tests that the initial validator scaffold returns UNKNOWN."""
-        validator = TransitionSemanticValidator()
-        result = validator.validate("any response text")
+    def test_validate_no_followup(self):
+        """Tests that a response with only a matching intent returns NO_FOLLOWUP."""
+        response = '<intent mode="activate">{"mode": "activate"}</intent>'
+        payload = {"mode": "activate"}
+        result = self.validator.validate(response, payload)
+        self.assertEqual(result.kind, TransitionResultKind.NO_FOLLOWUP)
 
-        self.assertIsInstance(result, TransitionValidationResult)
+    def test_validate_followup_action(self):
+        """Tests that a response with an intent and a single action returns FOLLOWUP_ACTION."""
+        response = '<intent mode="activate">{"mode": "activate"}</intent><action>{"type": "run_shell", "command": "ls"}</action>'
+        payload = {"mode": "activate"}
+        result = self.validator.validate(response, payload)
+        self.assertEqual(result.kind, TransitionResultKind.FOLLOWUP_ACTION)
+
+    def test_validate_followup_conflict(self):
+        """Tests that a response with multiple actions returns FOLLOWUP_CONFLICT."""
+        response = '<intent mode="activate">{"mode": "activate"}</intent><action>{}</action><action>{}</action>'
+        payload = {"mode": "activate"}
+        result = self.validator.validate(response, payload)
+        self.assertEqual(result.kind, TransitionResultKind.FOLLOWUP_CONFLICT)
+        self.assertIn("multiple_actions", result.conflict_reason)
+
+    def test_validate_plaintext_is_unknown_in_step2a(self):
+        """Tests that a response with plaintext followup returns UNKNOWN in Step 2A."""
+        response = '<intent mode="activate">{"mode": "activate"}</intent>This is some text.'
+        payload = {"mode": "activate"}
+        result = self.validator.validate(response, payload)
         self.assertEqual(result.kind, TransitionResultKind.UNKNOWN)
 
-    def test_validator_scaffold_accepts_all_arguments(self):
-        """Tests that the validate method accepts all its arguments without error."""
-        validator = TransitionSemanticValidator()
-        result = validator.validate(
-            response_text="any response text",
-            intent_payload={"mode": "reuse"},
-            transition_only_required=True,
-            reuse_only_required=True,
-        )
-        self.assertEqual(result.kind, TransitionResultKind.UNKNOWN)
-
-    def test_validator_scaffold_does_not_require_optional_arguments(self):
-        """Tests that the validate method can be called with only required arguments."""
-        validator = TransitionSemanticValidator()
-        result = validator.validate(response_text="any response text")
-        self.assertEqual(result.kind, TransitionResultKind.UNKNOWN)
+    def test_validate_context_sensitive_is_not_handled_in_step2a(self):
+        """Tests that context-sensitive flags do not change the structural outcome in Step 2A."""
+        response = '<intent mode="activate">{"mode": "activate"}</intent><action>{"type": "run_shell"}</action>'
+        payload = {"mode": "activate"}
+        # The context flag is ignored; the structural classification is FOLLOWUP_ACTION.
+        result = self.validator.validate(response, payload, transition_only_required=True)
+        self.assertEqual(result.kind, TransitionResultKind.FOLLOWUP_ACTION)
 
 
 if __name__ == "__main__":
