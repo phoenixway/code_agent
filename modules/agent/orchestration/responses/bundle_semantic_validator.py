@@ -68,6 +68,35 @@ class BundleSemanticValidator:
     replace or grant authority to bypass ActionPolicy or DispatchPipeline.
     """
 
+    def _get_normalized_shape(self, parsed_output: ParsedModelOutput) -> str:
+        """
+        Normalizes the compiler shape from various potential sources.
+        """
+        # Preferred source: runtime_protocol_semantics
+        rps = getattr(parsed_output, "runtime_protocol_semantics", None)
+        if rps:
+            shape = getattr(rps, "shape", None)
+            if hasattr(shape, "name"):
+                return str(shape.name or "").strip().upper()
+            if isinstance(shape, str) and shape:
+                return shape.strip().upper()
+
+        # Fallback 1: compiler_ir
+        ir = getattr(parsed_output, "compiler_ir", None)
+        if ir:
+            shape = getattr(ir, "shape", None)
+            if hasattr(shape, "name"):
+                return str(shape.name or "").strip().upper()
+            if isinstance(shape, str) and shape:
+                return shape.strip().upper()
+
+        # Fallback 2: legacy compiler_shape
+        shape = getattr(parsed_output, "compiler_shape", None)
+        if isinstance(shape, str) and shape:
+            return shape.strip().upper()
+
+        return ""
+
     def validate(self, parsed_output: ParsedModelOutput | None = None, segments=None, **context) -> BundleValidationResult:
         """
         Classifies the bundle structure of a model response.
@@ -98,5 +127,10 @@ class BundleSemanticValidator:
 
         if error_code in {"E_FILE_CONTENT_REQUIRES_ACTION", "E_FILE_CONTENT_ACTION_MISMATCH"}:
             return BundleValidationResult(kind=BundleResultKind.INVALID_FILE_CONTENT_PAIRING)
+
+        # Step 2B.1: INTENT_ACTION_BUNDLE shape classification
+        shape = self._get_normalized_shape(parsed_output)
+        if shape == "INTENT_ACTION_BUNDLE":
+            return BundleValidationResult(kind=BundleResultKind.INTENT_ACTION_BUNDLE_CANDIDATE)
 
         return BundleValidationResult(kind=BundleResultKind.UNKNOWN)
