@@ -83,6 +83,10 @@ This document is the single source of truth for the current state of the Semanti
   - No consumers were migrated, and no old helpers were modified.
   - `get_visible_text` and `FOLLOWUP_PLAINTEXT` were not implemented.
   - Runtime behavior is unchanged.
+- **Phase 5 Step 3: Consumer Migration (Design)**
+  - The design for migrating the first narrow slice of `IntentTransitionRoutingMixin` (recovery/violation classifications) to use the `TransitionSemanticValidator` is approved.
+  - The design uses a fallback to legacy logic for all other cases to ensure behavior preservation and defer `get_visible_text`.
+  - Implementation is authorized for the first narrow slice only.
 
 ## Known Authority Boundaries
 
@@ -98,9 +102,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Design and approve Phase 5, Step 3: Consumer Migration.
-- This step will cover the design for migrating `IntentTransitionRoutingMixin` to use the `TransitionSemanticValidator`.
-- No implementation is authorized until the design for Step 3 is approved.
+- Implement Phase 5, Step 3: First Consumer Migration Slice.
+- This step is limited to migrating the recovery/violation classifications in `IntentTransitionRoutingMixin`.
+- No broad migration or behavior change is authorized.
 
 ## Test Status
 

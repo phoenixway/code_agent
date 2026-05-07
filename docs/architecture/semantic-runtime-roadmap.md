@@ -299,12 +299,29 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 5 Step 3: Consumer Migration (Design)
 
-- **Status**: Not started.
+- **Status**: Approved.
 - **Goal**: Design the migration of `IntentTransitionRoutingMixin` to use the `TransitionSemanticValidator`.
 - **Forbidden**:
     - Implementation before design approval.
     - Deleting old helpers from `IntentTransitionHandler`.
 - **Done When**: The design for Step 3 is approved.
+
+---
+
+#### Phase 5 Step 3: Consumer Migration (Implementation)
+
+- **Status**: Not started.
+- **Goal**: Implement the first narrow consumer migration slice in `IntentTransitionRoutingMixin`.
+- **Allowed**:
+    - Update `IntentTransitionRoutingMixin` to use the validator **only** for the approved recovery/violation slice (`TRANSITION_ONLY_VIOLATION`, `REUSE_ONLY_VIOLATION`, `COMPLETE_WITH_ACTION_VIOLATION`, `FOLLOWUP_CONFLICT`).
+    - Add/update tests for the migrated slice and fallback paths.
+- **Forbidden**:
+    - Migrating `NO_FOLLOWUP`, `FOLLOWUP_ACTION`, `FOLLOWUP_PLAINTEXT`, or `UNKNOWN` classifications.
+    - Implementing `get_visible_text`.
+    - Deleting or modifying old helpers.
+    - Changing prompts, reason strings, or source markers.
+    - Any runtime behavior changes.
+- **Done When**: The first slice is migrated with a fallback for all other cases, and tests pass.
 
 ---
 
