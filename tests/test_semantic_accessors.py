@@ -4,12 +4,15 @@ import unittest
 from dataclasses import dataclass, field, replace
 from typing import Any
 
+from modules.agent.orchestration.responses.response_semantics import ResponseSemantics
 from modules.agent.orchestration.responses.runtime_protocol_semantics import RuntimeProtocolSemantics
 from modules.agent.orchestration.responses.semantic_accessors import (
     get_compiler_metadata,
     has_any_action_proposal_compat,
+    has_substantial_think,
     is_compiler_invalid,
     is_compiler_invalid_with_legacy_action,
+    is_leaked_system_result,
 )
 from modules.agent.orchestration.shared.decision_models import ParsedModelOutput
 
@@ -223,6 +226,84 @@ class SemanticAccessorTests(unittest.TestCase):
     def test_is_compiler_invalid_with_legacy_action_with_none_input(self):
         """Tests that None input is handled gracefully."""
         self.assertFalse(is_compiler_invalid_with_legacy_action(None))
+
+
+    # --- Tests for is_leaked_system_result ---
+
+    def test_is_leaked_system_result_matches_canonical_prefixes(self):
+        """is_leaked_system_result matches canonical SYSTEM RESULT prefixes."""
+        self.assertTrue(is_leaked_system_result("SYSTEM RESULT (read_file): ..."))
+        self.assertTrue(is_leaked_system_result("SYSTEM RESULT for tool_code: ..."))
+        self.assertTrue(is_leaked_system_result("SYSTEM RESULT: ..."))
+
+    def test_is_leaked_system_result_does_not_match_prose(self):
+        """is_leaked_system_result does not match ordinary prose."""
+        self.assertFalse(is_leaked_system_result("The system result was useful."))
+        self.assertFalse(is_leaked_system_result("A system result can be seen here."))
+
+    def test_is_leaked_system_result_parity_with_response_semantics(self):
+        """is_leaked_system_result has parity with ResponseSemantics method."""
+        s = ResponseSemantics()
+        cases = [
+            "SYSTEM RESULT (read_file): ...",
+            "The system result was useful.",
+            "",
+            None,
+        ]
+        for text in cases:
+            with self.subTest(text=str(text)[:30]):
+                self.assertEqual(is_leaked_system_result(text), s.looks_like_leaked_system_result(text))
+
+    # --- Tests for has_substantial_think ---
+
+    def test_has_substantial_think_true_for_five_or_more_words(self):
+        """has_substantial_think is True for >= 5 words inside <think>."""
+        self.assertTrue(has_substantial_think("<think>one two three four five</think>"))
+        self.assertTrue(has_substantial_think("<think>one two three four five six</think>"))
+
+    def test_has_substantial_think_false_for_less_than_five_words(self):
+        """has_substantial_think is False for < 5 words."""
+        self.assertFalse(has_substantial_think("<think>one two three four</think>"))
+        self.assertFalse(has_substantial_think("<think>  </think>"))
+
+    def test_has_substantial_think_handles_missing_or_malformed_blocks(self):
+        """has_substantial_think handles missing or malformed think blocks."""
+        self.assertFalse(has_substantial_think("no think block here"))
+        self.assertFalse(has_substantial_think("<think>unclosed block"))
+        self.assertFalse(has_substantial_think("malformed</think>"))
+
+    def test_has_substantial_think_handles_multiple_blocks(self):
+        """has_substantial_think checks all think blocks and returns True if any are substantial."""
+        self.assertTrue(
+            has_substantial_think(
+                "<think>short</think><think>this one is long enough to count</think>"
+            )
+        )
+        self.assertFalse(
+            has_substantial_think("<think>short</think><think>also short</think>")
+        )
+
+    def test_has_substantial_think_parity_with_response_semantics(self):
+        """has_substantial_think has parity with ResponseSemantics method."""
+        s = ResponseSemantics()
+        cases = [
+            "<think>one two three four five</think>",
+            "<think>one two three four</think>",
+            "no think block",
+            "<think>one</think> <think>this one is substantial enough</think>",
+            "<think><code>don't count words here</code> one two three four five</think>",
+            "<!-- <think>not this</think> --> <think>one two three four five</think>",
+            # New cases for masked contexts
+            "```python\n# <think>one two three four five</think>\n```",
+            "`<think>one two three four five</think>`",
+            "&lt;think&gt;one two three four five&lt;/think&gt;",
+            "```python\n# <think>ignore</think>\n``` <think>one two three four five</think>",
+            "`<think>ignore</think>` <think>one two three four five</think>",
+            "&lt;think&gt;ignore&lt;/think&gt; <think>one two three four five</think>",
+        ]
+        for text in cases:
+            with self.subTest(text=text):
+                self.assertEqual(has_substantial_think(text), s.has_substantial_think(text))
 
 
 if __name__ == "__main__":

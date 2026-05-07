@@ -17,8 +17,16 @@ Core Principles:
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
+from ..parsers.visible_text import (
+    ESCAPED_TAG_RE,
+    FENCED_CODE_RE,
+    INLINE_CODE_RE,
+    XML_COMMENT_RE,
+    _mask_with_spaces,
+)
 from ..shared.decision_models import ParsedModelOutput
 from .runtime_protocol_semantics import runtime_semantics_from_output_or_none
 
@@ -148,3 +156,66 @@ def is_compiler_invalid_with_legacy_action(
     return is_compiler_invalid(parsed_output) and has_any_action_proposal_compat(
         parsed_output, parsed_action_count
     )
+
+
+# --- Regex constants for new accessors ---
+LEAKED_SYSTEM_RESULT_RE = re.compile(
+    r"\bSYSTEM\s+RESULT\b(?:\s*\([^)]*\)|\s+for\b|\s*:)",
+    re.IGNORECASE,
+)
+THINK_BLOCK_RE = re.compile(
+    r"<think(?:\s+[^>]*)?>(.*?)</think>",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _mask_textual_control_contexts_for_think(raw_response: str) -> str:
+    """Local helper to mask contexts before checking for substantial think."""
+    text = str(raw_response or "")
+    for regex in (
+        XML_COMMENT_RE,
+        FENCED_CODE_RE,
+        INLINE_CODE_RE,
+        ESCAPED_TAG_RE,
+    ):
+        text = _mask_with_spaces(text, regex)
+    return text
+
+
+def is_leaked_system_result(text: str) -> bool:
+    """
+    Detects "leaked" internal SYSTEM RESULT transcripts in the model's final answer.
+
+    This is malformed-output evidence only. It is not final-answer correctness,
+    sufficiency, or stop-decision authority.
+
+    Authority Boundary: Malformed-output evidence.
+    """
+    text_to_check = str(text or "")
+    if not text_to_check:
+        return False
+    return bool(LEAKED_SYSTEM_RESULT_RE.search(text_to_check))
+
+
+def has_substantial_think(raw_response: str) -> bool:
+    """
+    Detects a <think> block with a meaningful amount of content (>= 5 words).
+
+    This is loop-detection evidence only, not a policy decision itself.
+
+    Authority Boundary: Loop-Detection Guard evidence.
+    """
+    text = _mask_textual_control_contexts_for_think(raw_response)
+    if not text:
+        return False
+
+    matches = list(THINK_BLOCK_RE.finditer(text))
+    if not matches:
+        return False
+
+    for match in matches:
+        think_text = re.sub(r"<[^>]+>", " ", match.group(1) or "")
+        if len(re.findall(r"\S+", think_text)) >= 5:
+            return True
+
+    return False
