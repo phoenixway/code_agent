@@ -386,6 +386,64 @@ This audit inventories the dependencies of the `output_recovery` stage to determ
 -   `has_action` and `action_count` are not authoritative from `RuntimeProtocolSemantics` at this time. For backward compatibility, `ResponseSemantics.has_any_action_proposal` may use `compiler_ir.action_ops` to detect an action, but this does not grant dispatch authority.
 -   Future migration of action presence/action_count requires a separate design audit, as compiler-invalid responses can intentionally disagree with legacy action detection.
 
+##### Phase 3B-pre: Semantic Runtime Access Layer
+
+This design audit outlines the foundation for a semantic runtime access layer over the compiler's Intermediate Representation (IR).
+
+**Goal**:
+- Define explicit semantic accessors over the compiler IR and `RuntimeProtocolSemantics` snapshot.
+- Formally separate the concept of a "compatibility action proposal" (used for recovery evidence) from a "dispatch-authoritative action" (used for execution).
+- Reduce scattered, direct reads of `compiler_ir`, legacy `segments`, `has_action_segment`, and `parsed_action_count` where a behavior-preserving semantic accessor exists.
+- Preserve all current runtime behavior until a future implementation phase. This is a design-only phase.
+
+**Authority Vocabulary**:
+
+- **A. Compiler Metadata Authority**: Refers to purely structural facts derived from the compiler, such as `error_code`, `recovery_id`, and `invalid_kind`. This data is already consumed by output recovery metadata helpers and is considered authoritative for routing structural errors.
+
+- **B. Compatibility Action Proposal**: A boolean concept indicating "there is action-like content that policy/recovery logic must consider." This is a broad, backward-compatible check that may use `parsed_action_count`, `compiler_ir.action_ops`, or legacy `has_action_segment`. It is **not** equivalent to dispatch permission. `ResponseSemantics.has_any_action_proposal` is the canonical implementation of this concept.
+
+- **C. Dispatch-Authoritative Action**: A boolean concept indicating that an action is structurally valid and allowed to proceed to the dispatch pipeline. This decision remains owned by the `ResponsePipeline`, `ActionPolicy`, and other runtime checks. `RuntimeProtocolSemantics.has_action` and `action_count` are **not** sufficient on their own to grant dispatch authority.
+
+- **D. Compiler-Invalid Safety State**: A state where `compiler_shape` is `INVALID`. In this state, `compiler_ir.action_ops` must not be treated as dispatch-authoritative. Any action-like content detected by legacy parsers is considered recovery evidence, not dispatch evidence. This is a critical safety invariant.
+
+**Inventory of Semantic Consumers**:
+
+| Consumer | Location | Current Source(s) | Semantic Meaning | Migration Recommendation |
+|---|---|---|---|---|
+| `has_any_action_proposal` | `response_semantics.py` | `parsed_action_count`, `compiler_ir.action_ops`, `has_action_segment` | Compatibility action proposal | Wrap in `has_any_action_proposal_compat` accessor. |
+| `is_plaintext_answer_path` | `response_semantics.py` | `has_any_action_proposal`, `invalid_kind`, `visible_text` | Plaintext/final-answer guard | Wrap in semantic accessor; depends on action proposal accessor. |
+| Non-productive thinking guard | `response_pipeline_stages.py`, `response_guards.py` | `has_any_action_proposal`, `is_plaintext_answer_path` | Recovery evidence | Runtime-owned. Underlying checks can use accessors. |
+| `force_plaintext_completion` | `response_pipeline_stages.py` | `active_intent` state, `has_any_action_proposal` | Plaintext/final-answer guard | Runtime-owned. Action check can use an accessor. |
+| `_reject_invalid_intent_followup` | `response_pipeline_prevalidation.py` | `has_any_action_proposal`, `compiler_ir`, `segments` | Dispatch authority (atomic bundles) | Runtime-owned. Can use accessors for structural checks. |
+| `zero_action_invalid` guard | `response_pipeline_stages.py` | `has_any_action_proposal`, `invalid_kind` | Recovery evidence | Wrap in semantic accessor. |
+| Output recovery action checks | `output_recovery.py` | `_has_any_action_proposal`, `_has_state_changing_action` | Recovery evidence | Wrap in semantic accessor. |
+| `ActionPolicy` dispatch path | `action_policy.py` | `segments`, `compiler_ir_action_ops` | Dispatch authority | Runtime-owned. This is the core policy engine. |
+
+**Proposed Semantic Accessor API (Future)**:
+
+- `get_compiler_metadata(parsed_output)`: Returns a dictionary of compiler metadata (`error_code`, `recovery_id`, `invalid_kind`). Already partially implemented in `output_recovery_routing.py`.
+- `has_any_action_proposal_compat(parsed_output, parsed_action_count)`: Implements the "Compatibility Action Proposal" logic. Returns `True` if any action-like content is detected from any source (legacy or compiler). **Non-goal**: Does not prove dispatch-readiness.
+- `has_compiler_ir_action_ops(parsed_output)`: Returns `True` if the compiler IR contains one or more valid action operations.
+- `is_compiler_invalid(parsed_output)`: Returns `True` if the compiler shape is `INVALID`.
+- `is_compiler_invalid_with_legacy_action(parsed_output, parsed_action_count)`: Returns `True` if the compiler shape is `INVALID` but legacy parsing detected an action. This is a key state for recovery evidence.
+- `is_dispatch_authoritative_action_shape(parsed_output)`: Returns `True` only for shapes that are candidates for dispatch (e.g., `ACTION_ONLY`, `INTENT_ACTION_BUNDLE`). **Non-goal**: Does not grant dispatch permission; `ActionPolicy` and other runtime checks are still required.
+
+**Explicit Stop Lines for Phase 3B-pre**:
+
+- Do not replace `has_any_action_proposal` with `RuntimeProtocolSemantics.has_action`.
+- Do not use `RuntimeProtocolSemantics.action_count` as proof of dispatch readiness.
+- Do not treat `ACTION_ONLY` shape alone as dispatch permission.
+- Do not treat action-like segments in `INVALID` responses as dispatchable.
+- Do not migrate `ActionPolicy` authority in this phase.
+
+**Acceptance Criteria for Future Implementation**:
+
+A future implementation phase may proceed to wrap or replace selected legacy checks with semantic accessors only when:
+- All proposed semantic accessors have comprehensive unit tests for both compiler-valid and compiler-invalid cases.
+- The critical safety case where the compiler reports `INVALID` but legacy parsing finds an action remains strictly recovery-owned and is never dispatched.
+- All existing tests for response guards, plaintext path, `force_plaintext_completion`, action arrays, and malformed think recovery remain green.
+- Dispatch behavior is unchanged unless a separate, explicit design document approves the change.
+
 ##### Proposed Phase 3A Scope
 
 The first implementation phase for migrating `output_recovery` should be narrow and focused on structural checks.
