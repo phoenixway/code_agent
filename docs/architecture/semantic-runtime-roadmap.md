@@ -24,7 +24,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
-### Phase 2: Consumer Inventory (Active)
+### Phase 2: Consumer Inventory (Done)
 
 - **Goal**: Create a detailed inventory of all locations that consume response semantics.
 - **Allowed**: Audit the codebase and create a comprehensive inventory document.
@@ -33,12 +33,12 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
-### Phase 3: Accessor Module
+### Phase 3: Accessor Module (Active: API Design)
 
-- **Goal**: Implement the new semantic accessor functions in a dedicated module.
-- **Allowed**: Create a new module (e.g., `modules/agent/orchestration/responses/semantic_accessors.py`) with the new functions. Add comprehensive unit tests for the accessors.
-- **Forbidden**: Migrating any existing consumer to use the new accessors.
-- **Done When**: All proposed accessors are implemented and have 100% test coverage for valid, invalid, and mismatch cases.
+- **Goal**: Design and document the API for the new semantic accessor functions in a dedicated module.
+- **Allowed**: Create API documentation and design for a new module (e.g., `modules/agent/orchestration/responses/semantic_accessors.py`). The canonical design lives in `docs/architecture/semantic-accessor-api-design.md`.
+- **Forbidden**: No implementation of the module or its functions. Migrating any existing consumer to use the new accessors.
+- **Done When**: The API design in `semantic-accessor-api-design.md` is complete, reviewed, and approved. Implementation will be a separate phase.
 
 ---
 **NOTE on Phase 3 Progress**: A sub-part of this migration, **Phase 3A**, was completed to support `output_recovery` improvements. This work is documented in `current-refactor-state.md` and `response_protocol.md`. It focused on migrating compiler metadata reads (`error_code`, `recovery_id`, `invalid_kind`) and is considered **Done**. The main "Accessor Module" work is now considered **Phase 3B** and has not yet started.

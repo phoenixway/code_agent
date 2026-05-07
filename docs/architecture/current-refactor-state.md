@@ -4,8 +4,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase 2: Consumer Inventory**
-- **Status**: In Progress / under review.
+- **Phase 3: Accessor Module (API Design)**
+- **Status**: Active.
+- **Note**: This phase is for API design and documentation only. Implementation must not start automatically.
 
 ## Completed Governance
 
@@ -17,6 +18,9 @@ This document is the single source of truth for the current state of the Semanti
 - **Phase 0: Boundary Freeze**
   - `RuntimeProtocolSemantics` adapter created for compiler-derived data.
   - Adapter populated in response pipeline for diagnostic use.
+- **Phase 2: Consumer Inventory**
+  - A detailed inventory of all locations that consume response semantics was created and approved.
+  - The inventory lives in `docs/architecture/protocol-authority-boundaries.md`.
 - **Phase 3A: Compiler Metadata Migration (in `output_recovery`)**
   - Centralized helper for reading `error_code`, `recovery_id`, and `invalid_kind` from `RuntimeProtocolSemantics` with legacy fallbacks.
   - All compiler strategy handlers and `_compiler_repeat_fingerprint` now use the centralized helper.
@@ -37,10 +41,8 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Complete and review Consumer Inventory.
-- Approve inventory.
-- Then design Phase 3 Accessor Module as a separate docs/API-design task.
-- Do not start Phase 3 automatically.
+- Complete the API design for the Phase 3 Accessor Module in `docs/architecture/semantic-accessor-api-design.md`.
+- Do not start Phase 3 implementation automatically.
 
 ## Test Status
 
