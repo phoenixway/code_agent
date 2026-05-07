@@ -323,6 +323,43 @@ class RuntimeProtocolSemantics:
 2.  **Phase 2: Adopt in Read-Only Diagnostics**
     -   **Status: In Progress.** This phase uses the `RuntimeProtocolSemantics` adapter for read-only diagnostics and test-time validation. A compact snapshot of the adapter's state is now logged to the orchestration trace. Parity tests have been added to confirm the adapter's fields are consistent with the raw compiler output. No runtime consumers have been switched to use the adapter yet.
 
+#### Output Recovery Migration Audit
+
+This audit inventories the dependencies of the `output_recovery` stage to determine which parts can be safely migrated to use the `RuntimeProtocolSemantics` adapter.
+
+**Conclusion**: A significant portion of output recovery logic depends on runtime state (e.g., retry counters, active intent type) and semantic interpretation (e.g., evidence sufficiency). These must remain runtime-owned. However, many foundational structural checks currently rely on regex-based helpers in `ResponseSemantics` or direct reads from `ParsedModelOutput`. These are excellent candidates for migration to the more reliable `RuntimeProtocolSemantics` adapter.
+
+| Check | Location | Current Source | RPS Equivalent | Risk | Phase | Reason |
+|---|---|---|---|---|---|---|
+| **Resolve `invalid_kind`** | `output_recovery_routing.py` | `parsed_output.invalid_kind`, `compiler_error_code` | `snapshot.invalid_kind` | Low | 3A | `invalid_kind` is pre-computed and stored on the snapshot. Pure structural fact. |
+| **Compiler Strategy Routing** | `output_recovery_routing.py` | `compiler_error_code`, `compiler_recovery_id` | `snapshot.error_code`, `snapshot.recovery_id` | Low | 3A | Pure structural facts from the compiler. |
+| **Action Presence** | `response_semantics.py` | `parsed_action_count`, `compiler_ir`, `has_action_segment` | `snapshot.has_action`, `snapshot.action_count` | Low | 3A | Core structural fact, directly available from IR. |
+| **State-Changing Action** | `output_recovery.py` | `parsed_output.segments`, regex | `any(op.write_like for op in snapshot.action_ops)` | Medium | 3B | RuntimeProtocolSemantics can provide action_ops/write_like as a structural input, but the recovery decision depends on runtime modify context, checkpoint/reflection policy, and state. |
+| **Malformed Think Recovery** | `output_recovery_routing.py` | `invalid_kind`, `raw_chars`, retry counters (state) | `snapshot.invalid_kind`, `len(response)` | Medium | 3B | Combines structural `invalid_kind` with runtime retry state. |
+| **Missing `memory_update_done`** | `output_recovery.py` | `response` (raw text), `semantics` helpers | `any(op.kind == 'memory_update_done' for op in snapshot.memory_ops)` | Medium | 3B | The check is structural, but the decision to recover depends on runtime context (`_is_modify_context`). |
+| **Unproven Modify Claim** | `output_recovery.py` | `semantics`, `_is_modify_context` (state), `visible_text` | `snapshot.has_action`, `snapshot.visible_text` + runtime state | High | Runtime-owned | Core semantic policy. Depends heavily on runtime state. |
+| **Internal Summary** | `output_recovery.py` | `semantics`, `visible_text`, regex | `snapshot.has_action`, `snapshot.visible_text` + regex | High | Runtime-owned | Semantic interpretation of visible text. Not purely structural. |
+| **Build/Fix Status** | `output_recovery.py` | `state` | N/A | High | Runtime-owned | Purely runtime state-dependent. |
+| **Retry/Terminal Logic** | `output_recovery_terminal.py` | `state` (retry counters, etc.) | N/A | High | Runtime-owned | Core runtime policy for loop control. |
+
+##### Proposed Phase 3A Scope
+
+The first implementation phase for migrating `output_recovery` should be narrow and focused on structural checks.
+
+-   **Read-Only Adoption**: `OutputRecoveryRoutingMixin` may read from `RuntimeProtocolSemantics` only for structural-safe facts (e.g., `has_action`, `action_count`, `error_code`).
+-   **No Behavior Change**: Initially, the new data should only be used for parity assertions or logging to validate its correctness against the legacy path.
+-   **Fallback Path**: The existing logic reading from `ParsedModelOutput` and `ResponseSemantics` must be kept as a fallback.
+-   **No Authority Change**: This phase must not change any authority boundaries. `ACTION_ONLY` and `PLAINTEXT_ONLY` shapes must not be used as proof of dispatch-readiness or final-answer correctness.
+
+##### Phase 3A Acceptance Criteria
+
+-   Full test suite remains green.
+-   Output recovery decisions are unchanged for all existing fixtures.
+-   Parity logs or assertions confirm that `RuntimeProtocolSemantics` provides the same structural facts (e.g., `action_count`, `error_code`) as the legacy fields.
+-   No new compiler authority is added to `ProtocolDecisionBridge`.
+-   No behavior is changed in `ActionPolicy`, `IntentTransitionHandler`, or `DispatchPipeline`.
+-   Any structural check that is fully migrated to `RuntimeProtocolSemantics` must have dedicated unit tests covering its branches.
+
 3.  **Phase 3: Migrate Output Recovery**
     -   Refactor `OutputRecoveryRoutingMixin` to consume the `RuntimeProtocolSemantics` adapter for structural checks (e.g., `has_action`, `action_count`) instead of legacy fields or `ResponseSemantics` helpers.
     -   Policy-based checks (e.g., evidence sufficiency) will still reside in the runtime.
