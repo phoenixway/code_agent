@@ -110,18 +110,6 @@ class ProtocolDecisionBridgeTests(unittest.TestCase):
         self.assertFalse(decision.suppress_legacy_invalid_kind)
         self.assertIsNone(decision.dispatch_allowed)
 
-    def test_file_content_inside_think_is_compiler_authoritative_invalid(self):
-        """
-        Compiler is authoritative for file_content inside think.
-        """
-        parsed_output = DummyParsedOutput(
-            compiler_error_code="E_FILE_CONTENT_INSIDE_THINK",
-        )
-        decision = resolve_protocol_authority(parsed_output, parsed_action_count=0)
-        self.assertEqual("compiler", decision.source)
-        self.assertEqual("compiler_file_content_diagnostic", decision.reason)
-        self.assertFalse(decision.suppress_legacy_invalid_kind)
-        self.assertFalse(decision.dispatch_allowed)
 
     def test_missing_file_content_is_compiler_authoritative_invalid(self):
         """

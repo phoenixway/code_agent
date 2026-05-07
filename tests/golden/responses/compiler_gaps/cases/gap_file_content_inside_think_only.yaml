@@ -1,0 +1,10 @@
+description: "Compiler does not emit E_FILE_CONTENT_INSIDE_THINK for file_content alone inside think."
+input: |
+  <think>
+  <file_content>
+  bad
+  </file_content>
+  </think>
+compiler_expectation:
+  expected_shape: "INVALID"
+  expected_error_code: "E_AMBIGUOUS_PROTOCOL_SYNTAX"

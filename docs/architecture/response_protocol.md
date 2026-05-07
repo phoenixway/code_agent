@@ -145,7 +145,7 @@ Note: Some structural errors may have compiler diagnostics and recovery mappings
 | `E_UNCLOSED_THINK` | `malformed_incomplete_think` | Structural | Legacy | Has recovery mapping but is not yet compiler-authoritative. |
 | `E_ACTION_INSIDE_THINK` | `action_inside_think` | Structural | Legacy | Has recovery mapping but is not yet compiler-authoritative. |
 | `E_INTENT_INSIDE_THINK` | `intent_inside_think` | Structural | Legacy | Has recovery mapping but is not yet compiler-authoritative. |
-| `E_FILE_CONTENT_INSIDE_THINK` | `file_content_inside_think` | Structural | Compiler | File content pairing is structural. |
+| `E_FILE_CONTENT_INSIDE_THINK` | `file_content_inside_think` | Structural | Legacy | Has recovery mapping but is not yet compiler-authoritative. |
 | `E_FILE_CONTENT_UNCLOSED` | `malformed_incomplete_file_content` | Structural | Compiler | File content pairing is structural. |
 | `E_FILE_CONTENT_REQUIRES_ACTION` | `file_content_must_follow_action` | Structural | Compiler | File content pairing is structural. |
 | `E_ACTION_PAYLOAD_ARRAY` | `action_payload_array` | Structural | Compiler | Action payload shape is structural. |
