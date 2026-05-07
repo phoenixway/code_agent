@@ -59,15 +59,19 @@ def test_low_value_broad_search_repeat_real_action_format_prompt(prompt_builder:
     assert isinstance(prompt, str)
     assert "prefer exactly one" in prompt.lower()
     assert "read-only" in prompt.lower()
-    assert "search_content" in prompt
-    assert "Do not repeat broad search" in prompt
-    assert "prefer exact file reads" in prompt
+    assert "low-value repeat" in prompt.lower()
+    assert "bounded reconnaissance" in prompt.lower()
+    assert "targeted read" in prompt.lower()
+    assert "read_file" in prompt
+    assert "read_chunk" in prompt
+    assert "read_file_skeleton" in prompt
     assert "use a more specific path" in prompt.lower()
+    assert "include_extensions" in prompt.lower()
     assert "exclude noisy" in prompt.lower()
     assert "documentation" in prompt.lower()
     assert "secondary evidence" in prompt.lower()
+    assert "code is primary evidence" in prompt.lower()
     assert "docs/" in prompt.lower()
-    assert "do not restart reconnaissance" in prompt.lower()
 
 
 def test_typed_stop_recovery_prompt_handles_none_from_helpers(prompt_builder: OrchestratorPromptBuilder):
@@ -86,8 +90,11 @@ def test_typed_stop_recovery_prompt_handles_none_from_helpers(prompt_builder: Or
 
     assert isinstance(prompt, str)
     # It should still contain the appended part, not crash
-    assert "Do not repeat broad search" in prompt
-    assert "Do not restart reconnaissance" in prompt
+    assert "too broad" in prompt.lower()
+    assert "low-value repeat" in prompt.lower()
+    assert "bounded reconnaissance" in prompt.lower()
+    assert "unbounded searches" in prompt.lower()
+    assert "targeted read" in prompt.lower()
     assert "more specific path" in prompt.lower()
     assert "shortest path to concrete evidence" in prompt.lower()
 

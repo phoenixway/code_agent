@@ -223,21 +223,21 @@ This audit assesses the feasibility of making intent-plus-visible-text cases com
 
 ## Search Narrowing Runtime Policy
 
-To maintain performance and guide the model toward efficient investigation, the runtime enforces several policies to discourage broad, low-value, or repetitive searches.
+To maintain performance and guide the model toward efficient investigation, the runtime enforces a policy to distinguish between allowed reconnaissance and disallowed low-value searches.
 
--   **Broad Searches are Expensive**: Searches on the root directory (`.`) with vague patterns can be very slow and consume a large token budget for results that are often not useful. The runtime monitors for these patterns.
+-   **Bounded Reconnaissance is Allowed**: When exact file paths are unknown, a single, well-bounded reconnaissance search is permitted to discover candidate files. A search is considered "bounded" if it uses at least two of the following narrowing techniques:
+    -   A specific path/source root (not just `.`).
+    -   A specific symbol, class name, or search pattern.
+    -   `include_extensions` to limit file types.
+    -   `exclude_dirs` or `code_only=true` to avoid noisy directories.
 
--   **Repeated Low-Value Searches are Blocked**: If the model repeatedly issues broad searches that yield no useful results, the runtime will intervene. After a certain number of repeats (a runtime-configurable policy), a `low_value_broad_search_repeat` recovery is triggered.
+-   **Unbounded Broad Searches are Discouraged**: Searches that are not well-bounded (e.g., a vague pattern on the root directory) are considered expensive and are likely to be recovered by the runtime with a `too_broad_search` reason.
 
--   **Recovery Guides Toward Narrowing**: The recovery prompt explicitly instructs the model to narrow its next search by improving at least one of the following:
-    -   **Path**: Use a more specific subdirectory instead of the root.
-    -   **Pattern**: Use a more specific search pattern (e.g., an exact symbol, class name, or function name).
-    -   **Extensions**: Use `include_extensions` to limit the search to relevant file types (e.g., `.py`, `.kt`).
-    -   **Exclusions**: Use `exclude_dirs` to avoid noisy directories like `build`, `dist`, or `.git`.
+-   **Repeated Broad Searches are Blocked**: If the model issues a broad search, and then repeats a similar broad search without sufficient narrowing, a `low_value_broad_search_repeat` recovery is triggered. The recovery prompt instructs the model on how to narrow the search.
 
--   **Exact Reads are Preferred After Broad Search**: After a broad search result exposes exact candidate paths, the next preferred step is an exact file read (`read_file`, `read_chunk`, `read_file_skeleton`), not another broad content search.
+-   **Exact Reads are Preferred After Reconnaissance**: After a broad or bounded search returns exact candidate file paths, the next step should be a targeted read (`read_file`, `read_chunk`, `read_file_skeleton`) on those paths. Repeating a broad search when candidate paths are already known is a low-value pattern that will trigger recovery.
 
--   **Docs and Logs are Secondary Evidence**: The recovery prompt guides the model to treat `docs/` and log files as noisy or secondary evidence unless they are the explicit target of the user's request.
+-   **Docs and Logs are Secondary Evidence**: The recovery prompt guides the model to treat `docs/` and log files as noisy or secondary evidence. They can be used to discover names or terms, but code files should be treated as the primary source of evidence unless the user's request is specifically about documentation or logs.
 
 -   **Self-Referential Hits are Filtered**: The runtime detects when a search's results come only from its own artifacts (e.g., `debug.log`, `communication.log`). These are not considered valid source code evidence. A `history_self_reference_hit` recovery prompts the model to issue a new search that excludes these artifact files.
 
