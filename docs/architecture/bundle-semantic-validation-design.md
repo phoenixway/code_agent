@@ -2,9 +2,9 @@
 
 - **Phase 6 Status**: Approved
 - **Step 1 (Scaffolding) Status**: Done
-- **Step 2 (Compiler-Only Logic) Status**: Design in Review
-- **Step 2 Scope**: Design for compiler-only classification logic.
-- **Step 2 Implementation**: Not authorized. Requires separate approval of this design.
+- **Step 2 (Compiler-Only Logic) Status**: Design for Step 2A approved.
+- **Step 2A Implementation**: Authorized.
+- **Step 2B/2C Implementation**: Not authorized.
 
 ## 1. Purpose and Guiding Principles
 
@@ -173,9 +173,9 @@ The following classifications are **out of scope** for Step 2:
 
 To ensure a safe and incremental implementation, Step 2 should be broken down further:
 
-- **Step 2A: Error-Code-Driven Classification**: Implement only the classifications based on `compiler_error_code` that map to logic currently in `_reject_compiler_invalid_atomic_bundle_before_transition`. This includes: `INVALID_ACTION_ARRAY`, `INVALID_MULTIPLE_ACTIONS`, and `INVALID_FILE_CONTENT_PAIRING`.
-- **Step 2B: Shape-Driven Classification**: Implement the classifications based on `compiler_ir.shape` for clear bundle or non-bundle shapes: `INTENT_ACTION_BUNDLE_CANDIDATE`, `READONLY_ACTION_BATCH_CANDIDATE`, and `NO_BUNDLE_SHAPE` (for safe shapes like `INTENT_ONLY`).
-- **Step 2C: Parity Testing**: Implement the parity tests described in the test strategy to prove behavioral equivalence before any consumer is migrated.
+- **Step 2A: Error-Code-Driven Classification (Approved for Implementation)**: Implement only the classifications based on `compiler_error_code` that map to logic currently in `_reject_compiler_invalid_atomic_bundle_before_transition`. This includes: `INVALID_ACTION_ARRAY`, `INVALID_MULTIPLE_ACTIONS`, and `INVALID_FILE_CONTENT_PAIRING`.
+- **Step 2B: Shape-Driven Classification (Design in Review)**: Implement the classifications based on `compiler_ir.shape` for clear bundle or non-bundle shapes: `INTENT_ACTION_BUNDLE_CANDIDATE`, `READONLY_ACTION_BATCH_CANDIDATE`, and `NO_BUNDLE_SHAPE` (for safe shapes like `INTENT_ONLY`).
+- **Step 2C: Parity Testing (Design in Review)**: Implement the parity tests described in the test strategy to prove behavioral equivalence before any consumer is migrated.
 
 ## 9. Explicitly Deferred
 

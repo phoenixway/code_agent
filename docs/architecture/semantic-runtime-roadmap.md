@@ -403,7 +403,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 6 Step 2: Validator Implementation (Compiler-Only)
 
-- **Status**: Design in Review.
+- **Status**: Design Approved for Step 2A.
 - **Goal**: Design and document the compiler-only classification logic for `BundleSemanticValidator`.
 - **Allowed**:
     - Update `docs/architecture/bundle-semantic-validation-design.md` with the detailed design for Step 2.
@@ -412,7 +412,26 @@ This document outlines the phased plan to migrate the runtime from legacy respon
     - Implementation before design approval.
     - Designing logic that requires `ActionPolicyHandler` or runtime state.
     - Designing logic for `INVALID_MIXED_VISIBLE_TEXT`.
-- **Done When**: The design for Step 2 is documented in `bundle-semantic-validation-design.md` and is ready for approval.
+- **Done When**: The design for Step 2 is documented and Step 2A is approved for implementation.
+
+---
+
+#### Phase 6 Step 2A: Error-Code-Driven Classification
+
+- **Status**: Not Started.
+- **Goal**: Implement the approved error-code-driven classifications in `BundleSemanticValidator`.
+- **Allowed**:
+    - Add logic to `BundleSemanticValidator.validate` to classify `INVALID_ACTION_ARRAY`, `INVALID_MULTIPLE_ACTIONS`, and `INVALID_FILE_CONTENT_PAIRING` based on `compiler_error_code` and `invalid_kind`.
+    - Update unit tests in `tests/test_bundle_semantic_validator.py`.
+- **Forbidden**:
+    - Implementing shape-driven classifications (`INTENT_ACTION_BUNDLE_CANDIDATE`, etc.).
+    - Migrating any consumers.
+    - Inspecting `segments`.
+    - Calling `ActionPolicy`.
+    - Inspecting runtime state.
+    - Implementing `get_visible_text` or `INVALID_MIXED_VISIBLE_TEXT` logic.
+    - Any runtime behavior changes.
+- **Done When**: The Step 2A logic is implemented with passing tests, and no consumers are migrated.
 
 ---
 

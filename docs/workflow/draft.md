@@ -31,4 +31,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 27. Phase 5 boundary review: done. Phase 5 is complete.
 28. Phase 6 (Bundle Semantic Validation Pass) design: approved.
 29. Phase 6 Step 1 (scaffolding): done.
-30. Next: Design and approve Phase 6 Step 2 (compiler-only logic).
+30. Phase 6 Step 2A (error-code logic) design: approved.
+31. Next: Implement Phase 6 Step 2A.
