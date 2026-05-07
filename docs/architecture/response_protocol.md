@@ -2,6 +2,36 @@
 
 This document outlines key invariants of the model response protocol, particularly after the `PRE_ACTION_TEXT_AND_ACTION` refactor. These rules are critical for runtime stability and predictable behavior. Future changes must not accidentally revert these invariants.
 
+## Current Migration Boundary
+
+This section summarizes the current state of the protocol migration, defining the boundary between compiler and runtime authority.
+
+-   **Compiler is authoritative for precise protocol-structural diagnostics only.** This includes malformed payloads, incorrect tag nesting (e.g., `<action>` inside `<think>`), and contradictory structures (e.g., `<intent mode="complete">` with an `<action>`).
+
+-   **Runtime remains authoritative for all semantic and policy decisions.** The compiler does not have the context to make these judgments. Runtime authority includes:
+    -   `ActionPolicy` enforcement (is an action allowed by the current intent?).
+    -   Evidence sufficiency and final answer correctness.
+    -   Active intent completion and subgoal validation.
+    -   Search narrowing and low-value tool use detection.
+    -   Dispatch decisions for valid `ACTION_ONLY` and `INTENT_ACTION_BUNDLE` shapes.
+    -   Completion decisions for `PLAINTEXT_ONLY` shapes.
+
+-   **Broad shape authority is explicitly forbidden.** The compiler identifying a shape is not sufficient to grant dispatch authority or bypass runtime checks. This applies to:
+    -   `ACTION_ONLY` by shape.
+    -   `PLAINTEXT_ONLY` by shape.
+    -   `INTENT_ACTION_BUNDLE` by shape.
+    -   Broad `E_MIXED_VISIBLE_TEXT_AND_CONTROL` errors.
+
+-   **Future compiler migration must follow a strict, incremental process:**
+    1.  Add a precise diagnostic for a narrow, well-defined error case.
+    2.  Add a corresponding entry to `protocol/spec.py`.
+    3.  Add golden and semantic shadow tests to verify compiler behavior.
+    4.  Add a `ProtocolDecisionBridge` test to confirm authority.
+    5.  Add a shared `invalid_kind` mapping if the error is non-dispatchable.
+    6.  Confirm that `output_recovery` and `prevalidation` can route the new `invalid_kind`.
+    7.  Update the documentation matrix.
+    8.  Run the full test suite to check for regressions.
+
 ## 1. Final Answer Semantics
 
 - **`PLAINTEXT_ONLY` shape**: A response containing only user-visible text (without any control protocol tags like `<action>` or `<intent>`) is considered a final answer.
@@ -190,6 +220,22 @@ This audit assesses the feasibility of making intent-plus-visible-text cases com
 **Conclusion**: The compiler now emits a precise `E_VISIBLE_TEXT_AFTER_INTENT` error for invalid mixes of non-`complete` intent transitions and visible text. This error code is compiler-authoritative. The broad `E_MIXED_VISIBLE_TEXT_AND_CONTROL` error is still not safe to make compiler-authoritative, as it covers other cases like `Visible + Think + Action` that have different recovery paths and risks.
 
 **Path to Migration**: The `E_VISIBLE_TEXT_AFTER_INTENT` diagnostic is now compiler-authoritative. Other mixed content cases remain legacy-governed until they also have precise, tested diagnostics.
+
+## Search Narrowing Runtime Policy
+
+To maintain performance and guide the model toward efficient investigation, the runtime enforces several policies to discourage broad, low-value, or repetitive searches.
+
+-   **Broad Searches are Expensive**: Searches on the root directory (`.`) with vague patterns can be very slow and consume a large token budget for results that are often not useful. The runtime monitors for these patterns.
+
+-   **Repeated Low-Value Searches are Blocked**: If the model repeatedly issues broad searches that yield no useful results, the runtime will intervene. After a certain number of repeats (a runtime-configurable policy), a `low_value_broad_search_repeat` recovery is triggered.
+
+-   **Recovery Guides Toward Narrowing**: The recovery prompt explicitly instructs the model to narrow its next search by improving at least one of the following:
+    -   **Path**: Use a more specific subdirectory instead of the root.
+    -   **Pattern**: Use a more specific search pattern (e.g., an exact symbol, class name, or function name).
+    -   **Extensions**: Use `include_extensions` to limit the search to relevant file types (e.g., `.py`, `.kt`).
+    -   **Exclusions**: Use `exclude_dirs` to avoid noisy directories like `build`, `dist`, or `.git`.
+
+-   **Self-Referential Hits are Filtered**: The runtime detects when a search's results come only from its own artifacts (e.g., `debug.log`, `communication.log`). These are not considered valid source code evidence. A `history_self_reference_hit` recovery prompts the model to issue a new search that excludes these artifact files.
 
 ## 8. Compiler Error Code Authority Matrix
 

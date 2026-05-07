@@ -120,6 +120,31 @@ def test_typed_recovery_header_handles_none_next_hint(prompt_builder: Orchestrat
     assert "search" in header.lower()
 
 
+def test_history_self_reference_hit_recovery_prompt(prompt_builder: OrchestratorPromptBuilder):
+    """
+    Tests that `history_self_reference_hit` recovery prompt contains the correct guidance.
+    """
+    # Un-mock the method to test the real implementation
+    prompt_builder.typed_recovery_header = (
+        OrchestratorPromptBuilder.typed_recovery_header.__get__(prompt_builder, OrchestratorPromptBuilder)
+    )
+
+    reason = "history_self_reference_hit"
+    stop_info = {"reason": reason}
+    prompt_builder._recovery_context.return_value = MagicMock(
+        reason=reason, to_stop_info=lambda: stop_info, error_code="", message=""
+    )
+    prompt_builder._action_hints_from_stop_info = MagicMock(return_value=([], [], ""))
+    prompt_builder._format_next_actions_hint = MagicMock(return_value=None)
+
+    header = prompt_builder.typed_recovery_header(stop_info)
+
+    assert isinstance(header, str)
+    assert "self-referential" in header.lower()
+    assert "artifact" in header.lower()
+    assert "not real usage evidence" in header.lower()
+
+
 def test_typed_stop_recovery_with_missing_goal(prompt_builder: OrchestratorPromptBuilder):
     """
     Tests that prompt building is safe when the active intent or its goal is missing.
