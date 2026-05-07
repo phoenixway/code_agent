@@ -5,5 +5,6 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 1. Governance repair: done.
 2. Consumer Inventory: done / approved.
 3. Accessor API Design: done / approved.
-4. Next: implement semantic_accessors.py + tests only.
-5. Consumer migration is explicitly forbidden in the next step.
+4. Accessor implementation (`semantic_accessors.py` + tests): done.
+5. Next: Design for Phase 4 (`has_any_action_proposal` migration) is in progress.
+6. Consumer migration implementation is forbidden until the design is approved.

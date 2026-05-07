@@ -4,8 +4,8 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase 3: Accessor Module (Implementation Preparation)**
-- **Status**: API Design Approved. Next step is implementation of `semantic_accessors.py` with tests only.
+- **Phase 4: Behavior-Preserving Wrapper Migration (Design)**
+- **Status**: Design for the first consumer migration (`ResponseSemantics.has_any_action_proposal`) is in progress.
 
 ## Completed Governance
 
@@ -25,6 +25,10 @@ This document is the single source of truth for the current state of the Semanti
   - All compiler strategy handlers and `_compiler_repeat_fingerprint` now use the centralized helper.
   - Parity diagnostics added to log differences between legacy and new semantic sources.
   - **Boundary**: This work is complete and closed.
+- **Phase 3: Accessor Module (Implementation)**
+  - `modules/agent/orchestration/responses/semantic_accessors.py` created with four approved accessors (`get_compiler_metadata`, `has_any_action_proposal_compat`, `is_compiler_invalid`, `is_compiler_invalid_with_legacy_action`).
+  - Dedicated unit tests created in `tests/test_semantic_accessors.py`.
+  - No consumers were migrated, and no runtime behavior was changed.
 
 ## Known Authority Boundaries
 
@@ -40,10 +44,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Implement `modules/agent/orchestration/responses/semantic_accessors.py`.
-- Add dedicated unit tests for the initial accessor set.
-- Do not migrate any existing consumer.
-- Do not change runtime behavior.
+- Complete and approve the design for migrating `ResponseSemantics.has_any_action_proposal` to use `semantic_accessors.has_any_action_proposal_compat`.
+- The design is being added to `docs/architecture/semantic-accessor-api-design.md`.
+- Implementation is blocked until the design is approved.
 
 ## Test Status
 

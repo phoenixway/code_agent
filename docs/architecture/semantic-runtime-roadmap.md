@@ -42,9 +42,9 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
-### Phase 3 Implementation: `semantic_accessors.py` + tests only
+### Phase 3: Accessor Module (Implementation) (Done)
 
-- **Status**: Not started.
+- **Status**: Done.
 - **Goal**: Implement the initial set of approved semantic accessors with full test coverage.
 - **Allowed**:
     - Create `modules/agent/orchestration/responses/semantic_accessors.py`.
@@ -68,6 +68,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ### Phase 4: Behavior-Preserving Wrapper Migration
 
+- **Status**: Design in progress for the first consumer.
 - **Goal**: Begin migrating consumers to the new accessors in a behavior-preserving way.
 - **Allowed**: Replace direct field reads (`parsed_output.invalid_kind`) or simple `ResponseSemantics` calls with the equivalent new accessor.
 - **Forbidden**: Changing any logic. This is a pure "find and replace" with the new function call.

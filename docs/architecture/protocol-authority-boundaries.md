@@ -22,7 +22,7 @@ This table documents every major consumer of response semantics, their current d
 
 | Consumer | Current Source(s) | Semantic Meaning | Future Accessor | Risk | Next Phase? |
 |---|---|---|---|---|---|
-| **`ResponseSemantics.has_any_action_proposal`** | `parsed_output.has_action_segment`, `parsed_action_count`, `compiler_ir.action_ops` | Compatibility action proposal, recovery evidence | `accessors.has_any_action_proposal` | High | No |
+| **`ResponseSemantics.has_any_action_proposal`** | `parsed_output.has_action_segment`, `parsed_action_count`, `compiler_ir.action_ops` | Compatibility action proposal, recovery evidence | `accessors.has_any_action_proposal_compat` | High | Design proposed |
 | **`ResponsePipelinePrevalidationMixin._apply_compiler_diagnosis`** | `ProtocolCompiler.analyze()`, `compiler_analysis` fields | Compiler metadata, populates `RuntimeProtocolSemantics` | `accessors.analyze_and_populate_semantics` | High | No |
 | **`OutputRecoveryRoutingMixin.decide`** | `parsed_output.invalid_kind`, `RuntimeProtocolSemantics`, `ResponseSemantics` | Recovery policy, routing | `accessors.get_recovery_strategy`, `accessors.is_unproven_modify_claim` | High | No |
 | **`protocol_decision_bridge.resolve_protocol_authority`** | `parsed_output` (compiler fields, `invalid_kind`), `parsed_action_count` | Dispatch authority arbitration (compiler vs. legacy) | N/A authority bridge / later dedicated authority resolver | High | No |

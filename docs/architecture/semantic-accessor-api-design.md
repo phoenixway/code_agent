@@ -132,3 +132,53 @@ The implementation of the `semantic_accessors` module must be accompanied by a c
 - **Parity Tests**: Where an accessor replaces existing logic (e.g., from `ResponseSemantics`), parity tests should be created to run both the old and new logic against a corpus of real-world responses, logging any disagreements. This ensures the migration is behavior-preserving.
 - **Invariant Protection**: The test suite must include explicit tests that map to the `test-contracts.md` document. For example, tests must prove that a compiler-`INVALID` response with legacy action content is correctly identified as `is_compiler_invalid_with_legacy_action` and that `has_any_action_proposal_compat` correctly uses its fallbacks.
 - **No Authority Creep**: Tests must confirm that no accessor returns a policy decision. For example, `has_any_action_proposal_compat` must not be a simple alias for a dispatch-authoritative check.
+
+---
+
+## Phase 4 Migration Design: `has_any_action_proposal`
+
+- **Status**: Design Proposed. Awaiting review and approval for implementation.
+- **Candidate**: `ResponseSemantics.has_any_action_proposal`
+- **Target Accessor**: `semantic_accessors.has_any_action_proposal_compat`
+
+### 1. Goal
+
+To perform the first behavior-preserving migration of a consumer to the new `semantic_accessors` module. This task migrates the implementation of `ResponseSemantics.has_any_action_proposal` to delegate directly to `semantic_accessors.has_any_action_proposal_compat`.
+
+### 2. Analysis of Current Behavior
+
+The current implementation of `ResponseSemantics.has_any_action_proposal` is logically identical to `semantic_accessors.has_any_action_proposal_compat`. Both check three sources for an action proposal, in order:
+1.  A non-zero `parsed_action_count` (from legacy segment parsing).
+2.  The presence of `action_ops` in `compiler_ir` (the critical compatibility shim).
+3.  A `True` value for the legacy `has_action_segment` flag.
+
+### 3. Proposed Change
+
+The implementation of `ResponseSemantics.has_any_action_proposal` will be replaced with a direct call to the accessor. This is a pure delegation.
+
+**Implementation (for Phase 4 Implementation step):**
+```python
+# at top of modules/agent/orchestration/responses/response_semantics.py
+from .semantic_accessors import has_any_action_proposal_compat
+
+# in ResponseSemantics class
+def has_any_action_proposal(self, parsed_output, parsed_action_count: int) -> bool:
+    return has_any_action_proposal_compat(parsed_output, parsed_action_count)
+```
+
+### 4. Behavior Preservation and Invariant Protection
+
+- **Exact Behavior**: The migration is behavior-preserving because the logic of the accessor is identical to the logic it replaces.
+- **`parsed_action_count`**: The `parsed_action_count` argument is passed directly through to the accessor.
+- **`compiler_ir.action_ops` Fallback**: The critical compatibility shim that checks `compiler_ir.action_ops` is preserved, satisfying a key constitutional requirement.
+- **Authority Boundary**: This change does not alter the authority model. The function's output remains **recovery evidence only**, not dispatch permission.
+
+### 5. Test Plan
+
+1.  **Run All Existing Tests**: The full test suite will be run to ensure no regressions.
+2.  **Verify Key Consumer Tests**: The existing tests in `tests/test_response_guards.py` and `tests/test_response_semantics.py` already provide coverage for consumers of this function and will be used to verify behavior preservation.
+3.  **Add Delegation Test**: A new test will be added to `tests/test_response_semantics.py` to explicitly verify that `ResponseSemantics.has_any_action_proposal` delegates its call to `semantic_accessors.has_any_action_proposal_compat` using `unittest.mock.patch`.
+
+### 6. Explicit Non-Goals
+
+This design is strictly limited to the delegation described above. It does **not** include changes to `ActionPolicy`, dispatch behavior, output recovery, final-answer/sufficiency, intent transitions, or memory/plan boards.
