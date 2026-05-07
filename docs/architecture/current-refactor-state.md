@@ -4,8 +4,8 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase 4: Behavior-Preserving Wrapper Migration (Design)**
-- **Status**: Design for the first consumer migration (`ResponseSemantics.has_any_action_proposal`) is in progress.
+- **Phase 4: Behavior-Preserving Wrapper Migration (Implementation)**
+- **Status**: First migration design approved. Next step is implementing only the `ResponseSemantics.has_any_action_proposal` delegation.
 
 ## Completed Governance
 
@@ -44,9 +44,11 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Complete and approve the design for migrating `ResponseSemantics.has_any_action_proposal` to use `semantic_accessors.has_any_action_proposal_compat`.
-- The design is being added to `docs/architecture/semantic-accessor-api-design.md`.
-- Implementation is blocked until the design is approved.
+- Implement the approved delegation for `ResponseSemantics.has_any_action_proposal`.
+- Edit only `modules/agent/orchestration/responses/response_semantics.py`.
+- Add/update tests in `tests/test_response_semantics.py` to verify behavior and delegation.
+- Preserve exact behavior.
+- Do not migrate any other consumers.
 
 ## Test Status
 

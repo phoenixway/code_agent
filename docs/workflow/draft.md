@@ -6,5 +6,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 2. Consumer Inventory: done / approved.
 3. Accessor API Design: done / approved.
 4. Accessor implementation (`semantic_accessors.py` + tests): done.
-5. Next: Design for Phase 4 (`has_any_action_proposal` migration) is in progress.
-6. Consumer migration implementation is forbidden until the design is approved.
+5. Phase 4 first migration design (`has_any_action_proposal`): approved.
+6. Next: Implement only the `ResponseSemantics.has_any_action_proposal` wrapper delegation.

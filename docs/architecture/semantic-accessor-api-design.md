@@ -137,7 +137,11 @@ The implementation of the `semantic_accessors` module must be accompanied by a c
 
 ## Phase 4 Migration Design: `has_any_action_proposal`
 
-- **Status**: Design Proposed. Awaiting review and approval for implementation.
+- **Status**: Reviewed / Approved for implementation.
+- **Scope approved only for**:
+  - `ResponseSemantics.has_any_action_proposal` delegating to `semantic_accessors.has_any_action_proposal_compat`.
+- **Approval does not authorize**:
+  - Any other consumer migration.
 - **Candidate**: `ResponseSemantics.has_any_action_proposal`
 - **Target Accessor**: `semantic_accessors.has_any_action_proposal_compat`
 
@@ -147,7 +151,7 @@ To perform the first behavior-preserving migration of a consumer to the new `sem
 
 ### 2. Analysis of Current Behavior
 
-The current implementation of `ResponseSemantics.has_any_action_proposal` is logically identical to `semantic_accessors.has_any_action_proposal_compat`. Both check three sources for an action proposal, in order:
+The intended migration is behavior-preserving if the current implementation checks the same three sources with equivalent OR semantics. Both the accessor and the current implementation must check for an action proposal from any of these sources:
 1.  A non-zero `parsed_action_count` (from legacy segment parsing).
 2.  The presence of `action_ops` in `compiler_ir` (the critical compatibility shim).
 3.  A `True` value for the legacy `has_action_segment` flag.
@@ -168,7 +172,7 @@ def has_any_action_proposal(self, parsed_output, parsed_action_count: int) -> bo
 
 ### 4. Behavior Preservation and Invariant Protection
 
-- **Exact Behavior**: The migration is behavior-preserving because the logic of the accessor is identical to the logic it replaces.
+- **Behavior Preservation**: The migration is behavior-preserving because the accessor's logic is designed to be identical to the logic it replaces.
 - **`parsed_action_count`**: The `parsed_action_count` argument is passed directly through to the accessor.
 - **`compiler_ir.action_ops` Fallback**: The critical compatibility shim that checks `compiler_ir.action_ops` is preserved, satisfying a key constitutional requirement.
 - **Authority Boundary**: This change does not alter the authority model. The function's output remains **recovery evidence only**, not dispatch permission.
@@ -176,8 +180,13 @@ def has_any_action_proposal(self, parsed_output, parsed_action_count: int) -> bo
 ### 5. Test Plan
 
 1.  **Run All Existing Tests**: The full test suite will be run to ensure no regressions.
-2.  **Verify Key Consumer Tests**: The existing tests in `tests/test_response_guards.py` and `tests/test_response_semantics.py` already provide coverage for consumers of this function and will be used to verify behavior preservation.
-3.  **Add Delegation Test**: A new test will be added to `tests/test_response_semantics.py` to explicitly verify that `ResponseSemantics.has_any_action_proposal` delegates its call to `semantic_accessors.has_any_action_proposal_compat` using `unittest.mock.patch`.
+2.  **Verify Key Consumer Tests**: The existing tests in `tests/test_response_guards.py` and `tests/test_response_semantics.py` that consume this function will be used to verify behavior preservation.
+3.  **Add Behavior and Delegation Tests**: New tests will be added to `tests/test_response_semantics.py`:
+    -   Verify that `ResponseSemantics.has_any_action_proposal` continues to return `True` when `parsed_action_count > 0`.
+    -   Verify it returns `True` when `compiler_ir.action_ops` is non-empty (the critical shim).
+    -   Verify it returns `True` when `has_action_segment` is `True`.
+    -   Verify it returns `False` when there is no action proposal.
+    -   Add a mock-based test to explicitly verify that it delegates its call to `semantic_accessors.has_any_action_proposal_compat`.
 
 ### 6. Explicit Non-Goals
 
