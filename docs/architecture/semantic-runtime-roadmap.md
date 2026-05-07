@@ -68,7 +68,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ### Phase 4: Behavior-Preserving Wrapper Migration
 
-- **Status**: First wrapper migration complete. Design for the next consumer is the next step.
+- **Status**: Done.
 - **Goal**: Begin migrating consumers to the new accessors in a behavior-preserving way.
 - **Allowed**: Replace direct field reads (`parsed_output.invalid_kind`) or simple `ResponseSemantics` calls with the equivalent new accessor.
 - **Forbidden**: Changing any logic. This is a pure "find and replace" with the new function call.
@@ -212,10 +212,14 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ### Phase 4 Remaining Migration Review
 
-- **Status**: Not started.
+- **Status**: Done.
 - **Goal**: Classify remaining inventory rows after Batch 2.
-- **Forbidden**: Implementation before review/approval.
-- **Done When**: The next migration plan or design phase is approved.
+- **Conclusion**: The review is complete. All simple, safe, behavior-preserving wrapper migrations that can be done with the current accessor set are finished. All remaining consumers in the inventory are either:
+    - High-risk, touching dispatch authority, or runtime policy (e.g., `ActionPolicy`, bundle validation).
+    - In need of new accessors (`get_visible_text`, `get_action_ops`, board tag helpers) that are themselves tied to frozen policy domains (final-answer, transitions, memory boards).
+    - Too minor to justify a dedicated migration batch (`protocol_decision_bridge.compiler_invalid_kind_for_output`).
+- **Recommendation**: Phase 4 (Behavior-Preserving Wrapper Migration) is complete. The next step should be to move to a later phase focused on policy-level refactoring, such as Phase 5.
+- **Done When**: The review was documented and the recommendation was made.
 
 ---
 

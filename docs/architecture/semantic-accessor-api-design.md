@@ -363,3 +363,11 @@ This design is strictly limited to the two consumer migrations described above. 
 - Changes to memory/plan board logic.
 - Any modifications to `history.py`.
 - Migration of any consumer not explicitly listed in this batch.
+
+---
+
+## Phase 4 Completion Review
+
+- **Status**: Complete.
+- **Conclusion**: The "fast-lane" of simple, behavior-preserving wrapper migrations is exhausted. All remaining consumers are either high-risk policy boundaries or require new accessors (`get_visible_text`, board tag helpers) that are themselves tied to frozen policy domains.
+- **Recommendation**: Phase 4 is concluded. The next step is to proceed with a policy-level refactor, such as Phase 5.

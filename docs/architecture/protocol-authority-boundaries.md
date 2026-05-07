@@ -32,11 +32,11 @@ This table documents every major consumer of response semantics, their current d
 | **`ActionPolicyHandler` bundle/command helpers** | `compiler_ir`, legacy `segments` | Dispatch authority, runtime policy | `accessors.get_action_ops` | High | No |
 | **`TransitionFollowupSemantics`** | `ProtocolCompiler.analyze()` on fragments | Intent transition/followup policy | `accessors.get_followup_surface` | High | No |
 | **`IntentTransitionHandler` followup helpers** | `TransitionFollowupSemantics`, regex | Intent transition/followup policy | `accessors.get_followup_surface` | High | No |
-| **`IntentTransitionHandler` (plaintext completion)** | `sanitize_visible_text_for_user` (regex) | Final-answer/plaintext guard | `accessors.get_visible_text` | Medium | No/Later |
-| **`PlanBoardStageHandler`** | Regex on raw response | Memory/subgoal/checkpoint policy | `accessors.has_action`, `accessors.has_subgoal_tags` | Medium | No/Later |
-| **`MemoryBoardStageHandler`** | Regex on raw response | Memory/subgoal/checkpoint policy | `accessors.has_action`, `accessors.has_memory_tags` | Medium | No/Later |
+| **`IntentTransitionHandler` (plaintext completion)** | `sanitize_visible_text_for_user` (regex) | Final-answer/plaintext guard | `accessors.get_visible_text` | Medium | Design Next |
+| **`PlanBoardStageHandler`** | Regex on raw response | Memory/subgoal/checkpoint policy | `accessors.has_action`, `accessors.has_subgoal_tags` | Medium | Phase 5+ |
+| **`MemoryBoardStageHandler`** | Regex on raw response | Memory/subgoal/checkpoint policy | `accessors.has_action`, `accessors.has_memory_tags` | Medium | Phase 5+ |
 | **`DispatchPipeline._build_execution_commit`** | `iteration.execution_plan` | Execution commit | N/A (already uses plan) | N/A | N/A |
-| **`protocol_decision_bridge.compiler_invalid_kind_for_output`** | `parsed_output` compiler fields | Compiler metadata | `accessors.get_compiler_error` | Low | No |
+| **`protocol_decision_bridge.compiler_invalid_kind_for_output`** | `parsed_output` compiler fields | Compiler metadata | `accessors.get_compiler_error` | Low | No/Later |
 | **`output_recovery_routing._resolved_invalid_kind`** | `parsed_output` fields, `compiler_invalid_kind_for_output` | Compiler metadata, recovery routing | `accessors.get_invalid_kind` | High | No |
 | **`output_recovery_routing._compiler_strategy_decision`** | `output_recovery_compiler_metadata` | Compiler metadata, recovery routing | `accessors.get_recovery_strategy` | High | No |
 | **`runtime_protocol_semantics.output_recovery_compiler_metadata`** | `RuntimeProtocolSemantics` or `parsed_output` | Compiler metadata | `accessors.get_compiler_metadata` | Low | Migrated |
@@ -49,7 +49,7 @@ This table documents every major consumer of response semantics, their current d
 | **`output_recovery_routing.output_recovery_structural_parity`** | `RuntimeProtocolSemantics`, `parsed_output` | Diagnostic-only structural parity check | N/A (diagnostic) | do-not-migrate-yet | No |
 | **`search_quality.classify_search_action_quality`** | `action_payload` dict | Diagnostic-only | N/A (diagnostic) | do-not-migrate-yet | No |
 | **`DispatchOutcomeHandler._extract_visible_text`** | `extract_visible_text_for_user` (regex) | Final-answer/plaintext guard | `accessors.get_visible_text` | Medium | Design Next |
-| **`DispatchOutcomeHandler._strip_leaked_system_results_from_ui_text`** | Regex on raw response | Final-answer/plaintext guard | `accessors.get_visible_text` | Medium | No/Later |
+| **`DispatchOutcomeHandler._strip_leaked_system_results_from_ui_text`** | Regex on raw response | Final-answer/plaintext guard | `accessors.get_visible_text` | Medium | Design Next |
 | **`history.py`** | Various | History management (refactor blocked by constitution) | N/A | do-not-migrate-yet | No |
 
 ### Next Safe Implementation Candidates

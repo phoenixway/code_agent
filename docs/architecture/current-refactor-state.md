@@ -4,8 +4,8 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase 4: Behavior-Preserving Wrapper Migration (Design for next consumer)**
-- **Status**: Batch 1 migration is complete. Next step is to plan the next behavior-preserving migration.
+- **Phase 4: Behavior-Preserving Wrapper Migration (Complete)**
+- **Status**: All planned wrapper migrations are complete. The remaining migration review is also complete.
 
 ## Completed Governance
 
@@ -50,6 +50,11 @@ This document is the single source of truth for the current state of the Semanti
   - No `get_visible_text` implementation.
   - No other consumers migrated.
   - Runtime behavior unchanged.
+- **Phase 4: Remaining Migration Review**
+  - Reviewed all remaining un-migrated consumers in the inventory.
+  - Conclusion: The "fast-lane" of simple, safe wrapper migrations is exhausted.
+  - All remaining consumers are either high-risk policy/dispatch boundaries or require new accessors tied to those same frozen domains.
+  - Recommendation: Conclude Phase 4 and begin planning for a later policy-focused phase (e.g., Phase 5).
 
 ## Known Authority Boundaries
 
@@ -65,11 +70,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Review remaining Consumer Inventory and decide whether to:
-  - a) plan another safe accessor-wrapper batch,
-  - b) design the next accessor batch, or
-  - c) stop Phase 4 and move to a later validator/policy phase.
-- No implementation is authorized until a plan is approved.
+- Conclude Phase 4.
+- Begin planning for Phase 5 (`TransitionSemanticValidator`) or another approved policy-level refactor.
+- No implementation is authorized until a new design or plan is approved.
 
 ## Test Status
 
