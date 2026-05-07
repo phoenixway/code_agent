@@ -267,3 +267,48 @@ The next logical step is to begin the API design for the next batch of semantic 
 - **`is_leaked_system_result`**: For migrating the guard in `ResponsePipelineStagesMixin`.
 
 Implementation of these accessors is blocked until a formal API design is documented and approved.
+
+---
+
+## Next Accessor Batch Design (Proposed)
+
+- **Status**: Design Proposed. Awaiting review and approval for implementation.
+- **Scope**: This design covers two new, low-risk accessors.
+- **Implementation**: Not approved.
+
+### `is_leaked_system_result(text: str) -> bool`
+
+- **Purpose**: To centralize the detection of "leaked" internal `SYSTEM RESULT` transcripts in the model's final answer.
+- **Inputs**: `text: str` (The text to check, typically the final visible answer).
+- **Output**: `bool`.
+- **Current Source**: `ResponseSemantics.looks_like_leaked_system_result`.
+- **Behavior Preservation**: Must be a pure, behavior-preserving replacement of the existing regex-based check.
+- **Authority Boundary**: **Final-Answer Guard**. A `True` result is a signal that the response is likely malformed and should be recovered. It is not a final policy decision.
+- **Non-Goals**: Does not determine if the response is a valid final answer. Does not parse or extract any text.
+- **Future Tests**:
+    - Test that it matches the canonical `SYSTEM RESULT` prefix.
+    - Test that it does not match ordinary prose like "the system result was...".
+    - Parity tests against `ResponseSemantics.looks_like_leaked_system_result`.
+- **Allowed Consumers**: `ResponsePipelineStagesMixin` (leaked system result check).
+- **Forbidden Consumers**: Any consumer related to dispatch authority or intent transitions.
+
+### `has_substantial_think(raw_response: str) -> bool`
+
+- **Purpose**: To centralize the detection of a `<think>` block with a meaningful amount of content (>= 5 words).
+- **Inputs**: `raw_response: str`.
+- **Output**: `bool`.
+- **Current Source**: `ResponseSemantics.has_substantial_think`.
+- **Behavior Preservation**: Must be a pure, behavior-preserving replacement of the existing logic.
+- **Authority Boundary**: **Loop-Detection Guard**. A `True` result is an input to the `is_nonproductive_thinking_turn` policy, not a policy decision itself.
+- **Non-Goals**: Does not change the non-productive thinking policy. Does not parse the content of the think block.
+- **Future Tests**:
+    - Test that it returns `True` for think blocks with >= 5 words.
+    - Test that it returns `False` for think blocks with < 5 words.
+    - Test that it handles multiple think blocks correctly.
+    - Parity tests against `ResponseSemantics.has_substantial_think`.
+- **Allowed Consumers**: `ResponseGuardPolicy.is_nonproductive_thinking_turn`.
+- **Forbidden Consumers**: Any consumer outside of the non-productive thinking guard.
+
+### Deferred Accessors
+
+- **`get_visible_text`**: Deferred. Visible text extraction touches final-answer/plaintext guards, `IntentTransitionHandler`, `DispatchOutcomeHandler`, and user-facing stop decisions. It requires a separate, dedicated design and must not be included in this batch.

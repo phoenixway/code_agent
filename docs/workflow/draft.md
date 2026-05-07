@@ -10,4 +10,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 6. Phase 4 first migration implementation (`has_any_action_proposal`): done.
 7. Phase 4 Batch 1 plan: approved.
 8. Phase 4 Batch 1 implementation: done.
-9. Fast-lane migrations complete. Next: Design the next batch of accessors.
+9. Fast-lane migrations complete.
+10. Next: Review and approve design for the next accessor batch.

@@ -54,7 +54,8 @@ This document is the single source of truth for the current state of the Semanti
 ## Next Intended Step
 
 - The fast-lane of simple wrapper migrations is complete.
-- The next step is to design the next batch of semantic accessors to unblock further migrations.
+- The next step is to review and approve the design for the next accessor batch (`is_leaked_system_result`, `has_substantial_think`).
+- Implementation is blocked until the design is approved.
 
 ## Test Status
 

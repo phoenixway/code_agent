@@ -147,6 +147,19 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+### Next Accessor Batch Design
+
+- **Status**: Not started. Plan proposed.
+- **Goal**: Design the next small, conservative batch of accessors.
+- **Scope**:
+    - `is_leaked_system_result`
+    - `has_substantial_think`
+- **Deferred**: `get_visible_text` requires a separate design.
+- **Forbidden**: Implementation before plan approval.
+- **Done When**: The accessor batch design is reviewed and approved.
+
+---
+
 ### Phase 5: TransitionSemanticValidator
 
 - **Goal**: Refactor `IntentTransitionHandler` to use a dedicated semantic validator.
