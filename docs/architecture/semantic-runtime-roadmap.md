@@ -68,7 +68,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ### Phase 4: Behavior-Preserving Wrapper Migration
 
-- **Status**: Design for first migration approved. Implementation of first wrapper is next.
+- **Status**: First wrapper migration complete. Design for the next consumer is the next step.
 - **Goal**: Begin migrating consumers to the new accessors in a behavior-preserving way.
 - **Allowed**: Replace direct field reads (`parsed_output.invalid_kind`) or simple `ResponseSemantics` calls with the equivalent new accessor.
 - **Forbidden**: Changing any logic. This is a pure "find and replace" with the new function call.
@@ -76,9 +76,9 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
-### Phase 4 Implementation Step 1: `ResponseSemantics.has_any_action_proposal` wrapper delegation
+### Phase 4 Implementation Step 1: `ResponseSemantics.has_any_action_proposal` wrapper delegation (Done)
 
-- **Status**: Not started.
+- **Status**: Done.
 - **Goal**: Implement the approved delegation of `ResponseSemantics.has_any_action_proposal` to its `semantic_accessors` counterpart.
 - **Allowed**:
     - Edit `modules/agent/orchestration/responses/response_semantics.py` for this method only.

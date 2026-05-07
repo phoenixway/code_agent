@@ -4,8 +4,8 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase 4: Behavior-Preserving Wrapper Migration (Implementation)**
-- **Status**: First migration design approved. Next step is implementing only the `ResponseSemantics.has_any_action_proposal` delegation.
+- **Phase 4: Behavior-Preserving Wrapper Migration (Design for next consumer)**
+- **Status**: First wrapper migration is complete. Next step is to design the next behavior-preserving migration.
 
 ## Completed Governance
 
@@ -29,6 +29,10 @@ This document is the single source of truth for the current state of the Semanti
   - `modules/agent/orchestration/responses/semantic_accessors.py` created with four approved accessors (`get_compiler_metadata`, `has_any_action_proposal_compat`, `is_compiler_invalid`, `is_compiler_invalid_with_legacy_action`).
   - Dedicated unit tests created in `tests/test_semantic_accessors.py`.
   - No consumers were migrated, and no runtime behavior was changed.
+- **Phase 4 (Step 1): `has_any_action_proposal` Migration**
+  - `ResponseSemantics.has_any_action_proposal` now delegates to `semantic_accessors.has_any_action_proposal_compat`.
+  - Behavior was preserved, and all relevant tests passed.
+  - No other consumers were migrated.
 
 ## Known Authority Boundaries
 
@@ -44,11 +48,8 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Implement the approved delegation for `ResponseSemantics.has_any_action_proposal`.
-- Edit only `modules/agent/orchestration/responses/response_semantics.py`.
-- Add/update tests in `tests/test_response_semantics.py` to verify behavior and delegation.
-- Preserve exact behavior.
-- Do not migrate any other consumers.
+- Design the next behavior-preserving migration of a low-risk consumer to use the new `semantic_accessors`.
+- The next migration candidate must be approved before implementation.
 
 ## Test Status
 

@@ -12,6 +12,7 @@ from ..parsers.visible_text import (
     _mask_with_spaces,
     strip_plain_think_prefix_artifacts,
 )
+from .semantic_accessors import has_any_action_proposal_compat
 
 
 class ResponseSemantics:
@@ -243,12 +244,7 @@ class ResponseSemantics:
         return bool(self.LEAKED_SYSTEM_RESULT_RE.search(text))
 
     def has_any_action_proposal(self, parsed_output, parsed_action_count: int) -> bool:
-        if int(parsed_action_count or 0) > 0:
-            return True
-        ir = getattr(parsed_output, "compiler_ir", None)
-        if ir is not None and len(list(getattr(ir, "action_ops", ()) or ())) > 0:
-            return True
-        return bool(getattr(parsed_output, "has_action_segment", False))
+        return has_any_action_proposal_compat(parsed_output, parsed_action_count)
 
     def is_reflection_only_repair_turn(self, raw_response: str, parsed_output, parsed_action_count: int) -> bool:
         return self.is_durable_state_repair_turn(

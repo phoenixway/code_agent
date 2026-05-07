@@ -1,5 +1,6 @@
 import unittest
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from modules.agent.orchestration.responses.response_semantics import ResponseSemantics
 
@@ -156,6 +157,42 @@ class ResponseSemanticsTests(unittest.TestCase):
             "<action>{\"type\":\"edit_file\",\"path\":\"a.py\"}</action>"
         )
         self.assertFalse(self.s.has_malformed_state_changing_think_before_action(text))
+
+
+    # --- Tests for has_any_action_proposal delegation ---
+
+    def test_has_any_action_proposal_true_from_legacy_count(self):
+        """has_any_action_proposal is True if parsed_action_count > 0."""
+        p_out = SimpleNamespace()
+        # This check is for recovery evidence only and does not grant dispatch permission.
+        self.assertTrue(self.s.has_any_action_proposal(p_out, parsed_action_count=1))
+
+    def test_has_any_action_proposal_true_from_compiler_ir(self):
+        """has_any_action_proposal is True if compiler_ir.action_ops is non-empty."""
+        p_out = SimpleNamespace(compiler_ir=SimpleNamespace(action_ops=[SimpleNamespace()]))
+        # This check is for recovery evidence only and does not grant dispatch permission.
+        self.assertTrue(self.s.has_any_action_proposal(p_out, parsed_action_count=0))
+
+    def test_has_any_action_proposal_true_from_legacy_segment(self):
+        """has_any_action_proposal is True if has_action_segment is True."""
+        p_out = SimpleNamespace(has_action_segment=True)
+        # This check is for recovery evidence only and does not grant dispatch permission.
+        self.assertTrue(self.s.has_any_action_proposal(p_out, parsed_action_count=0))
+
+    def test_has_any_action_proposal_false_when_no_evidence(self):
+        """has_any_action_proposal is False if there is no evidence of an action proposal."""
+        p_out = SimpleNamespace()
+        self.assertFalse(self.s.has_any_action_proposal(p_out, parsed_action_count=0))
+
+    @patch("modules.agent.orchestration.responses.response_semantics.has_any_action_proposal_compat")
+    def test_has_any_action_proposal_delegates_to_accessor(self, mock_accessor):
+        """has_any_action_proposal delegates its call to the semantic accessor."""
+        mock_accessor.return_value = "delegation_sentinel"
+        p_out = SimpleNamespace(foo="bar")
+        result = self.s.has_any_action_proposal(p_out, parsed_action_count=5)
+
+        self.assertEqual(result, "delegation_sentinel")
+        mock_accessor.assert_called_once_with(p_out, 5)
 
 
 if __name__ == "__main__":
