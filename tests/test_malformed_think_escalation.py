@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 from modules.agent.orchestration.shared.decision_models import ParsedModelOutput
 from modules.agent.orchestration.responses import ModelOutputRecoveryHandler
+from modules.agent.orchestration.prompts import OrchestratorPromptBuilder
 
 
 class DummyUI:
@@ -166,3 +167,69 @@ async def test_valid_complete_think_clears_malformed_think_streak():
     assert decision.reason == "no_invalid_kind"
     assert agent.state.malformed_think_count == 0
     assert agent.state.malformed_think_intent_id == ""
+
+
+@pytest.mark.asyncio
+async def test_compiler_unclosed_think_repeats_escalate_to_terminal_handoff():
+    agent = DummyAgent()
+    agent.state.active_intent.intent_type = "INVESTIGATE"
+    prompt_builder = OrchestratorPromptBuilder(
+        SimpleNamespace(
+            state=agent.state,
+            config=agent.config,
+            memory_board_store=None,
+            log=None,
+        )
+    )
+    handler = ModelOutputRecoveryHandler(agent, prompt_builder)
+
+    parsed_output = ParsedModelOutput(
+        response="<think>\nDraft\n<action>{}</action>",
+        invalid_kind="malformed_incomplete_think",
+        compiler_error_code="E_UNCLOSED_THINK",
+        compiler_recovery_id="unclosed_think",
+        has_action_segment=True,
+    )
+
+    # First call
+    first = await handler.decide(
+        parsed_output,
+        malformed_action_retries=0,
+        audit_marker_retries=0,
+    )
+    assert first.handled is True
+    assert first.reason == "malformed_incomplete_think"
+    assert first.continue_loop is True
+    assert first.stop_loop is False
+    assert "opened <think> but placed protocol tags before closing it" in first.next_query
+    assert "Return the corrected response from the beginning" in first.next_query
+    assert "Do not use <think>" not in first.next_query
+    assert getattr(agent.state, "malformed_think_count", 0) == 1
+
+    # Second call
+    second = await handler.decide(
+        parsed_output,
+        malformed_action_retries=0,
+        audit_marker_retries=0,
+    )
+    assert second.handled is True
+    assert second.reason == "malformed_incomplete_think"
+    assert second.continue_loop is True
+    assert second.stop_loop is False
+    assert "Do not use <think>" in second.next_query
+    assert "No internal analysis" in second.next_query
+    assert "Return exactly one valid" in second.next_query
+    assert getattr(agent.state, "malformed_think_count", 0) == 2
+
+    # Third call
+    third = await handler.decide(
+        parsed_output,
+        malformed_action_retries=0,
+        audit_marker_retries=0,
+    )
+    assert third.handled is True
+    assert third.reason == "terminal_malformed_think_handoff"
+    assert third.stop_loop is True
+    assert agent.state.terminal_plaintext_completion_pending is True
+    assert "malformed_incomplete_think" in agent.state.terminal_plaintext_completion_text
+    assert "Я зупиняю виконання" in agent.state.terminal_plaintext_completion_text

@@ -711,10 +711,11 @@ class OutputRecoveryRoutingMixin:
         compiler_recovery_id = compiler_meta["recovery_id"]
         if not compiler_code:
             return None
+        strategy_invalid_kind = str(compiler_meta.get("invalid_kind") or invalid_kind or "").strip()
         strategy = registry.resolve(
             error_code=compiler_code,
             recovery_id=compiler_recovery_id,
-            invalid_kind=invalid_kind,
+            invalid_kind=strategy_invalid_kind,
         )
         if strategy is None:
             return None

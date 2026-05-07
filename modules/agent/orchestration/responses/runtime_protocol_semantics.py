@@ -191,11 +191,15 @@ def runtime_semantics_from_output_or_none(parsed_output: Any) -> RuntimeProtocol
 def output_recovery_compiler_metadata(parsed_output: Any) -> dict[str, str]:
     """Extracts compiler metadata for output recovery routing, with fallback."""
     snapshot = runtime_semantics_from_output_or_none(parsed_output)
+    legacy_invalid_kind = str(_safe_getattr(parsed_output, "invalid_kind", "") or "")
+
     if snapshot is not None:
+        snapshot_invalid_kind = str(_safe_getattr(snapshot, "invalid_kind", "") or "")
         return {
             "source": "runtime_protocol_semantics",
             "error_code": snapshot.error_code,
             "recovery_id": snapshot.recovery_id,
+            "invalid_kind": snapshot_invalid_kind or legacy_invalid_kind,
         }
 
     error_code = str(_safe_getattr(parsed_output, "compiler_error_code", "") or "")
@@ -204,12 +208,14 @@ def output_recovery_compiler_metadata(parsed_output: Any) -> dict[str, str]:
             "source": "parsed_output_compiler_fields",
             "error_code": error_code,
             "recovery_id": str(_safe_getattr(parsed_output, "compiler_recovery_id", "") or ""),
+            "invalid_kind": legacy_invalid_kind,
         }
 
     return {
         "source": "missing",
         "error_code": "",
         "recovery_id": "",
+        "invalid_kind": legacy_invalid_kind,
     }
 
 
@@ -231,6 +237,15 @@ def output_recovery_structural_parity(parsed_output: Any, *, parsed_action_count
     if parsed_has_action or snapshot.has_action:
         has_action_matches = snapshot.has_action == parsed_has_action
 
+    mismatch_kind = ""
+    expected_mismatch = False
+    if snapshot.shape == "INVALID" and snapshot.error_code:
+        if (parsed_action_count > 0 and snapshot.action_count == 0) or (
+            parsed_has_action and not snapshot.has_action
+        ):
+            mismatch_kind = "legacy_action_in_compiler_invalid_response"
+            expected_mismatch = True
+
     return {
         "has_snapshot": True,
         "snapshot_shape": snapshot.shape,
@@ -245,4 +260,6 @@ def output_recovery_structural_parity(parsed_output: Any, *, parsed_action_count
         "snapshot_has_action": snapshot.has_action,
         "parsed_has_action_segment": parsed_has_action,
         "has_action_matches": has_action_matches,
+        "mismatch_kind": mismatch_kind,
+        "expected_mismatch": expected_mismatch,
     }

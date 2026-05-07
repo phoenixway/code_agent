@@ -346,13 +346,23 @@ This audit inventories the dependencies of the `output_recovery` stage to determ
 
 -   **Status: Done.** This phase adds read-only diagnostics to the `output_recovery` stage.
 -   A new `output_recovery_semantics_parity` trace entry now logs a comparison between legacy structural fields (`invalid_kind`, `has_action_segment`) and the equivalent fields from `RuntimeProtocolSemantics`.
+-   The parity diagnostics now label expected mismatches (e.g., `legacy_action_in_compiler_invalid_response`) where the legacy parser sees an action in a response that the compiler correctly identifies as structurally invalid.
 -   This is a diagnostics-only change. Output recovery decisions are not yet using the new adapter. All behavior and authority boundaries remain unchanged.
+-   Legacy action presence is not yet migrated to `RuntimeProtocolSemantics`. Invalid compiler responses must not dispatch actions, even if legacy parsing detects an action-like segment.
 
 ##### Phase 3A-1: Read-Only Compiler Metadata Migration
 
 -   **Status: Done.** This phase migrates the read-side of compiler strategy routing metadata (`error_code`, `recovery_id`) to use `RuntimeProtocolSemantics` with a fallback to legacy `ParsedModelOutput` fields.
 -   This is a behavior-preserving refactor. Output recovery decisions, `invalid_kind` resolution, and authority boundaries remain unchanged.
 -   Runtime-owned checks and other structural checks (e.g., `action_count`) are not yet migrated.
+
+##### Phase 3A-2: Read-Only `invalid_kind` Metadata Migration
+
+-   **Status: Done.** This phase extends the `output_recovery_compiler_metadata` helper to include `invalid_kind`.
+-   The helper prefers `invalid_kind` from `RuntimeProtocolSemantics` when available, falling back to the legacy `ParsedModelOutput.invalid_kind` field.
+-   The `_compiler_strategy_decision` router now uses this metadata-driven `invalid_kind` when resolving a recovery strategy, but this is a behavior-preserving change due to the fallback logic.
+-   The top-level `_resolved_invalid_kind` helper and overall output recovery decisions remain unchanged.
+-   Action presence, `action_count`, checkpoint, and state-changing checks are not migrated.
 
 ##### Proposed Phase 3A Scope
 
