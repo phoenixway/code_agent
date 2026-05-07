@@ -22,6 +22,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
+from ..shared.decision_models import ParsedModelOutput
+from .semantic_accessors import get_compiler_metadata
+
 
 class BundleResultKind(str, Enum):
     """Strongly-typed classification of a response's bundle structure."""
@@ -65,7 +68,7 @@ class BundleSemanticValidator:
     replace or grant authority to bypass ActionPolicy or DispatchPipeline.
     """
 
-    def validate(self, parsed_output=None, segments=None, **context) -> BundleValidationResult:
+    def validate(self, parsed_output: ParsedModelOutput | None = None, segments=None, **context) -> BundleValidationResult:
         """
         Classifies the bundle structure of a model response.
 
@@ -76,7 +79,24 @@ class BundleSemanticValidator:
 
         Returns:
             A BundleValidationResult with the classification.
-            For Step 1, this always returns UNKNOWN.
         """
-        # Phase 6, Step 1: Scaffolding only. No classification logic.
+        # Phase 6, Step 2A: Error-code-driven classification.
+        # Shape-driven classification and consumer migration are not yet implemented.
+        if parsed_output is None:
+            return BundleValidationResult(kind=BundleResultKind.UNKNOWN)
+
+        # Use the approved accessor to ensure consistent reading of compiler metadata.
+        metadata = get_compiler_metadata(parsed_output)
+        error_code = metadata.get("error_code")
+        invalid_kind = metadata.get("invalid_kind")
+
+        if error_code == "E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION":
+            if invalid_kind == "action_payload_array":
+                return BundleValidationResult(kind=BundleResultKind.INVALID_ACTION_ARRAY)
+            if invalid_kind == "multiple_actions":
+                return BundleValidationResult(kind=BundleResultKind.INVALID_MULTIPLE_ACTIONS)
+
+        if error_code in {"E_FILE_CONTENT_REQUIRES_ACTION", "E_FILE_CONTENT_ACTION_MISMATCH"}:
+            return BundleValidationResult(kind=BundleResultKind.INVALID_FILE_CONTENT_PAIRING)
+
         return BundleValidationResult(kind=BundleResultKind.UNKNOWN)

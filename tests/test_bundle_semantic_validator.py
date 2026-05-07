@@ -41,40 +41,109 @@ def test_bundle_validation_result_dataclass_defaults():
     assert result2.details == {}
 
 
-def test_bundle_semantic_validator_scaffold_returns_unknown():
+def test_validate_with_no_input_returns_unknown():
     """
-    Tests that the scaffold implementation of `validate` always returns UNKNOWN.
+    Tests that `validate` returns UNKNOWN when no parsed_output is provided.
     """
     validator = BundleSemanticValidator()
-
-    # Test with no arguments
     result = validator.validate()
     assert isinstance(result, BundleValidationResult)
     assert result.kind == BundleResultKind.UNKNOWN
-    assert result.reason == ""
-    assert result.details == {}
 
 
-def test_bundle_semantic_validator_scaffold_accepts_args_but_returns_unknown():
-    """
-    Tests that the scaffold `validate` method accepts arguments but still
-    returns UNKNOWN without processing them.
-    """
+class MockParsedOutput:
+    """A mock ParsedModelOutput for testing."""
+
+    def __init__(self, **kwargs):
+        self.compiler_error_code = ""
+        self.invalid_kind = ""
+        self.compiler_shape = ""
+        self.runtime_protocol_semantics = None
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
+
+@pytest.mark.parametrize(
+    "compiler_error_code, invalid_kind, expected_kind",
+    [
+        # Step 2A: Error-code-driven classifications
+        (
+            "E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION",
+            "action_payload_array",
+            BundleResultKind.INVALID_ACTION_ARRAY,
+        ),
+        (
+            "E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION",
+            "multiple_actions",
+            BundleResultKind.INVALID_MULTIPLE_ACTIONS,
+        ),
+        (
+            "E_FILE_CONTENT_REQUIRES_ACTION",
+            "file_content_must_follow_action",
+            BundleResultKind.INVALID_FILE_CONTENT_PAIRING,
+        ),
+        (
+            "E_FILE_CONTENT_ACTION_MISMATCH",
+            "file_content_must_follow_action",
+            BundleResultKind.INVALID_FILE_CONTENT_PAIRING,
+        ),
+        # Fallback cases
+        (None, None, BundleResultKind.UNKNOWN),
+        ("", "", BundleResultKind.UNKNOWN),
+        ("SOME_OTHER_ERROR", "some_kind", BundleResultKind.UNKNOWN),
+        ("E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION", None, BundleResultKind.UNKNOWN),
+        ("E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION", "", BundleResultKind.UNKNOWN),
+        ("E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION", "unknown_kind", BundleResultKind.UNKNOWN),
+        # Deferred classifications should return UNKNOWN
+        (
+            "E_INTENT_COMPLETE_WITH_ACTION",
+            "intent_complete_with_action_not_allowed",
+            BundleResultKind.UNKNOWN,
+        ),
+    ],
+)
+def test_bundle_semantic_validator_step2a_error_code_logic(compiler_error_code, invalid_kind, expected_kind):
+    """Tests the error-code-driven classification logic from Step 2A."""
     validator = BundleSemanticValidator()
+    parsed_output = MockParsedOutput(compiler_error_code=compiler_error_code, invalid_kind=invalid_kind)
 
-    # Mock objects to simulate real arguments
-    mock_parsed_output = object()
-    mock_segments = [object()]
-    mock_context = {"some_key": "some_value"}
-
-    result = validator.validate(
-        parsed_output=mock_parsed_output,
-        segments=mock_segments,
-        **mock_context,
-    )
+    result = validator.validate(parsed_output=parsed_output)
 
     assert isinstance(result, BundleValidationResult)
+    assert result.kind == expected_kind
+
+
+def test_validate_returns_unknown_for_empty_parsed_output():
+    """Tests that validate handles an empty parsed_output gracefully."""
+    validator = BundleSemanticValidator()
+    assert validator.validate(parsed_output=MockParsedOutput()).kind == BundleResultKind.UNKNOWN
+
+
+def test_validate_ignores_shape_only_metadata_in_step2a():
+    """
+    Tests that shape-only metadata is ignored in Step 2A, returning UNKNOWN.
+    """
+    validator = BundleSemanticValidator()
+    parsed_output = MockParsedOutput(compiler_shape="INTENT_ACTION_BUNDLE")
+    result = validator.validate(parsed_output=parsed_output)
     assert result.kind == BundleResultKind.UNKNOWN
+
+
+def test_validate_ignores_segments_argument():
+    """
+    Tests that the `segments` argument is accepted but ignored, proving it's
+    not used in Step 2A.
+    """
+    validator = BundleSemanticValidator()
+    parsed_output = MockParsedOutput(
+        compiler_error_code="E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION",
+        invalid_kind="action_payload_array",
+    )
+    # The result should be the same with or without segments
+    result_with_segments = validator.validate(parsed_output=parsed_output, segments=[object()])
+    result_without_segments = validator.validate(parsed_output=parsed_output)
+    assert result_with_segments.kind == BundleResultKind.INVALID_ACTION_ARRAY
+    assert result_with_segments.kind == result_without_segments.kind
 
 
 def test_invalid_mixed_visible_text_is_placeholder_only():
