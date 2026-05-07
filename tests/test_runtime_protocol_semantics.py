@@ -1,5 +1,6 @@
 import unittest
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from modules.agent.orchestration.protocol import ProtocolCompiler
 from modules.agent.orchestration.responses.response_pipeline_prevalidation import ResponsePipelinePrevalidationMixin
@@ -548,3 +549,77 @@ class TestRuntimeProtocolSemantics(unittest.TestCase):
         )
 
         self.assertEqual("legacy_kind", registry.last_call["invalid_kind"])
+
+    @patch("modules.agent.orchestration.responses.output_recovery_routing.get_compiler_metadata")
+    def test_compiler_strategy_decision_delegates_to_accessor(self, mock_accessor):
+        """_compiler_strategy_decision delegates to get_compiler_metadata."""
+
+        class MockRegistry:
+            def resolve(self, *args, **kwargs):
+                return SimpleNamespace(handler_key="test_handler")
+
+        class Harness(OutputRecoveryRoutingMixin):
+            def __init__(self, registry):
+                self.compiler_recovery_registry = registry
+
+            def _compiler_strategy_test_handler(self, *args, **kwargs):
+                return "test_decision"
+
+        mock_accessor.return_value = {
+            "source": "accessor",
+            "error_code": "E_TEST",
+            "recovery_id": "R_TEST",
+            "invalid_kind": "K_TEST",
+        }
+        registry = MockRegistry()
+        harness = Harness(registry)
+        p_out = ParsedModelOutput(response="")
+
+        harness._compiler_strategy_decision(
+            p_out,
+            invalid_kind="legacy_kind",
+            malformed_action_retries=0,
+            audit_marker_retries=0,
+        )
+
+        mock_accessor.assert_called_once_with(p_out)
+
+    def test_get_compiler_metadata_parity_with_old_helper(self):
+        """get_compiler_metadata has parity with output_recovery_compiler_metadata."""
+        from modules.agent.orchestration.responses.semantic_accessors import get_compiler_metadata
+
+        # Case 1: From snapshot
+        snapshot = RuntimeProtocolSemantics(
+            source="compiler", shape="INVALID", is_valid=False, error_code="E1", recovery_id="R1", invalid_kind="K1",
+            action_count=0, has_action=False, action_ops=(), intent_ops=(), visible_text="", has_visible_answer=False,
+            pre_action_text="", has_pre_action_text=False, memory_ops=(), subgoal_ops=(), has_file_content=False,
+            file_content="", effects_preview=()
+        )
+        p_out_snapshot = ParsedModelOutput(response="", runtime_protocol_semantics=snapshot, invalid_kind="legacy_kind")
+        self.assertEqual(
+            get_compiler_metadata(p_out_snapshot),
+            output_recovery_compiler_metadata(p_out_snapshot)
+        )
+
+        # Case 2: Fallback to parsed_output fields
+        p_out_legacy = ParsedModelOutput(
+            response="", runtime_protocol_semantics=None, compiler_error_code="E2",
+            compiler_recovery_id="R2", invalid_kind="K2"
+        )
+        self.assertEqual(
+            get_compiler_metadata(p_out_legacy),
+            output_recovery_compiler_metadata(p_out_legacy)
+        )
+
+        # Case 3: Missing data
+        p_out_missing = ParsedModelOutput(response="", invalid_kind="only_legacy")
+        self.assertEqual(
+            get_compiler_metadata(p_out_missing),
+            output_recovery_compiler_metadata(p_out_missing)
+        )
+
+        # Case 4: None input
+        self.assertEqual(
+            get_compiler_metadata(None),
+            output_recovery_compiler_metadata(None)
+        )

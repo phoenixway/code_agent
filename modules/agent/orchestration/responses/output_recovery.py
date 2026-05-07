@@ -11,6 +11,7 @@ from .output_recovery_routing import OutputRecoveryRoutingMixin
 from .output_recovery_terminal import OutputRecoveryTerminalMixin
 from .response_semantics import ResponseSemantics
 from .stage_logging import OrchestrationStageLogger
+from .semantic_accessors import has_any_action_proposal_compat
 
 
 class ModelOutputRecoveryHandler(OutputRecoveryTerminalMixin, OutputRecoveryRoutingMixin):
@@ -130,7 +131,7 @@ class ModelOutputRecoveryHandler(OutputRecoveryTerminalMixin, OutputRecoveryRout
 
     def _has_any_action_proposal(self, parsed_output: ParsedModelOutput, *, parsed_action_count: int = 0) -> bool:
         try:
-            return bool(self.semantics.has_any_action_proposal(parsed_output, parsed_action_count))
+            return bool(has_any_action_proposal_compat(parsed_output, parsed_action_count))
         except Exception:
             return bool(getattr(parsed_output, "has_action_segment", False)) or int(parsed_action_count or 0) > 0
 
