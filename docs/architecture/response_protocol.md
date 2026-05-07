@@ -237,6 +237,105 @@ To maintain performance and guide the model toward efficient investigation, the 
 
 -   **Self-Referential Hits are Filtered**: The runtime detects when a search's results come only from its own artifacts (e.g., `debug.log`, `communication.log`). These are not considered valid source code evidence. A `history_self_reference_hit` recovery prompts the model to issue a new search that excludes these artifact files.
 
+### Compiler IR Semantic Migration Plan
+
+This section outlines the plan to migrate runtime semantic extraction from legacy `ParsedModelOutput` fields to the compiler's more reliable Intermediate Representation (IR).
+
+**Current State**: The runtime currently consumes a mix of legacy fields (e.g., `has_action_segment`, `visible_text`) and compiler-derived fields (`compiler_shape`, `compiler_error_code`). Many stages still use `ResponseSemantics` helpers that operate on raw response strings, which is inefficient and less precise than using the compiler's structured output.
+
+**Goal**: Systematically replace legacy semantic extraction with a new `RuntimeProtocolSemantics` adapter, populated directly from the compiler's IR. This will make the runtime more robust, efficient, and easier to maintain.
+
+#### Proposed Adapter Shape
+
+A new `RuntimeProtocolSemantics` class will be introduced to provide a stable, read-only view of the response's semantics, derived from the compiler's `CompilerAnalysis`.
+
+```python
+@dataclass(frozen=True)
+class RuntimeProtocolSemantics:
+    source: str  # "compiler" | "legacy_fallback"
+    shape: ResponseShape
+    is_valid: bool
+    error_code: str | None
+    recovery_id: str | None
+    action_count: int
+    has_action: bool
+    action_ops: list[ActionOpIR]
+    intent_ops: list[IntentOpIR]
+    visible_text: str
+    has_visible_answer: bool
+    pre_action_text: str
+    memory_ops: list[BoardOpIR]
+    subgoal_ops: list[BoardOpIR]
+    has_file_content: bool
+    file_content: str
+    effects_preview: EffectPreview | None
+```
+
+#### Consumer Inventory
+
+-   **`response_pipeline_stages.py`**
+    -   **Current Source**: `ParsedModelOutput` fields, `ResponseSemantics` helpers.
+    -   **IR Equivalent**: `RuntimeProtocolSemantics` adapter.
+    -   **Risk**: Medium. Core logic.
+    -   **Recommendation**: Migrate after validation in read-only contexts.
+
+-   **`output_recovery_routing.py`**
+    -   **Current Source**: `ParsedModelOutput` fields, `ResponseSemantics` helpers.
+    -   **IR Equivalent**: `RuntimeProtocolSemantics` adapter.
+    -   **Risk**: Medium. Critical for recovery.
+    -   **Recommendation**: Phase 3. Migrate structural checks first.
+
+-   **`response_pipeline_prevalidation.py`**
+    -   **Current Source**: `ParsedModelOutput` fields, `ResponseSemantics` helpers.
+    -   **IR Equivalent**: `RuntimeProtocolSemantics` adapter.
+    -   **Risk**: Medium. Core pipeline logic.
+    -   **Recommendation**: Migrate alongside `response_pipeline_stages`.
+
+-   **`intent_transition_routing.py`**
+    -   **Current Source**: `ParsedModelOutput` fields, `ResponseSemantics` helpers, and its own regex parsing.
+    -   **IR Equivalent**: `RuntimeProtocolSemantics` adapter.
+    -   **Risk**: High. Complex logic with its own parsing.
+    -   **Recommendation**: Phase 4.
+
+-   **`plan_board` / `memory_board` stages**
+    -   **Current Source**: Raw response text, `ResponseSemantics` helpers.
+    -   **IR Equivalent**: `RuntimeProtocolSemantics` adapter.
+    -   **Risk**: High. Stateful and complex.
+    -   **Recommendation**: Phase 4.
+
+-   **`dispatch_pipeline.py`**
+    -   **Current Source**: `ExecutionPlan` (derived from `ParsedModelOutput` and `compiler_ir`).
+    -   **IR Equivalent**: `RuntimeProtocolSemantics` adapter would be used to create the `ExecutionPlan`.
+    -   **Risk**: Low. The interface is already abstracted.
+    -   **Recommendation**: Update plan creation logic to use the adapter.
+
+-   **`semantic shadow tests`**
+    -   **Current Source**: `ResponseSemantics` helpers vs. `CompilerAnalysis`.
+    -   **IR Equivalent**: `RuntimeProtocolSemantics` adapter.
+    -   **Risk**: Low. Test-only consumer.
+    -   **Recommendation**: Phase 2. Use to validate the adapter.
+
+#### Phased Migration Plan
+
+1.  **Phase 1: Introduce Adapter (No Behavior Change)**
+    -   Create the `RuntimeProtocolSemantics` adapter.
+    -   Populate it from `CompilerAnalysis` within the response pipeline.
+    -   Pass it alongside the existing `ParsedModelOutput` to downstream stages. No consumers will use it yet.
+
+2.  **Phase 2: Adopt in Read-Only Diagnostics**
+    -   Update non-behavior-changing consumers like logging (`_log_semantic_shadow_disagreements`) and tests (`test_semantic_shadow.py`) to use the new adapter. This provides a safe environment to validate the adapter's data.
+
+3.  **Phase 3: Migrate Output Recovery**
+    -   Refactor `OutputRecoveryRoutingMixin` to consume the `RuntimeProtocolSemantics` adapter for structural checks (e.g., `has_action`, `action_count`) instead of legacy fields or `ResponseSemantics` helpers.
+    -   Policy-based checks (e.g., evidence sufficiency) will still reside in the runtime.
+
+4.  **Phase 4: Migrate Core Logic**
+    -   Refactor `IntentTransitionHandler`, `PlanBoard`, and `MemoryBoard` to use the adapter.
+    -   This will eliminate redundant response parsing within `IntentTransitionHandler`.
+
+5.  **Phase 5: Deprecate Legacy Fields**
+    -   Once all consumers are migrated, the legacy fields on `ParsedModelOutput` and the `ResponseSemantics` class can be deprecated and eventually removed. The legacy parser will become a fallback for unhandled cases only.
+
 ## 8. Compiler Error Code Authority Matrix
 
 This table inventories compiler error codes and their authority status in `ProtocolDecisionBridge`.
