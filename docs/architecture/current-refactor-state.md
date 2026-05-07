@@ -59,6 +59,12 @@ This document is the single source of truth for the current state of the Semanti
   - The design for the `TransitionSemanticValidator` is approved.
   - The validator will centralize and replace the complex followup-handling logic in `IntentTransitionHandler` with a single, testable component that returns a strongly-typed classification.
   - Implementation is authorized for Step 1 (scaffolding) only.
+- **Phase 5 Step 1: TransitionSemanticValidator Scaffolding**
+  - Created `modules/agent/orchestration/transitions/transition_semantic_validator.py` and `tests/test_transition_semantic_validator.py`.
+  - Added `TransitionResultKind` enum, `TransitionValidationResult` dataclass, and `TransitionSemanticValidator` class scaffold.
+  - The `validate` method returns `UNKNOWN` by default.
+  - Tests passed.
+  - No logic was migrated, and no runtime behavior was changed.
 
 ## Known Authority Boundaries
 
@@ -74,9 +80,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Implement Phase 5, Step 1: Scaffolding and Type Definition for `TransitionSemanticValidator`.
-- This step is limited to creating the file, types, and class scaffold with basic tests.
-- No logic migration, consumer migration, or behavior change is authorized.
+- Design and approve Phase 5, Step 2A: Core Structural Logic Migration.
+- This step will cover the design for migrating `NO_FOLLOWUP`, `FOLLOWUP_ACTION`, and `FOLLOWUP_CONFLICT` classification logic.
+- No implementation is authorized until the design for Step 2A is approved.
 
 ## Test Status
 

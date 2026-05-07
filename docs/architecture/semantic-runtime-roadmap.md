@@ -243,20 +243,26 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 5 Step 1: Scaffolding and Type Definition
 
-- **Status**: Not started.
+- **Status**: Done.
 - **Goal**: Create the initial file, types, and class scaffold for the `TransitionSemanticValidator`.
-- **Allowed**:
-    - Create `modules/agent/orchestration/transitions/transition_semantic_validator.py`.
-    - Add `TransitionResultKind` enum, `TransitionValidationResult` dataclass, and `TransitionSemanticValidator` class.
-    - The `validate` method must initially return `kind=UNKNOWN`.
-    - Add basic unit tests for the new types.
-- **Forbidden**:
-    - Migrating any logic from `IntentTransitionHandler`.
-    - Migrating any consumers.
-    - Implementing `get_visible_text` or plaintext followup logic.
-    - Deleting any old helpers.
-    - Any runtime behavior changes.
 - **Done When**: The scaffolding is in place with passing tests, and no logic has been migrated.
+
+---
+
+#### Phase 5 Step 2A: Core Structural Logic Migration (Design)
+
+- **Status**: Not started.
+- **Goal**: Design the migration of core structural classification logic into the validator.
+- **Scope**:
+    - `NO_FOLLOWUP`
+    - `FOLLOWUP_ACTION`
+    - `FOLLOWUP_CONFLICT`
+- **Forbidden**:
+    - Implementation before design approval.
+    - Migrating context-sensitive logic (`TRANSITION_ONLY_VIOLATION`, etc.).
+    - Implementing plaintext followup logic.
+    - Migrating any consumers.
+- **Done When**: The design for Step 2A is approved.
 
 ---
 

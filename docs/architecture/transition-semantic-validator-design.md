@@ -128,11 +128,12 @@ The validator will be implemented by migrating existing logic into the new struc
 
 Implementation of this design will be a separate, future task, broken into safe, incremental steps.
 
-- **Phase 5 Step 1: Scaffolding and Type Definition**
-  - Create `transition_semantic_validator.py` with the `TransitionSemanticValidator` class, `TransitionValidationResult` dataclass, and `TransitionResultKind` enum.
-  - The `validate` method will initially do nothing but return `kind=UNKNOWN`.
-  - Add basic unit tests for the new types.
-  - **No consumer migration.**
+- **Phase 5 Step 1: Scaffolding and Type Definition (Done)**
+  - Created `transition_semantic_validator.py` with the `TransitionSemanticValidator` class, `TransitionValidationResult` dataclass, and `TransitionResultKind` enum.
+  - The `validate` method returns `kind=UNKNOWN`.
+  - Basic unit tests for the types and scaffold passed.
+  - No logic was migrated.
+  - **Next**: Design Step 2A.
 
 - **Phase 5 Step 2A: Core Structural Logic Migration**
   - Migrate the core structural classification logic for `NO_FOLLOWUP`, `FOLLOWUP_ACTION`, and `FOLLOWUP_CONFLICT` from `IntentTransitionHandler`'s private methods into the `validate` method.
