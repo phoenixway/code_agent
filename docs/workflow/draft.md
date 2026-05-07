@@ -32,4 +32,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 28. Phase 6 (Bundle Semantic Validation Pass) design: approved.
 29. Phase 6 Step 1 (scaffolding): done.
 30. Phase 6 Step 2A (error-code logic) implementation: done.
-31. Next: Design and approve Phase 6 Step 2B (shape-driven logic).
+31. Phase 6 Step 2B.1 (INTENT_ACTION_BUNDLE shape) design: approved.
+32. Next: Implement Phase 6 Step 2B.1.

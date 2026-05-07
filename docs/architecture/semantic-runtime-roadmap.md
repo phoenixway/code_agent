@@ -437,7 +437,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 6 Step 2B: Shape-Driven Classification
 
-- **Status**: Design in Review.
+- **Status**: Design Approved for Step 2B.1.
 - **Goal**: Design the implementation of shape-driven classifications in `BundleSemanticValidator`.
 - **Allowed**:
     - Update `docs/architecture/bundle-semantic-validation-design.md` with the detailed design for Step 2B.
@@ -446,7 +446,24 @@ This document outlines the phased plan to migrate the runtime from legacy respon
     - Implementation before design approval.
     - Designing logic that requires `ActionPolicyHandler` or runtime state.
     - Designing logic for `INVALID_MIXED_VISIBLE_TEXT` or any other visible-text shapes.
-- **Done When**: The design for Step 2B is documented and ready for approval.
+- **Done When**: The design for Step 2B is documented and Step 2B.1 is approved for implementation.
+
+---
+
+#### Phase 6 Step 2B.1: INTENT_ACTION_BUNDLE Shape Classification
+
+- **Status**: Not Started.
+- **Goal**: Implement the `INTENT_ACTION_BUNDLE` shape classification in `BundleSemanticValidator`.
+- **Allowed**:
+    - Add logic to `BundleSemanticValidator.validate` to classify `INTENT_ACTION_BUNDLE_CANDIDATE` based on compiler shape.
+    - Add shape normalization logic as needed for this classification.
+    - Update unit tests in `tests/test_bundle_semantic_validator.py`.
+- **Forbidden**:
+    - Implementing any other shape-driven classifications (`READONLY_ACTION_BATCH_CANDIDATE`, `NO_BUNDLE_SHAPE`, etc.).
+    - Migrating any consumers.
+    - Calling `ActionPolicy`.
+    - Any runtime behavior changes.
+- **Done When**: The Step 2B.1 logic is implemented with passing tests, and no consumers are migrated.
 
 ---
 
