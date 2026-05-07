@@ -43,6 +43,13 @@ This document is the single source of truth for the current state of the Semanti
   - Added dedicated unit tests, which passed.
   - `get_visible_text` was not implemented and remains deferred.
   - No consumers were migrated, and no runtime behavior was changed.
+- **Phase 4 (Batch 2): Consumer Migrations**
+  - Migrated `ResponsePipelineStagesMixin` leaked system result check to `is_leaked_system_result`.
+  - Migrated `ResponseGuardPolicy.is_nonproductive_thinking_turn` to `has_substantial_think`.
+  - Tests passed.
+  - No `get_visible_text` implementation.
+  - No other consumers migrated.
+  - Runtime behavior unchanged.
 
 ## Known Authority Boundaries
 
@@ -58,9 +65,11 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Implement the approved "Phase 4 Batch 2" migration.
-- This includes migrating the call sites in `ResponsePipelineStagesMixin` and `ResponseGuardPolicy` to their `semantic_accessors` equivalents.
-- No other migrations are authorized.
+- Review remaining Consumer Inventory and decide whether to:
+  - a) plan another safe accessor-wrapper batch,
+  - b) design the next accessor batch, or
+  - c) stop Phase 4 and move to a later validator/policy phase.
+- No implementation is authorized until a plan is approved.
 
 ## Test Status
 

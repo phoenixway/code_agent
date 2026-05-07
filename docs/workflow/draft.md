@@ -14,4 +14,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 10. Next accessor batch design: approved.
 11. Next accessor batch implementation: done.
 12. Phase 4 Batch 2 migration design: approved.
-13. Next: Implement only the two approved Batch 2 call-site migrations.
+13. Phase 4 Batch 2 implementation: done.
+14. Next: review remaining migration candidates.

@@ -193,7 +193,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ### Phase 4 Batch 2 Implementation
 
-- **Status**: Not started.
+- **Status**: Done.
 - **Goal**: Implement the two approved call-site migrations from the Batch 2 plan.
 - **Allowed Files**:
     - `modules/agent/orchestration/responses/response_pipeline_stages.py`
@@ -207,6 +207,15 @@ This document outlines the phased plan to migrate the runtime from legacy respon
     - The two call sites are migrated to use the accessors.
     - Tests confirm behavior is preserved.
     - All relevant tests pass.
+
+---
+
+### Phase 4 Remaining Migration Review
+
+- **Status**: Not started.
+- **Goal**: Classify remaining inventory rows after Batch 2.
+- **Forbidden**: Implementation before review/approval.
+- **Done When**: The next migration plan or design phase is approved.
 
 ---
 

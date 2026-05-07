@@ -321,11 +321,11 @@ Implementation of these accessors is blocked until a formal API design is docume
 
 ---
 
-## Phase 4 Batch 2 Migration Design (Approved for Implementation)
+## Phase 4 Batch 2 Migration Design (Implementation Complete)
 
-- **Status**: Reviewed / Approved for implementation.
-- **Approval Scope**: This approval applies *only* to the two call sites listed in this batch (`ResponsePipelineStagesMixin` and `ResponseGuardPolicy`). It does not authorize any other consumer migration.
-- **Implementation**: Not started.
+- **Status**: Implementation Complete.
+- **Approval Scope**: This approval applied *only* to the two call sites listed in this batch (`ResponsePipelineStagesMixin` and `ResponseGuardPolicy`). It did not authorize any other consumer migration.
+- **Implementation**: Done. The two approved call sites were migrated. `get_visible_text` was not implemented, no other consumers were migrated, and runtime behavior was unchanged.
 
 ### 1. Candidate: `ResponsePipelineStagesMixin` (leaked system result check)
 
