@@ -27,4 +27,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 23. Phase 5 Step 3 (consumer migration) implementation: done for first narrow slice.
 24. Phase 5 review (next slice): done. Approved `NO_FOLLOWUP` and `FOLLOWUP_ACTION` for Step 4.
 25. Phase 5 Step 4 (second consumer migration) design: approved.
-26. Next: Implement Phase 5 Step 4.
+26. Phase 5 Step 4 (second consumer migration) implementation: done.
+27. Next: Phase 5 boundary review.

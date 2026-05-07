@@ -290,7 +290,10 @@ This logic ensures that the validator provides a more specific classification wh
   - The review of remaining fallback paths is complete.
   - `NO_FOLLOWUP` and `FOLLOWUP_ACTION` are approved as safe candidates for a second migration slice.
   - `FOLLOWUP_PLAINTEXT` is deferred. `UNKNOWN` will remain a fallback.
-  - **Next**: Design Step 4 (Second Consumer Migration).
+- **Phase 5 Step 4: Second Consumer Migration (Done)**
+  - Migrated `NO_FOLLOWUP` and `FOLLOWUP_ACTION` paths to use the validator.
+  - Fallback for `FOLLOWUP_PLAINTEXT` and `UNKNOWN` preserved.
+  - **Next**: Phase 5 boundary review.
 
 ---
 
@@ -306,15 +309,14 @@ This logic ensures that the validator provides a more specific classification wh
 
 ---
 
-### Phase 5 Step 4 Design: Second Consumer Migration
+### Phase 5 Step 4: Second Consumer Migration (Implementation)
 
-- **Status**: Approved for Implementation
-- **Scope**: Design approved. Implementation is authorized for the second narrow slice only.
-- **Implementation Scope**:
-    - Implementation may migrate **only** the `NO_FOLLOWUP` and `FOLLOWUP_ACTION` classifications in `IntentTransitionRoutingMixin`.
-    - All other result kinds (`FOLLOWUP_PLAINTEXT`, `UNKNOWN`) **must** remain on the legacy fallback path.
-    - Existing helpers must not be changed.
-    - No consumer migration outside the approved slice is authorized.
+- **Status**: Done.
+- **Scope**: The second narrow slice of consumer migration in `IntentTransitionRoutingMixin` is complete.
+- **Implementation Details**:
+    - The `handle_model_step` method in `IntentTransitionRoutingMixin` was updated to route `NO_FOLLOWUP` and `FOLLOWUP_ACTION` via the validator.
+    - A fallback to the legacy `evaluate_transition` path was preserved for `FOLLOWUP_PLAINTEXT` and `UNKNOWN`.
+    - All tests passed, and runtime behavior is unchanged.
 
 #### 1. Goal
 

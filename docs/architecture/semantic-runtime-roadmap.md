@@ -348,7 +348,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 5 Step 4: Second Consumer Migration (Implementation)
 
-- **Status**: Not started.
+- **Status**: Done.
 - **Goal**: Implement the second narrow consumer migration slice in `IntentTransitionRoutingMixin`.
 - **Allowed**:
     - Update `IntentTransitionRoutingMixin` to use the validator for `NO_FOLLOWUP` and `FOLLOWUP_ACTION`.
@@ -359,7 +359,16 @@ This document outlines the phased plan to migrate the runtime from legacy respon
     - Deleting or modifying old helpers.
     - Changing prompts, reason strings, or source markers.
     - Any runtime behavior changes.
-- **Done When**: The second slice is migrated with a fallback for `FOLLOWUP_PLAINTEXT` and `UNKNOWN`, and tests pass.
+- **Done When**: The second slice (`NO_FOLLOWUP`, `FOLLOWUP_ACTION`) was migrated. A fallback for `FOLLOWUP_PLAINTEXT` and `UNKNOWN` was preserved. All tests passed, and runtime behavior is unchanged.
+
+---
+
+#### Phase 5 Boundary Review
+
+- **Status**: Not started.
+- **Goal**: Decide whether to conclude Phase 5 before tackling `FOLLOWUP_PLAINTEXT` and its `get_visible_text` dependency, or to proceed with a dedicated design phase for `get_visible_text`.
+- **Forbidden**: Implementation before a new design or review conclusion is approved.
+- **Done When**: A decision is made and documented.
 
 ---
 

@@ -102,6 +102,10 @@ This document is the single source of truth for the current state of the Semanti
   - The design for migrating the second narrow slice of `IntentTransitionRoutingMixin` (`NO_FOLLOWUP`, `FOLLOWUP_ACTION`) to use the `TransitionSemanticValidator` is approved.
   - The design uses a fallback to legacy logic for `FOLLOWUP_PLAINTEXT` and `UNKNOWN`.
   - Implementation is authorized for the second narrow slice only.
+- **Phase 5 Step 4: Second Consumer Migration (Implementation)**
+  - Migrated the second narrow slice of `IntentTransitionRoutingMixin` (`NO_FOLLOWUP`, `FOLLOWUP_ACTION`) to use the `TransitionSemanticValidator`.
+  - Fallback to legacy logic preserved for `FOLLOWUP_PLAINTEXT` and `UNKNOWN`.
+  - Tests passed, and runtime behavior is unchanged.
 
 ## Known Authority Boundaries
 
@@ -117,9 +121,8 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Implement Phase 5 Step 4: Second Consumer Migration Slice.
-- This step is limited to migrating the `NO_FOLLOWUP` and `FOLLOWUP_ACTION` classifications in `IntentTransitionRoutingMixin`.
-- No broad migration or behavior change is authorized.
+- Perform Phase 5 boundary review.
+- Decide whether to conclude Phase 5 before tackling `FOLLOWUP_PLAINTEXT` and the `get_visible_text` dependency, or to proceed with a dedicated design for `get_visible_text`.
 
 ## Test Status
 

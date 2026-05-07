@@ -30,8 +30,8 @@ This table documents every major consumer of response semantics, their current d
 | **`ResponsePipelineStagesMixin._build_execution_plan`** | `compiler_ir`, runtime state | Execution commit | `accessors.get_action_ops`, `accessors.get_pre_action_text` | High | No |
 | **`ResponseGuardPolicy.is_nonproductive_thinking_turn`** | `ResponseSemantics` helpers | Runtime policy (loop detection) | `accessors.has_substantial_think`, `accessors.has_any_action_proposal` | Medium | Migrated |
 | **`ActionPolicyHandler` bundle/command helpers** | `compiler_ir`, legacy `segments` | Dispatch authority, runtime policy | `accessors.get_action_ops` | High | No |
-| **`TransitionFollowupSemantics`** | `ProtocolCompiler.analyze()` on fragments | Intent transition/followup policy | `accessors.get_followup_surface` | High | Phase 5 In Progress (Slice 1 Done) |
-| **`IntentTransitionHandler` followup helpers** | `TransitionFollowupSemantics`, regex, `TransitionSemanticValidator` | Intent transition/followup policy | `accessors.get_followup_surface` | High | Phase 5 In Progress (Slice 1 Done) |
+| **`TransitionFollowupSemantics`** | `ProtocolCompiler.analyze()` on fragments | Intent transition/followup policy | `accessors.get_followup_surface` | High | Phase 5 In Progress (Slices 1-2 Done) |
+| **`IntentTransitionHandler` followup helpers** | `TransitionFollowupSemantics`, regex, `TransitionSemanticValidator` | Intent transition/followup policy | `accessors.get_followup_surface` | High | Phase 5 In Progress (Slices 1-2 Done) |
 | **`IntentTransitionHandler` (plaintext completion)** | `sanitize_visible_text_for_user` (regex) | Final-answer/plaintext guard | `accessors.get_visible_text` | Medium | Design Next |
 | **`PlanBoardStageHandler`** | Regex on raw response | Memory/subgoal/checkpoint policy | `accessors.has_action`, `accessors.has_subgoal_tags` | Medium | Phase 5+ |
 | **`MemoryBoardStageHandler`** | Regex on raw response | Memory/subgoal/checkpoint policy | `accessors.has_action`, `accessors.has_memory_tags` | Medium | Phase 5+ |
