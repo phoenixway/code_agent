@@ -25,12 +25,14 @@ This table documents every major consumer of response semantics, their current d
 | **`ResponseSemantics.has_any_action_proposal`** | `parsed_output.has_action_segment`, `parsed_action_count`, `compiler_ir.action_ops` | Compatibility action proposal, recovery evidence | `accessors.has_any_action_proposal` | High | No |
 | **`ResponsePipelinePrevalidationMixin._apply_compiler_diagnosis`** | `ProtocolCompiler.analyze()`, `compiler_analysis` fields | Compiler metadata, populates `RuntimeProtocolSemantics` | `accessors.analyze_and_populate_semantics` | High | No |
 | **`OutputRecoveryRoutingMixin.decide`** | `parsed_output.invalid_kind`, `RuntimeProtocolSemantics`, `ResponseSemantics` | Recovery policy, routing | `accessors.get_recovery_strategy`, `accessors.is_unproven_modify_claim` | High | No |
+| **`protocol_decision_bridge.resolve_protocol_authority`** | `parsed_output` (compiler fields, `invalid_kind`), `parsed_action_count` | Dispatch authority arbitration (compiler vs. legacy) | N/A authority bridge / later dedicated authority resolver | High | No |
 | **`ModelOutputRecoveryHandler._has_any_action_proposal`** | `ResponseSemantics.has_any_action_proposal` | Compatibility action proposal | `accessors.has_any_action_proposal` | Medium | Yes |
 | **`ResponsePipelineStagesMixin._build_execution_plan`** | `compiler_ir`, runtime state | Execution commit | `accessors.get_action_ops`, `accessors.get_pre_action_text` | High | No |
 | **`ResponseGuardPolicy.is_nonproductive_thinking_turn`** | `ResponseSemantics` helpers | Runtime policy (loop detection) | `accessors.has_substantial_think`, `accessors.has_any_action_proposal` | Medium | Yes |
 | **`ActionPolicyHandler` bundle/command helpers** | `compiler_ir`, legacy `segments` | Dispatch authority, runtime policy | `accessors.get_action_ops` | High | No |
 | **`TransitionFollowupSemantics`** | `ProtocolCompiler.analyze()` on fragments | Intent transition/followup policy | `accessors.get_followup_surface` | High | No |
 | **`IntentTransitionHandler` followup helpers** | `TransitionFollowupSemantics`, regex | Intent transition/followup policy | `accessors.get_followup_surface` | High | No |
+| **`IntentTransitionHandler` (plaintext completion)** | `sanitize_visible_text_for_user` (regex) | Final-answer/plaintext guard | `accessors.get_visible_text` | Medium | No/Later |
 | **`PlanBoardStageHandler`** | Regex on raw response | Memory/subgoal/checkpoint policy | `accessors.has_action`, `accessors.has_subgoal_tags` | Medium | No/Later |
 | **`MemoryBoardStageHandler`** | Regex on raw response | Memory/subgoal/checkpoint policy | `accessors.has_action`, `accessors.has_memory_tags` | Medium | No/Later |
 | **`DispatchPipeline._build_execution_commit`** | `iteration.execution_plan` | Execution commit | N/A (already uses plan) | N/A | N/A |
@@ -39,10 +41,14 @@ This table documents every major consumer of response semantics, their current d
 | **`output_recovery_routing._compiler_strategy_decision`** | `output_recovery_compiler_metadata` | Compiler metadata, recovery routing | `accessors.get_recovery_strategy` | High | No |
 | **`runtime_protocol_semantics.output_recovery_compiler_metadata`** | `RuntimeProtocolSemantics` or `parsed_output` | Compiler metadata | `accessors.get_compiler_metadata` | Low | Yes |
 | **`ActionPolicyHandler._formal_intent_required_for_multi_write_flow`** | `compiler_ir`, `action_segments`, runtime state | Runtime policy (intent requirement) | `accessors.get_action_ops` | High | No |
-| **`ResponsePipelinePrevalidationMixin._reject_invalid_atomic_bundle_before_transition`** | `compiler_error_code`, `invalid_kind`, `compiler_ir`, `segments`, `ActionPolicyHandler.validate_atomic_bundle_action` | Atomic bundle validation / dispatch authority boundary | `accessors.is_valid_atomic_bundle` or later dedicated bundle validator | High | No |
+| **`ResponsePipelinePrevalidationMixin._reject_compiler_invalid_atomic_bundle_before_transition`** | `compiler_error_code`, `invalid_kind` from `parsed_output` | Atomic bundle validation / dispatch authority boundary (compiler path) | N/A / later dedicated bundle validator | High | No |
+| **`ResponsePipelinePrevalidationMixin._reject_invalid_atomic_bundle_before_transition`** | `compiler_error_code`, `invalid_kind`, `compiler_ir`, `segments`, `ActionPolicyHandler.validate_atomic_bundle_action` | Atomic bundle validation / dispatch authority boundary | N/A / later dedicated bundle validator | High | No |
 | **`ResponsePipelinePrevalidationMixin._reject_truncated_terminal_completion_before_transition`** | `step.intent_payload`, `terminal_plaintext_completion_status(raw_response)` | Final-answer/plaintext guard | `accessors.is_valid_terminal_answer` | Medium | No |
+| **`ResponsePipelineStagesMixin` (leaked system result check)** | `ResponseSemantics.looks_like_leaked_system_result` | Final-answer/plaintext guard | `accessors.is_leaked_system_result` | Medium | No |
 | **`ResponsePipelineStagesMixin._log_semantic_shadow_disagreements`** | `compiler_analysis`, `ResponseSemantics` | Diagnostic-only semantic shadow logging | N/A (diagnostic) | do-not-migrate-yet | No |
+| **`output_recovery_routing.output_recovery_structural_parity`** | `RuntimeProtocolSemantics`, `parsed_output` | Diagnostic-only structural parity check | N/A (diagnostic) | do-not-migrate-yet | No |
 | **`search_quality.classify_search_action_quality`** | `action_payload` dict | Diagnostic-only | N/A (diagnostic) | do-not-migrate-yet | No |
+| **`DispatchOutcomeHandler._extract_visible_text`** | `extract_visible_text_for_user` (regex) | Final-answer/plaintext guard | `accessors.get_visible_text` | Medium | No/Later |
 | **`DispatchOutcomeHandler._strip_leaked_system_results_from_ui_text`** | Regex on raw response | Final-answer/plaintext guard | `accessors.get_visible_text` | Medium | No/Later |
 | **`history.py`** | Various | History management | N/A | do-not-migrate-yet | No |
 
