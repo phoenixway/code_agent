@@ -3145,28 +3145,33 @@ class IntentTransitionHandlerTests(unittest.IsolatedAsyncioTestCase):
 
     @patch("modules.agent.orchestration.transitions.intent_transition_routing.TransitionSemanticValidator")
     @patch("modules.agent.orchestration.transitions.intent_transitions.TransitionFollowupSemantics.evaluate_transition")
-    async def test_handle_model_step_falls_back_to_legacy_for_no_followup(self, mock_evaluate, MockValidator):
-        """Tests that NO_FOLLOWUP from the validator falls back to the legacy path."""
+    async def test_handle_model_step_routes_no_followup_via_validator(self, mock_evaluate, MockValidator):
+        """Tests that NO_FOLLOWUP is routed via the new validator path."""
         mock_validator_instance = MockValidator.return_value
         mock_validator_instance.validate.return_value = TransitionValidationResult(kind=TransitionResultKind.NO_FOLLOWUP)
-        mock_evaluate.return_value = SimpleNamespace(kind="no_followup")
+        self.state.apply_intent_contract.return_value = (True, "intent_activated")
+        self.state.active_intent = SimpleNamespace(goal="Test Goal")
 
-        await self.handler.handle_model_step(
+        decision = await self.handler.handle_model_step(
             intent_payload={"goal": "Test"},
             intent_error=None,
             response_text="",
             state_machine=None,
         )
 
-        mock_evaluate.assert_called_once()
+        mock_evaluate.assert_not_called()
+        self.assertTrue(decision.handled)
+        self.assertEqual("intent_accepted_without_followup", decision.reason)
+        self.assertIn("Test Goal", decision.next_query)
+        self.state.note_intent_only_response.assert_called_once()
 
     @patch("modules.agent.orchestration.transitions.intent_transition_routing.TransitionSemanticValidator")
     @patch("modules.agent.orchestration.transitions.intent_transitions.TransitionFollowupSemantics.evaluate_transition")
-    async def test_handle_model_step_falls_back_to_legacy_for_followup_action(self, mock_evaluate, MockValidator):
-        """Tests that FOLLOWUP_ACTION from the validator falls back to the legacy path."""
+    async def test_handle_model_step_routes_followup_action_via_validator(self, mock_evaluate, MockValidator):
+        """Tests that FOLLOWUP_ACTION is routed via the new validator path."""
         mock_validator_instance = MockValidator.return_value
         mock_validator_instance.validate.return_value = TransitionValidationResult(kind=TransitionResultKind.FOLLOWUP_ACTION)
-        mock_evaluate.return_value = SimpleNamespace(kind="intent_applied_with_followup_action")
+        self.state.apply_intent_contract.return_value = (True, "intent_activated")
 
         decision = await self.handler.handle_model_step(
             intent_payload={"goal": "Test"},
@@ -3175,15 +3180,15 @@ class IntentTransitionHandlerTests(unittest.IsolatedAsyncioTestCase):
             state_machine=None,
         )
 
-        mock_evaluate.assert_called_once()
-        self.assertFalse(decision.handled)  # Pass-through is the legacy outcome
+        mock_evaluate.assert_not_called()
+        self.assertFalse(decision.handled)  # Pass-through
 
     @patch("modules.agent.orchestration.transitions.intent_transition_routing.TransitionSemanticValidator")
     @patch("modules.agent.orchestration.transitions.intent_transitions.TransitionFollowupSemantics.evaluate_transition")
     async def test_handle_model_step_falls_back_to_legacy_for_plaintext(self, mock_evaluate, MockValidator):
-        """Tests that FOLLOWUP_PLAINTEXT from the validator falls back to the legacy path."""
+        """Tests that plaintext (classified as UNKNOWN) falls back to the legacy path."""
         mock_validator_instance = MockValidator.return_value
-        mock_validator_instance.validate.return_value = TransitionValidationResult(kind=TransitionResultKind.FOLLOWUP_PLAINTEXT)
+        mock_validator_instance.validate.return_value = TransitionValidationResult(kind=TransitionResultKind.UNKNOWN)
         mock_evaluate.return_value = SimpleNamespace(kind="intent_reuse_applied_with_inline_plaintext_answer")
 
         decision = await self.handler.handle_model_step(
@@ -3195,6 +3200,23 @@ class IntentTransitionHandlerTests(unittest.IsolatedAsyncioTestCase):
 
         mock_evaluate.assert_called_once()
         self.assertFalse(decision.handled)  # Pass-through is the legacy outcome
+
+    @patch("modules.agent.orchestration.transitions.intent_transition_routing.TransitionSemanticValidator")
+    @patch("modules.agent.orchestration.transitions.intent_transitions.TransitionFollowupSemantics.evaluate_transition")
+    async def test_handle_model_step_falls_back_to_legacy_for_unknown(self, mock_evaluate, MockValidator):
+        """Tests that UNKNOWN from the validator falls back to the legacy path."""
+        mock_validator_instance = MockValidator.return_value
+        mock_validator_instance.validate.return_value = TransitionValidationResult(kind=TransitionResultKind.UNKNOWN)
+        mock_evaluate.return_value = SimpleNamespace(kind="some_legacy_kind")
+
+        await self.handler.handle_model_step(
+            intent_payload={"goal": "Test"},
+            intent_error=None,
+            response_text="some weird text",
+            state_machine=None,
+        )
+
+        mock_evaluate.assert_called_once()
 
     async def test_suspect_intent_relabel_repeat_forces_keep_current_contract(self):
         ui = SimpleNamespace(
