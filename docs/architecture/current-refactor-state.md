@@ -120,10 +120,12 @@ This document is the single source of truth for the current state of the Semanti
   - The `validate` method returns `UNKNOWN` by default.
   - Tests passed.
   - No classification logic was implemented, and no runtime behavior was changed.
-- **Phase 6 Step 2A: Compiler-Only Logic (Design)**
-  - The design for the first slice of compiler-driven error classifications in `BundleSemanticValidator` is approved.
-  - Approved classifications: `INVALID_ACTION_ARRAY`, `INVALID_MULTIPLE_ACTIONS`, `INVALID_FILE_CONTENT_PAIRING`.
-  - Implementation is authorized for Step 2A only. Shape-driven logic and consumer migration remain deferred.
+- **Phase 6 Step 2A: Compiler-Only Logic (Implementation)**
+  - Implemented the first slice of compiler-driven error classifications (`INVALID_ACTION_ARRAY`, `INVALID_MULTIPLE_ACTIONS`, `INVALID_FILE_CONTENT_PAIRING`) inside `BundleSemanticValidator`.
+  - Added unit tests, which passed.
+  - No consumers were migrated, and no old helpers were modified.
+  - Shape-driven classification was not implemented.
+  - Runtime behavior is unchanged.
 
 ## Known Authority Boundaries
 
@@ -139,7 +141,7 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Implement Phase 6 Step 2A (`BundleSemanticValidator` error-code logic).
+- Design and approve Phase 6 Step 2B (`BundleSemanticValidator` shape-driven logic).
 
 ## Test Status
 

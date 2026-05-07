@@ -418,7 +418,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 6 Step 2A: Error-Code-Driven Classification
 
-- **Status**: Not Started.
+- **Status**: Done.
 - **Goal**: Implement the approved error-code-driven classifications in `BundleSemanticValidator`.
 - **Allowed**:
     - Add logic to `BundleSemanticValidator.validate` to classify `INVALID_ACTION_ARRAY`, `INVALID_MULTIPLE_ACTIONS`, and `INVALID_FILE_CONTENT_PAIRING` based on `compiler_error_code` and `invalid_kind`.
@@ -432,6 +432,21 @@ This document outlines the phased plan to migrate the runtime from legacy respon
     - Implementing `get_visible_text` or `INVALID_MIXED_VISIBLE_TEXT` logic.
     - Any runtime behavior changes.
 - **Done When**: The Step 2A logic is implemented with passing tests, and no consumers are migrated.
+
+---
+
+#### Phase 6 Step 2B: Shape-Driven Classification
+
+- **Status**: Design in Review.
+- **Goal**: Design the implementation of shape-driven classifications in `BundleSemanticValidator`.
+- **Allowed**:
+    - Update `docs/architecture/bundle-semantic-validation-design.md` with the detailed design for Step 2B.
+    - The design should cover classification logic for `INTENT_ACTION_BUNDLE_CANDIDATE`, `READONLY_ACTION_BATCH_CANDIDATE`, and `NO_BUNDLE_SHAPE` based on `compiler_ir.shape`.
+- **Forbidden**:
+    - Implementation before design approval.
+    - Designing logic that requires `ActionPolicyHandler` or runtime state.
+    - Designing logic for `INVALID_MIXED_VISIBLE_TEXT` or any other visible-text shapes.
+- **Done When**: The design for Step 2B is documented and ready for approval.
 
 ---
 
