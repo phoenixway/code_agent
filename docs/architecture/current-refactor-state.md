@@ -5,7 +5,7 @@ This document is the single source of truth for the current state of the Semanti
 ## Current Phase
 
 - **Phase 2: Consumer Inventory**
-- **Status**: In Progress. This task is to create a detailed inventory of all locations that consume response semantics, documenting their current sources, semantic meaning, and migration risk.
+- **Status**: In Progress / under review.
 
 ## Completed Governance
 

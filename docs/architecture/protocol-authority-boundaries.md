@@ -39,6 +39,9 @@ This table documents every major consumer of response semantics, their current d
 | **`output_recovery_routing._compiler_strategy_decision`** | `output_recovery_compiler_metadata` | Compiler metadata, recovery routing | `accessors.get_recovery_strategy` | High | No |
 | **`runtime_protocol_semantics.output_recovery_compiler_metadata`** | `RuntimeProtocolSemantics` or `parsed_output` | Compiler metadata | `accessors.get_compiler_metadata` | Low | Yes |
 | **`ActionPolicyHandler._formal_intent_required_for_multi_write_flow`** | `compiler_ir`, `action_segments`, runtime state | Runtime policy (intent requirement) | `accessors.get_action_ops` | High | No |
+| **`ResponsePipelinePrevalidationMixin._reject_invalid_atomic_bundle_before_transition`** | `compiler_error_code`, `invalid_kind`, `compiler_ir`, `segments`, `ActionPolicyHandler.validate_atomic_bundle_action` | Atomic bundle validation / dispatch authority boundary | `accessors.is_valid_atomic_bundle` or later dedicated bundle validator | High | No |
+| **`ResponsePipelinePrevalidationMixin._reject_truncated_terminal_completion_before_transition`** | `step.intent_payload`, `terminal_plaintext_completion_status(raw_response)` | Final-answer/plaintext guard | `accessors.is_valid_terminal_answer` | Medium | No |
+| **`ResponsePipelineStagesMixin._log_semantic_shadow_disagreements`** | `compiler_analysis`, `ResponseSemantics` | Diagnostic-only semantic shadow logging | N/A (diagnostic) | do-not-migrate-yet | No |
 | **`search_quality.classify_search_action_quality`** | `action_payload` dict | Diagnostic-only | N/A (diagnostic) | do-not-migrate-yet | No |
 | **`DispatchOutcomeHandler._strip_leaked_system_results_from_ui_text`** | Regex on raw response | Final-answer/plaintext guard | `accessors.get_visible_text` | Medium | No/Later |
 | **`history.py`** | Various | History management | N/A | do-not-migrate-yet | No |
