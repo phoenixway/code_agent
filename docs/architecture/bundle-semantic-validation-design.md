@@ -1,8 +1,8 @@
 # Phase 6 Design: Bundle Semantic Validation Pass
 
-- **Status**: Approved
-- **Scope**: Design approved. Implementation is authorized for Step 1 (scaffolding) only.
-- **Implementation Scope**: The approved implementation scope for this design is **Step 1 (Scaffolding and Type Definition) only**. Steps 2, 3, 4, and beyond require separate design review and approval. The `INVALID_MIXED_VISIBLE_TEXT` classification remains deferred.
+- **Status**: Design in Review
+- **Scope**: Design for Step 2 (Compiler-Only Logic) only. Implementation is not authorized.
+- **Implementation Scope**: The approved implementation scope for this design is **Step 1 (Scaffolding and Type Definition) only**. Step 2 implementation requires separate approval of this design.
 
 ## 1. Purpose and Guiding Principles
 
@@ -71,7 +71,9 @@ class BundleResultKind(str, Enum):
     NO_BUNDLE_SHAPE = "no_bundle_shape"
     # A structurally valid atomic intent-action bundle candidate
     INTENT_ACTION_BUNDLE_CANDIDATE = "intent_action_bundle_candidate"
-    # A structurally valid batch of multiple read-only actions candidate
+    # A response shape that is a candidate for a batch of multiple read-only actions.
+    # This is a structural classification only. ActionPolicy remains the authority
+    # on whether the actions are truly safe to dispatch as a batch.
     READONLY_ACTION_BATCH_CANDIDATE = "readonly_action_batch_candidate"
     # Multiple actions that are not a valid read-only batch
     INVALID_MULTIPLE_ACTIONS = "invalid_multiple_actions"
@@ -79,7 +81,9 @@ class BundleResultKind(str, Enum):
     INVALID_ACTION_ARRAY = "invalid_action_array"
     # <file_content> is missing or paired with the wrong action
     INVALID_FILE_CONTENT_PAIRING = "invalid_file_content_pairing"
-    # A `complete` intent is bundled with an action
+    # A `complete` intent is bundled with an action.
+    # DEFERRED: This classification touches intent completion policy and is
+    # deferred from Step 2.
     INVALID_INTENT_COMPLETE_WITH_ACTION = "invalid_intent_complete_with_action"
     # Visible text is mixed with control protocol tags (DEFERRED - placeholder only)
     # This classification must not be implemented in Phase 6 without a separate
@@ -142,23 +146,24 @@ The following classifications are in scope for Step 2. They map directly to exis
 | `_reject_compiler_invalid_atomic_bundle_before_transition` | `compiler_error_code` = `E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION`, `invalid_kind` = `action_payload_array` | `INVALID_ACTION_ARRAY` | reason: "Atomic intent/action bundle requires exactly one <action> block with one JSON object. Do not return an action array." |
 | `_reject_compiler_invalid_atomic_bundle_before_transition` | `compiler_error_code` = `E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION`, `invalid_kind` = `multiple_actions` | `INVALID_MULTIPLE_ACTIONS` | reason: "Atomic intent/action bundle requires exactly one <action> block. Do not return multiple <action> blocks." |
 | `_reject_compiler_invalid_atomic_bundle_before_transition` | `compiler_error_code` = `E_FILE_CONTENT_REQUIRES_ACTION` or `E_FILE_CONTENT_ACTION_MISMATCH` | `INVALID_FILE_CONTENT_PAIRING` | reason: "write_file_block requires a complete <file_content>...</file_content> block immediately after </action>." |
-| `ProtocolCompiler._classify` | `compiler_error_code` = `E_INTENT_COMPLETE_WITH_ACTION` | `INVALID_INTENT_COMPLETE_WITH_ACTION` | `invalid_kind` = `intent_complete_with_action_not_allowed` |
 | `ProtocolCompiler._classify` | `compiler_ir.shape` = `INTENT_ACTION_BUNDLE` (no errors) | `INTENT_ACTION_BUNDLE_CANDIDATE` | This is a structural candidate, not a policy approval. |
-| `ProtocolCompiler._classify` | `compiler_ir.shape` = `READ_ONLY_BATCH_CANDIDATE` (no errors) | `READONLY_ACTION_BATCH_CANDIDATE` | This is a structural candidate. `ActionPolicy` still owns the final decision on whether the batch is safe to dispatch. |
-| `ProtocolCompiler._classify` | `compiler_ir.shape` is not a bundle shape (e.g., `PLAINTEXT_ONLY`, `INTENT_ONLY`) | `NO_BUNDLE_SHAPE` | Not a bundle. |
+| `ProtocolCompiler._classify` | `compiler_ir.shape` = `READ_ONLY_BATCH_CANDIDATE` (no errors) | `READONLY_ACTION_BATCH_CANDIDATE` | This is a structural shape candidate. `ActionPolicy` still owns the final decision on whether the batch is safe to dispatch. |
+| `ProtocolCompiler._classify` | `compiler_ir.shape` is `INTENT_ONLY` or `ACTION_ONLY` | `NO_BUNDLE_SHAPE` | These shapes are not bundles. Shapes with visible text (`PLAINTEXT_ONLY`, etc.) are deferred and must return `UNKNOWN`. |
 
 ### 8.3. Deferred Classifications
 
 The following classifications are **out of scope** for Step 2:
 
+- `INVALID_INTENT_COMPLETE_WITH_ACTION`: This classification is deferred because it touches intent completion policy, which is a separate domain from bundle structure.
 - Any logic requiring `ActionPolicyHandler.validate_atomic_bundle_action`.
 - `INVALID_MIXED_VISIBLE_TEXT` (requires `get_visible_text` design).
 - Any classification requiring runtime state (e.g., active intent contract checks).
+- Any classification of shapes that contain visible text (e.g., `PLAINTEXT_ONLY`, `INTENT_COMPLETE_WITH_TEXT`), which must return `UNKNOWN` until `get_visible_text` is designed.
 
 ### 8.4. Test Strategy for Step 2
 
 - **Unit Tests**: Add tests to `test_bundle_semantic_validator.py` for each classification mapping defined above. Each test will construct a `ParsedModelOutput` with the necessary compiler fields to trigger the specific `BundleResultKind`.
-- **Parity Tests**: Create a new test file for parity checks. These tests will run sample responses through the `ProtocolCompiler` to generate `parsed_output`, then feed it to both the new `BundleSemanticValidator` and a helper that simulates the current logic in `_reject_compiler_invalid_atomic_bundle_before_transition`. The goal is to assert that the new validator's `kind` corresponds to the outcome of the old logic. These tests will be crucial before any consumer migration.
+- **Parity Tests**: Create a new test file for parity checks. These tests will not simulate or re-implement legacy logic. Instead, they will use mapping tables to assert that a given `compiler_error_code` and `invalid_kind` from a `ParsedModelOutput` fixture results in the expected `BundleResultKind`, based on the classification mapping in this design. This proves the validator correctly implements the documented mapping.
 - **Boundary Tests**: Add tests to prove that `ActionPolicyHandler` is not called. This can be done using `unittest.mock.patch`.
 - **Fallback Tests**: Add tests to ensure that `validate` returns `UNKNOWN` when compiler metadata is missing or ambiguous.
 
@@ -166,8 +171,8 @@ The following classifications are **out of scope** for Step 2:
 
 To ensure a safe and incremental implementation, Step 2 should be broken down further:
 
-- **Step 2A: Error-Code-Driven Classification**: Implement the classifications based on `compiler_error_code`: `INVALID_ACTION_ARRAY`, `INVALID_MULTIPLE_ACTIONS`, `INVALID_FILE_CONTENT_PAIRING`, `INVALID_INTENT_COMPLETE_WITH_ACTION`.
-- **Step 2B: Shape-Driven Classification**: Implement the classifications based on `compiler_ir.shape`: `INTENT_ACTION_BUNDLE_CANDIDATE`, `READONLY_ACTION_BATCH_CANDIDATE`, `NO_BUNDLE_SHAPE`.
+- **Step 2A: Error-Code-Driven Classification**: Implement only the classifications based on `compiler_error_code` that map to logic currently in `_reject_compiler_invalid_atomic_bundle_before_transition`. This includes: `INVALID_ACTION_ARRAY`, `INVALID_MULTIPLE_ACTIONS`, and `INVALID_FILE_CONTENT_PAIRING`.
+- **Step 2B: Shape-Driven Classification**: Implement the classifications based on `compiler_ir.shape` for clear bundle or non-bundle shapes: `INTENT_ACTION_BUNDLE_CANDIDATE`, `READONLY_ACTION_BATCH_CANDIDATE`, and `NO_BUNDLE_SHAPE` (for safe shapes like `INTENT_ONLY`).
 - **Step 2C: Parity Testing**: Implement the parity tests described in the test strategy to prove behavioral equivalence before any consumer is migrated.
 
 ## 9. Explicitly Deferred
