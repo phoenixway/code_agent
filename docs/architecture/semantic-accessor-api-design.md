@@ -270,11 +270,17 @@ Implementation of these accessors is blocked until a formal API design is docume
 
 ---
 
-## Next Accessor Batch Design (Proposed)
+## Next Accessor Batch Design (Approved for Implementation)
 
-- **Status**: Design Proposed. Awaiting review and approval for implementation.
-- **Scope**: This design covers two new, low-risk accessors.
-- **Implementation**: Not approved.
+- **Status**: Reviewed / Approved for implementation.
+- **Approval Scope**:
+  - `is_leaked_system_result`
+  - `has_substantial_think`
+- **Approval does not authorize**:
+  - Implementation of `get_visible_text` (remains deferred).
+  - Migration of any consumers to use these new accessors.
+  - Any changes to runtime policy, dispatch authority, or other frozen areas.
+- **Implementation**: Not started.
 
 ### `is_leaked_system_result(text: str) -> bool`
 

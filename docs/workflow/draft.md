@@ -11,4 +11,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 7. Phase 4 Batch 1 plan: approved.
 8. Phase 4 Batch 1 implementation: done.
 9. Fast-lane migrations complete.
-10. Next: Review and approve design for the next accessor batch.
+10. Next accessor batch design: approved.
+11. Next: Implement only `is_leaked_system_result` and `has_substantial_think` with tests.

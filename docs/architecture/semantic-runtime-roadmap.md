@@ -149,7 +149,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ### Next Accessor Batch Design
 
-- **Status**: Not started. Plan proposed.
+- **Status**: Approved.
 - **Goal**: Design the next small, conservative batch of accessors.
 - **Scope**:
     - `is_leaked_system_result`
@@ -157,6 +157,25 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Deferred**: `get_visible_text` requires a separate design.
 - **Forbidden**: Implementation before plan approval.
 - **Done When**: The accessor batch design is reviewed and approved.
+
+---
+
+### Next Accessor Batch Implementation
+
+- **Status**: Not started.
+- **Goal**: Implement the two approved accessors with full test coverage.
+- **Allowed**:
+    - Add `is_leaked_system_result` to `semantic_accessors.py`.
+    - Add `has_substantial_think` to `semantic_accessors.py`.
+    - Add dedicated unit tests for these two accessors.
+- **Forbidden**:
+    - Implementing `get_visible_text`.
+    - Migrating any consumers.
+    - Any changes to runtime behavior, final-answer/sufficiency, stop-decisions, `ActionPolicy`, dispatch, transitions, boards, or `history.py`.
+- **Done When**:
+    - The two accessors are implemented.
+    - Tests confirm their behavior matches the design.
+    - All relevant tests pass.
 
 ---
 
