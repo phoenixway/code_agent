@@ -8,6 +8,7 @@ from ..shared.decision_models import ExecutionPlan
 from ..shared.decision_models import ResponsePipelineOutcome
 from ..shared.trace import compact_compiler_replay
 from .protocol_decision_bridge import compiler_invalid_kind_for_output, resolve_protocol_authority
+from .semantic_accessors import is_leaked_system_result
 
 
 @dataclass
@@ -589,7 +590,7 @@ class ResponsePipelineStagesMixin:
 
         if (
             not self.semantics.has_any_action_proposal(parsed_output, parsed_action_count)
-            and self.semantics.looks_like_leaked_system_result(response)
+            and is_leaked_system_result(response)
         ):
             self.guards.set_reflection_repair_pending(False)
             self.guards.set_nonproductive_thinking_state(False)

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from .semantic_accessors import has_substantial_think
+
 
 class ResponseGuardPolicy:
     def __init__(self, state):
@@ -85,7 +87,7 @@ class ResponseGuardPolicy:
     ) -> bool:
         if intent_transition_handled:
             return False
-        if not semantics.has_substantial_think(raw_response):
+        if not has_substantial_think(raw_response):
             return False
         if semantics.has_any_action_proposal(parsed_output, parsed_action_count):
             return False

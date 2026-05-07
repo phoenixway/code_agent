@@ -1,5 +1,6 @@
 import unittest
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from modules.agent.orchestration.responses.response_guards import ResponseGuardPolicy
 from modules.agent.orchestration.responses.response_semantics import ResponseSemantics
@@ -98,6 +99,25 @@ class ResponseGuardPolicyTests(unittest.TestCase):
                 plaintext_answer_path=False,
             )
         )
+
+
+    @patch("modules.agent.orchestration.responses.response_guards.has_substantial_think")
+    def test_nonproductive_thinking_turn_delegates_to_accessor(self, mock_has_substantial_think):
+        """is_nonproductive_thinking_turn delegates to has_substantial_think accessor."""
+        mock_has_substantial_think.return_value = True
+        parsed = SimpleNamespace(has_action_segment=False)
+
+        # Call the method
+        self.g.is_nonproductive_thinking_turn(
+            self.s,
+            "some response",
+            parsed,
+            0,
+            plaintext_answer_path=False,
+        )
+
+        # Assert that the accessor was called
+        mock_has_substantial_think.assert_called_once_with("some response")
 
 
 if __name__ == "__main__":
