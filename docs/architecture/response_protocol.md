@@ -134,6 +134,19 @@ Before `ACTION_ONLY` can become compiler-authoritative, even for a subset of cas
 
 `compiler_shape == "ACTION_ONLY"` alone is insufficient to grant authority. It must not suppress legacy `invalid_kind`s related to runtime policy, such as missing checkpoints or disallowed actions. Any future authority rule must be extremely narrow, likely combined with other compiler diagnostics.
 
+### Mixed Visible/Control Migration Split
+
+This audit inventories the different cases of mixed visible text and control protocol to guide future migration.
+
+| Case | Example | Compiler | Legacy `invalid_kind` | Bridge Authority | Future Authority | Risk |
+|---|---|---|---|---|---|---|
+| **Simple Pre-Action Text** | `OK<action>...</action>` | `PRE_ACTION_TEXT_AND_ACTION` | `mixed_visible_text_and_control_protocol` | **Compiler (Valid)** | Compiler | Low |
+| **Visible + Think + Action** | `OK<think>...</think><action>...</action>` | `E_MIXED_VISIBLE_TEXT_AND_CONTROL` | `mixed_visible_text_and_control_protocol` | Legacy | Compiler | Medium |
+| **Visible + Checkpoint + Action** | `OK<progress>...</progress><action>...</action>` | `E_MIXED_VISIBLE_TEXT_AND_CONTROL` | `mixed_visible_text_and_control_protocol` | Legacy | Compiler | Medium |
+| **Visible Text After Action** | `<action>...</action>OK` | `E_VISIBLE_TEXT_AFTER_ACTION` | `mixed_visible_text_and_control_protocol` | Legacy | Compiler | Low |
+| **Visible Text After Intent** | `<intent>...</intent>OK` | `E_MIXED_VISIBLE_TEXT_AND_CONTROL` | `mixed_intent_transition_and_visible_answer` | Legacy | Compiler | Low |
+| **Literal Tag in Code** | `<think>Use \`<action>\`</think><action>...</action>` | `ACTION_ONLY` | `null` or `action_inside_think` | Compiler (by shape) | Compiler | Low |
+
 ## 8. Compiler Error Code Authority Matrix
 
 This table inventories compiler error codes and their authority status in `ProtocolDecisionBridge`.

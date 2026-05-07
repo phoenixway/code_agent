@@ -99,6 +99,45 @@ class ProtocolDecisionBridgeTests(unittest.TestCase):
         self.assertFalse(decision.suppress_legacy_invalid_kind)
         self.assertFalse(decision.dispatch_allowed)
 
+    def test_action_payload_not_object_is_compiler_authoritative_invalid(self):
+        """
+        Compiler is authoritative for non-object action payloads.
+        """
+        parsed_output = DummyParsedOutput(
+            compiler_error_code="E_ACTION_PAYLOAD_NOT_OBJECT",
+        )
+        decision = resolve_protocol_authority(parsed_output, parsed_action_count=1)
+        self.assertEqual("compiler", decision.source)
+        self.assertEqual("compiler_action_payload_diagnostic", decision.reason)
+        self.assertFalse(decision.suppress_legacy_invalid_kind)
+        self.assertFalse(decision.dispatch_allowed)
+
+    def test_action_payload_xml_is_compiler_authoritative_invalid(self):
+        """
+        Compiler is authoritative for XML-like action payloads.
+        """
+        parsed_output = DummyParsedOutput(
+            compiler_error_code="E_ACTION_PAYLOAD_XML_FIELDS",
+        )
+        decision = resolve_protocol_authority(parsed_output, parsed_action_count=1)
+        self.assertEqual("compiler", decision.source)
+        self.assertEqual("compiler_action_payload_diagnostic", decision.reason)
+        self.assertFalse(decision.suppress_legacy_invalid_kind)
+        self.assertFalse(decision.dispatch_allowed)
+
+    def test_action_payload_tool_code_is_compiler_authoritative_invalid(self):
+        """
+        Compiler is authoritative for tool_code action payloads.
+        """
+        parsed_output = DummyParsedOutput(
+            compiler_error_code="E_ACTION_PAYLOAD_TOOL_CODE",
+        )
+        decision = resolve_protocol_authority(parsed_output, parsed_action_count=1)
+        self.assertEqual("compiler", decision.source)
+        self.assertEqual("compiler_action_payload_diagnostic", decision.reason)
+        self.assertFalse(decision.suppress_legacy_invalid_kind)
+        self.assertFalse(decision.dispatch_allowed)
+
     def test_action_inside_think_is_compiler_authoritative_invalid(self):
         """
         Compiler is authoritative for <action> inside <think>.
@@ -151,6 +190,17 @@ class ProtocolDecisionBridgeTests(unittest.TestCase):
         self.assertFalse(decision.suppress_legacy_invalid_kind)
         self.assertFalse(decision.dispatch_allowed)
 
+    def test_visible_text_after_action_is_legacy_authoritative(self):
+        """
+        E_VISIBLE_TEXT_AFTER_ACTION is not yet compiler-authoritative.
+        """
+        parsed_output = DummyParsedOutput(
+            compiler_error_code="E_VISIBLE_TEXT_AFTER_ACTION",
+        )
+        decision = resolve_protocol_authority(parsed_output, parsed_action_count=1)
+        self.assertEqual("legacy", decision.source)
+        self.assertEqual("legacy_default", decision.reason)
+
     def test_unknown_compiler_data_is_legacy_default(self):
         """
         If compiler provides no specific shape or error, legacy is default.
@@ -170,6 +220,19 @@ class ProtocolDecisionBridgeTests(unittest.TestCase):
         parsed_output = DummyParsedOutput(
             compiler_shape="ACTION_ONLY",
             compiler_error_code="E_FILE_CONTENT_REQUIRES_ACTION",
+        )
+        decision = resolve_protocol_authority(parsed_output, parsed_action_count=1)
+        self.assertEqual("compiler", decision.source)
+        self.assertEqual("compiler_file_content_diagnostic", decision.reason)
+        self.assertFalse(decision.suppress_legacy_invalid_kind)
+        self.assertFalse(decision.dispatch_allowed)
+
+    def test_unclosed_file_content_is_compiler_authoritative_invalid(self):
+        """
+        Compiler is authoritative for unclosed file_content.
+        """
+        parsed_output = DummyParsedOutput(
+            compiler_error_code="E_FILE_CONTENT_UNCLOSED",
         )
         decision = resolve_protocol_authority(parsed_output, parsed_action_count=1)
         self.assertEqual("compiler", decision.source)
