@@ -25,6 +25,13 @@ class LegacyPermissiveIntentResponseParser:
         lower_response = response_str.lower()
         has_action = "<action" in lower_response
 
+        if "unclosed_think_with_legacy_action" in lower_response:
+            return DummyParsedOutput(
+                response=response_str,
+                has_action_segment=True,
+                invalid_kind="",
+            )
+
         if "i will now read the file" in lower_response and has_action:
             return DummyParsedOutput(
                 response=response_str,
@@ -390,3 +397,43 @@ async def test_action_only_with_legacy_invalid_kind_is_recovered():
     assert outcome.reason == "missing_memory_update_done"
     assert recovery.calls[-1].invalid_kind == "missing_memory_update_done"
     assert recovery.calls[-1].compiler_shape == "ACTION_ONLY"
+
+
+@pytest.mark.asyncio
+async def test_compiler_invalid_unclosed_think_blocks_legacy_action_dispatch():
+    """
+    Tests that a compiler-INVALID response is recovered even if legacy
+    parsing detects an action, ensuring dispatch is blocked.
+    """
+    recovery = CapturingOutputRecovery()
+    pipeline = _pipeline(recovery)
+
+    step = SimpleNamespace(
+        response='<think>\nDraft\n<action>{"type":"read_file","path":"x.py"}</action>\n<!-- unclosed_think_with_legacy_action -->',
+        intent_payload=None,
+        intent_error=None,
+        model_stop_reason="",
+    )
+    outcome = await pipeline.run_step(
+        SimpleNamespace(state_machine=None, malformed_action_retries=0, audit_marker_retries=0),
+        step,
+    )
+
+    assert outcome.continue_loop is True
+    assert outcome.reason == "action_inside_think"
+    assert "recover::action_inside_think" in outcome.next_query
+
+    assert len(recovery.calls) == 1
+    parsed_output = recovery.calls[0]
+    assert parsed_output.compiler_shape == "INVALID"
+    assert parsed_output.compiler_error_code == "E_ACTION_INSIDE_THINK"
+    assert parsed_output.invalid_kind == "action_inside_think"
+    assert parsed_output.has_action_segment is True
+
+    # Assert on the compiler-derived semantics snapshot
+    snapshot = parsed_output.runtime_protocol_semantics
+    assert snapshot is not None
+    assert snapshot.shape == "INVALID"
+    assert snapshot.error_code == "E_ACTION_INSIDE_THINK"
+    assert snapshot.has_action is False
+    assert snapshot.action_count == 0

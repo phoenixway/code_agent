@@ -348,7 +348,7 @@ This audit inventories the dependencies of the `output_recovery` stage to determ
 -   A new `output_recovery_semantics_parity` trace entry now logs a comparison between legacy structural fields (`invalid_kind`, `has_action_segment`) and the equivalent fields from `RuntimeProtocolSemantics`.
 -   The parity diagnostics now label expected mismatches (e.g., `legacy_action_in_compiler_invalid_response`) where the legacy parser sees an action in a response that the compiler correctly identifies as structurally invalid.
 -   This is a diagnostics-only change. Output recovery decisions are not yet using the new adapter. All behavior and authority boundaries remain unchanged.
--   Legacy action presence is not yet migrated to `RuntimeProtocolSemantics`. Invalid compiler responses must not dispatch actions, even if legacy parsing detects an action-like segment.
+-   Legacy action presence is not yet migrated to `RuntimeProtocolSemantics`. Invalid compiler responses must not dispatch actions, even if legacy parsing detects an action-like segment. Compiler-invalid responses remain recovery-owned even when legacy parsing detects action-like content; this protects against dispatch from malformed responses.
 
 ##### Phase 3A-1: Read-Only Compiler Metadata Migration
 
