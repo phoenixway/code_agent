@@ -99,6 +99,24 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+### Phase 4 Batch 1 Migration Plan
+
+- **Status**: Not started. Plan proposed.
+- **Goal**: Plan the next set of safe, behavior-preserving wrapper migrations.
+- **Scope**:
+    - `OutputRecoveryRoutingMixin._compiler_strategy_decision` call site for `output_recovery_compiler_metadata`.
+    - `ModelOutputRecoveryHandler._has_any_action_proposal` internal call site.
+- **Forbidden**:
+    - Implementation before plan approval.
+    - Deletion of any existing helper functions.
+    - Changes to output recovery behavior or recovery strategy logic.
+    - Changes to `ActionPolicy`, dispatch, final-answer, or transition behavior.
+    - Migration of any other call sites unless explicitly listed.
+- **Done When**:
+    - The batch migration plan is reviewed and approved.
+
+---
+
 ### Phase 5: TransitionSemanticValidator
 
 - **Goal**: Refactor `IntentTransitionHandler` to use a dedicated semantic validator.

@@ -191,3 +191,48 @@ def has_any_action_proposal(self, parsed_output, parsed_action_count: int) -> bo
 ### 6. Explicit Non-Goals
 
 This design is strictly limited to the delegation described above. It does **not** include changes to `ActionPolicy`, dispatch behavior, output recovery, final-answer/sufficiency, intent transitions, or memory/plan boards.
+
+---
+
+## Phase 4 Batch Migration Planning
+
+- **Status**: Planning complete. Awaiting review and approval for implementation.
+
+### 1. Goal
+
+To identify the next safe, behavior-preserving consumer migrations that can use the existing, approved `semantic_accessors`.
+
+### 2. Consumer Analysis
+
+An analysis of the `Consumer Inventory` table reveals the following categories of remaining consumers:
+
+-   **A. Safe Immediate Wrapper Candidates**: Low-risk consumers whose current logic can be replaced by a direct call to an existing accessor.
+-   **B. Needs New Accessor Design**: Consumers whose logic is a good candidate for centralization but requires a new accessor not yet in the approved API.
+-   **C. Later Validator/Policy Phase**: High-risk consumers tied to dispatch authority, runtime policy, or other frozen areas.
+-   **D. Do Not Touch**: Consumers that are already migrated, diagnostic-only, or explicitly blocked.
+
+### 3. Proposed Migration Batch 1
+
+Based on the analysis, the following two consumers are identified as safe, high-value candidates for a batch migration. They are pure wrappers and do not change any runtime behavior.
+
+1.  **`OutputRecoveryRoutingMixin._compiler_strategy_decision`**
+    -   **Source**: `runtime_protocol_semantics.output_recovery_compiler_metadata`
+    -   **Target Accessor**: `semantic_accessors.get_compiler_metadata`
+    -   **Proposed Change**: In `_compiler_strategy_decision`, replace the call to `output_recovery_compiler_metadata` with a direct call to `semantic_accessors.get_compiler_metadata`.
+    -   **Justification**: `get_compiler_metadata` was designed as a direct, behavior-preserving replacement for this helper.
+    -   **Constraint**: Batch 1 may update only the selected call site. The existing helper function must remain in place. Deprecation/removal requires a later cleanup design.
+
+2.  **`ModelOutputRecoveryHandler._has_any_action_proposal`**
+    -   **Consumer**: `ModelOutputRecoveryHandler.decide`
+    -   **Current Implementation**: A method on `ModelOutputRecoveryHandler` that delegates to `ResponseSemantics.has_any_action_proposal`.
+    -   **Proposed Change**: Replace the internal call to `self.semantics.has_any_action_proposal` with a direct call to `semantic_accessors.has_any_action_proposal_compat`.
+    -   **Justification**: This continues the migration of `has_any_action_proposal` consumers, moving one step closer to the source and further isolating `ResponseSemantics`.
+    -   **Constraints**:
+        - The change may only replace the internal compatibility-action-proposal read.
+        - It must preserve the forwarding of `parsed_action_count`.
+        - The result must remain recovery evidence only, not dispatch permission.
+
+### 4. Next Step
+
+-   Review and approve this batch migration plan.
+-   Implementation is blocked until approval is granted.

@@ -48,8 +48,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Design the next behavior-preserving migration of a low-risk consumer to use the new `semantic_accessors`.
-- The next migration candidate must be approved before implementation.
+- Review and approve the "Phase 4 Batch 1" migration plan.
+- The plan proposes migrating two low-risk consumers (`output_recovery_compiler_metadata` and `ModelOutputRecoveryHandler._has_any_action_proposal`) to their accessor equivalents.
+- Implementation is blocked until the plan is approved.
 
 ## Test Status
 
