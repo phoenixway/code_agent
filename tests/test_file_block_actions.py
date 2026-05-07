@@ -392,6 +392,26 @@ class FileBlockPromptTests(unittest.IsolatedAsyncioTestCase):
         text = '<action>{"type":"write_file_block","path":"a.py","overwrite":true}</action><file_content>hello</file_content>'
         self.assertEqual("", extract_visible_text_for_user(text))
 
+    async def test_action_inside_think_recovery_prompt(self):
+        handler = self._handler()
+
+        decision = await handler.decide(
+            ParsedModelOutput(
+                response="<think><action>{}</action></think>",
+                invalid_kind="action_inside_think",
+                has_action_segment=True,
+                visible_text="",
+                compiler_error_code="E_ACTION_INSIDE_THINK",
+            ),
+            malformed_action_retries=0,
+            audit_marker_retries=0,
+        )
+
+        self.assertTrue(decision.handled)
+        self.assertEqual("action_inside_think", decision.reason)
+        self.assertIn("Do not put protocol tags or actions inside <think>", decision.next_query)
+        self.assertIn("Return the corrected response from the beginning", decision.next_query)
+
 
 if __name__ == "__main__":
     unittest.main()

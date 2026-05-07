@@ -14,3 +14,4 @@ expected:
   has_checkpoint: false
 expected_shadow_mismatches:
   - action_count
+  - has_visible_answer

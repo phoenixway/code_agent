@@ -15,3 +15,4 @@ expected:
 expected_shadow_mismatches:
   - action_count
   - has_action
+  - has_visible_answer
