@@ -19,4 +19,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 15. Conclusion: Phase 4 is complete. Next: plan for Phase 5+.
 16. Phase 5 design (`TransitionSemanticValidator`): approved.
 17. Phase 5 Step 1 (scaffolding): done.
-18. Phase 5 Step 2A (core logic migration) design: in review.
+18. Phase 5 Step 2A (core logic migration) design: approved.
+19. Next: Implement Phase 5 Step 2A (core logic migration) only.

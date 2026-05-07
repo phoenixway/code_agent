@@ -66,8 +66,8 @@ This document is the single source of truth for the current state of the Semanti
   - Tests passed.
   - No logic was migrated, and no runtime behavior was changed.
 - **Phase 5 Step 2A: Core Structural Logic Migration (Design)**
-  - Created the design for migrating the core structural classification logic (`NO_FOLLOWUP`, `FOLLOWUP_ACTION`, `FOLLOWUP_CONFLICT`) into the `TransitionSemanticValidator`.
-  - The design is in review; implementation is not yet approved.
+  - The design for migrating the core structural classification logic (`NO_FOLLOWUP`, `FOLLOWUP_ACTION`, `FOLLOWUP_CONFLICT`) into the `TransitionSemanticValidator` is approved.
+  - Implementation is authorized for Step 2A only.
 
 ## Known Authority Boundaries
 
@@ -83,9 +83,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Review and approve the design for Phase 5, Step 2A: Core Structural Logic Migration.
-- Once approved, plan the implementation of Step 2A.
-- No implementation is authorized until the design is approved.
+- Implement Phase 5, Step 2A: Core Structural Logic Migration.
+- This step is limited to adding logic to `TransitionSemanticValidator` and its tests.
+- No consumer migration or behavior change is authorized.
 
 ## Test Status
 

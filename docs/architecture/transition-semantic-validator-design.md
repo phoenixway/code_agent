@@ -145,8 +145,13 @@ Implementation of this design will be a separate, future task, broken into safe,
 
 ### Phase 5 Step 2A Design: Core Structural Logic Migration
 
-- **Status**: In Review
-- **Scope**: Design only. Implementation is forbidden until this design is approved. This design covers only the migration of the core structural classification logic.
+- **Status**: Approved for Implementation
+- **Scope**: Design approved. Implementation is authorized for Step 2A only.
+- **Implementation Scope**:
+    - Implementation may add logic **only** inside `modules/agent/orchestration/transitions/transition_semantic_validator.py`.
+    - Tests may be added/updated for Step 2A behavior and parity.
+    - `IntentTransitionHandler` and `IntentTransitionRoutingMixin` are read-only for inspection. The existing helpers must not be changed.
+    - No consumer migration is authorized.
 
 #### 1. Goal
 
@@ -160,7 +165,7 @@ The `TransitionSemanticValidator.validate` method will be implemented to perform
 2.  **Summarize Surface**: Replicate the logic from `IntentTransitionHandler._followup_surface_summary` to analyze the remaining text using `ProtocolCompiler` and `TransitionFollowupSemantics`. This produces a structured summary (node counts, shape, conflict reason).
 3.  **Classify**: Based on the summary, classify the result into one of the core structural kinds.
 
-The helper methods from `IntentTransitionHandler` (`_strip_matching_current_intent_block`, `_followup_surface_summary`, etc.) will be moved into `TransitionSemanticValidator` as private methods during implementation.
+The implementation of Step 2A may only add logic inside `transition_semantic_validator.py` and its tests. It may replicate or delegate to the existing helper behavior inside `TransitionSemanticValidator`, but must not remove, rename, or change `IntentTransitionHandler` private helpers. `IntentTransitionHandler` and `IntentTransitionRoutingMixin` are read-only for inspection during this step. Physical helper cleanup requires separate approval after consumer migration and parity tests.
 
 #### 3. Behavior Preservation Mapping
 
@@ -178,9 +183,9 @@ The helper methods from `IntentTransitionHandler` (`_strip_matching_current_inte
     -   Add tests that produce `FOLLOWUP_CONFLICT` for responses with multiple actions, mixed action/text, etc., and verify the `conflict_reason` is preserved.
 -   **Parity Tests**:
     -   Create a new test file (`tests/test_transition_validator_parity.py`).
-    -   This test will load a corpus of real-world response strings.
+    -   This test will use a small, targeted fixture set of response strings for Step 2A. No new replay framework or broad corpus infrastructure will be built in this step.
     -   For each response, it will call the old `IntentTransitionHandler` helpers and the new `validator.validate` method.
-    -   It will assert that the results are equivalent (e.g., `_has_no_followup_after_intent() == True` maps to `result.kind == NO_FOLLOWUP`).
+    -   It will assert that the replicated logic exactly preserves the behavior of the current source helpers, ensuring that results are equivalent (e.g., `_has_no_followup_after_intent() == True` maps to `result.kind == NO_FOLLOWUP`).
     -   Any disagreements will be logged for analysis.
 
 #### 5. Explicit Non-Goals for Step 2A
@@ -188,7 +193,7 @@ The helper methods from `IntentTransitionHandler` (`_strip_matching_current_inte
 -   **No `FOLLOWUP_PLAINTEXT`**: The logic for detecting plaintext answers (`_reuse_has_inline_plaintext_answer`) is deferred until `get_visible_text` is designed. The validator will not return this kind in Step 2A.
 -   **No Context-Sensitive Logic**: The logic for `TRANSITION_ONLY_VIOLATION`, `REUSE_ONLY_VIOLATION`, etc., which depends on runtime state flags, is deferred to Step 2B.
 -   **No Consumer Migration**: `IntentTransitionRoutingMixin` will not be changed to call the validator in this step.
--   **No Helper Deletion**: The original private methods on `IntentTransitionHandler` will not be removed until consumer migration is complete and verified.
+-   **No Helper Modification or Deletion**: The original private methods on `IntentTransitionHandler` must not be removed, renamed, or changed. Physical helper cleanup requires separate approval after consumer migration and parity tests are complete.
 
 - **Phase 5 Step 2B: Context-Sensitive Logic Migration**
   - Migrate the logic for context-sensitive violations: `TRANSITION_ONLY_VIOLATION`, `REUSE_ONLY_VIOLATION`, and `COMPLETE_WITH_ACTION_VIOLATION`.
