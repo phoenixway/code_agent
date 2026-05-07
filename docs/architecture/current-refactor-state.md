@@ -99,9 +99,9 @@ This document is the single source of truth for the current state of the Semanti
   - `UNKNOWN` must remain a fallback to preserve behavior for unhandled cases.
   - Recommendation: Proceed with designing the second migration slice for `NO_FOLLOWUP` and `FOLLOWUP_ACTION`.
 - **Phase 5 Step 4: Second Consumer Migration (Design)**
-  - The design for migrating the second narrow slice of `IntentTransitionRoutingMixin` (`NO_FOLLOWUP`, `FOLLOWUP_ACTION`) to use the `TransitionSemanticValidator` is in review.
+  - The design for migrating the second narrow slice of `IntentTransitionRoutingMixin` (`NO_FOLLOWUP`, `FOLLOWUP_ACTION`) to use the `TransitionSemanticValidator` is approved.
   - The design uses a fallback to legacy logic for `FOLLOWUP_PLAINTEXT` and `UNKNOWN`.
-  - Implementation is not authorized until the design is approved.
+  - Implementation is authorized for the second narrow slice only.
 
 ## Known Authority Boundaries
 
@@ -117,9 +117,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Review and approve the design for Phase 5 Step 4: Second Consumer Migration Slice.
-- This step will cover the design for migrating `NO_FOLLOWUP` and `FOLLOWUP_ACTION` classifications in `IntentTransitionRoutingMixin` to use the `TransitionSemanticValidator`.
-- Implementation is not authorized until the design is approved.
+- Implement Phase 5 Step 4: Second Consumer Migration Slice.
+- This step is limited to migrating the `NO_FOLLOWUP` and `FOLLOWUP_ACTION` classifications in `IntentTransitionRoutingMixin`.
+- No broad migration or behavior change is authorized.
 
 ## Test Status
 

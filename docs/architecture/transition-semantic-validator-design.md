@@ -308,9 +308,13 @@ This logic ensures that the validator provides a more specific classification wh
 
 ### Phase 5 Step 4 Design: Second Consumer Migration
 
-- **Status**: In Review
-- **Scope**: Design the migration of `NO_FOLLOWUP` and `FOLLOWUP_ACTION` paths in `IntentTransitionRoutingMixin` to use the validator.
-- **Implementation**: Not authorized until design is approved.
+- **Status**: Approved for Implementation
+- **Scope**: Design approved. Implementation is authorized for the second narrow slice only.
+- **Implementation Scope**:
+    - Implementation may migrate **only** the `NO_FOLLOWUP` and `FOLLOWUP_ACTION` classifications in `IntentTransitionRoutingMixin`.
+    - All other result kinds (`FOLLOWUP_PLAINTEXT`, `UNKNOWN`) **must** remain on the legacy fallback path.
+    - Existing helpers must not be changed.
+    - No consumer migration outside the approved slice is authorized.
 
 #### 1. Goal
 
