@@ -241,7 +241,20 @@ class RecoveryPromptBuilderMixin:
                 "\nUse it only if tool use is still needed."
                 "\nIf current evidence is already sufficient, return a plain-text answer instead."
             )
-        if single_readonly_action_only:
+        if reason in {"too_broad_search", "low_value_broad_search_repeat"}:
+            prompt += (
+                "\nDo not repeat broad search patterns. Do not restart reconnaissance from zero."
+                "\nIf the previous broad search already returned exact candidate paths, prefer exact file reads on those paths now (read_file, read_chunk, read_file_skeleton)."
+                "\nIf you need to locate a file by name, use search_files with an exact filename before using search_content."
+                "\nTo narrow the next search:"
+                "\n- Use a more specific path instead of the root."
+                "\n- Use a more specific pattern (e.g., an exact symbol, class name, or function name)."
+                "\n- Use `include_extensions` to limit the search to relevant file types (e.g., `.py`, `.kt`)."
+                "\n- Exclude noisy directories like `docs`, `build`, `.git`, or log files unless they are the explicit target."
+                "\nTreat documentation (`docs/`) as secondary evidence unless the user explicitly asked for it."
+                "\nSpend the next action on the shortest path to concrete evidence."
+            )
+        elif single_readonly_action_only:
             prompt += (
                 "\nFor search_content, prefer explicit import patterns, narrower directories, "
                 "or stronger exclude_dirs. Avoid repeating the same broad batch."

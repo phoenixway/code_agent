@@ -39,20 +39,6 @@ def prompt_builder() -> OrchestratorPromptBuilder:
     return builder
 
 
-def test_low_value_broad_search_repeat_recovery_prompt(prompt_builder: OrchestratorPromptBuilder):
-    """
-    Tests that `low_value_broad_search_repeat` reason produces a valid string prompt.
-    """
-    reason = "low_value_broad_search_repeat"
-    stop_info = {"reason": reason}
-    prompt_builder._recovery_context.return_value = MagicMock(reason=reason, to_stop_info=lambda: stop_info)
-
-    prompt = prompt_builder.build_typed_stop_recovery_prompt(stop_info)
-
-    assert isinstance(prompt, str)
-    assert "Generic action format recovery prompt." in prompt
-    assert "For search_content, prefer explicit import patterns" in prompt
-
 
 def test_low_value_broad_search_repeat_real_action_format_prompt(prompt_builder: OrchestratorPromptBuilder):
     """
@@ -74,6 +60,14 @@ def test_low_value_broad_search_repeat_real_action_format_prompt(prompt_builder:
     assert "prefer exactly one" in prompt.lower()
     assert "read-only" in prompt.lower()
     assert "search_content" in prompt
+    assert "Do not repeat broad search" in prompt
+    assert "prefer exact file reads" in prompt
+    assert "use a more specific path" in prompt.lower()
+    assert "exclude noisy" in prompt.lower()
+    assert "documentation" in prompt.lower()
+    assert "secondary evidence" in prompt.lower()
+    assert "docs/" in prompt.lower()
+    assert "do not restart reconnaissance" in prompt.lower()
 
 
 def test_typed_stop_recovery_prompt_handles_none_from_helpers(prompt_builder: OrchestratorPromptBuilder):
@@ -92,7 +86,10 @@ def test_typed_stop_recovery_prompt_handles_none_from_helpers(prompt_builder: Or
 
     assert isinstance(prompt, str)
     # It should still contain the appended part, not crash
-    assert "For search_content, prefer explicit import patterns" in prompt
+    assert "Do not repeat broad search" in prompt
+    assert "Do not restart reconnaissance" in prompt
+    assert "more specific path" in prompt.lower()
+    assert "shortest path to concrete evidence" in prompt.lower()
 
 
 def test_typed_recovery_header_handles_none_next_hint(prompt_builder: OrchestratorPromptBuilder):

@@ -235,6 +235,10 @@ To maintain performance and guide the model toward efficient investigation, the 
     -   **Extensions**: Use `include_extensions` to limit the search to relevant file types (e.g., `.py`, `.kt`).
     -   **Exclusions**: Use `exclude_dirs` to avoid noisy directories like `build`, `dist`, or `.git`.
 
+-   **Exact Reads are Preferred After Broad Search**: After a broad search result exposes exact candidate paths, the next preferred step is an exact file read (`read_file`, `read_chunk`, `read_file_skeleton`), not another broad content search.
+
+-   **Docs and Logs are Secondary Evidence**: The recovery prompt guides the model to treat `docs/` and log files as noisy or secondary evidence unless they are the explicit target of the user's request.
+
 -   **Self-Referential Hits are Filtered**: The runtime detects when a search's results come only from its own artifacts (e.g., `debug.log`, `communication.log`). These are not considered valid source code evidence. A `history_self_reference_hit` recovery prompts the model to issue a new search that excludes these artifact files.
 
 ### Compiler IR Semantic Migration Plan
