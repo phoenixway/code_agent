@@ -383,7 +383,7 @@ This audit inventories the dependencies of the `output_recovery` stage to determ
 -   **Status: Done.** The Phase 3A metadata-only migration is complete.
 -   The `output_recovery` stage may use the `RuntimeProtocolSemantics`-backed helper for compiler metadata (`error_code`, `recovery_id`, `invalid_kind`).
 -   Runtime-owned decisions remain runtime-owned.
--   `has_action` and `action_count` are not authoritative from `RuntimeProtocolSemantics` at this time.
+-   `has_action` and `action_count` are not authoritative from `RuntimeProtocolSemantics` at this time. For backward compatibility, `ResponseSemantics.has_any_action_proposal` may use `compiler_ir.action_ops` to detect an action, but this does not grant dispatch authority.
 -   Future migration of action presence/action_count requires a separate design audit, as compiler-invalid responses can intentionally disagree with legacy action detection.
 
 ##### Proposed Phase 3A Scope

@@ -773,7 +773,7 @@ class ResponsePipelineStagesMixin:
                 source="transaction_guard",
                 action_count=parsed_action_count,
             )
-        if self.semantics.has_any_action_proposal(parsed_output, parsed_action_count):
+        if self._has_any_action_proposal(parsed_output, parsed_action_count=parsed_action_count):
             self.guards.set_nonproductive_thinking_state(False)
 
         if action_policy_decision.handled:
