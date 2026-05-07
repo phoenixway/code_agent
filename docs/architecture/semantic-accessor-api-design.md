@@ -283,13 +283,13 @@ Implementation of these accessors is blocked until a formal API design is docume
 - **Output**: `bool`.
 - **Current Source**: `ResponseSemantics.looks_like_leaked_system_result`.
 - **Behavior Preservation**: Must be a pure, behavior-preserving replacement of the existing regex-based check.
-- **Authority Boundary**: **Final-Answer Guard**. A `True` result is a signal that the response is likely malformed and should be recovered. It is not a final policy decision.
+- **Authority Boundary**: **Malformed-output evidence / leaked transcript detection**. It is not final-answer correctness, sufficiency, or stop-decision authority.
 - **Non-Goals**: Does not determine if the response is a valid final answer. Does not parse or extract any text.
 - **Future Tests**:
     - Test that it matches the canonical `SYSTEM RESULT` prefix.
     - Test that it does not match ordinary prose like "the system result was...".
     - Parity tests against `ResponseSemantics.looks_like_leaked_system_result`.
-- **Allowed Consumers**: `ResponsePipelineStagesMixin` (leaked system result check).
+- **Allowed initial consumer only**: `ResponsePipelineStagesMixin` (leaked system result check). Additional consumers require separate approval.
 - **Forbidden Consumers**: Any consumer related to dispatch authority or intent transitions.
 
 ### `has_substantial_think(raw_response: str) -> bool`
@@ -298,7 +298,7 @@ Implementation of these accessors is blocked until a formal API design is docume
 - **Inputs**: `raw_response: str`.
 - **Output**: `bool`.
 - **Current Source**: `ResponseSemantics.has_substantial_think`.
-- **Behavior Preservation**: Must be a pure, behavior-preserving replacement of the existing logic.
+- **Behavior Preservation**: Must exactly match current `ResponseSemantics.has_substantial_think` behavior, including the word-count threshold, tag handling, and behavior for malformed, missing, or multiple think blocks.
 - **Authority Boundary**: **Loop-Detection Guard**. A `True` result is an input to the `is_nonproductive_thinking_turn` policy, not a policy decision itself.
 - **Non-Goals**: Does not change the non-productive thinking policy. Does not parse the content of the think block.
 - **Future Tests**:
@@ -306,7 +306,7 @@ Implementation of these accessors is blocked until a formal API design is docume
     - Test that it returns `False` for think blocks with < 5 words.
     - Test that it handles multiple think blocks correctly.
     - Parity tests against `ResponseSemantics.has_substantial_think`.
-- **Allowed Consumers**: `ResponseGuardPolicy.is_nonproductive_thinking_turn`.
+- **Allowed initial consumer only**: `ResponseGuardPolicy.is_nonproductive_thinking_turn`. Additional consumers require separate approval.
 - **Forbidden Consumers**: Any consumer outside of the non-productive thinking guard.
 
 ### Deferred Accessors
