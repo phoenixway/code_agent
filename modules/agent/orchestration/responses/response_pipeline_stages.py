@@ -562,44 +562,6 @@ class ResponsePipelineStagesMixin:
                 source="think_reflection_guard",
             )
 
-        if self.guards.is_nonproductive_thinking_turn(
-            self.semantics,
-            raw_response,
-            parsed_output,
-            parsed_action_count,
-            plaintext_answer_path=plaintext_answer_path,
-            intent_transition_handled=False,
-            memory_checkpoint_and_action=memory_checkpoint_and_action,
-            memory_checkpoint_and_text=memory_checkpoint_and_text,
-            reflection_only_repair=reflection_only_repair,
-        ):
-            nonproductive_streak = self.guards.set_nonproductive_thinking_state(
-                True, "repeated_thinking_without_valid_output"
-            )
-            if nonproductive_streak >= self.nonproductive_thinking_hard_stop_streak:
-                self.stage_logger.log(
-                    "response_pipeline",
-                    "continue",
-                    reason="repeated_thinking_without_valid_output",
-                    source="thinking_guard",
-                    streak=nonproductive_streak,
-                )
-                return ResponsePipelineOutcome.continue_with(
-                    self.prompt_builder.build_repeated_thinking_without_valid_output_prompt(
-                        {"reason": "repeated_thinking_without_valid_output"}
-                    ),
-                    response_text=response,
-                    segments=segments,
-                    parsed_output=parsed_output,
-                    parsed_action_count=parsed_action_count,
-                    malformed_action_retries=0,
-                    audit_marker_retries=0,
-                    reason="repeated_thinking_without_valid_output",
-                    source="thinking_guard",
-                )
-        else:
-            self.guards.set_nonproductive_thinking_state(False)
-
         if (
             memory_checkpoint_and_text
             and not self.semantics.has_any_action_proposal(parsed_output, parsed_action_count)
@@ -696,6 +658,48 @@ class ResponsePipelineStagesMixin:
                 reason=recovery_decision.reason,
                 source="output_recovery",
             )
+
+        # The thinking guard runs *after* specific output recovery. This ensures
+        # that a response with a specific structural flaw (e.g., action_inside_think)
+        # is handled by its specific recovery logic, rather than being masked by
+        # the more general non-productive thinking check.
+        if self.guards.is_nonproductive_thinking_turn(
+            self.semantics,
+            raw_response,
+            parsed_output,
+            parsed_action_count,
+            plaintext_answer_path=plaintext_answer_path,
+            intent_transition_handled=False,
+            memory_checkpoint_and_action=memory_checkpoint_and_action,
+            memory_checkpoint_and_text=memory_checkpoint_and_text,
+            reflection_only_repair=reflection_only_repair,
+        ):
+            nonproductive_streak = self.guards.set_nonproductive_thinking_state(
+                True, "repeated_thinking_without_valid_output"
+            )
+            if nonproductive_streak >= self.nonproductive_thinking_hard_stop_streak:
+                self.stage_logger.log(
+                    "response_pipeline",
+                    "continue",
+                    reason="repeated_thinking_without_valid_output",
+                    source="thinking_guard",
+                    streak=nonproductive_streak,
+                )
+                return ResponsePipelineOutcome.continue_with(
+                    self.prompt_builder.build_repeated_thinking_without_valid_output_prompt(
+                        {"reason": "repeated_thinking_without_valid_output"}
+                    ),
+                    response_text=response,
+                    segments=segments,
+                    parsed_output=parsed_output,
+                    parsed_action_count=parsed_action_count,
+                    malformed_action_retries=0,
+                    audit_marker_retries=0,
+                    reason="repeated_thinking_without_valid_output",
+                    source="thinking_guard",
+                )
+        else:
+            self.guards.set_nonproductive_thinking_state(False)
 
         if authority.dispatch_allowed is False:
             compiler_invalid_kind = self.output_recovery._compiler_invalid_kind_from_output(parsed_output)
