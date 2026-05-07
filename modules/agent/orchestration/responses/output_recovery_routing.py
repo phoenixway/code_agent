@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from ..shared.decision_models import OutputRecoveryDecision, ParsedModelOutput
 from .protocol_decision_bridge import COMPILER_INVALID_KIND_BY_CODE, compiler_invalid_kind_for_output
-from .runtime_protocol_semantics import output_recovery_structural_parity
+from .runtime_protocol_semantics import output_recovery_compiler_metadata, output_recovery_structural_parity
 
 
 class OutputRecoveryRoutingMixin:
@@ -706,8 +706,9 @@ class OutputRecoveryRoutingMixin:
         registry = getattr(self, "compiler_recovery_registry", None)
         if registry is None:
             return None
-        compiler_code = str(getattr(parsed_output, "compiler_error_code", "") or "").strip()
-        compiler_recovery_id = str(getattr(parsed_output, "compiler_recovery_id", "") or "").strip()
+        compiler_meta = output_recovery_compiler_metadata(parsed_output)
+        compiler_code = compiler_meta["error_code"]
+        compiler_recovery_id = compiler_meta["recovery_id"]
         if not compiler_code:
             return None
         strategy = registry.resolve(

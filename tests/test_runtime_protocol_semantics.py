@@ -3,9 +3,12 @@ from types import SimpleNamespace
 
 from modules.agent.orchestration.protocol import ProtocolCompiler
 from modules.agent.orchestration.responses.response_pipeline_prevalidation import ResponsePipelinePrevalidationMixin
+from modules.agent.orchestration.responses.compiler_recovery_registry import CompilerRecoveryRegistry
+from modules.agent.orchestration.responses.output_recovery_routing import OutputRecoveryRoutingMixin
 from modules.agent.orchestration.responses.runtime_protocol_semantics import (
     RuntimeProtocolSemantics,
     compact_runtime_protocol_semantics,
+    output_recovery_compiler_metadata,
     output_recovery_structural_parity,
     runtime_semantics_from_compiler_analysis,
     runtime_semantics_from_output_or_none,
@@ -229,3 +232,138 @@ class TestRuntimeProtocolSemantics(unittest.TestCase):
         self.assertFalse(parity["invalid_kind_matches"])
         self.assertFalse(parity["action_count_matches"])
         self.assertFalse(parity["has_action_matches"])
+
+    def test_output_recovery_compiler_metadata_prefers_snapshot(self):
+        snapshot = RuntimeProtocolSemantics(
+            source="compiler",
+            shape="INVALID",
+            is_valid=False,
+            error_code="E_TEST_A",
+            recovery_id="test_a",
+            invalid_kind="test_a_kind",
+            action_count=0,
+            has_action=False,
+            action_ops=(),
+            intent_ops=(),
+            visible_text="",
+            has_visible_answer=False,
+            pre_action_text="",
+            has_pre_action_text=False,
+            memory_ops=(),
+            subgoal_ops=(),
+            has_file_content=False,
+            file_content="",
+            effects_preview=(),
+        )
+        parsed_output = ParsedModelOutput(
+            response="",
+            runtime_protocol_semantics=snapshot,
+            compiler_error_code="E_DIFFERENT",
+        )
+        meta = output_recovery_compiler_metadata(parsed_output)
+        self.assertEqual("runtime_protocol_semantics", meta["source"])
+        self.assertEqual("E_TEST_A", meta["error_code"])
+        self.assertEqual("test_a", meta["recovery_id"])
+
+    def test_output_recovery_compiler_metadata_fallback_to_parsed_output(self):
+        parsed_output = ParsedModelOutput(
+            response="",
+            runtime_protocol_semantics=None,
+            compiler_error_code="E_TEST_B",
+            compiler_recovery_id="test_b",
+        )
+        meta = output_recovery_compiler_metadata(parsed_output)
+        self.assertEqual("parsed_output_compiler_fields", meta["source"])
+        self.assertEqual("E_TEST_B", meta["error_code"])
+        self.assertEqual("test_b", meta["recovery_id"])
+
+    def test_output_recovery_compiler_metadata_handles_empty(self):
+        parsed_output = ParsedModelOutput(response="")
+        meta = output_recovery_compiler_metadata(parsed_output)
+        self.assertEqual("missing", meta["source"])
+        self.assertEqual("", meta["error_code"])
+        self.assertEqual("", meta["recovery_id"])
+
+    def test_output_recovery_compiler_strategy_routing_with_snapshot(self):
+        class MockRegistry:
+            def __init__(self):
+                self.last_call = None
+
+            def resolve(self, *, error_code, recovery_id, invalid_kind):
+                self.last_call = {
+                    "error_code": error_code,
+                    "recovery_id": recovery_id,
+                    "invalid_kind": invalid_kind,
+                }
+                if error_code == "E_ACTION_INSIDE_THINK":
+                    return SimpleNamespace(handler_key="malformed_think")
+                return None
+
+        class Harness(OutputRecoveryRoutingMixin):
+            def __init__(self, registry):
+                self.compiler_recovery_registry = registry
+
+            def _compiler_strategy_malformed_think(self, *args, **kwargs):
+                return "malformed_think_decision"
+
+        registry = MockRegistry()
+        harness = Harness(registry)
+        analysis = self.compiler.analyze("<think><action>x</action></think>")
+        snapshot = runtime_semantics_from_compiler_analysis(analysis, invalid_kind="action_inside_think")
+        parsed_output = ParsedModelOutput(
+            response="",
+            runtime_protocol_semantics=snapshot,
+            invalid_kind="action_inside_think",
+        )
+
+        decision = harness._compiler_strategy_decision(
+            parsed_output,
+            invalid_kind="action_inside_think",
+            malformed_action_retries=0,
+            audit_marker_retries=0,
+        )
+
+        self.assertEqual("malformed_think_decision", decision)
+        self.assertEqual("E_ACTION_INSIDE_THINK", registry.last_call["error_code"])
+        self.assertEqual("action_inside_think", registry.last_call["recovery_id"])
+
+    def test_output_recovery_compiler_strategy_routing_with_fallback(self):
+        class MockRegistry:
+            def __init__(self):
+                self.last_call = None
+
+            def resolve(self, *, error_code, recovery_id, invalid_kind):
+                self.last_call = {
+                    "error_code": error_code,
+                    "recovery_id": recovery_id,
+                    "invalid_kind": invalid_kind,
+                }
+                if error_code == "E_ACTION_INSIDE_THINK":
+                    return SimpleNamespace(handler_key="malformed_think")
+                return None
+
+        class Harness(OutputRecoveryRoutingMixin):
+            def __init__(self, registry):
+                self.compiler_recovery_registry = registry
+
+            def _compiler_strategy_malformed_think(self, *args, **kwargs):
+                return "malformed_think_decision"
+
+        registry = MockRegistry()
+        harness = Harness(registry)
+        parsed_output_fallback = ParsedModelOutput(
+            response="",
+            runtime_protocol_semantics=None,
+            compiler_error_code="E_ACTION_INSIDE_THINK",
+            compiler_recovery_id="action_inside_think",
+            invalid_kind="action_inside_think",
+        )
+        decision_fallback = harness._compiler_strategy_decision(
+            parsed_output_fallback,
+            invalid_kind="action_inside_think",
+            malformed_action_retries=0,
+            audit_marker_retries=0,
+        )
+        self.assertEqual("malformed_think_decision", decision_fallback)
+        self.assertEqual("E_ACTION_INSIDE_THINK", registry.last_call["error_code"])
+        self.assertEqual("action_inside_think", registry.last_call["recovery_id"])

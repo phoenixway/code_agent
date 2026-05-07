@@ -348,6 +348,12 @@ This audit inventories the dependencies of the `output_recovery` stage to determ
 -   A new `output_recovery_semantics_parity` trace entry now logs a comparison between legacy structural fields (`invalid_kind`, `has_action_segment`) and the equivalent fields from `RuntimeProtocolSemantics`.
 -   This is a diagnostics-only change. Output recovery decisions are not yet using the new adapter. All behavior and authority boundaries remain unchanged.
 
+##### Phase 3A-1: Read-Only Compiler Metadata Migration
+
+-   **Status: Done.** This phase migrates the read-side of compiler strategy routing metadata (`error_code`, `recovery_id`) to use `RuntimeProtocolSemantics` with a fallback to legacy `ParsedModelOutput` fields.
+-   This is a behavior-preserving refactor. Output recovery decisions, `invalid_kind` resolution, and authority boundaries remain unchanged.
+-   Runtime-owned checks and other structural checks (e.g., `action_count`) are not yet migrated.
+
 ##### Proposed Phase 3A Scope
 
 The first implementation phase for migrating `output_recovery` should be narrow and focused on structural checks.
