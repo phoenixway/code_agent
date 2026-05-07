@@ -196,7 +196,8 @@ This design is strictly limited to the delegation described above. It does **not
 
 ## Phase 4 Batch Migration Planning
 
-- **Status**: Planning complete. Awaiting review and approval for implementation.
+- **Status**: Reviewed / Approved for implementation.
+- **Approval Scope**: This approval applies *only* to the two call sites listed in this batch. It does not authorize any other consumer migration or helper function deletion.
 
 ### 1. Goal
 

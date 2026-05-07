@@ -101,7 +101,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ### Phase 4 Batch 1 Migration Plan
 
-- **Status**: Not started. Plan proposed.
+- **Status**: Approved.
 - **Goal**: Plan the next set of safe, behavior-preserving wrapper migrations.
 - **Scope**:
     - `OutputRecoveryRoutingMixin._compiler_strategy_decision` call site for `output_recovery_compiler_metadata`.
@@ -114,6 +114,27 @@ This document outlines the phased plan to migrate the runtime from legacy respon
     - Migration of any other call sites unless explicitly listed.
 - **Done When**:
     - The batch migration plan is reviewed and approved.
+
+---
+
+### Phase 4 Batch 1 Implementation
+
+- **Status**: Not started.
+- **Goal**: Implement the two approved call-site migrations from the Batch 1 plan.
+- **Allowed Files**:
+    - `modules/agent/orchestration/responses/output_recovery_routing.py`
+    - `modules/agent/orchestration/responses/output_recovery.py`
+    - `tests/test_runtime_protocol_semantics.py`
+    - `tests/test_output_recovery.py` (or equivalent test file for `ModelOutputRecoveryHandler`)
+- **Forbidden**:
+    - Editing any other production files.
+    - Deleting the `output_recovery_compiler_metadata` helper function.
+    - Changing runtime behavior.
+    - Any changes to `ActionPolicy`, dispatch, final-answer, transitions, boards, or `history.py`.
+- **Done When**:
+    - The two call sites are migrated to use the accessors.
+    - Tests confirm behavior is preserved.
+    - All relevant tests pass.
 
 ---
 

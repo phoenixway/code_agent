@@ -48,9 +48,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Review and approve the "Phase 4 Batch 1" migration plan.
-- The plan proposes migrating two low-risk consumers (`output_recovery_compiler_metadata` and `ModelOutputRecoveryHandler._has_any_action_proposal`) to their accessor equivalents.
-- Implementation is blocked until the plan is approved.
+- Implement the approved "Phase 4 Batch 1" migration.
+- This includes migrating the call sites in `OutputRecoveryRoutingMixin._compiler_strategy_decision` and `ModelOutputRecoveryHandler._has_any_action_proposal` to their `semantic_accessors` equivalents.
+- No other migrations are authorized.
 
 ## Test Status
 
