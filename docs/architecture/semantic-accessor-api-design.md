@@ -371,3 +371,12 @@ This design is strictly limited to the two consumer migrations described above. 
 - **Status**: Complete.
 - **Conclusion**: The "fast-lane" of simple, behavior-preserving wrapper migrations is exhausted. All remaining consumers are either high-risk policy boundaries or require new accessors (`get_visible_text`, board tag helpers) that are themselves tied to frozen policy domains.
 - **Recommendation**: Phase 4 is concluded. The next step is to proceed with a policy-level refactor, such as Phase 5.
+
+---
+
+## Phase 5 Design Dependencies
+
+The design for the `TransitionSemanticValidator` (Phase 5) has identified a dependency on a future `get_visible_text` accessor.
+
+- **`get_visible_text`**: This accessor is required to fully migrate the `_reuse_has_inline_plaintext_answer` logic and other plaintext-related followup checks into the new validator.
+- **Status**: The design and implementation of `get_visible_text` remain deferred. The initial implementation of the `TransitionSemanticValidator` will need to use a placeholder or legacy fallback for this logic path until the accessor is designed and approved in a subsequent phase.

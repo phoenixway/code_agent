@@ -55,6 +55,10 @@ This document is the single source of truth for the current state of the Semanti
   - Conclusion: The "fast-lane" of simple, safe wrapper migrations is exhausted.
   - All remaining consumers are either high-risk policy/dispatch boundaries or require new accessors tied to those same frozen domains.
   - Recommendation: Conclude Phase 4 and begin planning for a later policy-focused phase (e.g., Phase 5).
+- **Phase 5: TransitionSemanticValidator (Design)**
+  - Created the design document for the `TransitionSemanticValidator`.
+  - The validator will centralize and replace the complex followup-handling logic in `IntentTransitionHandler` with a single, testable component that returns a strongly-typed classification.
+  - The design is in review; implementation is not yet approved.
 
 ## Known Authority Boundaries
 
@@ -70,9 +74,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Conclude Phase 4.
-- Begin planning for Phase 5 (`TransitionSemanticValidator`) or another approved policy-level refactor.
-- No implementation is authorized until a new design or plan is approved.
+- Review and approve the `TransitionSemanticValidator` design.
+- Once approved, plan the implementation of Phase 5, starting with the scaffolding and type definitions as outlined in the design document.
+- No implementation is authorized until the design is approved.
 
 ## Test Status
 

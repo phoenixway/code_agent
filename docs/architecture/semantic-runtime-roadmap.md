@@ -232,6 +232,15 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 5 Design
+
+- **Status**: In Review.
+- **Goal**: Create the formal design for the `TransitionSemanticValidator`.
+- **Forbidden**: Implementation before design approval.
+- **Done When**: The `transition-semantic-validator-design.md` document is approved.
+
+---
+
 ### Phase 6: Bundle Semantic Validation Pass
 
 - **Goal**: Centralize atomic bundle validation using semantic accessors.
