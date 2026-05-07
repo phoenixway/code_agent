@@ -206,8 +206,14 @@ The implementation of Step 2A may only add logic inside `transition_semantic_val
 
 ### Phase 5 Step 2B Design: Context-Sensitive Logic Migration
 
-- **Status**: In Review
-- **Scope**: Design only. Implementation is forbidden until this design is approved.
+- **Status**: Approved for Implementation
+- **Scope**: Design approved. Implementation is authorized for Step 2B only.
+- **Implementation Scope**:
+    - Implementation may add logic **only** inside `modules/agent/orchestration/transitions/transition_semantic_validator.py`.
+    - Tests may be added/updated for Step 2B behavior and parity.
+    - `IntentTransitionHandler`, `IntentTransitionRoutingMixin`, and `TransitionFollowupSemantics` are read-only for inspection. The existing helpers must not be changed.
+    - No consumer migration is authorized.
+    - The priority order of context flag checks must match `TransitionFollowupSemantics.evaluate_transition`.
 
 #### 1. Goal
 

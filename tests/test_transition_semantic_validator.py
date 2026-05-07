@@ -75,13 +75,63 @@ class TestTransitionSemanticValidator(unittest.TestCase):
         result = self.validator.validate(response, payload)
         self.assertEqual(result.kind, TransitionResultKind.UNKNOWN)
 
-    def test_validate_context_sensitive_is_not_handled_in_step2a(self):
-        """Tests that context-sensitive flags do not change the structural outcome in Step 2A."""
-        response = '<intent mode="activate">{"mode": "activate"}</intent><action>{"type": "run_shell"}</action>'
+    def test_validate_transition_only_violation(self):
+        """Tests FOLLOWUP_ACTION is re-classified with transition_only_required=True."""
+        response = '<intent mode="activate">{"mode": "activate"}</intent><action>{}</action>'
         payload = {"mode": "activate"}
-        # The context flag is ignored; the structural classification is FOLLOWUP_ACTION.
         result = self.validator.validate(response, payload, transition_only_required=True)
-        self.assertEqual(result.kind, TransitionResultKind.FOLLOWUP_ACTION)
+        self.assertEqual(result.kind, TransitionResultKind.TRANSITION_ONLY_VIOLATION)
+
+    def test_validate_reuse_only_violation(self):
+        """Tests FOLLOWUP_ACTION is re-classified with reuse_only_required=True."""
+        response = '<intent mode="reuse">{"mode": "reuse"}</intent><action>{}</action>'
+        payload = {"mode": "reuse"}
+        result = self.validator.validate(response, payload, reuse_only_required=True)
+        self.assertEqual(result.kind, TransitionResultKind.REUSE_ONLY_VIOLATION)
+
+    def test_validate_complete_with_action_violation(self):
+        """Tests FOLLOWUP_ACTION is re-classified with completion_requested=True."""
+        response = '<intent mode="complete">{"mode": "complete"}</intent><action>{}</action>'
+        payload = {"mode": "complete"}
+        result = self.validator.validate(response, payload, completion_requested=True)
+        self.assertEqual(result.kind, TransitionResultKind.COMPLETE_WITH_ACTION_VIOLATION)
+
+    def test_validate_context_flags_do_not_affect_non_action_followup(self):
+        """Tests that context flags do not affect non-action results."""
+        # No followup
+        response_no_followup = '<intent mode="activate">{"mode": "activate"}</intent>'
+        result = self.validator.validate(response_no_followup, {"mode": "activate"}, transition_only_required=True)
+        self.assertEqual(result.kind, TransitionResultKind.NO_FOLLOWUP)
+
+        # Conflict
+        response_conflict = '<intent mode="activate">{"mode": "activate"}</intent><action>{}</action><action>{}</action>'
+        result = self.validator.validate(response_conflict, {"mode": "activate"}, transition_only_required=True)
+        self.assertEqual(result.kind, TransitionResultKind.FOLLOWUP_CONFLICT)
+
+    def test_validate_context_flag_priority_order(self):
+        """Tests that the priority of context flags matches legacy behavior."""
+        response = '<intent mode="reuse">{"mode": "reuse"}</intent><action>{}</action>'
+        payload = {"mode": "reuse"}
+
+        # transition_only_required should have the highest priority
+        result = self.validator.validate(
+            response,
+            payload,
+            transition_only_required=True,
+            reuse_only_required=True,
+            completion_requested=True,
+        )
+        self.assertEqual(result.kind, TransitionResultKind.TRANSITION_ONLY_VIOLATION)
+
+        # reuse_only_required is next
+        result = self.validator.validate(
+            response,
+            payload,
+            transition_only_required=False,
+            reuse_only_required=True,
+            completion_requested=True,
+        )
+        self.assertEqual(result.kind, TransitionResultKind.REUSE_ONLY_VIOLATION)
 
 
 if __name__ == "__main__":

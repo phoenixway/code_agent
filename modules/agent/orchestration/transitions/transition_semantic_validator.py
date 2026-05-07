@@ -172,22 +172,8 @@ class TransitionSemanticValidator:
             return (text[:start] + text[end:]).strip()
         return text
 
-    def validate(
-        self,
-        response_text: str,
-        intent_payload: dict | None = None,
-        *,
-        transition_only_required: bool = False,
-        reuse_only_required: bool = False,
-    ) -> TransitionValidationResult:
-        """
-        Analyzes the followup surface and returns a typed classification.
-
-        This implementation covers Step 2A: Core structural classification.
-        """
-        stripped = self._strip_matching_current_intent_block(response_text, intent_payload)
-        summary = self._followup_surface_summary(stripped)
-
+    def _get_structural_classification(self, summary: dict[str, object]) -> TransitionValidationResult:
+        """Performs Step 2A core structural classification."""
         if summary["conflict_reason"]:
             return TransitionValidationResult(
                 kind=TransitionResultKind.FOLLOWUP_CONFLICT,
@@ -208,5 +194,37 @@ class TransitionSemanticValidator:
         if not summary["has_substantive_nodes"]:
             return TransitionValidationResult(kind=TransitionResultKind.NO_FOLLOWUP)
 
-        # Defer plaintext and context-sensitive violations to later steps.
+        # Defer plaintext to later steps.
         return TransitionValidationResult(kind=TransitionResultKind.UNKNOWN)
+
+    def validate(
+        self,
+        response_text: str,
+        intent_payload: dict | None = None,
+        *,
+        transition_only_required: bool = False,
+        reuse_only_required: bool = False,
+        completion_requested: bool = False,
+    ) -> TransitionValidationResult:
+        """
+        Analyzes the followup surface and returns a typed classification.
+
+        This implementation covers Step 2A (structural) and 2B (context-sensitive).
+        """
+        stripped = self._strip_matching_current_intent_block(response_text, intent_payload)
+        summary = self._followup_surface_summary(stripped)
+
+        # Step 2A: Core structural classification
+        structural_result = self._get_structural_classification(summary)
+
+        # Step 2B: Context-sensitive re-classification
+        if structural_result.kind == TransitionResultKind.FOLLOWUP_ACTION:
+            payload_mode = str((intent_payload or {}).get("mode") or "").strip().lower()
+            if transition_only_required:
+                return TransitionValidationResult(kind=TransitionResultKind.TRANSITION_ONLY_VIOLATION)
+            if payload_mode == "reuse" and reuse_only_required:
+                return TransitionValidationResult(kind=TransitionResultKind.REUSE_ONLY_VIOLATION)
+            if completion_requested:
+                return TransitionValidationResult(kind=TransitionResultKind.COMPLETE_WITH_ACTION_VIOLATION)
+
+        return structural_result

@@ -75,8 +75,8 @@ This document is the single source of truth for the current state of the Semanti
   - `get_visible_text` and context-sensitive violations were not implemented.
   - Runtime behavior is unchanged.
 - **Phase 5 Step 2B: Context-Sensitive Logic Migration (Design)**
-  - Created the design for migrating context-sensitive violation classifications (`TRANSITION_ONLY_VIOLATION`, etc.) into the `TransitionSemanticValidator`.
-  - The design is in review; implementation is not yet approved.
+  - The design for migrating context-sensitive violation classifications (`TRANSITION_ONLY_VIOLATION`, etc.) into the `TransitionSemanticValidator` is approved.
+  - Implementation is authorized for Step 2B only.
 
 ## Known Authority Boundaries
 
@@ -92,9 +92,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Review and approve the design for Phase 5, Step 2B: Context-Sensitive Logic Migration.
-- Once approved, plan the implementation of Step 2B.
-- No implementation is authorized until the design is approved.
+- Implement Phase 5, Step 2B: Context-Sensitive Logic Migration.
+- This step is limited to adding logic to `TransitionSemanticValidator` and its tests.
+- No consumer migration or behavior change is authorized.
 
 ## Test Status
 
