@@ -13,4 +13,4 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 9. Fast-lane migrations complete.
 10. Next accessor batch design: approved.
 11. Next accessor batch implementation: done.
-12. Next: Design consumer migration batch for new accessors.
+12. Next: Design consumer migration for Batch 2 (`is_leaked_system_result`, `has_substantial_think`).

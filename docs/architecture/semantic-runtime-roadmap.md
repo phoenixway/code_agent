@@ -181,7 +181,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ### Phase 4 Batch 2 Migration Plan
 
-- **Status**: Not started.
+- **Status**: Design Proposed.
 - **Goal**: Design the consumer migration batch for the new accessors.
 - **Scope**:
     - `ResponsePipelineStagesMixin` -> `is_leaked_system_result`

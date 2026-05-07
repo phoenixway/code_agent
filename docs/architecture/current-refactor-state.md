@@ -58,8 +58,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Design the consumer migration batch for the newly implemented accessors (`is_leaked_system_result`, `has_substantial_think`).
-- Do not approve implementation automatically.
+- Review and approve the "Phase 4 Batch 2" migration design.
+- The plan proposes migrating two low-risk consumers (`ResponsePipelineStagesMixin` and `ResponseGuardPolicy`) to their accessor equivalents.
+- Implementation is blocked until the plan is approved.
 
 ## Test Status
 

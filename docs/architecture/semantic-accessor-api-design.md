@@ -318,3 +318,48 @@ Implementation of these accessors is blocked until a formal API design is docume
 ### Deferred Accessors
 
 - **`get_visible_text`**: Deferred. Visible text extraction touches final-answer/plaintext guards, `IntentTransitionHandler`, `DispatchOutcomeHandler`, and user-facing stop decisions. It requires a separate, dedicated design and must not be included in this batch.
+
+---
+
+## Phase 4 Batch 2 Migration Design (Proposed)
+
+- **Status**: Design Proposed. Awaiting review and approval for implementation.
+- **Scope**: This design covers the migration of two low-risk consumers to their new accessors.
+- **Implementation**: Not approved.
+
+### 1. Candidate: `ResponsePipelineStagesMixin` (leaked system result check)
+
+- **Call Site**: `_run_post_classification_stage` method.
+- **Current Logic**: `self.semantics.looks_like_leaked_system_result(response)`
+- **Target Accessor**: `semantic_accessors.is_leaked_system_result`
+- **Proposed Change**:
+    - In `modules/agent/orchestration/responses/response_pipeline_stages.py`, import `is_leaked_system_result`.
+    - Replace the call to `self.semantics.looks_like_leaked_system_result(response)` with `is_leaked_system_result(response)`.
+- **Behavior Preservation**: The accessor `is_leaked_system_result` was designed and tested to have exact parity with the `ResponseSemantics` method it replaces. This is a behavior-preserving 1-to-1 replacement.
+- **Test Plan**:
+    - Run existing tests for `response_pipeline_stages`.
+    - Add a mock-based test to `tests/test_response_pipeline_stages.py` (or equivalent) to prove the call now delegates to the accessor.
+
+### 2. Candidate: `ResponseGuardPolicy.is_nonproductive_thinking_turn`
+
+- **Call Site**: `is_nonproductive_thinking_turn` method.
+- **Current Logic**: `semantics.has_substantial_think(raw_response)`
+- **Target Accessor**: `semantic_accessors.has_substantial_think`
+- **Proposed Change**:
+    - In `modules/agent/orchestration/responses/response_guards.py`, import `has_substantial_think`.
+    - Replace the call to `semantics.has_substantial_think(raw_response)` with `has_substantial_think(raw_response)`.
+- **Behavior Preservation**: The accessor `has_substantial_think` was designed and tested to have exact parity with the `ResponseSemantics` method it replaces. This is a behavior-preserving 1-to-1 replacement.
+- **Test Plan**:
+    - Run existing tests for `response_guards`.
+    - Add a mock-based test to `tests/test_response_guards.py` to prove the call now delegates to the accessor.
+
+### 3. Explicit Non-Goals
+
+This design is strictly limited to the two consumer migrations described above. It does **not** include:
+- Implementation of `get_visible_text`.
+- Changes to final-answer/sufficiency logic.
+- Changes to `ActionPolicy` or dispatch behavior.
+- Changes to intent transition logic.
+- Changes to memory/plan board logic.
+- Any modifications to `history.py`.
+- Migration of any consumer not explicitly listed in this batch.
