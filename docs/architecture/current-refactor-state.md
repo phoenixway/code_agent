@@ -37,8 +37,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- **Complete Governance Alignment**: Finish updating all `docs/architecture` documents.
-- **Choose Next Implementation Phase**: After governance is stable, the next implementation phase (e.g., Phase 2 Consumer Inventory or Phase 3B Accessor Implementation) must be explicitly chosen and designed. It will not be started automatically.
+- Complete and review Consumer Inventory.
+- Approve inventory.
+- Then design Phase 3 Accessor Module as a separate docs/API-design task.
+- Do not start Phase 3 automatically.
 
 ## Test Status
 

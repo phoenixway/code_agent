@@ -19,6 +19,12 @@ These invariants are the highest law and must not be violated.
 5.  **`compiler_ir.action_ops` Fallback Is Protected**: The fallback in `has_any_action_proposal` that checks `compiler_ir.action_ops` is a critical compatibility shim and must not be removed without a new design.
 6.  **Runtime Owns Policy**: `ActionPolicy`, dispatch decisions, and all other runtime policies remain owned by the runtime, not the compiler.
 7.  **`history.py` Refactor Is Blocked**: The large `history.py` refactor must not begin until the semantic runtime boundary is stable and proven.
+8.  **`search_quality` Is Diagnostic-Only**: `search_quality` remains diagnostic-only unless explicitly approved otherwise.
+9.  **Docs-Only Tasks Are Isolated**: `docs-only` tasks must not change production code or tests.
+10. **Formal Intent Recovery Is Frozen**: Formal intent recovery is frozen during the current migration phase.
+11. **Final-Answer Behavior Is Frozen**: Final-answer/sufficiency behavior is frozen during the current migration phase.
+12. **Multi-Action Behavior Is Frozen**: Action array / multi-action behavior is frozen during the current migration phase.
+13. **Test Contracts Are Guarded**: Tests protecting critical invariants must not be removed or softened without naming the invariant and recording explicit approval.
 
 ## 4. Authority Model
 

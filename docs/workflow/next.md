@@ -1,4 +1,4 @@
-- Governance Phase 1 is active.
-- Current task: tighten governance docs.
-- Next after approval: Consumer Inventory / Phase 3B-Inventory.
-- The previous content of this file (a draft plan) is superseded by the canonical Semantic Runtime governance documents in `docs/architecture/`.
+- Current phase: Phase 2 Consumer Inventory.
+- Current task: repair/review inventory and governance consistency.
+- Next after approval: Phase 3 Accessor API Design, docs-only.
+- Phase 3 implementation must not start automatically.

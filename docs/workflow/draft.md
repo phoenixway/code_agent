@@ -1,3 +1,7 @@
+> Non-authoritative working note.
+> Canonical governance lives in docs/architecture/.
+> If this file conflicts with docs/architecture/*, docs/architecture wins.
+
 1. Governance repair: constitution still needs tightening.
 2. Consumer Inventory.
 3. Accessor API design, docs-only.

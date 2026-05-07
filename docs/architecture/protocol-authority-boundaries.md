@@ -31,8 +31,8 @@ This table documents every major consumer of response semantics, their current d
 | **`ActionPolicyHandler` bundle/command helpers** | `compiler_ir`, legacy `segments` | Dispatch authority, runtime policy | `accessors.get_action_ops` | High | No |
 | **`TransitionFollowupSemantics`** | `ProtocolCompiler.analyze()` on fragments | Intent transition/followup policy | `accessors.get_followup_surface` | High | No |
 | **`IntentTransitionHandler` followup helpers** | `TransitionFollowupSemantics`, regex | Intent transition/followup policy | `accessors.get_followup_surface` | High | No |
-| **`PlanBoardStageHandler`** | Regex on raw response | Memory/subgoal/checkpoint policy | `accessors.has_action`, `accessors.has_subgoal_tags` | Low | Yes |
-| **`MemoryBoardStageHandler`** | Regex on raw response | Memory/subgoal/checkpoint policy | `accessors.has_action`, `accessors.has_memory_tags` | Low | Yes |
+| **`PlanBoardStageHandler`** | Regex on raw response | Memory/subgoal/checkpoint policy | `accessors.has_action`, `accessors.has_subgoal_tags` | Medium | No/Later |
+| **`MemoryBoardStageHandler`** | Regex on raw response | Memory/subgoal/checkpoint policy | `accessors.has_action`, `accessors.has_memory_tags` | Medium | No/Later |
 | **`DispatchPipeline._build_execution_commit`** | `iteration.execution_plan` | Execution commit | N/A (already uses plan) | N/A | N/A |
 | **`protocol_decision_bridge.compiler_invalid_kind_for_output`** | `parsed_output` compiler fields | Compiler metadata | `accessors.get_compiler_error` | Low | Yes |
 | **`output_recovery_routing._resolved_invalid_kind`** | `parsed_output` fields, `compiler_invalid_kind_for_output` | Compiler metadata, recovery routing | `accessors.get_invalid_kind` | High | No |
@@ -40,7 +40,7 @@ This table documents every major consumer of response semantics, their current d
 | **`runtime_protocol_semantics.output_recovery_compiler_metadata`** | `RuntimeProtocolSemantics` or `parsed_output` | Compiler metadata | `accessors.get_compiler_metadata` | Low | Yes |
 | **`ActionPolicyHandler._formal_intent_required_for_multi_write_flow`** | `compiler_ir`, `action_segments`, runtime state | Runtime policy (intent requirement) | `accessors.get_action_ops` | High | No |
 | **`search_quality.classify_search_action_quality`** | `action_payload` dict | Diagnostic-only | N/A (diagnostic) | do-not-migrate-yet | No |
-| **`DispatchOutcomeHandler._strip_leaked_system_results_from_ui_text`** | Regex on raw response | Final-answer/plaintext guard | `accessors.get_visible_text` | Low | Yes |
+| **`DispatchOutcomeHandler._strip_leaked_system_results_from_ui_text`** | Regex on raw response | Final-answer/plaintext guard | `accessors.get_visible_text` | Medium | No/Later |
 | **`history.py`** | Various | History management | N/A | do-not-migrate-yet | No |
 
 ### Next Safe Implementation Candidates
@@ -48,10 +48,11 @@ This table documents every major consumer of response semantics, their current d
 Based on this inventory, the next safe and productive implementation steps for **Phase 3 (Accessor Module)** are:
 
 1.  **Create `semantic_accessors.py`**: Implement a new module for semantic accessors with full test coverage.
-2.  **Implement Compatibility Helpers**: The first accessors to implement should be those that support recovery and compatibility, not dispatch authority. Good candidates are:
-    -   `accessors.get_compiler_metadata(parsed_output)`: A robust helper to read `error_code`, `recovery_id`, etc. This is a continuation of the work done in Phase 3A.
-    -   `accessors.has_any_action_proposal(parsed_output)`: A new home for the logic currently in `ResponseSemantics`, keeping the `compiler_ir` fallback protected.
-    -   `accessors.has_substantial_think(parsed_output)`
-3.  **Behavior-Preserving Migration**: Once tested, low-risk consumers like `ResponseGuardPolicy` can be migrated to use these new accessors.
+2.  **Implement Compatibility and Recovery Helpers**: The first accessors to implement should be those that support recovery and compatibility, not dispatch authority. The only candidates for the initial implementation are:
+    -   `get_compiler_metadata`
+    -   `has_any_action_proposal_compat`
+    -   `is_compiler_invalid`
+    -   `is_compiler_invalid_with_legacy_action`
+3.  **Behavior-Preserving Migration**: Once tested, low-risk consumers can be migrated to use these new accessors.
 
 High-risk consumers related to dispatch authority, atomic bundle validation, and intent transition policy must **not** be migrated until the accessor module is stable and a new design is approved for those specific migrations.
