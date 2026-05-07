@@ -223,12 +223,12 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
-### Phase 5: TransitionSemanticValidator
+### Phase 5: TransitionSemanticValidator (Complete)
 
 - **Goal**: Refactor `IntentTransitionHandler` to use a dedicated semantic validator.
 - **Allowed**: Create a `TransitionSemanticValidator` class that uses the new accessors to check for valid transitions. Refactor `IntentTransitionHandler` to delegate to this validator.
 - **Forbidden**: Changing transition logic itself.
-- **Done When**: `IntentTransitionHandler` no longer performs its own response parsing.
+- **Done When**: The majority of `IntentTransitionHandler` followup parsing was migrated to the `TransitionSemanticValidator`. The `FOLLOWUP_PLAINTEXT` and `UNKNOWN` paths remain on a legacy fallback.
 
 ---
 
@@ -365,10 +365,10 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 5 Boundary Review
 
-- **Status**: Not started.
-- **Goal**: Decide whether to conclude Phase 5 before tackling `FOLLOWUP_PLAINTEXT` and its `get_visible_text` dependency, or to proceed with a dedicated design phase for `get_visible_text`.
-- **Forbidden**: Implementation before a new design or review conclusion is approved.
-- **Done When**: A decision is made and documented.
+- **Status**: Done.
+- **Goal**: Decide whether to conclude Phase 5 before tackling `FOLLOWUP_PLAINTEXT` and its `get_visible_text` dependency.
+- **Conclusion**: Phase 5 is complete. The `FOLLOWUP_PLAINTEXT` path is deferred due to its dependency on `get_visible_text`, which requires a separate design phase. The `UNKNOWN` path will remain a legacy fallback. Old helpers are preserved.
+- **Done When**: The review was completed and the decision to conclude Phase 5 was documented.
 
 ---
 

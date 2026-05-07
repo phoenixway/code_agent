@@ -106,6 +106,10 @@ This document is the single source of truth for the current state of the Semanti
   - Migrated the second narrow slice of `IntentTransitionRoutingMixin` (`NO_FOLLOWUP`, `FOLLOWUP_ACTION`) to use the `TransitionSemanticValidator`.
   - Fallback to legacy logic preserved for `FOLLOWUP_PLAINTEXT` and `UNKNOWN`.
   - Tests passed, and runtime behavior is unchanged.
+- **Phase 5 Boundary Review**
+  - Reviewed the remaining fallback paths (`FOLLOWUP_PLAINTEXT`, `UNKNOWN`).
+  - Conclusion: The `FOLLOWUP_PLAINTEXT` path is deeply tied to final-answer/sufficiency policy and the `get_visible_text` accessor. Migrating it would significantly expand the scope of Phase 5.
+  - Recommendation: Conclude Phase 5. The `TransitionSemanticValidator` has successfully migrated the vast majority of transition classifications. The remaining `FOLLOWUP_PLAINTEXT` and `UNKNOWN` paths will be kept on the legacy fallback, and the old helpers will be preserved. `get_visible_text` will be deferred to a potential future phase.
 
 ## Known Authority Boundaries
 
@@ -121,8 +125,7 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Perform Phase 5 boundary review.
-- Decide whether to conclude Phase 5 before tackling `FOLLOWUP_PLAINTEXT` and the `get_visible_text` dependency, or to proceed with a dedicated design for `get_visible_text`.
+- Conclude Phase 5 and begin planning for Phase 6 (`Bundle Semantic Validation Pass`).
 
 ## Test Status
 
