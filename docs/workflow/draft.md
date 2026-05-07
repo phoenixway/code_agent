@@ -9,4 +9,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 5. Phase 4 first migration design (`has_any_action_proposal`): approved.
 6. Phase 4 first migration implementation (`has_any_action_proposal`): done.
 7. Phase 4 Batch 1 plan: approved.
-8. Next: Implement only the two approved call-site migrations.
+8. Phase 4 Batch 1 implementation: done.
+9. Next: Plan the next Phase 4 batch or next accessor design.

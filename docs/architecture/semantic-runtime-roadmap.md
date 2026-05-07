@@ -119,7 +119,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ### Phase 4 Batch 1 Implementation
 
-- **Status**: Not started.
+- **Status**: Done.
 - **Goal**: Implement the two approved call-site migrations from the Batch 1 plan.
 - **Allowed Files**:
     - `modules/agent/orchestration/responses/output_recovery_routing.py`

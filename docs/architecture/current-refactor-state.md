@@ -5,7 +5,7 @@ This document is the single source of truth for the current state of the Semanti
 ## Current Phase
 
 - **Phase 4: Behavior-Preserving Wrapper Migration (Design for next consumer)**
-- **Status**: First wrapper migration is complete. Next step is to design the next behavior-preserving migration.
+- **Status**: Batch 1 migration is complete. Next step is to plan the next behavior-preserving migration.
 
 ## Completed Governance
 
@@ -33,6 +33,11 @@ This document is the single source of truth for the current state of the Semanti
   - `ResponseSemantics.has_any_action_proposal` now delegates to `semantic_accessors.has_any_action_proposal_compat`.
   - Behavior was preserved, and all relevant tests passed.
   - No other consumers were migrated.
+- **Phase 4 (Batch 1): Call-Site Migrations**
+  - Migrated `OutputRecoveryRoutingMixin._compiler_strategy_decision` to use `get_compiler_metadata`.
+  - Migrated `ModelOutputRecoveryHandler._has_any_action_proposal` to use `has_any_action_proposal_compat`.
+  - The `output_recovery_compiler_metadata` helper was preserved.
+  - No other consumers were migrated, and runtime behavior was unchanged.
 
 ## Known Authority Boundaries
 
@@ -48,9 +53,8 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Implement the approved "Phase 4 Batch 1" migration.
-- This includes migrating the call sites in `OutputRecoveryRoutingMixin._compiler_strategy_decision` and `ModelOutputRecoveryHandler._has_any_action_proposal` to their `semantic_accessors` equivalents.
-- No other migrations are authorized.
+- Plan the next Phase 4 batch migration or the next required accessor API design.
+- Do not approve implementation automatically.
 
 ## Test Status
 
