@@ -32,10 +32,10 @@ The initial implementation phase will focus on a small, safe set of accessors th
 - **Authority Boundary**: **Structural Fact**. Provides compiler diagnostic metadata. It is **not** dispatch authority.
 - **Non-Goals**: This function does not interpret the metadata or decide on a recovery strategy. That is the role of `OutputRecoveryRoutingMixin`.
 - **Future Tests**:
-    - Test that it correctly reads from `RuntimeProtocolSemantics` when present.
-    - Test that it falls back to `parsed_output.compiler_*` fields when `RuntimeProtocolSemantics` is absent.
-    - Test that it returns an empty structure when no compiler or legacy data is available.
-    - Test that `invalid_kind` from the snapshot takes precedence over the legacy `invalid_kind` on `parsed_output` when the snapshot is present.
+    - **Source Priority**: Test that it correctly reads from `RuntimeProtocolSemantics` when present (source: `compiler`).
+    - **Fallback**: Test that it falls back to `parsed_output.compiler_*` fields when `RuntimeProtocolSemantics` is absent (source: `parsed_output_compiler_fields`).
+    - **`invalid_kind` Precedence**: Test that `invalid_kind` from `RuntimeProtocolSemantics` takes precedence over the legacy `invalid_kind` on `parsed_output`.
+    - **Missing Data**: Test that it returns an empty structure (preserving legacy `invalid_kind`) when no compiler data is available (source: `missing`).
 
 ---
 
@@ -54,10 +54,10 @@ The initial implementation phase will focus on a small, safe set of accessors th
 - **Authority Boundary**: **Compatibility Shim / Recovery Evidence**. This is a broad, non-authoritative check. A `True` result is **not** dispatch permission. It is used by guards like `is_nonproductive_thinking_turn` to see if the model *attempted* an action.
 - **Non-Goals**: This function must **not** be used for dispatch decisions. It must **not** be replaced by a stricter check like `RuntimeProtocolSemantics.has_action` until all consumers are migrated and the compatibility shim is no longer needed.
 - **Future Tests**:
-    - Test that it returns `True` if `parsed_action_count > 0`.
-    - Test that it returns `True` if `has_action_segment` is `True`.
-    - Test that it returns `True` if `compiler_ir.action_ops` is present, even if legacy checks are `False`.
-    - Test that it returns `False` if all checks are negative.
+    - **Legacy Action Count**: Test that it returns `True` if `parsed_action_count > 0`.
+    - **Compiler IR Fallback**: Test that it returns `True` if `compiler_ir.action_ops` is a non-empty list, even if legacy checks are `False`. This protects the critical compatibility shim.
+    - **Legacy Segment**: Test that it returns `True` if `parsed_output.has_action_segment` is `True`.
+    - **No Action**: Test that it returns `False` if all checks are negative.
 
 ---
 
@@ -74,11 +74,10 @@ The initial implementation phase will focus on a small, safe set of accessors th
 - **Authority Boundary**: **Supreme Structural Fact**. A `True` result means the response is structurally invalid. Per the constitution, this response **must never be dispatched**.
 - **Non-Goals**: This function does not provide the *reason* for the invalidity. Use `get_compiler_metadata` for that.
 - **Future Tests**:
-    - Test that it returns `True` if `RPS.is_valid` is `False`.
-    - Test that it returns `True` if `compiler_shape` is `INVALID`.
-    - Test that it returns `True` if `compiler_error_code` is set.
-    - Test that it returns `False` if compiler analysis was successful.
-    - Test that it returns `False` if no compiler data is present.
+    - **RPS Source**: Test that it returns `True` if `RuntimeProtocolSemantics.is_valid` is `False`.
+    - **Fallback Sources**: Test that it returns `True` if `compiler_shape` is `INVALID` or if `compiler_error_code` is set.
+    - **Valid Case**: Test that it returns `False` if compiler analysis was successful (`is_valid` is `True` and no error code).
+    - **No Compiler Data**: Test that it returns `False` if no compiler information is present at all, preventing incorrect blocking.
 
 ---
 
@@ -94,9 +93,9 @@ The initial implementation phase will focus on a small, safe set of accessors th
 - **Authority Boundary**: **Safety Check / Recovery Trigger**. A `True` result indicates that a dispatch would violate the constitution. The action-like content should be treated as **recovery evidence only**.
 - **Non-Goals**: This is not a general-purpose validity check. It is a highly specific safety guard.
 - **Future Tests**:
-    - Test that it returns `True` when `is_compiler_invalid` is `True` AND `has_any_action_proposal_compat` is `True`.
-    - Test that it returns `False` if `is_compiler_invalid` is `False`.
-    - Test that it returns `False` if `has_any_action_proposal_compat` is `False`.
+    - **Core Invariant**: Test that it returns `True` when `is_compiler_invalid` is `True` AND `has_any_action_proposal_compat` is `True`. This is the "recovery evidence only" case.
+    - **Compiler Valid**: Test that it returns `False` if `is_compiler_invalid` is `False`.
+    - **No Action Proposal**: Test that it returns `False` if `has_any_action_proposal_compat` is `False`.
 
 ## 3. Rejected Initial Accessors
 
@@ -108,3 +107,12 @@ The following accessors are **explicitly not part of the initial API design** be
 - **`get_followup_surface`**: Forbidden. Intent transition logic is complex and frozen.
 - **`get_visible_text`**: Deferred. While seemingly simple, this is part of the final-answer guard logic, which is frozen. It will be migrated later.
 - **`has_subgoal_tags` / `has_memory_tags`**: Deferred. These are part of the memory/plan checkpoint policy, which will be migrated in a later phase.
+
+## 4. Implementation Phase Test Requirements
+
+The implementation of the `semantic_accessors` module must be accompanied by a comprehensive test suite that validates not only the logic of each accessor but also the core invariants of the semantic runtime migration.
+
+- **Unit Tests**: Each accessor function must have dedicated unit tests covering all logic paths, including source priority, fallbacks, and edge cases (e.g., `None` inputs, missing fields).
+- **Parity Tests**: Where an accessor replaces existing logic (e.g., from `ResponseSemantics`), parity tests should be created to run both the old and new logic against a corpus of real-world responses, logging any disagreements. This ensures the migration is behavior-preserving.
+- **Invariant Protection**: The test suite must include explicit tests that map to the `test-contracts.md` document. For example, tests must prove that a compiler-`INVALID` response with legacy action content is correctly identified as `is_compiler_invalid_with_legacy_action` and that `has_any_action_proposal_compat` correctly uses its fallbacks.
+- **No Authority Creep**: Tests must confirm that no accessor returns a policy decision. For example, `has_any_action_proposal_compat` must not be a simple alias for a dispatch-authoritative check.
