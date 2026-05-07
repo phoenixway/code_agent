@@ -6,7 +6,9 @@ from modules.agent.orchestration.responses.response_pipeline_prevalidation impor
 from modules.agent.orchestration.responses.runtime_protocol_semantics import (
     RuntimeProtocolSemantics,
     compact_runtime_protocol_semantics,
+    output_recovery_structural_parity,
     runtime_semantics_from_compiler_analysis,
+    runtime_semantics_from_output_or_none,
     runtime_semantics_from_parsed_output,
 )
 from modules.agent.orchestration.shared.decision_models import ParsedModelOutput
@@ -145,3 +147,85 @@ class TestRuntimeProtocolSemantics(unittest.TestCase):
         self.assertFalse(compact["has_pre_action_text"])
         self.assertFalse(compact["has_file_content"])
         self.assertEqual(1, compact["effects_preview_count"])
+
+    def test_runtime_semantics_from_output_or_none_returns_existing(self):
+        existing_snapshot = RuntimeProtocolSemantics(
+            source="existing",
+            shape="TEST",
+            is_valid=True,
+            error_code="",
+            recovery_id="",
+            invalid_kind="",
+            action_count=1,
+            has_action=True,
+            action_ops=(),
+            intent_ops=(),
+            visible_text="",
+            has_visible_answer=False,
+            pre_action_text="",
+            has_pre_action_text=False,
+            memory_ops=(),
+            subgoal_ops=(),
+            has_file_content=False,
+            file_content="",
+            effects_preview=(),
+        )
+        parsed_output = ParsedModelOutput(response="", runtime_protocol_semantics=existing_snapshot)
+        snapshot = runtime_semantics_from_output_or_none(parsed_output)
+        self.assertIs(snapshot, existing_snapshot)
+
+    def test_runtime_semantics_from_output_or_none_builds_new(self):
+        analysis = self.compiler.analyze('<action>{"type":"read_file","path":"a.py"}</action>')
+        parsed_output = ParsedModelOutput(
+            response="",
+            compiler_shape=analysis.shape.name,
+            compiler_ir=analysis.ir,
+        )
+        snapshot = runtime_semantics_from_output_or_none(parsed_output)
+        self.assertIsNotNone(snapshot)
+        self.assertEqual("compiler", snapshot.source)
+        self.assertEqual("ACTION_ONLY", snapshot.shape)
+
+    def test_runtime_semantics_from_output_or_none_returns_none(self):
+        parsed_output = ParsedModelOutput(response="text only")
+        snapshot = runtime_semantics_from_output_or_none(parsed_output)
+        self.assertIsNone(snapshot)
+
+    def test_output_recovery_structural_parity_handles_none(self):
+        parsed_output = ParsedModelOutput(response="text only")
+        parity = output_recovery_structural_parity(parsed_output)
+        self.assertFalse(parity["has_snapshot"])
+
+    def test_output_recovery_structural_parity_compares_fields(self):
+        analysis = self.compiler.analyze('<action>{"type":"read_file","path":"a.py"}</action>')
+        parsed_output = ParsedModelOutput(
+            response="",
+            has_action_segment=True,
+            invalid_kind="some_kind",
+            runtime_protocol_semantics=runtime_semantics_from_compiler_analysis(analysis, invalid_kind="some_kind"),
+        )
+        parity = output_recovery_structural_parity(parsed_output, parsed_action_count=1)
+        self.assertTrue(parity["has_snapshot"])
+        self.assertEqual("ACTION_ONLY", parity["snapshot_shape"])
+        self.assertEqual("some_kind", parity["snapshot_invalid_kind"])
+        self.assertEqual("some_kind", parity["parsed_invalid_kind"])
+        self.assertTrue(parity["invalid_kind_matches"])
+        self.assertEqual(1, parity["snapshot_action_count"])
+        self.assertEqual(1, parity["parsed_action_count"])
+        self.assertTrue(parity["action_count_matches"])
+        self.assertTrue(parity["snapshot_has_action"])
+        self.assertTrue(parity["parsed_has_action_segment"])
+        self.assertTrue(parity["has_action_matches"])
+
+    def test_output_recovery_structural_parity_mismatch(self):
+        analysis = self.compiler.analyze("just text")
+        parsed_output = ParsedModelOutput(
+            response="",
+            has_action_segment=True,  # Mismatch
+            invalid_kind="legacy_kind",  # Mismatch
+            runtime_protocol_semantics=runtime_semantics_from_compiler_analysis(analysis, invalid_kind="compiler_kind"),
+        )
+        parity = output_recovery_structural_parity(parsed_output, parsed_action_count=1)
+        self.assertFalse(parity["invalid_kind_matches"])
+        self.assertFalse(parity["action_count_matches"])
+        self.assertFalse(parity["has_action_matches"])

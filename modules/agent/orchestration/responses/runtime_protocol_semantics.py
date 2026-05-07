@@ -174,3 +174,50 @@ def compact_runtime_protocol_semantics(snapshot: RuntimeProtocolSemantics | None
         "has_file_content": snapshot.has_file_content,
         "effects_preview_count": len(snapshot.effects_preview),
     }
+
+
+def runtime_semantics_from_output_or_none(parsed_output: Any) -> RuntimeProtocolSemantics | None:
+    """Returns an existing semantic snapshot or creates one from compiler fields."""
+    if isinstance(getattr(parsed_output, "runtime_protocol_semantics", None), RuntimeProtocolSemantics):
+        return parsed_output.runtime_protocol_semantics
+    if _safe_getattr(parsed_output, "compiler_ir", None) is not None:
+        try:
+            return runtime_semantics_from_parsed_output(parsed_output)
+        except Exception:
+            return None
+    return None
+
+
+def output_recovery_structural_parity(parsed_output: Any, *, parsed_action_count: int = 0) -> dict[str, Any]:
+    """Creates a compact parity-check dictionary for output recovery diagnostics."""
+    snapshot = runtime_semantics_from_output_or_none(parsed_output)
+    if snapshot is None:
+        return {"has_snapshot": False}
+
+    parsed_invalid_kind = str(_safe_getattr(parsed_output, "invalid_kind", "") or "")
+    snapshot_invalid_kind = str(_safe_getattr(snapshot, "invalid_kind", "") or "")
+
+    action_count_matches = None
+    if parsed_action_count > 0 or snapshot.action_count > 0:
+        action_count_matches = snapshot.action_count == parsed_action_count
+
+    has_action_matches = None
+    parsed_has_action = bool(_safe_getattr(parsed_output, "has_action_segment", False))
+    if parsed_has_action or snapshot.has_action:
+        has_action_matches = snapshot.has_action == parsed_has_action
+
+    return {
+        "has_snapshot": True,
+        "snapshot_shape": snapshot.shape,
+        "snapshot_error_code": snapshot.error_code,
+        "snapshot_recovery_id": snapshot.recovery_id,
+        "snapshot_invalid_kind": snapshot_invalid_kind,
+        "parsed_invalid_kind": parsed_invalid_kind,
+        "invalid_kind_matches": snapshot_invalid_kind == parsed_invalid_kind,
+        "snapshot_action_count": snapshot.action_count,
+        "parsed_action_count": parsed_action_count,
+        "action_count_matches": action_count_matches,
+        "snapshot_has_action": snapshot.has_action,
+        "parsed_has_action_segment": parsed_has_action,
+        "has_action_matches": has_action_matches,
+    }

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ..shared.decision_models import OutputRecoveryDecision, ParsedModelOutput
 from .protocol_decision_bridge import COMPILER_INVALID_KIND_BY_CODE, compiler_invalid_kind_for_output
+from .runtime_protocol_semantics import output_recovery_structural_parity
 
 
 class OutputRecoveryRoutingMixin:
@@ -35,6 +36,19 @@ class OutputRecoveryRoutingMixin:
     ) -> OutputRecoveryDecision:
         self._last_parsed_output_for_handoff = parsed_output
         invalid_kind = self._resolved_invalid_kind(parsed_output)
+        stage_logger = getattr(self, "stage_logger", None)
+        if stage_logger:
+            segments = getattr(parsed_output, "segments", []) or []
+            parsed_action_count = sum(1 for seg in segments if getattr(seg, "type", "") == "action")
+            parity = output_recovery_structural_parity(
+                parsed_output,
+                parsed_action_count=parsed_action_count,
+            )
+            stage_logger.log(
+                "output_recovery_semantics_parity",
+                "snapshot",
+                **parity,
+            )
         compiler_strategy_decision = self._compiler_strategy_decision(
             parsed_output,
             invalid_kind=invalid_kind,

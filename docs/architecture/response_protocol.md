@@ -342,6 +342,12 @@ This audit inventories the dependencies of the `output_recovery` stage to determ
 | **Build/Fix Status** | `output_recovery.py` | `state` | N/A | High | Runtime-owned | Purely runtime state-dependent. |
 | **Retry/Terminal Logic** | `output_recovery_terminal.py` | `state` (retry counters, etc.) | N/A | High | Runtime-owned | Core runtime policy for loop control. |
 
+##### Phase 3A-pre: Read-Only Parity Checks
+
+-   **Status: Done.** This phase adds read-only diagnostics to the `output_recovery` stage.
+-   A new `output_recovery_semantics_parity` trace entry now logs a comparison between legacy structural fields (`invalid_kind`, `has_action_segment`) and the equivalent fields from `RuntimeProtocolSemantics`.
+-   This is a diagnostics-only change. Output recovery decisions are not yet using the new adapter. All behavior and authority boundaries remain unchanged.
+
 ##### Proposed Phase 3A Scope
 
 The first implementation phase for migrating `output_recovery` should be narrow and focused on structural checks.
