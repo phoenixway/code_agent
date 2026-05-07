@@ -145,6 +145,35 @@ def test_history_self_reference_hit_recovery_prompt(prompt_builder: Orchestrator
     assert "not real usage evidence" in header.lower()
 
 
+def test_unclosed_think_recovery_prompt(prompt_builder: OrchestratorPromptBuilder):
+    """
+    Tests that the recovery prompt for an unclosed think block is direct.
+    """
+    # This method is part of ActionFormatPromptBuilderMixin, not mocked here.
+    prompt = prompt_builder.build_incomplete_think_recovery_prompt()
+
+    assert "opened <think> but placed protocol tags before closing it" in prompt
+    assert "<think> may contain draft reasoning" in prompt
+    assert "closed with </think> before any memory tag" in prompt
+    assert "Do not put protocol tags or actions inside <think>" in prompt
+    assert "Return the corrected response from the beginning" in prompt
+    assert "restart the whole response" in prompt
+
+
+def test_unclosed_think_second_retry_prompt(prompt_builder: OrchestratorPromptBuilder):
+    """
+    Tests that the second-retry prompt for an unclosed think block is stricter.
+    """
+    prompt = prompt_builder.build_exact_think_skeleton_prompt()
+
+    assert "malformed or unclosed <think> block" in prompt
+    assert "<think> may contain draft reasoning" in prompt
+    assert "Do not use <think>" in prompt
+    assert "No internal analysis" in prompt
+    assert "Return exactly one valid" in prompt
+    assert "Return the corrected response from the beginning" in prompt
+
+
 def test_typed_stop_recovery_with_missing_goal(prompt_builder: OrchestratorPromptBuilder):
     """
     Tests that prompt building is safe when the active intent or its goal is missing.

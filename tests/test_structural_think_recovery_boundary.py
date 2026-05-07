@@ -70,7 +70,6 @@ async def test_recovery_says_close_think_before_tags():
     assert decision.reason == "malformed_incomplete_think"
     assert "closed with </think> before" in (decision.next_query or "")
     assert "Do not put protocol tags or actions inside <think>" in (decision.next_query or "")
-    assert "Prefer omitting <think>" not in (decision.next_query or "")
     assert "! one verified state" not in (decision.next_query or "")
     assert "compact operational review" not in (decision.next_query or "")
 

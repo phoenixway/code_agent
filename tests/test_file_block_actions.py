@@ -304,7 +304,7 @@ class FileBlockPromptTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("malformed_incomplete_think", decision.reason)
         self.assertIn("closed with </think> before any memory tag", decision.next_query)
         self.assertIn("Do not put protocol tags or actions inside <think>", decision.next_query)
-        self.assertIn("Do not continue the previous incomplete sentence", decision.next_query)
+        self.assertIn("restart the whole response", decision.next_query)
 
     async def test_incomplete_file_content_uses_special_recovery_prompt(self):
         handler = self._handler()
@@ -411,6 +411,72 @@ class FileBlockPromptTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("action_inside_think", decision.reason)
         self.assertIn("Do not put protocol tags or actions inside <think>", decision.next_query)
         self.assertIn("Return the corrected response from the beginning", decision.next_query)
+
+    async def test_unclosed_think_recovery_flow(self):
+        agent = SimpleNamespace(
+            ui=SimpleNamespace(print_error=AsyncMock()),
+            state=SimpleNamespace(
+                active_intent=SimpleNamespace(intent_id="intent_1", intent_type="INVESTIGATE"),
+                malformed_think_intent_id="",
+                malformed_think_count=0,
+                recovery_loop_handoff_intent_id="",
+                recovery_loop_handoff_count=0,
+                recovery_loop_handoff_defect_kind="",
+                large_malformed_response_intent_id="",
+                large_malformed_response_count=0,
+                large_malformed_response_kind="",
+                orchestration_trace=[],
+                orchestration_trace_sequence=0,
+            ),
+            config=_DummyConfig(),
+            log=None,
+        )
+        builder = OrchestratorPromptBuilder(
+            SimpleNamespace(
+                state=agent.state,
+                config=_DummyConfig(),
+                memory_board_store=None,
+                log=None,
+            )
+        )
+        handler = ModelOutputRecoveryHandler(agent, builder)
+        parsed_output = ParsedModelOutput(
+            response="<think>oops",
+            invalid_kind="malformed_incomplete_think",
+            compiler_error_code="E_UNCLOSED_THINK",
+            compiler_recovery_id="unclosed_think",
+        )
+
+        # First attempt
+        decision1 = await handler.decide(
+            parsed_output,
+            malformed_action_retries=0,
+            audit_marker_retries=0,
+        )
+        self.assertTrue(decision1.handled)
+        self.assertEqual("malformed_incomplete_think", decision1.reason)
+        self.assertNotIn("Do not use <think>", decision1.next_query)
+
+        # Second attempt
+        decision2 = await handler.decide(
+            parsed_output,
+            malformed_action_retries=0,
+            audit_marker_retries=0,
+        )
+        self.assertTrue(decision2.handled)
+        self.assertEqual("malformed_incomplete_think", decision2.reason)
+        self.assertIn("Do not use <think>", decision2.next_query)
+        self.assertIn("No internal analysis", decision2.next_query)
+
+        # Third attempt should trigger terminal handoff
+        decision3 = await handler.decide(
+            parsed_output,
+            malformed_action_retries=0,
+            audit_marker_retries=0,
+        )
+        self.assertTrue(decision3.handled)
+        self.assertEqual("terminal_malformed_think_handoff", decision3.reason)
+        self.assertTrue(decision3.stop_loop)
 
 
 if __name__ == "__main__":

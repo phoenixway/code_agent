@@ -79,15 +79,9 @@ class ActionFormatPromptBuilderMixin:
             "SYSTEM: Your last response opened <think> but placed protocol tags before closing it.\n"
             "<think> may contain draft reasoning, but it must be closed with </think> before any memory tag, subgoal tag, <memory_update_done />, <intent>, <action>, <file_content>, or visible answer text.\n"
             "Do not put protocol tags or actions inside <think>.\n"
+            "Do not put <action>, <intent>, <file_content>, memory tags, or subgoal tags inside <think>.\n"
             "Return the corrected response from the beginning.\n"
-            "Example:\n"
-            "<think>\n"
-            "I need to inspect the pipeline implementation before making a stronger recommendation.\n"
-            "</think>\n"
-            "<finding scope=\"intent\">The orchestration entry point is under modules/agent/orchestration/core.py.</finding>\n"
-            "<memory_update_done />\n"
-            "<action>{\"type\":\"read_file\",\"path\":\"modules/agent/orchestration/pipeline.py\"}</action>\n"
-            "Do not continue the previous incomplete sentence."
+            "Do not continue the previous malformed response; restart the whole response."
         )
 
     def build_malformed_verbose_or_nested_think_prompt(self) -> str:
@@ -122,18 +116,12 @@ class ActionFormatPromptBuilderMixin:
 
     def build_exact_think_skeleton_prompt(self) -> str:
         return (
-            "SYSTEM: Your last response opened <think> but placed protocol tags before closing it again.\n"
+            "SYSTEM: Your last response again had a malformed or unclosed <think> block.\n"
             "<think> may contain draft reasoning, but it must be closed with </think> before any memory tag, subgoal tag, <memory_update_done />, <intent>, <action>, <file_content>, or visible answer text.\n"
-            "Do not put protocol tags or actions inside <think>.\n"
+            "Do not use <think> in this next response.\n"
+            "No internal analysis.\n"
             "Return the corrected response from the beginning.\n"
-            "Example:\n"
-            "<think>\n"
-            "The current gap is the exact implementation of run_iteration.\n"
-            "</think>\n"
-            "<memory_update_done />\n"
-            "<action>{\"type\":\"read_chunk\",\"path\":\"modules/agent/orchestration/pipeline.py\",\"start_line\":180,\"end_line\":299}</action>\n"
-            "If durable tags are needed, place them between </think> and <memory_update_done />.\n"
-            "Do not continue the previous incomplete fragment."
+            "Return exactly one valid <action>, <intent>, intent+action bundle, or a brief plaintext answer."
         )
 
     def build_malformed_think_limit_prompt(self) -> str:
