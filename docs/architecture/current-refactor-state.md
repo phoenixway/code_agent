@@ -53,8 +53,8 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Plan the next Phase 4 batch migration or the next required accessor API design.
-- Do not approve implementation automatically.
+- The fast-lane of simple wrapper migrations is complete.
+- The next step is to design the next batch of semantic accessors to unblock further migrations.
 
 ## Test Status
 

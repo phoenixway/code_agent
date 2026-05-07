@@ -138,6 +138,15 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+### Phase 4 Batch 2 Planning
+
+- **Status**: Done.
+- **Goal**: Analyze consumer inventory for next safe migration candidates.
+- **Conclusion**: The fast-lane of simple migrations using the current accessor set is exhausted. All remaining safe candidates require new accessors.
+- **Next Step**: Design the next batch of semantic accessors.
+
+---
+
 ### Phase 5: TransitionSemanticValidator
 
 - **Goal**: Refactor `IntentTransitionHandler` to use a dedicated semantic validator.

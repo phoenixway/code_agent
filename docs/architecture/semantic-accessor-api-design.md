@@ -237,3 +237,33 @@ Based on the analysis, the following two consumers are identified as safe, high-
 
 -   Review and approve this batch migration plan.
 -   Implementation is blocked until approval is granted.
+
+---
+
+## Phase 4 Batch 2 Planning: Fast-Lane Exhausted
+
+- **Status**: Planning complete. Awaiting review and approval for next design phase.
+
+### 1. Goal
+
+To identify if any remaining consumers in the inventory can be safely migrated using only the existing approved accessors.
+
+### 2. Conclusion: Fast-Lane Exhausted
+
+A review of the `Consumer Inventory` confirms that all remaining safe, low-risk "fast-lane" migration candidates have been addressed in Step 1 and Batch 1.
+
+All other consumers fall into one of these categories:
+- They are part of a frozen, high-risk policy domain (e.g., `ActionPolicy`, dispatch authority, intent transitions).
+- They require new accessor functions that have not yet been designed or approved.
+
+**Therefore, the fast-lane for behavior-preserving wrapper migrations with the current accessor set is exhausted.**
+
+### 3. Recommendation: Design Next Accessor Batch
+
+The next logical step is to begin the API design for the next batch of semantic accessors. The following are proposed as candidates for the next design phase, as they represent useful, lower-risk semantic reads that can unblock further migrations:
+
+- **`has_substantial_think`**: For migrating `ResponseGuardPolicy.is_nonproductive_thinking_turn`.
+- **`get_visible_text`**: For migrating plaintext/final-answer guards in `IntentTransitionHandler` and `DispatchOutcomeHandler`.
+- **`is_leaked_system_result`**: For migrating the guard in `ResponsePipelineStagesMixin`.
+
+Implementation of these accessors is blocked until a formal API design is documented and approved.
