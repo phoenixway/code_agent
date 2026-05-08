@@ -683,9 +683,9 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 #### Phase 8 Step 3: Typed Model Scaffolding (Design)
 
 - **Status**: Not Started.
-- **Goal**: Design and implement the scaffolding for a typed result model (e.g., `TerminalAnswerKind`, `TerminalAnswerSemanticResult`).
-- **Forbidden**: Implementation before design approval.
-- **Done When**: The typed models are created with passing unit tests.
+- **Goal**: Design the scaffolding for a typed result model (e.g., `TerminalAnswerKind`, `TerminalAnswerSemanticResult`).
+- **Forbidden**: Implementation is not authorized by default and requires separate approval after Step 2 is complete.
+- **Done When**: The design for the typed models is approved.
 
 ---
 

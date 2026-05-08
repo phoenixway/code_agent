@@ -16,13 +16,13 @@ This inventory documents the current state of components involved in visible tex
 | Component / Function | Input(s) | Decision / Effect | Authority Type | Dependency | Risk | Future Owner |
 |---|---|---|---|---|---|---|
 | **`RuntimeProtocolSemantics`** | `CompilerAnalysis` | Produces structural facts: `shape`, `has_visible_answer`, `visible_text`, `pre_action_text`. | Structural Fact | Compiler IR | Low | `RuntimeProtocolSemantics` |
-| **`ResponseSemantics.is_plaintext_answer_path`** | `raw_response`, `parsed_output` | Determines if response is a plaintext answer. | Final-Answer Guard | Regex, `has_any_action_proposal_compat` | High | `TerminalAnswerClassifier` |
-| **`ResponsePipelinePrevalidationMixin._reject_truncated_terminal_completion_before_transition`** | `raw_response`, `intent_payload` | Rejects `intent mode="complete"` if visible text is missing or truncated. | Final-Answer Guard | `visible_text.terminal_plaintext_completion_status` (regex) | Medium | `TerminalAnswerClassifier` |
+| **`ResponseSemantics.is_plaintext_answer_path`** | `raw_response`, `parsed_output` | Determines if response is a plaintext answer. | Final-Answer Guard | Regex, `has_any_action_proposal_compat` | High | `TerminalAnswerClassifier` (candidate) |
+| **`ResponsePipelinePrevalidationMixin._reject_truncated_terminal_completion_before_transition`** | `raw_response`, `intent_payload` | Rejects `intent mode="complete"` if visible text is missing or truncated. | Final-Answer Guard | `visible_text.terminal_plaintext_completion_status` (regex) | Medium | `TerminalAnswerClassifier` (candidate) |
 | **`IntentTransitionRoutingMixin`** | `response_text`, `intent_payload` | Handles `intent_completed_with_plaintext_answer`. | Transition Policy | `TransitionSemanticValidator`, legacy regex | High | `IntentTransitionHandler` |
 | **`MemoryBoardStageHandler`** | `raw_response` | Identifies `memory_checkpoint_and_text`. | Board Checkpoint | Regex | Medium | `MemoryBoardStageHandler` |
 | **`PlanBoardStageHandler`** | `raw_response` | Identifies `plan_checkpoint_and_text`. | Board Checkpoint | Regex | Medium | `PlanBoardStageHandler` |
 | **`ResponsePipelineStagesMixin`** | `memory_checkpoint_and_text` flag | Dispatches responses with memory checkpoints and text. | Dispatch Routing | Boolean flag from `MemoryBoardStageHandler` | Medium | `ResponsePipelineStagesMixin` |
-| **`OutputRecoveryRoutingMixin`** | `parsed_output` | Recovers from `internal_summary_instead_of_final_answer`. | Recovery Routing | Heuristics on `parsed_output` | Medium | `TerminalAnswerClassifier` |
+| **`OutputRecoveryRoutingMixin`** | `parsed_output` | Recovers from `internal_summary_instead_of_final_answer`. | Recovery Routing | Heuristics on `parsed_output` | Medium | `TerminalAnswerClassifier` (candidate) |
 | **`semantic_accessors.is_leaked_system_result`** | `text` | Detects leaked `SYSTEM RESULT` transcripts. | Malformed-Output Evidence | Regex | Low | `semantic_accessors` |
 | **`DispatchOutcomeHandler._extract_visible_text`** | `response_text` | Extracts final text for UI display. | UI Display | `visible_text.sanitize_visible_text_for_user` (regex) | High | `DispatchOutcomeHandler` (consuming a classification) |
 | **`PreDispatchPipeline`** | `state.terminal_plaintext_completion_pending` | Stops the loop for a terminal plaintext answer. | Final-Answer Stop Gate | Boolean flag set by `IntentTransitionHandler` | High | `PreDispatchPipeline` (consuming a classification) |
@@ -30,12 +30,13 @@ This inventory documents the current state of components involved in visible tex
 ## 3. Desired Authority Model
 
 - **`RuntimeProtocolSemantics`**: Continues to own raw structural facts from the compiler (`shape`, `has_visible_answer`, etc.).
-- **`TerminalAnswerClassifier` (New)**: A new, dedicated component will be the single source of truth for classifying terminal answer semantics. It will consume `RuntimeProtocolSemantics` and other necessary inputs to produce a strongly-typed result (e.g., `TerminalAnswerKind`).
-- **`IntentTransitionHandler`**: Will consume the `TerminalAnswerClassifier` result to handle `intent_completed_with_plaintext_answer` transitions.
-- **`MemoryBoardStageHandler` / `PlanBoardStageHandler`**: Will continue to own board mutations but may consume the classifier result to simplify their logic.
-- **`ResponsePipeline`**: Will consume the classifier result for routing decisions (e.g., dispatching `memory_checkpoint_and_text`).
-- **`DispatchOutcomeHandler`**: Will consume the `visible_text` field from the `TerminalAnswerClassifier` result for UI display, rather than performing its own extraction.
-- **`PreDispatchPipeline`**: Will consume the `TerminalAnswerKind` to make a clear stop/continue decision.
+- **`TerminalAnswerClassifier` (Candidate)**: A new, dedicated component could become the single source of truth for classifying terminal answer semantics. It would consume `RuntimeProtocolSemantics` and other necessary inputs to produce a strongly-typed result (e.g., `TerminalAnswerKind`). The exact component shape will be decided after characterization tests (Step 2) are complete.
+- **Consumers**: If a classifier is created, consumers would be migrated to use it:
+    - `IntentTransitionHandler` would consume the result for `intent_completed_with_plaintext_answer` transitions.
+    - `MemoryBoardStageHandler` / `PlanBoardStageHandler` could consume the result to simplify their logic.
+    - `ResponsePipeline` would consume the result for routing decisions.
+    - `DispatchOutcomeHandler` would consume a `visible_text` field from the result for UI display.
+    - `PreDispatchPipeline` would consume a typed `TerminalAnswerKind` to make a clear stop/continue decision.
 
 ## 4. Risks
 
@@ -47,7 +48,7 @@ This inventory documents the current state of components involved in visible tex
 
 - **Step 1: Design-Only Inventory (Done)**: This document.
 - **Step 2: Characterization Tests (Ready for Review)**: Add characterization tests to lock down the exact behavior of all identified components and scenarios.
-- **Step 3: Typed Model Scaffolding (Design)**: Design and implement the `TerminalAnswerKind` enum and `TerminalAnswerSemanticResult` dataclass.
+- **Step 3: Typed Model Scaffolding (Design)**: Design the `TerminalAnswerKind` enum and `TerminalAnswerSemanticResult` dataclass. Implementation is not authorized by default and requires separate approval after Step 2 is complete.
 - **Step 4: Classifier Implementation (Shadow Mode)**: Implement the `TerminalAnswerClassifier` and run it in shadow mode, logging its classifications against legacy decisions without changing behavior.
 - **Step 5: First Consumer Migration**: Migrate the lowest-risk consumer (e.g., `is_leaked_system_result`) to use the new classifier.
 - **Step 6: Authority Consolidation**: Systematically migrate remaining consumers (`IntentTransitionHandler`, `PreDispatchPipeline`, etc.) to the new classifier, removing legacy logic one component at a time.
@@ -61,5 +62,5 @@ The design-only inventory (Step 1) is complete. The next logical and safe step i
 
 - A full refactor of `ResponsePipeline` or `DispatchPipeline`.
 - Changes to `ActionPolicy`.
-- The `get_visible_text` accessor, which will be superseded by the `TerminalAnswerClassifier`.
+- Changes to the `get_visible_text` accessor. Its role will be re-evaluated after characterization tests clarify whether it should be kept, wrap a new classifier, or be superseded.
 - The `history.py` refactor.
