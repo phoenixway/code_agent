@@ -189,6 +189,11 @@ This document is the single source of truth for the current state of the Semanti
   - All tests passed.
   - No `TerminalAnswerClassifier` was created, no classification logic was implemented, and no consumers were migrated.
   - Runtime behavior is unchanged.
+- **Phase 8 Step 4A: Compiler/Runtime Semantics Tag Coverage Review (Design-Only)**
+  - The design-only review of compiler/runtime semantics tag coverage is complete.
+  - The review concluded that `RuntimeProtocolSemantics` lacks sufficient structural facts to reliably build the `TerminalAnswerClassifier`.
+  - Key gaps include ambiguous shapes (`PLAINTEXT_ONLY`) and missing recognition of subgoal tags with visible text.
+  - Recommendation: Defer classifier implementation and proceed with a design phase to add the missing structural facts.
 
 ## Known Authority Boundaries
 
@@ -204,7 +209,7 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- **Phase 8 Step 4A (Design-Only Review)**: Review compiler/runtime semantics tag coverage to ensure sufficient structural facts are available for the `TerminalAnswerClassifier`. Implementation of the classifier is not authorized.
+- **Phase 8 Step 4C (Design)**: Design the addition of new structural facts to the compiler and `RuntimeProtocolSemantics` to address coverage gaps. Implementation is not authorized.
 
 ## Test Status
 

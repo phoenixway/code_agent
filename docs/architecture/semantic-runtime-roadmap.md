@@ -701,20 +701,29 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 8 Step 4A: Compiler/Runtime Semantics Tag Coverage Review (Design-Only)
 
-- **Status**: Approved / Not Started.
+- **Status**: Done.
 - **Goal**: Review whether `RuntimeProtocolSemantics` exposes enough structural facts to support a reliable `TerminalAnswerClassifier`.
 - **Forbidden**: Any production code or test changes.
-- **Done When**: The design-only review is complete and documented in `visible-text-terminal-answer-semantics-design.md`.
+- **Done When**: The design-only review was completed and documented. The conclusion was that signals are insufficient, and classifier implementation is blocked.
 
 ---
 
 #### Phase 8 Step 4B: Classifier Implementation (Shadow Mode) (Design Review)
 
-- **Status**: Not Started.
+- **Status**: Deferred.
 - **Goal**: Design the `TerminalAnswerClassifier` and a plan for running it in shadow mode.
-- **Prerequisite**: Phase 8 Step 4A must be complete.
+- **Prerequisite**: Phase 8 Step 4C must be complete.
 - **Forbidden**: Implementation is not authorized. Any production code changes.
 - **Done When**: A decision on whether to proceed with designing the classifier is documented.
+
+---
+
+#### Phase 8 Step 4C: Compiler Fact Scaffolding (Design)
+
+- **Status**: Approved / Not Started.
+- **Goal**: Design the addition of new structural facts to the compiler and `RuntimeProtocolSemantics` to address coverage gaps.
+- **Forbidden**: Any production code or test changes.
+- **Done When**: The design for adding new structural facts is complete and approved for implementation.
 
 ---
 

@@ -93,30 +93,29 @@ The scaffolding (Step 3A) is complete. The approved next step is to conduct the 
 
 ## 7. Compiler/Runtime Semantics Tag Coverage Review (Step 4A)
 
-Before designing the `TerminalAnswerClassifier`, a review is required to ensure the compiler and `RuntimeProtocolSemantics` adapter provide sufficient structural information.
+This design-only review is complete. It assessed whether `RuntimeProtocolSemantics` exposes enough structural facts to support a reliable `TerminalAnswerClassifier`.
 
-### Problem
-Characterization tests (Step 2) revealed that the compiler currently collapses multiple semantically distinct responses into `shape=PLAINTEXT_ONLY`. This includes cases with subgoals, memory checkpoints, and pre-action text. A reliable classifier cannot be built on this ambiguous signal and would be forced to fall back to fragile regex on the raw response.
+### Conclusion
+**Insufficient.** The compiler and `RuntimeProtocolSemantics` adapter currently lack the necessary structural facts to reliably classify several key `TerminalAnswerKind`s. The compiler shape `PLAINTEXT_ONLY` is ambiguous, and critical distinctions (like subgoal-accompanying text) are lost. Building the `TerminalAnswerClassifier` now would force it to rely on the same fragile regex heuristics we aim to replace.
 
-### Review Question
-Does the `RuntimeProtocolSemantics` snapshot expose enough structural facts for the `TerminalAnswerClassifier` to reliably classify all `TerminalAnswerKind` scenarios without resorting to raw-response regex?
+**Recommendation:** Do not proceed with `TerminalAnswerClassifier` implementation (Step 4B). The next step must be a design-only phase to add the missing structural facts to the compiler and `RuntimeProtocolSemantics`.
 
-### Inventory
-The review should produce an inventory mapping each `TerminalAnswerKind` to the compiler/runtime signals available to classify it.
-- **Current Compiler Shape**: e.g., `PLAINTEXT_ONLY`, `MEMORY_TEXT`.
-- **Current `RuntimeProtocolSemantics` Fields**: e.g., `has_visible_answer`, `has_pre_action_text`.
-- **Structural Facts Available?**: Are memory, subgoal, intent, and action tags represented as structured data?
-- **Signal Sufficiency**: Is the combination of signals sufficient for this `TerminalAnswerKind`?
-- **Missing Facts**: What structural facts are missing from `RuntimeProtocolSemantics`?
+### Coverage Inventory
 
-### Likely Missing Facts to Investigate
-- `has_memory_checkpoint` / `has_memory_tags`
-- `has_subgoal_tags`
-- `has_intent_completion`
-- `has_pre_action_visible_text`
-- `has_action_after_visible_text`
-- `checkpoint_kind` (e.g., memory vs. subgoal)
-- `visible_text_source` (e.g., pre-action, post-intent)
+| `TerminalAnswerKind` | Current Signals & Sufficiency | Missing Structural Facts | Recommendation |
+|---|---|---|---|
+| **`NO_VISIBLE_TEXT`** | **Sufficient.** `has_visible_answer=False`, `has_pre_action_text=False`. | None. | Ready for classification. |
+| **`PLAINTEXT_TERMINAL_ANSWER`** | **Insufficient.** `shape=PLAINTEXT_ONLY` is ambiguous and used for other kinds. | A non-ambiguous shape like `PURE_PLAINTEXT`. | Add new shape. |
+| **`CHECKPOINT_ONLY`** | **Partially sufficient for memory checkpoints.** Insufficient for general checkpoint-only semantics unless subgoal/checkpoint_kind facts are exposed. | `has_subgoal_tags`, `checkpoint_kind`, `board_checkpoint_kind` or equivalent. | Add explicit `checkpoint_kind` before using this as classifier authority. |
+| **`CHECKPOINT_WITH_VISIBLE_TEXT`** | **Insufficient.** `shape=MEMORY_TEXT` is correct, but the compiler incorrectly classifies subgoal+text as `PLAINTEXT_ONLY`. | Correct classification of subgoal tags. | Fix compiler to recognize subgoals and produce a `MEMORY_TEXT`-like shape. |
+| **`INTENT_COMPLETE_WITH_VISIBLE_TEXT`** | **Sufficient.** `shape=INTENT_COMPLETE_WITH_TEXT` is unique. | None. | Ready for classification. |
+| **`PRE_ACTION_VISIBLE_TEXT_WITH_ACTION`** | **Insufficient.** Characterization tests showed representative pre-action text + action cases can currently classify as `PLAINTEXT_ONLY`. | `has_pre_action_visible_text`, `has_action_after_visible_text`, `visible_text_source = pre_action`. | Add compiler/runtime structural facts before classifier shadow mode. |
+| **`LEAKED_SYSTEM_RESULT`** | **Insufficient.** Relies on regex (`is_leaked_system_result`). | A structural flag like `has_leaked_system_result`. | Defer. Can remain on regex for now. |
+| **`INTERNAL_SUMMARY_LIKE_TEXT`** | **Insufficient.** Relies on fragile heuristics. | A structural flag like `is_internal_summary`. | Defer. This is a high-level policy decision, not a structural fact. |
+| **`INVALID_OR_TRUNCATED_TERMINAL_TEXT`** | **Insufficient.** Relies on regex (`terminal_plaintext_completion_status`). | A structural flag from the compiler like `is_truncated_text`. | Defer. Can remain on regex for now. |
+
+### Next Step
+The review (Step 4A) is complete. The approved next step is to conduct **Phase 8, Step 4C: Compiler Fact Scaffolding (Design)**. This is a design-only step to plan the addition of new structural facts to the compiler and `RuntimeProtocolSemantics` to address the gaps identified above. Implementation of the classifier remains blocked.
 
 ## 8. Explicitly Deferred
 
