@@ -24,6 +24,8 @@ def load_settings():
             ],
             "ollama_base_url": "http://127.0.0.1:11434",
             "permission_policy": "ask",
+            "system_prompt_directory": str((Path(__file__).with_name("default_system_prompt.md").parent).resolve()),
+            "current_system_prompt_path": str(Path(__file__).with_name("default_system_prompt.md").resolve()),
             "max_history_tokens": 4000,
             "history_size": "small",
             "autosummarize_requires_confirmation": False,
@@ -50,8 +52,11 @@ def load_settings():
                 "use_adc": True,
             },
         }
-        with open(CONFIG_FILE, "w") as f:
-            yaml.dump(default, f, default_flow_style=False)
+        try:
+            with open(CONFIG_FILE, "w") as f:
+                yaml.dump(default, f, default_flow_style=False)
+        except OSError as exc:
+            log.warning("Failed to create default config at '%s': %s", CONFIG_FILE, exc)
 
     if ENV_FILE.exists():
         load_dotenv(ENV_FILE)
@@ -76,6 +81,8 @@ def load_settings():
         "auto_allow_read_only_actions": True,
         "auto_allow_safe_shell_read_only": True,
         "debug_log_keypresses": False,
+        "system_prompt_directory": str((Path(__file__).with_name("default_system_prompt.md").parent).resolve()),
+        "current_system_prompt_path": str(Path(__file__).with_name("default_system_prompt.md").resolve()),
         "max_shell_command_length": 1000,
         "shell_blocklist": ["rm -rf /", "mkfs", ":(){ :|:& };:"],
         "shell_allowlist_prefixes": [],
@@ -128,8 +135,11 @@ def load_settings():
         log.info("Config migration: normalized 'ollama_base_url' to base host URL without '/api/chat'.")
 
     if changed:
-        with open(CONFIG_FILE, "w") as f:
-            yaml.dump(settings, f, default_flow_style=False)
+        try:
+            with open(CONFIG_FILE, "w") as f:
+                yaml.dump(settings, f, default_flow_style=False)
+        except OSError as exc:
+            log.warning("Failed to persist config migration to '%s': %s", CONFIG_FILE, exc)
 
     return settings
 

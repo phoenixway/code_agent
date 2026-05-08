@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any
 
-from modules.defaults import DEFAULT_SYSTEM_PROMPT
+from modules.system_prompts import load_active_system_prompt
 
 
 class ProviderAPIError(Exception):
@@ -139,7 +139,10 @@ class BaseChatProvider(ABC):
         self.model_name = model_name
 
     def _prepare_messages(self, prompt: str, history: list) -> list:
-        messages = [{"role": "system", "content": DEFAULT_SYSTEM_PROMPT}]
+        messages: list[dict[str, str]] = []
+        system_already_present = bool(history and history[0].get("role") == "system")
+        if not system_already_present:
+            messages.append({"role": "system", "content": load_active_system_prompt()})
 
         for msg in history:
             content = msg.get("content", "").strip()

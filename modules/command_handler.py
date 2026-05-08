@@ -9,6 +9,12 @@ import re
 from modules.agent.orchestration.trace_export import OrchestrationTraceExporter
 from modules.config_loader import update_settings
 from modules.logger import get_log_files
+from modules.system_prompts import (
+    discover_system_prompt_files,
+    prompt_display_name,
+    resolve_current_system_prompt_path,
+    resolve_system_prompt_directory,
+)
 
 class CommandHandler:
     def __init__(self, app):
@@ -25,6 +31,7 @@ class CommandHandler:
             "/export": self._handle_export,
             "/dump": self._handle_dump,
             "/import": self._handle_import,
+            "/prompt": self._handle_prompt,
             "/models": self._handle_models,
             "/theme": self._handle_theme,
             "/history-size": self._handle_history_size,
@@ -541,6 +548,41 @@ class CommandHandler:
         else:
             await self.ui.print_system("Model selection cancelled.")
 
+    async def _handle_prompt(self, user_input):
+        settings = getattr(self.agent.config, "settings", {}) or {}
+        prompt_dir = resolve_system_prompt_directory(settings)
+        prompt_files = discover_system_prompt_files(settings)
+
+        if not prompt_files:
+            await self.ui.print_error(
+                f"No markdown system prompts found in: {prompt_dir}"
+            )
+            return
+
+        current_path = resolve_current_system_prompt_path(settings)
+        labels = [prompt_display_name(path, prompt_dir) for path in prompt_files]
+        label_to_path = dict(zip(labels, prompt_files))
+        current_label = prompt_display_name(current_path, prompt_dir)
+        selection = await self.ui.pick_option(
+            f"Select system prompt (Folder: {prompt_dir})",
+            labels,
+            current_value=current_label if current_label in label_to_path else None,
+        )
+
+        if not selection:
+            await self.ui.print_system("System prompt selection cancelled.")
+            return
+
+        selected_path = label_to_path[selection]
+        try:
+            updated_settings = update_settings(
+                {"current_system_prompt_path": str(selected_path)}
+            )
+            self.agent.config.settings = updated_settings
+            await self.ui.print_system(f"🧠 System prompt switched to: {selection}")
+        except Exception as e:
+            await self.ui.print_error(f"Failed to save system prompt selection: {e}")
+
     async def _handle_theme(self, user_input):
         # Accessing available_themes from the App instance
         themes = list(self.app.available_themes.keys())
@@ -600,6 +642,7 @@ class CommandHandler:
             "  /export [file]    - Export chat history to markdown\n"
             "  /dump [--full] [file] - Save logs dump (default: current session only)\n"
             "  /import <file>    - Import chat history from markdown\n"
+            "  /prompt           - Switch active system prompt from configured folder\n"
             "  /models           - Switch AI model\n"
             "  /theme            - Switch UI theme\n"
             "  /history-size     - Change context window size\n"

@@ -262,6 +262,36 @@ def test_reject_invalid_atomic_bundle_rejects_on_action_policy_fail(harness):
     )
 
 
+def test_reject_invalid_atomic_bundle_rejects_on_legacy_action_policy_fail(harness):
+    """_reject_invalid_atomic_bundle_before_transition rejects if legacy action_policy validation fails."""
+    harness.action_policy.validate_atomic_bundle_action.return_value = SimpleNamespace(
+        ok=False,
+        reason="missing_file_content_block",
+        details={
+            "message": "write_file_block requires a complete <file_content>...</file_content> block",
+            "blocked_action": "write_file_block",
+            "allowed_actions": [],
+        },
+    )
+    payload = {"mode": "activate", "goal": "test goal"}
+    outcome = harness._reject_invalid_atomic_bundle_before_transition(
+        ctx=None, payload=payload, parsed_output=MockParsedOutput(), segments=[], response=""
+    )
+    assert isinstance(outcome, ResponsePipelineOutcome)
+    assert outcome.reason == "atomic_bundle_file_content_invalid"
+    assert outcome.source == "intent_atomic_bundle_guard"
+    assert outcome.atomic_bundle_plan.invalid_part == "file_content"
+    assert outcome.atomic_bundle_plan.bundle_reason == "missing_file_content_block"
+    assert outcome.atomic_bundle_plan.blocked_action == "write_file_block"
+    harness.prompt_builder.build_atomic_bundle_rejected_prompt.assert_called_once_with(
+        invalid_part="file_content",
+        reason="write_file_block requires a complete <file_content>...</file_content> block",
+        blocked_action="write_file_block",
+        proposed_allowed_actions=[],
+        goal="test goal",
+    )
+
+
 def test_reject_invalid_atomic_bundle_passes_through_on_action_policy_ok(harness):
     """_reject_invalid_atomic_bundle_before_transition passes through if action_policy validation is ok."""
     harness.action_policy.validate_atomic_bundle_action.return_value = SimpleNamespace(ok=True)

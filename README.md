@@ -46,6 +46,8 @@ permission_policy: "ask" # options: ask, always, never
 autosummarize_requires_confirmation: false # when true, asks before non-emergency auto-summary
 theme: "hacker-green" # options: hacker-green, textual-dark, textual-light, auto(day/night)
 history_size: "small" # options: small, medium, large
+system_prompt_directory: "/path/to/system-prompts" # folder scanned recursively for *.md prompts
+current_system_prompt_path: "/path/to/system-prompts/coder/default.md" # active system prompt file
 max_consecutive_calls: 12
 max_step_seconds: 120
 max_session_seconds: 900
@@ -83,6 +85,7 @@ python tui.py
 ### CLI Commands:
 - `/add <path>`: Add files or directories to AI context.
 - `/drop [path]`: Remove specific paths or clear context (if no path).
+- `/prompt`: Switch active system prompt from the configured prompt folder.
 - `/models`: Switch between available AI models via a selection widget.
 - `/theme`: Switch interface theme.
 - `/history-size`: Change history context window size.

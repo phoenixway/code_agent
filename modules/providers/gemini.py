@@ -6,7 +6,7 @@ from typing import Any
 
 import httpx
 
-from modules.defaults import DEFAULT_SYSTEM_PROMPT
+from modules.system_prompts import load_active_system_prompt
 from .base import BaseChatProvider, ProviderAPIError
 
 AI_STUDIO_PREPAY_DEPLETED_MARKERS = (
@@ -48,9 +48,11 @@ def build_gemini_generate_content_payload(
     prompt: str,
     history: list,
     *,
-    system_prompt: str = DEFAULT_SYSTEM_PROMPT,
+    system_prompt: str | None = None,
     system_key: str = "system_instruction",
 ) -> dict[str, Any]:
+    if system_prompt is None:
+        system_prompt = load_active_system_prompt()
     payload = {
         "contents": prepare_gemini_contents(prompt, history),
     }
@@ -62,7 +64,11 @@ def build_gemini_generate_content_payload(
 def prepare_gemini_contents(prompt, history):
     contents = []
 
-    for m in history:
+    history_items = list(history or [])
+    if history_items and history_items[0].get("role") == "system":
+        history_items = history_items[1:]
+
+    for m in history_items:
         role = m.get("role")
         content = (m.get("content") or "").strip()
         if not content:
@@ -192,7 +198,14 @@ class GeminiProvider(BaseChatProvider):
         return extract_gemini_texts_from_response(data)
 
     async def get_streaming_response(self, prompt, history):
-        payload = build_gemini_generate_content_payload(prompt, history)
+        system_prompt = None
+        if history and history[0].get("role") == "system":
+            system_prompt = history[0].get("content")
+        payload = build_gemini_generate_content_payload(
+            prompt,
+            history,
+            system_prompt=system_prompt,
+        )
 
         try:
             async with httpx.AsyncClient(timeout=300, trust_env=False) as client:

@@ -588,7 +588,10 @@ class ResponsePipelinePrevalidationMixin:
         details = dict(getattr(action_validation, "details", {}) or {})
         invalid_part = (
             "file_content"
-            if getattr(action_validation, "kind", None) == AtomicBundlePolicyResultKind.REJECTED_MISSING_FILE_CONTENT
+            if (
+                getattr(action_validation, "kind", None) == AtomicBundlePolicyResultKind.REJECTED_MISSING_FILE_CONTENT
+                or underlying_reason == "missing_file_content_block"
+            )
             else "action"
         )
         plan.invalid_part = invalid_part

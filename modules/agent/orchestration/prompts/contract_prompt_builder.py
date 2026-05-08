@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from textwrap import dedent
 
-from modules.defaults import DEFAULT_SYSTEM_PROMPT
+from modules.system_prompts import load_active_system_prompt
 
 from ..shared.trace import append_trace_entry
 
@@ -166,7 +166,10 @@ class ContractPromptBuilderMixin:
         return "\n".join(lines)
 
     def build_system_message(self, tools_prompt: str, ctx_prompt: str) -> str:
-        prompt = DEFAULT_SYSTEM_PROMPT.replace("__TOOLS_DESCRIPTION__", tools_prompt)
+        prompt = load_active_system_prompt(getattr(self.agent.config, "settings", None)).replace(
+            "__TOOLS_DESCRIPTION__",
+            tools_prompt,
+        )
         blocks = [prompt, ctx_prompt]
         blocks.append(
             "Navigation guidance: prefer `read_file_skeleton` to inspect structure cheaply and obtain symbol line ranges before using broader or larger reads. "
