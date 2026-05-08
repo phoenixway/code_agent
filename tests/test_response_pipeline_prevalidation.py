@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from modules.agent.orchestration.responses.response_pipeline_prevalidation import ResponsePipelinePrevalidationMixin
+from modules.agent.orchestration.runtime.action_policy_models import AtomicBundlePolicyResultKind
 from modules.agent.orchestration.shared.decision_models import AtomicBundlePlan, ResponsePipelineOutcome
 
 
@@ -234,6 +235,7 @@ def test_reject_invalid_atomic_bundle_rejects_on_action_policy_fail(harness):
     """_reject_invalid_atomic_bundle_before_transition rejects if action_policy validation fails."""
     harness.action_policy.validate_atomic_bundle_action.return_value = SimpleNamespace(
         ok=False,
+        kind=AtomicBundlePolicyResultKind.REJECTED_MISSING_FILE_CONTENT,
         reason="missing_file_content_block",
         details={
             "message": "write_file_block requires a complete <file_content>...</file_content> block",

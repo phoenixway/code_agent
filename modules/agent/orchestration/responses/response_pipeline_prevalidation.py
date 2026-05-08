@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ..shared.decision_models import AtomicBundlePlan, NormalizedModelResponse, ResponsePipelineOutcome
+from ..runtime.action_policy_models import AtomicBundlePolicyResultKind
 from ..parsers.visible_text import sanitize_visible_text_for_user, terminal_plaintext_completion_status
 from .bundle_semantic_validator import BundleResultKind, BundleSemanticValidator
 from .protocol_decision_bridge import COMPILER_INVALID_KIND_BY_CODE
@@ -585,7 +586,11 @@ class ResponsePipelinePrevalidationMixin:
 
         underlying_reason = str(getattr(action_validation, "reason", "") or "invalid_action")
         details = dict(getattr(action_validation, "details", {}) or {})
-        invalid_part = "file_content" if underlying_reason == "missing_file_content_block" else "action"
+        invalid_part = (
+            "file_content"
+            if getattr(action_validation, "kind", None) == AtomicBundlePolicyResultKind.REJECTED_MISSING_FILE_CONTENT
+            else "action"
+        )
         plan.invalid_part = invalid_part
         plan.bundle_reason = underlying_reason
         plan.blocked_action = str(details.get("blocked_action") or "")
