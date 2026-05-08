@@ -77,4 +77,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 73. Phase 8 Step 4I: complete.
 74. Phase 8 Step 4J Consumer Migration Design Gate: done.
 75. Phase 8 Step 4K First Consumer Migration (Design): done.
-76. Next: Phase 8 Step 4L First Consumer Migration (Implementation), pending explicit approval.
+76. Step 4K design correction from read-only preflight: typed result primary signal plus legacy fallback; strict replacement forbidden for Step 4L.
+77. Next: Phase 8 Step 4L First Consumer Migration (Implementation), pending explicit approval.

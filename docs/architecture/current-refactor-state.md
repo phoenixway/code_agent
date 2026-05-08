@@ -262,7 +262,11 @@ This document is the single source of truth for the current state of the Semanti
   - Consumer migration remains blocked, and no production behavior was changed.
 - **Phase 8 Step 4K: First Consumer Migration (Design) (Complete)**
   - The design for migrating the `is_leaked_system_result` check in `ResponsePipelineStagesMixin` to use the `TerminalAnswerClassifier` is complete.
-  - The design specifies how to attach the classifier's result to `parsed_output` and migrate the consumer to read the typed `kind`.
+  - The design specifies a behavior-preserving migration: typed result primary signal plus legacy fallback.
+  - A strict replacement of `is_leaked_system_result(response)` with `TerminalAnswerKind.LEAKED_SYSTEM_RESULT` is explicitly forbidden for Step 4L.
+  - The existing outer guard `not self.semantics.has_any_action_proposal(parsed_output, parsed_action_count)` must be preserved.
+  - The legacy accessor remains the production fallback when the typed result is absent or when the typed result is present but not `LEAKED_SYSTEM_RESULT`.
+  - The classifier is not yet sole authority for leaked-system-result detection.
   - A future implementation step, `Phase 8 Step 4L`, was proposed.
   - This was a design-only step. No production code was changed, and consumer migration remains blocked.
 ## Known Authority Boundaries
@@ -280,6 +284,9 @@ This document is the single source of truth for the current state of the Semanti
 ## Next Intended Step
 
 - **Phase 8 Step 4L: First Consumer Migration (Implementation)**: Implement the approved design from Step 4K to migrate the `is_leaked_system_result` check in `ResponsePipelineStagesMixin`. This step is not yet authorized and requires explicit approval to begin.
+  - Step 4L must remain behavior-preserving.
+  - The typed classifier result must be the primary signal, but the legacy accessor must remain the production fallback.
+  - Strict replacement is forbidden for Step 4L.
 
 ## Test Status
 

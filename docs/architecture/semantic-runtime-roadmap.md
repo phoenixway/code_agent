@@ -826,7 +826,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Scope**: The `is_leaked_system_result` check in `ResponsePipelineStagesMixin`.
 - **Allowed**: Design-only documentation updates.
 - **Forbidden**: Implementation. Any production code changes. Any behavior changes. Migration of any other consumer.
-- **Done When**: The design for migrating the `is_leaked_system_result` check was documented and approved.
+- **Done When**: The design for migrating the `is_leaked_system_result` check was documented and approved as a typed-result-primary, legacy-fallback migration.
 
 ---
 
@@ -837,8 +837,24 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Scope**: The `is_leaked_system_result` check in `ResponsePipelineStagesMixin`.
 - **Prerequisite**: Step 4K design must be complete and approved.
 - **Allowed**: Implement the changes as specified in the Step 4K design.
-- **Forbidden**: Any changes not specified in the Step 4K design. Any runtime behavior changes. Migration of any other consumer.
-- **Done When**: The `is_leaked_system_result` consumer is migrated, all tests pass, and behavior is confirmed to be preserved.
+- **Forbidden**:
+  - A strict replacement of `is_leaked_system_result(response)` with `TerminalAnswerKind.LEAKED_SYSTEM_RESULT`
+  - Removing the existing outer guard `not self.semantics.has_any_action_proposal(parsed_output, parsed_action_count)`
+  - Treating the classifier as sole authority for leaked-system-result detection
+  - Any runtime behavior changes
+  - Migration of any other consumer
+- **Implementation Shape Required**:
+  - Use the typed classifier result as the primary signal
+  - Keep the legacy `is_leaked_system_result(response)` accessor as the production fallback
+  - Apply the fallback both when the typed result is absent and when it is present but not `LEAKED_SYSTEM_RESULT`
+  - Preserve the existing outer no-action guard
+  - Keep `_run_terminal_answer_classifier_shadow` named as-is
+- **Rationale**:
+  - The classifier and legacy accessor are not exact semantic equivalents
+  - The classifier uses a stricter prefix regex for `SYSTEM RESULT:`
+  - The accessor uses a broader `.search(...)` pattern
+  - The current consumer checks raw response text
+- **Done When**: The `is_leaked_system_result` consumer is migrated in a behavior-preserving way, all tests pass, and the legacy accessor remains the production fallback.
 
 ---
 

@@ -525,9 +525,9 @@ The goal is to migrate this consumer to use the `TerminalAnswerClassifier`'s res
 
 The `TerminalAnswerClassifier` runs inside `ResponsePipelinePrevalidationMixin._run_terminal_answer_classifier_shadow`. Its result is currently only used for logging.
 
-- **Proposed Change**: In a future implementation step (4L), `_run_terminal_answer_classifier_shadow` will be renamed to `_run_terminal_answer_classifier` and will attach its result to the `parsed_output` object.
+- **Proposed Change**: In a future implementation step (4L), the classifier result may be attached to the `parsed_output` object, but `_run_terminal_answer_classifier_shadow` should keep its current name.
 - **New Field**: A new field, `terminal_answer_semantic_result: TerminalAnswerSemanticResult | None`, will be added to the `ParsedModelOutput` dataclass.
-- **Population**: `_run_terminal_answer_classifier` will populate `parsed_output.terminal_answer_semantic_result` with the result from the classifier. The shadow logging will continue unchanged.
+- **Population**: `_run_terminal_answer_classifier_shadow` will populate `parsed_output.terminal_answer_semantic_result` with the result from the classifier. The shadow logging will continue unchanged.
 
 #### 13.2.2. Migrating the Consumer
 
@@ -535,14 +535,30 @@ The `TerminalAnswerClassifier` runs inside `ResponsePipelinePrevalidationMixin._
 - **New Logic**:
   ```python
   # old
-  if is_leaked_system_result(response):
+  if (
+      not self.semantics.has_any_action_proposal(parsed_output, parsed_action_count)
+      and is_leaked_system_result(response)
+  ):
       ...
 
   # new
-  if parsed_output.terminal_answer_semantic_result and parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.LEAKED_SYSTEM_RESULT:
-      ...
+  if not self.semantics.has_any_action_proposal(parsed_output, parsed_action_count):
+      typed_result = getattr(parsed_output, "terminal_answer_semantic_result", None)
+      if (
+          typed_result is not None
+          and typed_result.kind == TerminalAnswerKind.LEAKED_SYSTEM_RESULT
+      ):
+          ...
+      elif is_leaked_system_result(response):
+          ...
   ```
-- **Behavior Preservation**: This change is behavior-preserving because the `TerminalAnswerClassifier`'s `LEAKED_SYSTEM_RESULT` rule was designed to be a legacy-compatible, pure-function equivalent of the `is_leaked_system_result` accessor. Shadow logs from Step 4I have confirmed high parity.
+- **Behavior Preservation**:
+  - Step 4L must be a typed result primary signal plus legacy fallback migration.
+  - It is not yet classifier sole authority.
+  - Strict replacement is explicitly forbidden for Step 4L.
+  - The outer guard `not self.semantics.has_any_action_proposal(parsed_output, parsed_action_count)` must remain intact.
+  - The legacy accessor must remain the production fallback both when the typed result is absent and when the typed result is present but not `LEAKED_SYSTEM_RESULT`.
+  - This is required because the classifier and accessor are not exact semantic equivalents today: the classifier uses a stricter prefix regex for `SYSTEM RESULT:`, the accessor uses a broader `.search(...)` pattern, and the current consumer checks raw response text.
 
 ### 13.3. Implementation Constraints (for Step 4L)
 
@@ -551,20 +567,26 @@ The `TerminalAnswerClassifier` runs inside `ResponsePipelinePrevalidationMixin._
     - `modules/agent/orchestration/responses/response_pipeline_prevalidation.py` (to populate the new field).
     - `modules/agent/orchestration/responses/response_pipeline_stages.py` (to migrate the consumer).
 - **No Classifier Changes**: The `TerminalAnswerClassifier` logic must not be changed.
-- **Preserve Legacy Accessor**: The `semantic_accessors.is_leaked_system_result` function must not be removed, as other consumers may still use it.
+- **Preserve Legacy Accessor**: The `semantic_accessors.is_leaked_system_result` function must not be removed, as other consumers may still use it. For Step 4L, it remains the production fallback.
+- **Preserve Outer Guard**: The existing `not self.semantics.has_any_action_proposal(parsed_output, parsed_action_count)` condition must remain.
+- **No Strict Replacement**: Replacing the current leaked-system-result check with typed result only is explicitly forbidden.
+- **Do Not Rename Shadow Runner**: `_run_terminal_answer_classifier_shadow` should not be renamed in Step 4L.
 - **No Other Migrations**: Only the `is_leaked_system_result` consumer is in scope. No other `TerminalAnswerKind` consumers should be migrated.
 - **No Behavior Change**: The user-facing behavior must be identical. The change must not alter when a leaked system result is detected.
 
 ### 13.4. Safety and Rollback Plan
 
-- **Safety Gate**: The `_run_terminal_answer_classifier` call will remain inside a `try...except` block to ensure that any unexpected failure in the classifier does not break the production pipeline.
+- **Safety Gate**: The `_run_terminal_answer_classifier_shadow` call will remain inside a `try...except` block to ensure that any unexpected failure in the classifier does not break the production pipeline.
 - **Rollback**: The change is small and contained. It can be fully reverted with `git revert <commit_hash>`.
-- **Fallback (Optional)**: For extra safety during deployment, the implementation could include a fallback to the old logic if the new field is not present, but this is likely unnecessary given the simple nature of the change.
+- **Fallback (Required)**: The implementation must include a fallback to the old logic when the typed result is absent and when it is present but not `LEAKED_SYSTEM_RESULT`.
 
 ### 13.5. Test Plan (for Step 4L)
 
 1.  **Unit Tests**:
-    -   Update `tests/test_response_pipeline_stages.py` to verify that the stage correctly handles the `LEAKED_SYSTEM_RESULT` kind from `parsed_output.terminal_answer_semantic_result`.
+    -   Update `tests/test_response_pipeline_stages.py` to verify that the stage correctly handles the `LEAKED_SYSTEM_RESULT` kind from `parsed_output.terminal_answer_semantic_result` as the primary signal.
+    -   Add a test that proves the outer `has_any_action_proposal` guard is still required.
+    -   Add a test that proves the legacy accessor still triggers when the typed result is absent.
+    -   Add a test that proves the legacy accessor still triggers when the typed result is present but not `LEAKED_SYSTEM_RESULT`.
 2.  **Integration Tests**:
     -   Add a new integration test in a suitable location (e.g., `tests/test_response_pipeline.py`) that provides a response with a leaked system result and asserts that the pipeline correctly identifies it and produces the expected `LoopControlDecision`.
 3.  **Parity Verification**:
@@ -573,7 +595,7 @@ The `TerminalAnswerClassifier` runs inside `ResponsePipelinePrevalidationMixin._
 
 ### 13.6. Next Step
 
-The design (Step 4K) is complete. The proposed next step is **Phase 8, Step 4L: First Consumer Migration (Implementation)**. This step will implement the changes described in this design. Implementation is not authorized until Step 4L is formally approved.
+The design (Step 4K) is complete. The proposed next step is **Phase 8, Step 4L: First Consumer Migration (Implementation)**. Step 4L must be a behavior-preserving migration that uses the typed result as the primary signal plus legacy fallback. Strict replacement is explicitly forbidden. Implementation is not authorized until Step 4L is formally approved.
 
 ## 14. Explicitly Deferred
 
