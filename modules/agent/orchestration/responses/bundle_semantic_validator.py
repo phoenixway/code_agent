@@ -132,5 +132,7 @@ class BundleSemanticValidator:
         shape = self._get_normalized_shape(parsed_output)
         if shape == "INTENT_ACTION_BUNDLE":
             return BundleValidationResult(kind=BundleResultKind.INTENT_ACTION_BUNDLE_CANDIDATE)
+        elif shape == "READ_ONLY_BATCH_CANDIDATE":
+            return BundleValidationResult(kind=BundleResultKind.READONLY_ACTION_BATCH_CANDIDATE)
 
         return BundleValidationResult(kind=BundleResultKind.UNKNOWN)

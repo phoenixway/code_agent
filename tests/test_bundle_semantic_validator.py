@@ -125,8 +125,8 @@ def test_validate_still_returns_unknown_for_unapproved_shape_only_metadata():
     Tests that shape-only metadata for unapproved shapes still returns UNKNOWN.
     """
     validator = BundleSemanticValidator()
-    # READ_ONLY_BATCH_CANDIDATE is a valid shape but not yet implemented in Step 2B.1
-    parsed_output = MockParsedOutput(compiler_shape="READ_ONLY_BATCH_CANDIDATE")
+    # INTENT_ONLY is a valid shape but not yet implemented in Step 2B
+    parsed_output = MockParsedOutput(compiler_shape="INTENT_ONLY")
     result = validator.validate(parsed_output=parsed_output)
     assert result.kind == BundleResultKind.UNKNOWN
 
@@ -184,8 +184,9 @@ class MockIR:
     [
         # Step 2B.1: INTENT_ACTION_BUNDLE shape classification
         ({"compiler_shape": "INTENT_ACTION_BUNDLE"}, BundleResultKind.INTENT_ACTION_BUNDLE_CANDIDATE),
+        # Step 2B.2: READONLY_ACTION_BATCH_CANDIDATE shape classification
+        ({"compiler_shape": "READ_ONLY_BATCH_CANDIDATE"}, BundleResultKind.READONLY_ACTION_BATCH_CANDIDATE),
         # Deferred shapes should return UNKNOWN
-        ({"compiler_shape": "READ_ONLY_BATCH_CANDIDATE"}, BundleResultKind.UNKNOWN),
         ({"compiler_shape": "INTENT_ONLY"}, BundleResultKind.UNKNOWN),
         ({"compiler_shape": "ACTION_ONLY"}, BundleResultKind.UNKNOWN),
         ({"compiler_shape": "PLAINTEXT_ONLY"}, BundleResultKind.UNKNOWN),
@@ -226,6 +227,25 @@ def test_step2a_error_code_takes_precedence_over_shape():
     # The error code should win, not the shape.
     assert result.kind == BundleResultKind.INVALID_ACTION_ARRAY
     assert result.kind != BundleResultKind.INTENT_ACTION_BUNDLE_CANDIDATE
+
+
+def test_step2a_error_code_takes_precedence_over_readonly_batch_shape():
+    """
+    Tests that Step 2A error-code logic takes precedence over READ_ONLY_BATCH_CANDIDATE shape.
+    """
+    validator = BundleSemanticValidator()
+    # This has a READ_ONLY_BATCH_CANDIDATE shape but also a Step 2A error
+    parsed_output = MockParsedOutput(
+        compiler_shape="READ_ONLY_BATCH_CANDIDATE",
+        compiler_error_code="E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION",
+        invalid_kind="multiple_actions",
+    )
+
+    result = validator.validate(parsed_output=parsed_output)
+
+    # The error code should win, not the shape.
+    assert result.kind == BundleResultKind.INVALID_MULTIPLE_ACTIONS
+    assert result.kind != BundleResultKind.READONLY_ACTION_BATCH_CANDIDATE
 
 
 @pytest.mark.parametrize(
