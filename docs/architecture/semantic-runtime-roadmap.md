@@ -549,8 +549,9 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 ### Phase 7: ActionPolicy-Dependent Bundle Validation
 
 - **Status**: Design in Review.
-- **Goal**: Refactor `ActionPolicy`-dependent bundle validation logic, migrating the `_reject_invalid_atomic_bundle_before_transition` consumer.
-- **Scope**: `ResponsePipelinePrevalidationMixin._reject_invalid_atomic_bundle_before_transition` and its dependencies on `ActionPolicyHandler`.
+- **Goal**: Refactor `ActionPolicy`-dependent bundle validation logic, focusing on the `_reject_invalid_atomic_bundle_before_transition` consumer.
+- **Scope**: `ResponsePipelinePrevalidationMixin._reject_invalid_atomic_bundle_before_transition` and its dependency `ActionPolicyHandler.validate_atomic_bundle_action`.
+- **Design**: The canonical design is documented in `docs/architecture/action-policy-dependent-bundle-validation-design.md`.
 - **Forbidden**: Implementation before design approval.
 
 ---
