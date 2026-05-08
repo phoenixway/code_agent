@@ -738,11 +738,21 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 8 Step 4E: Compiler/Runtime Fact Implementation
 
-- **Status**: Not Started.
+- **Status**: Done.
 - **Goal**: Implement the compiler/runtime changes for the new structural facts.
 - **Prerequisite**: Step 4D.1 is complete. The Step 4E design gate for compiler authority is documented and accepted.
 - **Forbidden**: Consumer migration. Implementing new facts with regex scans in `RuntimeProtocolSemantics`.
 - **Done When**: The new structural facts are implemented in the compiler/IR and the new characterization tests pass.
+- **Note**: Parser atom correctness is a prerequisite for semantic facts. Future semantic fact phases must begin with parser/tokenizer golden coverage for the atoms they depend on. Example atoms include:
+    - `text_then_action`
+    - `think_text_then_action`
+    - `self_closing_complete_intent_then_text`
+    - `inline_code_action_literal`
+    - `fenced_action_literal`
+    - `standalone_subgoal`
+    - `subgoal_embedded_in_prose`
+    - `action_then_text_invalid`
+    - `action_then_intent_invalid`
 
 ---
 

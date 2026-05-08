@@ -61,4 +61,6 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 57. Phase 8 Step 4D (Design): done.
 58. Phase 8 Step 4D.1 (Implementation): done.
 59. Phase 8 Step 4E design gate: done.
-60. Next: Phase 8 Step 4E implementation, pending explicit approval.
+60. Phase 8 Step 4E implementation: done.
+61. Next: Phase 8 Step 4F shadow sufficiency / parity review.
+62. Note: parser atom coverage prerequisite recorded.

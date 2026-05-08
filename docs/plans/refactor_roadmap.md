@@ -342,6 +342,14 @@ runtime-owned, do not migrate
 
 ---
 
+## Principle: Parser Atom Golden Coverage before new semantic facts
+
+A key lesson from the Phase 8 structural fact implementation is that semantic facts are only as reliable as the underlying parser atoms.
+
+Future work that introduces new semantic facts or shapes must begin by adding or confirming golden test coverage for the base protocol atoms it depends on before implementing the higher-level logic. This "atom-first" approach ensures a stable foundation and prevents semantic logic from being built on fragile or incorrect parsing.
+
+---
+
 # Що я б НЕ робив зараз
 
 Не починав би одразу з повного `ProtocolSpec`/lexer/parser rewrite. Це стратегічно правильно, але тактично небезпечно. У тебе вже є compiler pipeline, RPS, tests, recovery registry шматками. Повний “Phase -1 → Phase 16” варто тримати як **North Star**, але не як найближчий execution plan. 

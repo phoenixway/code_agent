@@ -24,6 +24,7 @@ The Protocol Compiler and its underlying parser are the single source of truth f
 -   **No New Regex in Runtime Semantics**: `RuntimeProtocolSemantics` and `semantic_accessors` must **not** introduce new regex-based parsing to produce these facts. Their role is to adapt compiler-derived data, not to create it.
 -   **Legacy Regex Preservation**: Existing legacy regex paths (e.g., in `ResponseSemantics`) may be preserved for backward compatibility with un-migrated consumers, but they must not be the source for new `RuntimeProtocolSemantics` fields.
 -   **Step 4E Implementation Constraint**: The implementation of Phase 8 Step 4E must adhere to this rule. It is forbidden to implement `has_memory_tags`, `has_subgoal_tags`, etc., using new regex scans in the runtime layer.
+-   **Parser Atom Authority**: Parser and tokenizer-level recognition of protocol atoms is a foundational part of compiler authority. New semantic facts must be derived from AST/IR nodes built from these atoms, not from re-scanning raw response text in the runtime. If a new fact depends on a specific protocol atom, that atom's parsing behavior must have golden test coverage before the semantic fact is built upon it.
 
 ---
 

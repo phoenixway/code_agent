@@ -204,9 +204,12 @@ This document is the single source of truth for the current state of the Semanti
   - Implementation is not authorized until Step 4D.1.
 - **Phase 8 Step 4D.1: New Fact Characterization Test Implementation**
   - Implemented golden characterization tests in `tests/test_compiler_structural_facts.py` to specify the target behavior for new compiler facts and shapes.
-  - The tests are marked `xfail` and are expected to fail until Step 4E is complete.
+  - The tests were marked `xfail` and were expected to fail until Step 4E was complete.
   - No production code was changed. Runtime behavior is unchanged.
-
+- **Phase 8 Step 4E: Compiler/Runtime Fact Implementation (Complete)**
+  - Implemented compiler, parser, and IR changes to support new structural facts (`has_memory_tags`, `has_subgoal_tags`, `has_memory_checkpoint`, `visible_text_source`) and improved shapes (`PURE_PLAINTEXT`, `SUBGOAL_WITH_TEXT`, `PRE_ACTION_TEXT_AND_ACTION`, `INTENT_COMPLETE_WITH_TEXT`).
+  - The work was confined to the compiler/parser/IR layer. No consumers were migrated, no `TerminalAnswerClassifier` was implemented, and no new runtime regex fact detection was added.
+No runtime consumers were migrated, and no dispatch or policy behavior was intentionally changed.
 ## Known Authority Boundaries
 
 - **Compiler**: Authoritative for precise, structural diagnostics. A compiler-`INVALID` response must never be dispatched.
@@ -221,7 +224,7 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- **Phase 8 Step 4E: Compiler/Runtime Fact Implementation**: Implement the compiler and `RuntimeProtocolSemantics` changes to make the new characterization tests pass. This step is pending explicit approval and is not yet authorized.
+- **Phase 8 Step 4F: Shadow Sufficiency / Parity Review**: Verify that the new compiler/parser/IR-derived facts are sufficient to support the design of a `TerminalAnswerClassifier` in shadow-mode. Classifier implementation and consumer migration remain blocked until Step 4F is complete.
 
 ## Test Status
 

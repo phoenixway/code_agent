@@ -307,14 +307,20 @@ Before implementation of Step 4E is authorized, the following design constraints
 -   **Deferred Shape Taxonomy**: A more detailed taxonomy of board-only shapes is deferred to a future phase. Step 4E only guarantees the structural facts and the specific shape improvements (`PURE_PLAINTEXT`, `SUBGOAL_WITH_TEXT`, `PRE_ACTION_TEXT_AND_ACTION`) required by the golden tests.
 -   **`<preference>` Tag Compatibility**: For legacy compatibility, the compiler implementation in Step 4E must treat the `<preference>` tag as a memory tag, ensuring `has_memory_tags` is `True` when it is present.
 
+### Lessons learned from Step 4E
+
+The implementation of Step 4E reinforced key architectural principles:
+-   **Structural facts cannot be reliable if parser atoms are not reliable.** The implementation required parser-level repairs for cases like an action following leading visible text and a self-closing complete intent followed by visible text.
+-   **Compiler/parser owns structural protocol facts.** The work was correctly confined to the compiler, parser, and IR.
+-   **RuntimeProtocolSemantics adapts IR only.** The runtime adapter correctly consumed facts from the IR without adding its own parsing logic.
+-   **No new runtime regex fact detection was added.** All new facts are derived from the compiler's AST/IR, upholding the design.
+
 ### Next Step
 
--   **Step 4D.1 (Test Implementation)** is complete. The golden `xfail` tests are in place.
--   **Step 4E (Design Gate)** is complete. The implementation constraints (facts-first, no new regex) are documented.
--   The next step is **Phase 8, Step 4E: Compiler/Runtime Fact Implementation**.
--   Implementation for Step 4E is **not yet authorized** and is pending explicit approval.
--   When authorized, Step 4E must implement the new facts using compiler AST/IR-derived data, not new regex scans.
--   Consumer migration and the `TerminalAnswerClassifier` remain blocked until after Step 4E is complete.
+-   **Step 4D.1 (Test Implementation)** is complete. The golden characterization tests are in place.
+-   **Step 4E (Compiler/Runtime Fact Implementation)** is complete. The new structural facts are implemented in the compiler, and the characterization tests from Step 4D.1 are passing.
+-   The next step is **Phase 8, Step 4F: Shadow Sufficiency / Parity Review**.
+-   Implementation of the `TerminalAnswerClassifier` remains blocked until Step 4F validates that the new structural facts are sufficient to replace the legacy classification logic.
 
 ## 10. Explicitly Deferred
 
