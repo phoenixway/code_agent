@@ -614,7 +614,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 7 Step 3B: `ActionPolicyHandler` Refactor (Implementation)
 
-- **Status**: Not Started.
+- **Status**: Done.
 - **Goal**: Internally refactor `ActionPolicyHandler.validate_atomic_bundle_action` to return the new typed `AtomicBundleActionValidationResult`.
 - **Allowed**:
     - Refactor `validate_atomic_bundle_action` to return `AtomicBundleActionValidationResult` with a `kind`.
@@ -624,7 +624,19 @@ This document outlines the phased plan to migrate the runtime from legacy respon
     - Migrating `ResponsePipelinePrevalidationMixin` or any other consumer.
     - Changing prompts, reason strings, or source markers.
     - Any runtime behavior changes.
-- **Done When**: `validate_atomic_bundle_action` is refactored, and all characterization tests pass.
+- **Done When**: `validate_atomic_bundle_action` was refactored. Legacy `ok`/`reason`/`details` were preserved. All characterization tests passed. No consumers were migrated.
+
+---
+
+#### Phase 7 Step 4: Consumer Migration (Design Review)
+
+- **Status**: Not Started.
+- **Goal**: Review and approve the migration of the first consumer (`ResponsePipelinePrevalidationMixin`) to use the typed result `kind`.
+- **Allowed**:
+    - Documentation updates to approve or reject the candidate design for Step 4.
+- **Forbidden**:
+    - Any production code or test changes.
+- **Done When**: A decision on whether to proceed with the Step 4 implementation is documented.
 
 ---
 

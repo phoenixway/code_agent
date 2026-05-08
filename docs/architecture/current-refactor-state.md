@@ -173,6 +173,11 @@ This document is the single source of truth for the current state of the Semanti
   - Added `tests/test_action_policy_models.py`.
   - All tests passed.
   - No producers or consumers were migrated, and no runtime behavior was changed.
+- **Phase 7 Step 3B: `ActionPolicyHandler` Refactor (Implementation)**
+  - Internally refactored `ActionPolicyHandler.validate_atomic_bundle_action` to return the typed `AtomicBundleActionValidationResult`.
+  - The new `kind` field is now populated, but the legacy `ok`, `reason`, and `details` fields were preserved for backward compatibility.
+  - Characterization tests in `tests/test_action_policy.py` were updated to assert the new `kind` and continue to pass, proving no behavior change.
+  - No consumers were migrated.
 
 ## Known Authority Boundaries
 
@@ -188,7 +193,7 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Implement Phase 7 Step 3B: `ActionPolicyHandler` internal refactor to use the new typed result model.
+- Review and approve Phase 7 Step 4: Consumer Migration (`ResponsePipelinePrevalidationMixin`).
 
 ## Test Status
 

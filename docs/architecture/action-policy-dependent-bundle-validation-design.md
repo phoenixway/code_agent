@@ -108,12 +108,10 @@ The following steps are future candidates. Each requires a separate approval.
 - **Step 3A: Typed Result Scaffolding (Done)**:
     - **Goal**: Create the scaffolding for the typed result model.
     - **Implementation**: Created `modules/agent/orchestration/runtime/action_policy_models.py` with the `AtomicBundlePolicyResultKind` enum and `AtomicBundleActionValidationResult` dataclass. Added `tests/test_action_policy_models.py`. All tests passed. No runtime behavior was changed.
-- **Step 3B: `ActionPolicyHandler` Refactor (Implementation Authorized)**:
+- **Step 3B: `ActionPolicyHandler` Refactor (Done)**:
     - **Goal**: Internally refactor `ActionPolicyHandler.validate_atomic_bundle_action` to produce the new typed `AtomicBundleActionValidationResult`.
-    - **Scope**: This is a producer-only refactor.
-    - **Compatibility**: The refactored method must preserve the exact legacy `ok`, `reason`, and `details` fields in its return value to ensure no downstream consumers are affected. All characterization tests must pass without modification.
-    - **Forbidden**: Do not migrate the consumer (`ResponsePipelinePrevalidationMixin`) to use the new `kind` field.
-- **Candidate Step 4: Consumer Migration (Not Authorized)**:
+    - **Implementation**: The method was refactored to return the typed result. The legacy `ok`, `reason`, and `details` fields were preserved exactly for backward compatibility. Characterization tests were updated to assert the new `kind` and continue to pass, proving no behavior change. No consumers were migrated.
+- **Candidate Step 4: Consumer Migration (Ready for Review)**:
     - Refactor `ResponsePipelinePrevalidationMixin._reject_invalid_atomic_bundle_before_transition` to use the new typed result from `validate_atomic_bundle_action`.
     - The `if/elif` logic would switch on `result.kind` instead of string comparisons.
     - All characterization tests must continue to pass.
@@ -135,4 +133,4 @@ The following steps are future candidates. Each requires a separate approval.
 
 ## 9. Recommendation
 
-This design is approved. The scaffolding for the typed result is complete. The next step is to review and approve the implementation of **Phase 7, Step 3B: `ActionPolicyHandler` Refactor**.
+This design is approved. The producer-side refactor of `ActionPolicyHandler` is complete. The next step is to review and approve the implementation of **Phase 7, Step 4: Consumer Migration**.
