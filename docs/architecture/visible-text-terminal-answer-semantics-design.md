@@ -393,9 +393,11 @@ The classifier must be deterministic and priority-ordered. It will use a combina
 
 | Priority | `TerminalAnswerKind` | Logic / Evidence | `source` | Status (Step 4I) |
 |---|---|---|---|---|
-| 1 | `INVALID_OR_TRUNCATED_TERMINAL_TEXT` | Call legacy `terminal_plaintext_completion_status` helper. If it returns `invalid` or `truncated`. | `legacy_regex` | Deferred |
-| 2 | `LEAKED_SYSTEM_RESULT` | A pure-function regex check for `SYSTEM RESULT:` at the start of the response. | `legacy_compatible_rule` | **Done** |
-| 3 | `INTERNAL_SUMMARY_LIKE_TEXT` | Call legacy `_is_internal_summary_instead_of_final_answer` helper. If `True`. | `runtime_policy` | Deferred |
+| 1 | `LEAKED_SYSTEM_RESULT` | A pure-function regex check for the complete `SYSTEM RESULT:` marker at the start of the response. This must not match a bare `SYSTEM RESULT` prefix. | `legacy_compatible_rule` | **Done** |
+| 2 | `INVALID_OR_TRUNCATED_TERMINAL_TEXT` | For `PURE_PLAINTEXT` candidates, a pure-function rule compatible with `terminal_plaintext_completion_status`, but only when the response is not a complete leaked-system marker. | `legacy_compatible_rule` | **Done** |
+| 3 | `INTERNAL_SUMMARY_LIKE_TEXT` | Future shadow-only integration with the existing internal-summary detection logic. Exact input contract is pending Part 4 approval. | `runtime_policy` | Deferred / pending Part 4 |
+
+Part 3 intentionally does not integrate internal-summary detection or runtime history state. That remains deferred to Part 4.
 | 4 | `PRE_ACTION_VISIBLE_TEXT_WITH_ACTION` | `input.runtime_semantics.visible_text_source == "PRE_ACTION_TEXT"` | `compiler_fact` | Done (Step 4G) |
 | 5 | `INTENT_COMPLETE_WITH_VISIBLE_TEXT` | `input.runtime_semantics.visible_text_source == "INTENT_COMPLETION_TEXT"` | `compiler_fact` | Done (Step 4G) |
 | 6 | `CHECKPOINT_WITH_VISIBLE_TEXT` | `input.runtime_semantics.visible_text_source == "CHECKPOINT_ACCOMPANYING_TEXT"` | `compiler_fact` | Done (Step 4G) |

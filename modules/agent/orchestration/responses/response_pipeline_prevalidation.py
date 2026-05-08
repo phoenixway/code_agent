@@ -276,15 +276,7 @@ class ResponsePipelinePrevalidationMixin:
                 f"terminal_plaintext_completion_status:{reason}",
             )
 
-        # Priority 3: Internal summary (best effort)
-        if hasattr(self.semantics, "_is_internal_summary_instead_of_final_answer"):
-            try:
-                if self.semantics._is_internal_summary_instead_of_final_answer(response, parsed_output):
-                    return TerminalAnswerKind.INTERNAL_SUMMARY_LIKE_TEXT.value, "_is_internal_summary_instead_of_final_answer"
-            except Exception:
-                pass
-
-        # Priority 4: Plaintext answer path
+        # Priority 3: Plaintext answer path
         if hasattr(self.semantics, "is_plaintext_answer_path"):
             try:
                 # Re-parsing is inefficient but safe for a shadow path.

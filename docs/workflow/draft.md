@@ -69,4 +69,6 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 65. Phase 8 Step 4H: Shadow Wiring / Diagnostic Logging (shadow signal only): done.
 66. Phase 8 Step 4I (Part 1): Parity Matrix Logging: done.
 67. Phase 8 Step 4I (Part 2): Legacy Helper Integration (LEAKED_SYSTEM_RESULT): done.
-68. Next: Phase 8 Step 4I (Part 3): Legacy Helper Integration (INVALID_OR_TRUNCATED), pending explicit approval.
+68. Phase 8 Step 4I (Part 3) design gate (INVALID_OR_TRUNCATED): done.
+69. Phase 8 Step 4I (Part 3) implementation: done.
+70. Next: Phase 8 Step 4I (Part 4) Legacy Helper Integration (`INTERNAL_SUMMARY_LIKE_TEXT`), pending explicit approval.

@@ -8,7 +8,8 @@ This document is the single source of truth for the current state of the Semanti
 - **Status**: In Progress.
   - **Part 1 (Complete)**: Parity logging with `legacy_kind` and `is_match` is implemented.
   - **Part 2 (Complete)**: The `LEAKED_SYSTEM_RESULT` legacy rule is integrated into the `TerminalAnswerClassifier`.
-- **Next Step**: Part 3, integrating the `INVALID_OR_TRUNCATED_TERMINAL_TEXT` rule, is pending explicit approval.
+  - **Part 3 (Complete)**: The `INVALID_OR_TRUNCATED_TERMINAL_TEXT` legacy rule is integrated into the `TerminalAnswerClassifier`.
+- **Next Step**: Part 4, integrating the `INTERNAL_SUMMARY_LIKE_TEXT` rule, is pending explicit approval.
 - **Boundary**: Consumer migration remains blocked. Production behavior remains unchanged.
 
 ## Completed Governance
@@ -237,6 +238,7 @@ This document is the single source of truth for the current state of the Semanti
 - **Phase 8 Step 4I: Parity Matrix / Legacy Helper Integration (In Progress)**
   - **Part 1 (Complete)**: Implemented a diagnostic helper in `ResponsePipelinePrevalidationMixin` to compute a `legacy_kind` for terminal answers. The shadow logging now records both `classifier_kind` and `legacy_kind`, and computes `is_match`.
   - **Part 2 (Complete)**: Integrated the `LEAKED_SYSTEM_RESULT` legacy rule into the `TerminalAnswerClassifier`.
+  - **Part 3 (Complete)**: Integrated the `INVALID_OR_TRUNCATED_TERMINAL_TEXT` legacy rule into the `TerminalAnswerClassifier`.
   - This enables building a parity matrix from logs.
   - Integration of other legacy helper branches into the classifier is deferred.
   - No production behavior was changed.
@@ -254,7 +256,7 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- **Phase 8 Step 4I (Part 3): Legacy Helper Integration**: Analyze the parity data from logs. Begin integrating the next legacy helper branch (e.g., for `INVALID_OR_TRUNCATED_TERMINAL_TEXT`) into the `TerminalAnswerClassifier` to improve parity. This is a behavior-preserving step. Consumer migration remains blocked. This step is pending explicit approval.
+- **Phase 8 Step 4I (Part 4): Legacy Helper Integration**: Integrate the `INTERNAL_SUMMARY_LIKE_TEXT` rule into the `TerminalAnswerClassifier` in shadow mode. This is pending explicit approval. Consumer migration remains blocked, and production behavior must remain unchanged.
 
 ## Test Status
 

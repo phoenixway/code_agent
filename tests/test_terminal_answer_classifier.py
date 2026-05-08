@@ -134,3 +134,31 @@ class TestTerminalAnswerClassifier(unittest.TestCase):
         input_data = TerminalAnswerClassifierInput(semantics, raw_text)
         result = self.classifier.classify(input_data)
         self.assertEqual(result.kind, TerminalAnswerKind.PLAINTEXT_TERMINAL_ANSWER)
+
+    def test_classify_invalid_or_truncated_text(self):
+        """Tests that truncated text is correctly classified."""
+        raw_text = "This is too short"
+        semantics = MockRuntimeSemantics(
+            visible_text_source="PURE_PLAINTEXT",
+            has_visible_answer=True,
+            visible_text=raw_text,
+        )
+        input_data = TerminalAnswerClassifierInput(semantics, raw_text)
+        result = self.classifier.classify(input_data)
+        self.assertEqual(result.kind, TerminalAnswerKind.INVALID_OR_TRUNCATED_TERMINAL_TEXT)
+        self.assertEqual(result.source, "legacy_compatible_rule")
+        self.assertIn("terminal_plaintext_too_short", result.reason_code)
+
+    def test_truncated_text_has_priority(self):
+        """Tests that truncated text has priority over other classifications."""
+        # This text is both truncated and looks like a leaked system result.
+        # The truncated rule should win due to priority.
+        raw_text = "SYSTEM RESULT"
+        semantics = MockRuntimeSemantics(
+            visible_text_source="PURE_PLAINTEXT",
+            has_visible_answer=True,
+            visible_text=raw_text,
+        )
+        input_data = TerminalAnswerClassifierInput(semantics, raw_text)
+        result = self.classifier.classify(input_data)
+        self.assertEqual(result.kind, TerminalAnswerKind.INVALID_OR_TRUNCATED_TERMINAL_TEXT)

@@ -211,28 +211,24 @@ class TestResponsePipelinePrevalidationShadow(unittest.TestCase):
         )
 
     @patch("modules.agent.orchestration.responses.response_pipeline_prevalidation.terminal_plaintext_completion_status")
-    @patch("modules.agent.orchestration.responses.response_pipeline_prevalidation.TerminalAnswerClassifier")
-    def test_shadow_classifier_logs_legacy_truncated_kind(self, MockClassifier, mock_status):
-        """Tests that legacy_kind is correctly identified for truncated text."""
+    def test_shadow_classifier_logs_legacy_truncated_kind_match(self, mock_status):
+        """
+        Tests that legacy_kind and classifier_kind match for truncated text.
+        """
         mock_status.return_value = (False, "truncated", "Hello")
-        mock_instance = MockClassifier.return_value
-        mock_instance.classify.return_value = TerminalAnswerSemanticResult(
-            kind=TerminalAnswerKind.PLAINTEXT_TERMINAL_ANSWER,
-            source="compiler_fact",
-            reason_code="test",
-        )
 
         parsed_output = ParsedModelOutput(response="")
         self.harness._apply_compiler_diagnosis(parsed_output, "Hello")
 
+        # The real classifier should now also identify this as truncated.
         self.harness.stage_logger.log.assert_any_call(
             "terminal_answer_classifier_shadow",
             "snapshot",
-            classifier_kind="plaintext_terminal_answer",
-            classifier_source="compiler_fact",
-            classifier_reason_code="test",
-            classifier_evidence=[],
-            classifier_visible_text_present=False,
+            classifier_kind="invalid_or_truncated_terminal_text",
+            classifier_source="legacy_compatible_rule",
+            classifier_reason_code="terminal_plaintext_completion_status:terminal_plaintext_too_short",
+            classifier_evidence=["raw_response_text", "visible_text"],
+            classifier_visible_text_present=True,
             legacy_kind="invalid_or_truncated_terminal_text",
-            is_match=False,
+            is_match=True,
         )
