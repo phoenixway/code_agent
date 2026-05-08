@@ -24,8 +24,9 @@ class AtomicBundleActionValidationResult:
     """
     Represents the result of validating an atomic bundle action against runtime policy.
 
-    This is a transitional object. It will eventually replace the legacy boolean-based
-    result and untyped `details` dictionary.
+    This is scaffolding for a future behavior-preserving migration from the legacy
+    boolean/reason result shape. Legacy reason/details fields remain explicit so
+    future refactors can preserve prompts, logging, and routing behavior.
     """
 
     kind: AtomicBundlePolicyResultKind

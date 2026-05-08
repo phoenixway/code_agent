@@ -43,4 +43,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 39. Phase 7 (ActionPolicy-Dependent Bundle Validation) design: approved.
 40. Phase 7 Step 2 (characterization tests): done.
 41. Phase 7 Step 3 (design review): done. Approved Step 3A (scaffolding).
-42. Next: Implement Phase 7 Step 3A (typed result scaffolding) only.
+42. Phase 7 Step 3A (scaffolding): done.
+43. Next: Review and approve Phase 7 Step 3B (`ActionPolicyHandler` internal refactor).

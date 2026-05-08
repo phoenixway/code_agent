@@ -105,15 +105,10 @@ Phase 7 will be implemented in small, verifiable steps.
 
 The following steps are future candidates. Each requires a separate approval.
 
-- **Step 3A: Typed Result Scaffolding (Implementation Authorized)**:
-    - **Decision**: The review of characterization tests confirms that the legacy `reason` strings are a small, well-defined set, making them a good candidate for a typed enum. This will improve clarity and robustness.
+- **Step 3A: Typed Result Scaffolding (Done)**:
     - **Goal**: Create the scaffolding for the typed result model.
-    - **Implementation**:
-        - Create a new file: `modules/agent/orchestration/runtime/action_policy_models.py`.
-        - In the new file, define the `AtomicBundlePolicyResultKind` enum and the new `AtomicBundleActionValidationResult` dataclass.
-        - Add a new test file `tests/test_action_policy_models.py` to verify the types.
-    - **Forbidden**: Do not change `ActionPolicyHandler` or any other production code. Do not migrate any consumers.
-- **Candidate Step 3B: `ActionPolicyHandler` Refactor (Not Authorized)**:
+    - **Implementation**: Created `modules/agent/orchestration/runtime/action_policy_models.py` with the `AtomicBundlePolicyResultKind` enum and `AtomicBundleActionValidationResult` dataclass. Added `tests/test_action_policy_models.py`. All tests passed. No runtime behavior was changed.
+- **Candidate Step 3B: `ActionPolicyHandler` Refactor (Ready for Review)**:
     - Refactor `ActionPolicyHandler.validate_atomic_bundle_action` to return the new `AtomicBundleActionValidationResult` with the typed `kind`.
     - This would be an internal refactor of `ActionPolicyHandler`. All characterization tests from Step 2 must continue to pass without any changes to the tests themselves.
 - **Candidate Step 4: Consumer Migration (Not Authorized)**:
@@ -138,4 +133,4 @@ The following steps are future candidates. Each requires a separate approval.
 
 ## 9. Recommendation
 
-This design is approved. The review of characterization tests is complete, and the decision is to proceed. The next step is to implement **Phase 7, Step 3A: Typed Result Scaffolding** only.
+This design is approved. The scaffolding for the typed result is complete. The next step is to review and approve the implementation of **Phase 7, Step 3B: `ActionPolicyHandler` Refactor**.

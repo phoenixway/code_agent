@@ -586,7 +586,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 7 Step 3A: Typed Result Scaffolding
 
-- **Status**: Not Started.
+- **Status**: Done.
 - **Goal**: Create the scaffolding for the typed result model for `ActionPolicyHandler`.
 - **Allowed**:
     - Create `modules/agent/orchestration/runtime/action_policy_models.py`.
@@ -596,7 +596,19 @@ This document outlines the phased plan to migrate the runtime from legacy respon
     - Changing `ActionPolicyHandler` or `ResponsePipelinePrevalidationMixin`.
     - Migrating any consumers.
     - Any runtime behavior changes.
-- **Done When**: The new models file and its tests are created, and all tests pass.
+- **Done When**: `modules/agent/orchestration/runtime/action_policy_models.py` and `tests/test_action_policy_models.py` were created. All tests passed. No runtime behavior was changed.
+
+---
+
+#### Phase 7 Step 3B: `ActionPolicyHandler` Refactor (Design Review)
+
+- **Status**: Not Started.
+- **Goal**: Review and approve the internal refactor of `ActionPolicyHandler.validate_atomic_bundle_action` to use the new typed result model.
+- **Allowed**:
+    - Documentation updates to approve or reject the candidate design for Step 3B.
+- **Forbidden**:
+    - Any production code or test changes.
+- **Done When**: A decision on whether to proceed with the Step 3B implementation is documented.
 
 ---
 
