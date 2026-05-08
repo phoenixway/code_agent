@@ -1,7 +1,6 @@
 # Phase 7 Design: ActionPolicy-Dependent Bundle Validation
 
-- **Phase 7 Status**: Design Approved
-- **Implementation**: Authorized for Step 2 (Characterization Tests) only
+- **Phase 7 Status**: Complete
 
 ## 1. Purpose and Guiding Principles
 
@@ -138,4 +137,6 @@ The following steps are future candidates. Each requires a separate approval.
 
 ## 9. Recommendation
 
-This design is approved. The producer-side refactor of `ActionPolicyHandler` and the consumer migration in `ResponsePipelinePrevalidationMixin` are complete. The next step is to conduct a closure review for Phase 7 to decide whether to conclude the phase or defer any cleanup of the legacy `reason`/`details` branching.
+Phase 7 is complete. The producer-side refactor of `ActionPolicyHandler` and the consumer migration in `ResponsePipelinePrevalidationMixin` are complete.
+
+The closure review for Phase 7 has concluded that the phase should be closed. Cleanup of the legacy `reason`/`details` compatibility fields and branching logic is explicitly deferred to a future compatibility-focused cleanup phase. The legacy fields remain part of the compatibility contract for now.

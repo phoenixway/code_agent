@@ -48,4 +48,7 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 44. Phase 7 Step 3B implementation: done.
 45. Phase 7 Step 4 (consumer migration) design: approved.
 46. Phase 7 Step 4 implementation: done.
-47. Next: Conduct Phase 7 closure review.
+47. Phase 7 closure review: done.
+48. Phase 7 is complete.
+49. Next phase selected: Visible Text / Terminal Answer Semantics (Phase 8).
+50. Next: Implement Phase 8 Step 1 (design-only inventory).

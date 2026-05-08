@@ -20,6 +20,8 @@ try:
 except Exception:
     DEBUG_LOG_KEYPRESSES = False
 
+from modules.ui_components.history_aware_input import escape_multiline, unescape_multiline
+
 
 # ---------------------------------------------------------------------
 # History file
@@ -164,7 +166,11 @@ class HistoryAwareTextArea(TextArea):
         if HISTORY_FILE.exists():
             try:
                 with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-                    self._history = [l.strip() for l in f if l.strip()]
+                    self._history = [
+                        unescape_multiline(line.rstrip("\n"))
+                        for line in f
+                        if line.rstrip("\n").strip()
+                    ]
             except Exception:
                 pass
 
@@ -177,7 +183,7 @@ class HistoryAwareTextArea(TextArea):
             self._history.append(text)
             try:
                 with open(HISTORY_FILE, "a", encoding="utf-8") as f:
-                    f.write(text + "\n")
+                    f.write(escape_multiline(text) + "\n")
             except Exception:
                 pass
 

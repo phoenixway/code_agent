@@ -160,29 +160,19 @@ This document is the single source of truth for the current state of the Semanti
   - A review of next phase candidates was conducted, comparing `ActionPolicy`-dependent bundle validation, plan-first execution, and visible text semantics.
   - **Recommendation**: Proceed with a new phase focused on `ActionPolicy`-dependent bundle validation as the most logical continuation of the bundle validation thread.
   - The old "Phase 7: Plan-First Bundle Execution" will be deferred and re-numbered to Phase 8.
-- **Phase 7: ActionPolicy-Dependent Bundle Validation (Design)**
-  - The design for refactoring `ActionPolicy`-dependent bundle validation logic is approved.
-  - Implementation is authorized for Step 2 (characterization tests) only.
-- **Phase 7 Step 2: Characterization Tests (Implementation)**
-  - Added characterization tests to `tests/test_action_policy.py` and `tests/test_response_pipeline_prevalidation.py`.
-  - The tests lock down the existing behavior of `ActionPolicyHandler.validate_atomic_bundle_action` and `ResponsePipelinePrevalidationMixin._reject_invalid_atomic_bundle_before_transition`.
-  - All tests passed.
-  - No production code was changed, and no runtime behavior was changed.
-- **Phase 7 Step 3A: Typed Result Scaffolding (Implementation)**
-  - Created `modules/agent/orchestration/runtime/action_policy_models.py` with the `AtomicBundlePolicyResultKind` enum and `AtomicBundleActionValidationResult` dataclass.
-  - Added `tests/test_action_policy_models.py`.
-  - All tests passed.
-  - No producers or consumers were migrated, and no runtime behavior was changed.
-- **Phase 7 Step 3B: `ActionPolicyHandler` Refactor (Implementation)**
-  - Internally refactored `ActionPolicyHandler.validate_atomic_bundle_action` to return the typed `AtomicBundleActionValidationResult`.
-  - The new `kind` field is now populated, but the legacy `ok`, `reason`, and `details` fields were preserved for backward compatibility.
-  - Characterization tests in `tests/test_action_policy.py` were updated to assert the new `kind` and continue to pass, proving no behavior change.
-  - No consumers were migrated.
-- **Phase 7 Step 4: Consumer Migration (Implementation)**
-  - Migrated `ResponsePipelinePrevalidationMixin._reject_invalid_atomic_bundle_before_transition` to use `AtomicBundleActionValidationResult.kind` for branch selection.
-  - A fallback to the legacy `reason` string was preserved for backward compatibility.
-  - The use of legacy `reason` and `details` fields for prompts, logs, and plans was preserved to ensure exact behavior preservation.
-  - All characterization tests passed, and runtime behavior is unchanged.
+- **Phase 7: ActionPolicy-Dependent Bundle Validation (Complete)**
+  - The refactor of `ActionPolicy`-dependent bundle validation logic is complete.
+  - **Step 2**: Added characterization tests to lock down existing behavior.
+  - **Step 3A**: Created typed result scaffolding (`AtomicBundlePolicyResultKind`, `AtomicBundleActionValidationResult`).
+  - **Step 3B**: Refactored `ActionPolicyHandler` producer to return the typed result while preserving legacy `ok`/`reason`/`details` fields.
+  - **Step 4**: Migrated `ResponsePipelinePrevalidationMixin` consumer to use `result.kind` for branching, with a fallback for legacy `reason` strings.
+  - The closure review concluded that cleanup of legacy `reason`/`details` fields is deferred.
+  - Runtime behavior is unchanged.
+- **Phase 8: Visible Text & Terminal Answer Semantics (Design)**
+  - This phase has been opened to clarify authority for visible text and terminal answer semantics.
+  - The scope includes terminal plaintext completion, intent completion with visible answer, and memory/subgoal checkpoint + text combinations.
+  - The first step is to create a design-only inventory of current behaviors.
+  - Implementation is not authorized until a design is approved.
 
 ## Known Authority Boundaries
 
@@ -198,7 +188,7 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Conduct Phase 7 closure review: decide whether to conclude the phase or defer cleanup of legacy `reason`/`details` branching.
+- Implement Phase 8 Step 1: Design-only inventory of visible text / terminal answer semantics.
 
 ## Test Status
 

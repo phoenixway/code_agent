@@ -546,13 +546,12 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
-### Phase 7: ActionPolicy-Dependent Bundle Validation
+### Phase 7: ActionPolicy-Dependent Bundle Validation (Complete)
 
-- **Status**: Design Approved.
+- **Status**: Done.
 - **Goal**: Refactor `ActionPolicy`-dependent bundle validation logic, focusing on the `_reject_invalid_atomic_bundle_before_transition` consumer.
-- **Scope**: `ResponsePipelinePrevalidationMixin._reject_invalid_atomic_bundle_before_transition` and its dependency `ActionPolicyHandler.validate_atomic_bundle_action`.
-- **Design**: The canonical design is documented in `docs/architecture/action-policy-dependent-bundle-validation-design.md`.
-- **Forbidden**: Implementation of production code changes before characterization tests are complete and a refactoring plan is approved.
+- **Outcome**: Characterization tests were added, a typed result model was introduced, the `ActionPolicyHandler` producer was refactored, and the `ResponsePipelinePrevalidationMixin` consumer was migrated. Legacy `reason`/`details` compatibility was preserved.
+- **Next**: Cleanup of legacy `reason`/`details` fields is deferred to a future compatibility-focused phase.
 
 ---
 
@@ -647,17 +646,29 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 7 Closure Review
 
-- **Status**: Not Started.
+- **Status**: Done.
 - **Goal**: Decide whether to conclude Phase 7 or defer any cleanup/removal of legacy `reason`/`details` branching.
-- **Allowed**:
-    - Documentation updates to approve or reject a plan for legacy field cleanup.
-- **Forbidden**:
-    - Any production code or test changes.
-- **Done When**: A decision on whether to proceed with cleanup is documented.
+- **Conclusion**: Phase 7 is complete. Cleanup of legacy `reason`/`details` fields is explicitly deferred to a future compatibility-focused phase.
+- **Done When**: The decision to conclude Phase 7 was documented.
 
 ---
 
-### Phase 8: Plan-First Bundle Execution
+### Phase 8: Visible Text & Terminal Answer Semantics
+
+- **Status**: Design Started.
+- **Goal**: Clarify authority for visible text, terminal answers, and checkpoint+text combinations.
+- **Scope**:
+    - Terminal plaintext completion logic.
+    - Intent completion with visible answer.
+    - Memory/subgoal checkpoint + visible text combinations.
+    - `MEMORY_TEXT` vs `PLAINTEXT_ONLY` shape transitions.
+    - Authority boundaries between compiler, runtime semantics, intent transition, plan board, memory board, response pipeline, and pre-dispatch stop logic.
+- **Forbidden**: Implementation before a design is approved.
+- **Done When**: A design is approved for clarifying visible text semantics.
+
+---
+
+### Phase 9: Plan-First Bundle Execution
 
 - **Goal**: Refactor `DispatchPipeline` to execute from a plan derived from semantic accessors, not from reparsed segments.
 - **Allowed**: Modify `ResponsePipeline` to build an `ExecutionPlan` using semantic accessors. Modify `DispatchPipeline` to execute this plan.
@@ -666,7 +677,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
-### Phase 9: RecoveryStrategy Registry Expansion
+### Phase 10: RecoveryStrategy Registry Expansion
 
 - **Goal**: Expand the `CompilerRecoveryRegistry` to cover more structural errors.
 - **Allowed**: Add new strategies for errors currently handled by legacy `invalid_kind` routing.
@@ -675,7 +686,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
-### Phase 10: Observability/Replay
+### Phase 11: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.
 - **Allowed**: Log the inputs and outputs of semantic accessors. Create a debug tool to replay a response through the semantic layer.
@@ -684,9 +695,18 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
-### Phase 11: Legacy Cleanup
+### Phase 12: Legacy Cleanup
 
 - **Goal**: Remove deprecated legacy fields and helpers.
 - **Allowed**: Remove `ResponseSemantics`, `has_action_segment`, and other legacy fields from `ParsedModelOutput`.
 - **Forbidden**: Removing anything that still has a consumer.
 - **Done When**: `ResponseSemantics` is deleted.
+
+---
+
+### Phase 13: Compatibility Cleanup (Deferred)
+
+- **Goal**: Remove legacy compatibility fields and branching logic from refactored components.
+- **Scope**: `ActionPolicyHandler` `reason`/`details` fields, `ResponsePipelinePrevalidationMixin` fallback logic.
+- **Forbidden**: Implementation before a new design is approved.
+- **Done When**: The legacy compatibility shims from Phase 7 are removed.
