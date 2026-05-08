@@ -126,9 +126,11 @@ This document is the single source of truth for the current state of the Semanti
   - No consumers were migrated, and no old helpers were modified.
   - Shape-driven classification was not implemented.
   - Runtime behavior is unchanged.
-- **Phase 6 Step 2B.1: Shape-Driven Logic (Design)**
-  - The design for the `INTENT_ACTION_BUNDLE` shape classification in `BundleSemanticValidator` is approved.
-  - Implementation is authorized for Step 2B.1 only. Other shape-driven logic remains deferred.
+- **Phase 6 Step 2B.1: Shape-Driven Logic (Implementation)**
+  - Implemented the `INTENT_ACTION_BUNDLE` shape classification in `BundleSemanticValidator`.
+  - Added unit tests, which passed.
+  - No consumers were migrated, and no other shape logic was implemented.
+  - Runtime behavior is unchanged.
 
 ## Known Authority Boundaries
 
@@ -144,7 +146,7 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Implement Phase 6 Step 2B.1 (`BundleSemanticValidator` `INTENT_ACTION_BUNDLE` logic).
+- Design and approve Phase 6 Step 2B.2 (`BundleSemanticValidator` `READONLY_ACTION_BATCH_CANDIDATE` logic).
 
 ## Test Status
 

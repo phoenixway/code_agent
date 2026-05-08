@@ -174,7 +174,7 @@ The following classifications are **out of scope** for Step 2:
 To ensure a safe and incremental implementation, Step 2 should be broken down further:
 
 - **Step 2A: Error-Code-Driven Classification (Done)**: Implemented classifications based on `compiler_error_code` that map to logic currently in `_reject_compiler_invalid_atomic_bundle_before_transition`. This includes: `INVALID_ACTION_ARRAY`, `INVALID_MULTIPLE_ACTIONS`, and `INVALID_FILE_CONTENT_PAIRING`.
-- **Step 2B: Shape-Driven Classification (Design for 2B.1 Approved)**: Implement the classifications based on `compiler_ir.shape` for clear bundle or non-bundle shapes: `INTENT_ACTION_BUNDLE_CANDIDATE`, `READONLY_ACTION_BATCH_CANDIDATE`, and `NO_BUNDLE_SHAPE` (for safe shapes like `INTENT_ONLY`).
+- **Step 2B: Shape-Driven Classification (Step 2B.1 Done)**: Implement the classifications based on `compiler_ir.shape` for clear bundle or non-bundle shapes: `INTENT_ACTION_BUNDLE_CANDIDATE`, `READONLY_ACTION_BATCH_CANDIDATE`, and `NO_BUNDLE_SHAPE` (for safe shapes like `INTENT_ONLY`).
 - **Step 2C: Parity Testing (Design in Review)**: Implement the parity tests described in the test strategy to prove behavioral equivalence before any consumer is migrated.
 
 ### 8.6. Step 2B Design: Shape-Driven Classification
@@ -219,7 +219,7 @@ The following shapes are **out of scope** for Step 2B and must result in `UNKNOW
 #### 8.6.5. Proposed Implementation Slicing for Step 2B
 
 To ensure a safe and incremental implementation, Step 2B can be broken down:
-- **Step 2B.1 (Approved for Implementation)**: Implement `INTENT_ACTION_BUNDLE_CANDIDATE` classification.
+- **Step 2B.1 (Done)**: Implemented `INTENT_ACTION_BUNDLE_CANDIDATE` classification.
 - **Step 2B.2 (Design in Review)**: Implement `READONLY_ACTION_BATCH_CANDIDATE` classification.
 - **Step 2B.3 (Design in Review)**: Implement `NO_BUNDLE_SHAPE` classification for `INTENT_ONLY`.
 
