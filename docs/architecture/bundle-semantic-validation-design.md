@@ -3,8 +3,8 @@
 - **Phase 6 Status**: Approved
 - **Step 1 (Scaffolding) Status**: Done
 - **Step 2A (Error-Code Logic) Status**: Done
-- **Step 2B (Shape Logic) Status**: Design in Review
-- **Step 2 Implementation**: Not authorized for Step 2B/2C.
+- **Step 2B (Shape Logic) Status**: Step 2B.3 Design Approved
+- **Step 2 Implementation**: Authorized for Step 2B.3 (`INTENT_ONLY` shape).
 
 ## 1. Purpose and Guiding Principles
 
@@ -221,7 +221,7 @@ The following shapes are **out of scope** for Step 2B and must result in `UNKNOW
 To ensure a safe and incremental implementation, Step 2B can be broken down:
 - **Step 2B.1 (Done)**: Implemented `INTENT_ACTION_BUNDLE_CANDIDATE` classification.
 - **Step 2B.2 (Done)**: Implemented `READONLY_ACTION_BATCH_CANDIDATE` classification.
-- **Step 2B.3 (Design in Review)**: Implement `NO_BUNDLE_SHAPE` classification for `INTENT_ONLY`.
+- **Step 2B.3 (Design Approved)**: Implement `NO_BUNDLE_SHAPE` classification for `INTENT_ONLY`.
 
 #### 8.6.6. Step 2B.2 Design Details: READONLY_ACTION_BATCH_CANDIDATE
 
@@ -244,6 +244,29 @@ This section details the design for Step 2B.2. Implementation is not authorized 
   - **Unit Tests**: Add tests to `test_bundle_semantic_validator.py` for the `READ_ONLY_BATCH_CANDIDATE` shape mapping.
   - **Precedence Tests**: Add tests to prove that Step 2A (error-code) and Step 2B.1 (`INTENT_ACTION_BUNDLE`) classifications take precedence. Add tests for source priority conflicts (e.g., `runtime_protocol_semantics.shape` should win over `compiler_shape`) to ensure deterministic normalization.
   - **Deferred Shape Tests**: Ensure `NO_BUNDLE_SHAPE` candidates (`INTENT_ONLY`) and other deferred shapes (`ACTION_ONLY`) still return `UNKNOWN`.
+  - **Boundary Tests**: Ensure existing tests prove `ActionPolicyHandler` is not called and `segments` are ignored.
+
+#### 8.6.7. Step 2B.3 Design Details: NO_BUNDLE_SHAPE
+
+This section details the design for Step 2B.3. Implementation is authorized for the `INTENT_ONLY` shape classification only.
+
+- **Scope and Boundaries**:
+  - **Precedence**: This logic must only run if no classification was found in Step 2A (error codes) or prior Step 2B sub-steps.
+  - **Allowed Inputs**: The `validate` method will reuse the existing `_get_normalized_shape` helper.
+  - **Forbidden Inputs**: The validator **must not** inspect `segments`, call `ActionPolicyHandler`, or access runtime state.
+  - **Fallback**: If the shape is missing, unknown, ambiguous, `ACTION_ONLY`, or a visible-text shape, the validator must return `UNKNOWN`.
+  - **Explicit Non-Meaning**: A result of `NO_BUNDLE_SHAPE` is structural evidence only. It means the compiler recognized a non-bundle shape from the approved Step 2B.3 subset. It is **not** a safety decision, is **not** a final-answer/sufficiency signal, does not mean there is no other control content, and does not grant dispatch permission.
+
+- **Classification Mapping**:
+  - `INTENT_ONLY` -> `NO_BUNDLE_SHAPE`
+
+- **Deferred Classifications**:
+  - The following are **out of scope** for Step 2B.3 and must result in `UNKNOWN`: `ACTION_ONLY` classification and any visible-text shapes.
+
+- **Test Strategy for Step 2B.3**:
+  - **Unit Tests**: Add tests to `test_bundle_semantic_validator.py` for the `INTENT_ONLY` shape mapping.
+  - **Precedence Tests**: Add tests to prove that Step 2A, 2B.1, and 2B.2 classifications take precedence.
+  - **Deferred Shape Tests**: Ensure `ACTION_ONLY` and visible-text shapes still return `UNKNOWN`.
   - **Boundary Tests**: Ensure existing tests prove `ActionPolicyHandler` is not called and `segments` are ignored.
 
 ## 9. Explicitly Deferred

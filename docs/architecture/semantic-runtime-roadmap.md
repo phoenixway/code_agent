@@ -486,14 +486,19 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 6 Step 2B.3: NO_BUNDLE_SHAPE Classification
 
-- **Status**: Design in Review.
-- **Goal**: Design the implementation of the `NO_BUNDLE_SHAPE` classification for `INTENT_ONLY`.
+- **Status**: Not Started.
+- **Goal**: Implement the `NO_BUNDLE_SHAPE` classification for the `INTENT_ONLY` shape.
 - **Allowed**:
-    - Update `docs/architecture/bundle-semantic-validation-design.md` with the detailed design for Step 2B.3.
+    - Add logic to `BundleSemanticValidator.validate` to classify `NO_BUNDLE_SHAPE` for the `INTENT_ONLY` compiler shape.
+    - Reuse existing shape normalization.
+    - Update unit tests in `tests/test_bundle_semantic_validator.py`.
 - **Forbidden**:
-    - Implementation before design approval.
-    - Designing logic that requires `ActionPolicyHandler` or runtime state.
-- **Done When**: The design for Step 2B.3 is documented and ready for approval.
+    - Classifying `ACTION_ONLY` or any other shape as `NO_BUNDLE_SHAPE`.
+    - Classifying any visible-text shapes.
+    - Migrating any consumers.
+    - Calling `ActionPolicy`.
+    - Any runtime behavior changes.
+- **Done When**: The Step 2B.3 logic is implemented with passing tests, and no consumers are migrated.
 
 ---
 

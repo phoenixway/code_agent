@@ -151,7 +151,7 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Design and approve Phase 6 Step 2B.3 (`BundleSemanticValidator` `NO_BUNDLE_SHAPE` logic).
+- Implement Phase 6 Step 2B.3 (`BundleSemanticValidator` `NO_BUNDLE_SHAPE` logic for `INTENT_ONLY`).
 
 ## Test Status
 
