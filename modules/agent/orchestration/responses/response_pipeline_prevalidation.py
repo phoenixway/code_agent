@@ -8,6 +8,8 @@ from ..parsers.visible_text import sanitize_visible_text_for_user, terminal_plai
 from .bundle_semantic_validator import BundleResultKind, BundleSemanticValidator
 from .protocol_decision_bridge import COMPILER_INVALID_KIND_BY_CODE
 from .runtime_protocol_semantics import compact_runtime_protocol_semantics, runtime_semantics_from_compiler_analysis
+from .terminal_answer_classifier import TerminalAnswerClassifier
+from .terminal_answer_models import TerminalAnswerClassifierInput
 
 
 class ResponsePipelinePrevalidationMixin:
@@ -165,6 +167,7 @@ class ResponsePipelinePrevalidationMixin:
                 "snapshot",
                 **compact_runtime_protocol_semantics(parsed_output.runtime_protocol_semantics),
             )
+        self._run_terminal_answer_classifier_shadow(parsed_output, response)
         if compiler_invalid_kind:
             legacy_invalid_kind = str(getattr(parsed_output, "invalid_kind", "") or "").strip()
             has_plain_think_prefix = False
@@ -188,6 +191,50 @@ class ResponsePipelinePrevalidationMixin:
             if not legacy_invalid_kind or legacy_invalid_kind in self.COMPILER_DRIVEN_INVALID_KINDS:
                 parsed_output.invalid_kind = compiler_invalid_kind
         return compiler_analysis
+
+    def _run_terminal_answer_classifier_shadow(self, parsed_output, response: str):
+        """Runs the TerminalAnswerClassifier in shadow mode for diagnostics."""
+        if not hasattr(self, "stage_logger") or not self.stage_logger:
+            return
+
+        runtime_semantics = getattr(parsed_output, "runtime_protocol_semantics", None)
+        if not runtime_semantics:
+            return
+
+        try:
+            # Lazy-init the classifier to avoid overhead if not used.
+            if not hasattr(self, "_shadow_terminal_answer_classifier"):
+                self._shadow_terminal_answer_classifier = TerminalAnswerClassifier()
+
+            classifier_input = TerminalAnswerClassifierInput(
+                runtime_semantics=runtime_semantics,
+                raw_response_text=response,
+            )
+            result = self._shadow_terminal_answer_classifier.classify(classifier_input)
+
+            self.stage_logger.log(
+                "terminal_answer_classifier_shadow",
+                "snapshot",
+                classifier_kind=result.kind.value,
+                classifier_source=result.source,
+                classifier_reason_code=result.reason_code,
+                classifier_evidence=list(result.evidence),
+                classifier_visible_text_present=bool(result.visible_text),
+                legacy_kind=None,
+                is_match=None,
+            )
+        except Exception as e:
+            try:
+                self.stage_logger.log(
+                    "terminal_answer_classifier_shadow",
+                    "error",
+                    error_class=type(e).__name__,
+                    error_message=str(e),
+                )
+            except Exception:
+                # If the error logger itself fails, swallow the exception
+                # to ensure the shadow path never affects production.
+                pass
 
     def _has_any_action_proposal(self, parsed_output, *, parsed_action_count: int = 0) -> bool:
         try:

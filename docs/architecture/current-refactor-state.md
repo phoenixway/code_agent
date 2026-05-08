@@ -224,6 +224,12 @@ This document is the single source of truth for the current state of the Semanti
   - Unit tests were added in `tests/test_terminal_answer_classifier.py` to cover the implemented compiler-fact branches.
   - No runtime shadow execution hook was added, and no consumers were migrated.
   - No dispatch, policy, or user-visible behavior was changed.
+- **Phase 8 Step 4H: Shadow Wiring / Diagnostic Logging (Complete)**
+  - The `TerminalAnswerClassifier` is now wired into the `ResponsePipelinePrevalidationMixin` in shadow mode.
+  - It runs after the `RuntimeProtocolSemantics` snapshot is created and logs its classification as a shadow signal.
+  - The actual comparison against legacy logic is deferred to a later step.
+  - The call is protected by an exception handler to prevent it from affecting runtime behavior.
+  - No consumers were migrated, and no production behavior was changed.
 ## Known Authority Boundaries
 
 - **Compiler**: Authoritative for precise, structural diagnostics. A compiler-`INVALID` response must never be dispatched.
@@ -238,7 +244,7 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- **Phase 8 Step 4H: Shadow Wiring / Diagnostic Logging**: Wire the isolated `TerminalAnswerClassifier` into the `ResponsePipeline` for shadow-mode execution. Add diagnostic logging to compare its output against legacy logic. This is a behavior-preserving step. Consumer migration remains blocked. This step is pending explicit approval.
+- **Phase 8 Step 4I: Parity Matrix / Legacy Helper Integration**: Analyze the shadow-mode diagnostic logs to build a parity matrix. Begin integrating legacy helper branches into the classifier to improve parity, with dedicated tests. This is a behavior-preserving step. Consumer migration remains blocked. This step is pending explicit approval.
 
 ## Test Status
 

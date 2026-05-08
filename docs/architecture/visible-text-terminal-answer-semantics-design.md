@@ -406,19 +406,21 @@ The classifier must be deterministic and priority-ordered. It will use a combina
 
 ### 11.5. Shadow-Mode Validation Plan
 
-Step 4G introduced the classifier as an isolated shadow-safe component. Step 4H will wire it into runtime shadow execution and diagnostic logging.
+Step 4G introduced the classifier as an isolated shadow-safe component. Step 4H wired it into the runtime for shadow execution and diagnostic logging.
 
-1.  **Instantiation (Step 4H)**: The `TerminalAnswerClassifier` will be instantiated within a component that has access to the necessary inputs (e.g., `ResponsePipeline`).
-2.  **Execution (Step 4H)**: It will be called after the `RuntimeProtocolSemantics` snapshot is created. Its result will be stored in a temporary variable and used for logging only.
+1.  **Instantiation (Done in Step 4H)**: The `TerminalAnswerClassifier` is instantiated on-demand within `ResponsePipelinePrevalidationMixin`.
+2.  **Execution (Done in Step 4H)**: It is called from `_apply_compiler_diagnosis` after the `RuntimeProtocolSemantics` snapshot is created. Its result is logged for diagnostic purposes and is not used for any production decisions. The call is wrapped in a `try...except` block to ensure safety.
 3.  **No Behavior Change**: The result of the shadow-mode classification **must not** be used to alter control flow, dispatch decisions, UI output, or any other runtime behavior. All existing logic paths must remain unchanged.
-4.  **Comparison and Logging (Step 4H)**: A dedicated logging function will be called to compare the `TerminalAnswerClassifier`'s result against the results of the legacy heuristics it is intended to replace.
+4.  **Comparison and Logging (Step 4H / 4I)**: A dedicated logging function will be called to record the `TerminalAnswerClassifier`'s result.
+    -   **Step 4H**: Logs the classifier's output as a shadow signal (`classifier_kind`, `classifier_source`, etc.). The `legacy_kind` and `is_match` fields are placeholders (`None`).
+    -   **Step 4I (Future)**: Will add logic to compute the `legacy_kind` and `is_match` fields to enable direct parity comparison in the logs.
     -   **Log Entry**: Each log entry should contain:
         -   `response_id`
         -   `classifier_kind`: The `kind` from the new classifier.
-        -   `legacy_kind`: The classification derived from the existing logic path (e.g., from `is_plaintext_answer_path`).
-        -   `is_match`: `True` if the kinds are equivalent, `False` otherwise.
+        -   `legacy_kind`: The classification derived from the existing logic path (deferred to Step 4I).
+        -   `is_match`: `True` if the kinds are equivalent (deferred to Step 4I).
         -   `classifier_evidence`: The `source`, `reason_code`, and `evidence` from the new classifier.
-        -   `legacy_evidence`: The name of the legacy helper and its raw inputs.
+        -   `legacy_evidence`: The name of the legacy helper and its raw inputs (deferred to Step 4I).
 5.  **Parity Goal**: The goal of shadow mode is to collect data and iterate on the classifier's logic (in later steps) until it achieves high parity with the legacy system for all core cases, while providing clearer, more accurate classifications for ambiguous cases.
 
 ### 11.6. Completed Step 4G Tests and Future Step 4H Tests

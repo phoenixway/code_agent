@@ -788,11 +788,21 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 8 Step 4H: Shadow Wiring / Diagnostic Logging
 
-- **Status**: Not Started.
+- **Status**: Done.
 - **Goal**: Wire the isolated `TerminalAnswerClassifier` into the `ResponsePipeline` for shadow-mode execution and add diagnostic logging.
 - **Prerequisite**: Step 4G must be complete.
 - **Forbidden**: Consumer migration. Any changes to runtime behavior.
-- **Done When**: The classifier is called in shadow mode, and its results are logged for parity analysis without affecting production logic.
+- **Done When**: The classifier was wired into `ResponsePipelinePrevalidationMixin` in shadow mode. It logs its own classification as a shadow signal; parity comparison logic is not yet implemented. The call is protected by an exception handler. No production behavior was changed.
+
+---
+
+#### Phase 8 Step 4I: Parity Matrix / Legacy Helper Integration
+
+- **Status**: Not Started.
+- **Goal**: Analyze shadow logs and begin integrating legacy helper branches into the classifier.
+- **Prerequisite**: Step 4H must be complete.
+- **Forbidden**: Consumer migration. Any changes to runtime behavior.
+- **Done When**: A parity matrix is documented, and at least one legacy helper branch is integrated into the classifier with passing tests.
 
 ---
 
