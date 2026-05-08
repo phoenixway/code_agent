@@ -163,6 +163,11 @@ This document is the single source of truth for the current state of the Semanti
 - **Phase 7: ActionPolicy-Dependent Bundle Validation (Design)**
   - The design for refactoring `ActionPolicy`-dependent bundle validation logic is approved.
   - Implementation is authorized for Step 2 (characterization tests) only.
+- **Phase 7 Step 2: Characterization Tests (Implementation)**
+  - Added characterization tests to `tests/test_action_policy.py` and `tests/test_response_pipeline_prevalidation.py`.
+  - The tests lock down the existing behavior of `ActionPolicyHandler.validate_atomic_bundle_action` and `ResponsePipelinePrevalidationMixin._reject_invalid_atomic_bundle_before_transition`.
+  - All tests passed.
+  - No production code was changed, and no runtime behavior was changed.
 
 ## Known Authority Boundaries
 
@@ -178,7 +183,7 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Implement Phase 7, Step 2: Characterization Tests only.
+- Review characterization test results and decide whether to approve Phase 7 Step 3 (Typed Result Introduction).
 
 ## Test Status
 

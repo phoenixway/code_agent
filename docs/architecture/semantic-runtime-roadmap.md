@@ -558,7 +558,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 7 Step 2: Characterization Tests
 
-- **Status**: Not Started.
+- **Status**: Done.
 - **Goal**: Add characterization tests to lock down the exact current behavior of `ActionPolicy`-dependent bundle validation.
 - **Allowed**:
     - Add characterization tests in `tests/test_response_pipeline_prevalidation.py` and/or a new `tests/test_action_policy.py`.
@@ -568,7 +568,19 @@ This document outlines the phased plan to migrate the runtime from legacy respon
     - Refactoring `ActionPolicyHandler` or `ResponsePipelinePrevalidationMixin`.
     - Migrating any consumers.
     - Any runtime behavior changes.
-- **Done When**: The characterization tests are implemented with passing results, and no production code has been changed.
+- **Done When**: Characterization tests were added in `tests/test_action_policy.py` and `tests/test_response_pipeline_prevalidation.py`. All tests passed, and no production code was changed.
+
+---
+
+#### Phase 7 Step 3: Typed Result Introduction (Design Review)
+
+- **Status**: Not Started.
+- **Goal**: Review characterization test results and decide whether to approve the implementation of a typed result model for `ActionPolicyHandler`.
+- **Allowed**:
+    - Documentation updates to approve or reject the candidate design for Step 3.
+- **Forbidden**:
+    - Any production code or test changes.
+- **Done When**: A decision on whether to proceed with the Step 3 implementation is documented.
 
 ---
 

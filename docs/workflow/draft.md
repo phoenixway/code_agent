@@ -41,4 +41,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 37. Phase 6 is complete.
 38. Post-Phase 6 planning review: done.
 39. Phase 7 (ActionPolicy-Dependent Bundle Validation) design: approved.
-40. Next: Implement Phase 7 Step 2 (characterization tests) only.
+40. Phase 7 Step 2 (characterization tests): done.
+41. Next: Review characterization results and decide whether to approve Phase 7 Step 3 (typed result introduction).

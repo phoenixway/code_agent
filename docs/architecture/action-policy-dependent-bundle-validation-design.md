@@ -101,18 +101,11 @@ The `details` dictionary in the result will continue to hold the message and oth
 Phase 7 will be implemented in small, verifiable steps.
 
 - **Step 1: Design (This Document)**: The design is approved.
-- **Step 2: Characterization Tests (Implementation Authorized)**: Add comprehensive tests to `tests/test_response_pipeline_prevalidation.py` and a new `tests/test_action_policy.py` to inventory and lock down the exact current behavior. These tests must cover:
-    - Every rejection branch in `_reject_invalid_atomic_bundle_before_transition` and `ActionPolicyHandler.validate_atomic_bundle_action`.
-    - All pass-through cases.
-    - The exact `ResponsePipelineOutcome` fields, including `reason` and `source`.
-    - The exact `AtomicBundlePlan` fields populated in rejection cases.
-    - The exact `details` dictionary fields from `validate_atomic_bundle_action`.
-    - The exact inputs passed to the `prompt_builder`.
-    - The exact metadata passed to the `stage_logger`.
+- **Step 2: Characterization Tests (Done)**: Characterization tests were added to `tests/test_action_policy.py` (new file) and `tests/test_response_pipeline_prevalidation.py`. The tests cover all rejection and pass-through branches, locking down the exact legacy behavior of `ActionPolicyHandler.validate_atomic_bundle_action` and `ResponsePipelinePrevalidationMixin._reject_invalid_atomic_bundle_before_transition`. All tests passed. No production code was changed.
 
-The following steps are future candidates and are **not authorized**. Each requires a separate approval after Step 2 (Characterization Tests) is complete and all tests are green.
+The following steps are future candidates. Each requires a separate approval.
 
-- **Candidate Step 3: Typed Result Introduction (Not Authorized)**:
+- **Candidate Step 3: Typed Result Introduction (Ready for Review)**:
     - Create the `AtomicBundlePolicyResultKind` enum.
     - Refactor `ActionPolicyHandler.validate_atomic_bundle_action` to return the new `AtomicBundleActionValidationResult` with the typed `kind`.
     - This would be an internal refactor of `ActionPolicyHandler`. All characterization tests from Step 2 must continue to pass without any changes to the tests themselves.
@@ -138,4 +131,4 @@ The following steps are future candidates and are **not authorized**. Each requi
 
 ## 9. Recommendation
 
-This design is approved. The next step is to implement **Phase 7, Step 2: Characterization Tests** only. Implementation of any production code changes (Step 3 and beyond) is not authorized until the characterization tests are in place and a separate approval is granted.
+This design is approved. The next step is to review the characterization test results and decide whether to approve the implementation of **Phase 7, Step 3: Typed Result Introduction**.

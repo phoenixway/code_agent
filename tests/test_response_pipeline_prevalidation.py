@@ -39,6 +39,13 @@ class PrevalidationTestHarness(ResponsePipelinePrevalidationMixin):
         self.prompt_builder = SimpleNamespace(
             build_atomic_bundle_rejected_prompt=MagicMock(return_value="recovery_prompt")
         )
+        # Add mocks for the legacy bundle validation path
+        self.action_policy = SimpleNamespace(validate_atomic_bundle_action=MagicMock())
+        self.semantics = SimpleNamespace(has_any_action_proposal=MagicMock(return_value=True))
+
+    def _has_any_action_proposal(self, parsed_output, *, parsed_action_count: int = 0) -> bool:
+        """Mocked version of _has_any_action_proposal."""
+        return self.semantics.has_any_action_proposal(parsed_output, parsed_action_count=parsed_action_count)
 
     def _atomic_bundle_plan_from_preview(self, payload: dict, preview) -> AtomicBundlePlan:
         return AtomicBundlePlan(
@@ -57,7 +64,15 @@ class PrevalidationTestHarness(ResponsePipelinePrevalidationMixin):
 
 @pytest.fixture
 def harness():
-    return PrevalidationTestHarness()
+    h = PrevalidationTestHarness()
+    # Reset mocks before each test
+    h.intent_transitions.preview_payload_decision.reset_mock()
+    h.stage_logger.log.reset_mock()
+    h.prompt_builder.build_atomic_bundle_rejected_prompt.reset_mock()
+    h.action_policy.validate_atomic_bundle_action.reset_mock()
+    h.semantics.has_any_action_proposal.reset_mock()
+    h.semantics.has_any_action_proposal.return_value = True
+    return h
 
 
 def test_reject_compiler_invalid_bundle_action_payload_array(harness):
@@ -170,3 +185,101 @@ def test_reject_compiler_invalid_bundle_passes_through_if_not_bundle_kind(harnes
     )
 
     assert outcome is None
+
+
+# --- Characterization tests for _reject_invalid_atomic_bundle_before_transition ---
+
+
+def test_reject_invalid_atomic_bundle_passes_through_for_non_bundle_mode(harness):
+    """_reject_invalid_atomic_bundle_before_transition passes through if payload mode is not a bundle mode."""
+    payload = {"mode": "complete"}  # Not activate, reuse, or replace
+    outcome = harness._reject_invalid_atomic_bundle_before_transition(
+        ctx=None, payload=payload, parsed_output=MockParsedOutput(), segments=[], response=""
+    )
+    assert outcome is None
+    harness.action_policy.validate_atomic_bundle_action.assert_not_called()
+
+
+def test_reject_invalid_atomic_bundle_passes_through_if_no_action(harness):
+    """_reject_invalid_atomic_bundle_before_transition passes through if there is no action proposal."""
+    harness.semantics.has_any_action_proposal.return_value = False
+    payload = {"mode": "activate"}
+    outcome = harness._reject_invalid_atomic_bundle_before_transition(
+        ctx=None, payload=payload, parsed_output=MockParsedOutput(), segments=[], response=""
+    )
+    assert outcome is None
+    harness.action_policy.validate_atomic_bundle_action.assert_not_called()
+
+
+def test_reject_invalid_atomic_bundle_rejects_on_invalid_intent_preview(harness):
+    """_reject_invalid_atomic_bundle_before_transition rejects if the intent transition preview is invalid."""
+    harness.intent_transitions.preview_payload_decision.return_value = SimpleNamespace(
+        applied=False, message="invalid_intent_transition"
+    )
+    payload = {"mode": "activate", "goal": "test goal"}
+    outcome = harness._reject_invalid_atomic_bundle_before_transition(
+        ctx=None, payload=payload, parsed_output=MockParsedOutput(), segments=[], response=""
+    )
+    assert isinstance(outcome, ResponsePipelineOutcome)
+    assert outcome.reason == "atomic_bundle_intent_invalid"
+    assert outcome.source == "intent_atomic_bundle_guard"
+    assert outcome.atomic_bundle_plan.invalid_part == "intent"
+    assert outcome.atomic_bundle_plan.bundle_reason == "invalid_intent_transition"
+    harness.prompt_builder.build_atomic_bundle_rejected_prompt.assert_called_once_with(
+        invalid_part="intent", reason="invalid_intent_transition", goal="test goal"
+    )
+
+
+def test_reject_invalid_atomic_bundle_rejects_on_action_policy_fail(harness):
+    """_reject_invalid_atomic_bundle_before_transition rejects if action_policy validation fails."""
+    harness.action_policy.validate_atomic_bundle_action.return_value = SimpleNamespace(
+        ok=False,
+        reason="missing_file_content_block",
+        details={
+            "message": "write_file_block requires a complete <file_content>...</file_content> block",
+            "blocked_action": "write_file_block",
+            "allowed_actions": [],
+        },
+    )
+    payload = {"mode": "activate", "goal": "test goal"}
+    outcome = harness._reject_invalid_atomic_bundle_before_transition(
+        ctx=None, payload=payload, parsed_output=MockParsedOutput(), segments=[], response=""
+    )
+    assert isinstance(outcome, ResponsePipelineOutcome)
+    assert outcome.reason == "atomic_bundle_file_content_invalid"
+    assert outcome.source == "intent_atomic_bundle_guard"
+    assert outcome.atomic_bundle_plan.invalid_part == "file_content"
+    assert outcome.atomic_bundle_plan.bundle_reason == "missing_file_content_block"
+    assert outcome.atomic_bundle_plan.blocked_action == "write_file_block"
+    harness.prompt_builder.build_atomic_bundle_rejected_prompt.assert_called_once_with(
+        invalid_part="file_content",
+        reason="write_file_block requires a complete <file_content>...</file_content> block",
+        blocked_action="write_file_block",
+        proposed_allowed_actions=[],
+        goal="test goal",
+    )
+
+
+def test_reject_invalid_atomic_bundle_passes_through_on_action_policy_ok(harness):
+    """_reject_invalid_atomic_bundle_before_transition passes through if action_policy validation is ok."""
+    harness.action_policy.validate_atomic_bundle_action.return_value = SimpleNamespace(ok=True)
+    harness.intent_transitions.preview_payload_decision.return_value.active_intent.intent_id = "test_intent_id"
+    payload = {"mode": "activate"}
+    outcome = harness._reject_invalid_atomic_bundle_before_transition(
+        ctx=None, payload=payload, parsed_output=MockParsedOutput(), segments=[], response=""
+    )
+    assert outcome is None
+    harness.stage_logger.log.assert_called_with(
+        "response_pipeline",
+        "pass",
+        reason="atomic_bundle_validated",
+        source="intent_atomic_bundle_guard",
+        bundle_validated=True,
+        invalid_part="",
+        bundle_reason="validated",
+        transition_applied=True,
+        action_dispatched=True,
+        active_intent_unchanged=False,
+        before_active_intent_id="",
+        after_active_intent_id="test_intent_id",
+    )
