@@ -223,6 +223,29 @@ To ensure a safe and incremental implementation, Step 2B can be broken down:
 - **Step 2B.2 (Design in Review)**: Implement `READONLY_ACTION_BATCH_CANDIDATE` classification.
 - **Step 2B.3 (Design in Review)**: Implement `NO_BUNDLE_SHAPE` classification for `INTENT_ONLY`.
 
+#### 8.6.6. Step 2B.2 Design Details: READONLY_ACTION_BATCH_CANDIDATE
+
+This section details the design for Step 2B.2. Implementation is not authorized until this design is approved.
+
+- **Scope and Boundaries**:
+  - **Precedence**: This logic must only run if no classification was found in Step 2A (error codes) or Step 2B.1 (`INTENT_ACTION_BUNDLE`).
+  - **Allowed Inputs**: The `validate` method will reuse the existing `_get_normalized_shape` helper to read the compiler shape from `parsed_output`.
+  - **Forbidden Inputs**: The validator **must not** inspect `segments`, call `ActionPolicyHandler`, or access runtime state.
+  - **Fallback**: If the shape is missing, unknown, ambiguous, or deferred, the validator must return `UNKNOWN`.
+  - **Explicit Non-Meaning**: A result of `READONLY_ACTION_BATCH_CANDIDATE` is a **structural classification only**. It does not imply that the actions are safe, allowed, or should be dispatched, and it does not grant dispatch permission. `ActionPolicy` remains the runtime policy authority for whether the batch is safe and dispatchable. `DispatchPipeline` remains the execution authority.
+
+- **Classification Mapping**:
+  - `READ_ONLY_BATCH_CANDIDATE` -> `READONLY_ACTION_BATCH_CANDIDATE`
+
+- **Deferred Classifications**:
+  - The following are **out of scope** for Step 2B.2 and must result in `UNKNOWN`: `NO_BUNDLE_SHAPE` classification, `ACTION_ONLY` classification, and any visible-text shapes.
+
+- **Test Strategy for Step 2B.2**:
+  - **Unit Tests**: Add tests to `test_bundle_semantic_validator.py` for the `READ_ONLY_BATCH_CANDIDATE` shape mapping.
+  - **Precedence Tests**: Add tests to prove that Step 2A (error-code) and Step 2B.1 (`INTENT_ACTION_BUNDLE`) classifications take precedence. Add tests for source priority conflicts (e.g., `runtime_protocol_semantics.shape` should win over `compiler_shape`) to ensure deterministic normalization.
+  - **Deferred Shape Tests**: Ensure `NO_BUNDLE_SHAPE` candidates (`INTENT_ONLY`) and other deferred shapes (`ACTION_ONLY`) still return `UNKNOWN`.
+  - **Boundary Tests**: Ensure existing tests prove `ActionPolicyHandler` is not called and `segments` are ignored.
+
 ## 9. Explicitly Deferred
 
 - `DispatchPipeline` or `ActionPolicy` rewrites.
