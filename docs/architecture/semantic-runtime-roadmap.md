@@ -437,7 +437,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 6 Step 2B: Shape-Driven Classification
 
-- **Status**: Design Approved for Step 2B.1 and 2B.2.
+- **Status**: Step 2B.1 and 2B.2 Done.
 - **Goal**: Design the implementation of shape-driven classifications in `BundleSemanticValidator`.
 - **Allowed**:
     - Update `docs/architecture/bundle-semantic-validation-design.md` with the detailed design for Step 2B.
@@ -469,7 +469,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 6 Step 2B.2: READONLY_ACTION_BATCH_CANDIDATE Shape Classification
 
-- **Status**: Not Started.
+- **Status**: Done.
 - **Goal**: Implement the `READONLY_ACTION_BATCH_CANDIDATE` shape classification in `BundleSemanticValidator`.
 - **Allowed**:
     - Add logic to `BundleSemanticValidator.validate` to classify `READONLY_ACTION_BATCH_CANDIDATE` based on compiler shape.
@@ -481,6 +481,19 @@ This document outlines the phased plan to migrate the runtime from legacy respon
     - Calling `ActionPolicy`.
     - Any runtime behavior changes.
 - **Done When**: The Step 2B.2 logic is implemented with passing tests, and no consumers are migrated.
+
+---
+
+#### Phase 6 Step 2B.3: NO_BUNDLE_SHAPE Classification
+
+- **Status**: Design in Review.
+- **Goal**: Design the implementation of the `NO_BUNDLE_SHAPE` classification for `INTENT_ONLY`.
+- **Allowed**:
+    - Update `docs/architecture/bundle-semantic-validation-design.md` with the detailed design for Step 2B.3.
+- **Forbidden**:
+    - Implementation before design approval.
+    - Designing logic that requires `ActionPolicyHandler` or runtime state.
+- **Done When**: The design for Step 2B.3 is documented and ready for approval.
 
 ---
 
