@@ -34,7 +34,7 @@ from .spec import PROTOCOL_SPEC
 
 
 class ProtocolParser:
-    MEMORY_TAGS = {"fact", "finding", "decision", "path", "progress", "memory_review"}
+    MEMORY_TAGS = {"fact", "finding", "decision", "path", "progress", "memory_review", "preference"}
     ACTION_XML_FIELD_RE = re.compile(
         r"</?\s*(type|action|path|command|args|payload|content)\b",
         re.IGNORECASE,
@@ -44,7 +44,7 @@ class ProtocolParser:
         re.DOTALL,
     )
     PROTOCOL_TAG_IN_STRING_RE = re.compile(
-        r"</?\s*(action|intent|think|file_content|memory_update_done|memory_review|fact|finding|decision|path|progress|subgoal)\b",
+        r"</?\s*(action|intent|think|file_content|memory_update_done|memory_review|fact|finding|decision|preference|path|progress|subgoal)\b",
         re.IGNORECASE,
     )
     THINK_FORBIDDEN_TAG_MAP = {
@@ -54,6 +54,7 @@ class ProtocolParser:
         "fact": "E_MEMORY_TAG_INSIDE_THINK",
         "finding": "E_MEMORY_TAG_INSIDE_THINK",
         "decision": "E_MEMORY_TAG_INSIDE_THINK",
+        "preference": "E_MEMORY_TAG_INSIDE_THINK",
         "path": "E_MEMORY_TAG_INSIDE_THINK",
         "progress": "E_MEMORY_TAG_INSIDE_THINK",
         "memory_review": "E_MEMORY_TAG_INSIDE_THINK",

@@ -57,9 +57,9 @@ def test_inline_and_fenced_literals_do_not_become_structural_blocks():
     inline = compiler.analyze("Use `<action>` only as an example.")
     fenced = compiler.analyze("```xml\n<action>{\"type\":\"read_file\"}</action>\n```")
 
-    assert inline.shape == ResponseShape.PLAINTEXT_ONLY
+    assert inline.shape == ResponseShape.PURE_PLAINTEXT
     assert inline.error is None
-    assert fenced.shape == ResponseShape.PLAINTEXT_ONLY
+    assert fenced.shape == ResponseShape.PURE_PLAINTEXT
     assert fenced.error is None
 
 

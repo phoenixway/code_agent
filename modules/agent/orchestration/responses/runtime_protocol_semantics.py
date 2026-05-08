@@ -33,6 +33,10 @@ class RuntimeProtocolSemantics:
     has_visible_answer: bool
     pre_action_text: str
     has_pre_action_text: bool
+    visible_text_source: str
+    has_memory_tags: bool
+    has_subgoal_tags: bool
+    has_memory_checkpoint: bool
     memory_ops: tuple[object, ...]
     subgoal_ops: tuple[object, ...]
     has_file_content: bool
@@ -58,6 +62,10 @@ def runtime_semantics_from_compiler_analysis(compiler_analysis: Any, *, invalid_
             has_visible_answer=False,
             pre_action_text="",
             has_pre_action_text=False,
+            visible_text_source="UNKNOWN",
+            has_memory_tags=False,
+            has_subgoal_tags=False,
+            has_memory_checkpoint=False,
             memory_ops=(),
             subgoal_ops=(),
             has_file_content=False,
@@ -89,6 +97,10 @@ def runtime_semantics_from_compiler_analysis(compiler_analysis: Any, *, invalid_
         has_visible_answer=bool(_safe_getattr(ir, "has_visible_answer", False)),
         pre_action_text=str(_safe_getattr(ir, "pre_action_text", "") or ""),
         has_pre_action_text=bool(_safe_getattr(ir, "has_pre_action_text", False)),
+        visible_text_source=str(_safe_getattr(ir, "visible_text_source", "UNKNOWN") or "UNKNOWN"),
+        has_memory_tags=bool(_safe_getattr(ir, "has_memory_tags", False)),
+        has_subgoal_tags=bool(_safe_getattr(ir, "has_subgoal_tags", False)),
+        has_memory_checkpoint=bool(_safe_getattr(ir, "has_memory_checkpoint", False)),
         memory_ops=memory_ops,
         subgoal_ops=subgoal_ops,
         has_file_content=bool(_safe_getattr(ir, "has_file_content", False)),
@@ -123,6 +135,10 @@ def runtime_semantics_from_parsed_output(parsed_output: Any) -> RuntimeProtocolS
             has_visible_answer=bool(_safe_getattr(compiler_ir, "has_visible_answer", False)),
             pre_action_text=str(_safe_getattr(compiler_ir, "pre_action_text", "") or ""),
             has_pre_action_text=bool(_safe_getattr(compiler_ir, "has_pre_action_text", False)),
+            visible_text_source=str(_safe_getattr(compiler_ir, "visible_text_source", "UNKNOWN") or "UNKNOWN"),
+            has_memory_tags=bool(_safe_getattr(compiler_ir, "has_memory_tags", False)),
+            has_subgoal_tags=bool(_safe_getattr(compiler_ir, "has_subgoal_tags", False)),
+            has_memory_checkpoint=bool(_safe_getattr(compiler_ir, "has_memory_checkpoint", False)),
             memory_ops=memory_ops,
             subgoal_ops=subgoal_ops,
             has_file_content=bool(_safe_getattr(compiler_ir, "has_file_content", False)),
@@ -146,6 +162,10 @@ def runtime_semantics_from_parsed_output(parsed_output: Any) -> RuntimeProtocolS
         has_visible_answer=False,
         pre_action_text="",
         has_pre_action_text=False,
+        visible_text_source="UNKNOWN",
+        has_memory_tags=False,
+        has_subgoal_tags=False,
+        has_memory_checkpoint=False,
         memory_ops=(),
         subgoal_ops=(),
         has_file_content=False,

@@ -52,9 +52,6 @@ class ProtocolLowerer:
         self.spec = spec
 
     def lower(self, ast: ResponseAst, shape: ResponseShape) -> tuple[ResponseIR | None, ErrorValue | None]:
-        if shape == ResponseShape.INVALID:
-            return None, None
-
         think_nodes = [node for node in ast.nodes if isinstance(node, ThinkNode)]
         memory_nodes = [node for node in ast.nodes if isinstance(node, MemoryNode)]
         subgoal_nodes = [node for node in ast.nodes if isinstance(node, SubgoalNode)]
@@ -86,9 +83,12 @@ class ProtocolLowerer:
         has_pre_action_text = bool(pre_action_text.strip())
         has_action = len(action_ops) > 0
         action_count = len(action_ops)
-        has_memory_checkpoint = len(memory_nodes) > 0 or len(marker_nodes) > 0
-        has_plan_checkpoint = len(subgoal_nodes) > 0
-        has_checkpoint = has_memory_checkpoint or has_plan_checkpoint
+        has_memory_tags = len(memory_nodes) > 0
+        has_subgoal_tags = len(subgoal_nodes) > 0
+        has_memory_checkpoint = len(marker_nodes) > 0
+        has_plan_checkpoint = has_subgoal_tags
+        has_checkpoint = has_memory_tags or has_subgoal_tags or has_memory_checkpoint
+        visible_text_source = self._get_visible_text_source(shape, has_visible_answer, has_pre_action_text)
         has_file_content = len(file_nodes) > 0
         file_content_count = len(file_nodes)
 
@@ -105,15 +105,35 @@ class ProtocolLowerer:
             visible_text=visible_text,
             has_pre_action_text=has_pre_action_text,
             pre_action_text=pre_action_text,
+            visible_text_source=visible_text_source,
             has_action=has_action,
             action_count=action_count,
             has_checkpoint=has_checkpoint,
+            has_memory_tags=has_memory_tags,
+            has_subgoal_tags=has_subgoal_tags,
             has_memory_checkpoint=has_memory_checkpoint,
             has_plan_checkpoint=has_plan_checkpoint,
             has_file_content=has_file_content,
             file_content_count=file_content_count,
             file_content_text=file_content_text,
         ), None
+
+    def _get_visible_text_source(self, shape: ResponseShape, has_visible_answer: bool, has_pre_action_text: bool) -> str:
+        if not has_visible_answer and not has_pre_action_text:
+            return "NONE"
+        if shape == ResponseShape.PURE_PLAINTEXT:
+            return "PURE_PLAINTEXT"
+        if shape == ResponseShape.PRE_ACTION_TEXT_AND_ACTION:
+            return "PRE_ACTION_TEXT"
+        if shape == ResponseShape.INTENT_COMPLETE_WITH_TEXT:
+            return "INTENT_COMPLETION_TEXT"
+        if shape in (ResponseShape.MEMORY_TEXT, ResponseShape.SUBGOAL_WITH_TEXT):
+            return "CHECKPOINT_ACCOMPANYING_TEXT"
+        if shape == ResponseShape.INVALID:
+            return "UNKNOWN"
+        if has_visible_answer or has_pre_action_text:
+            return "UNKNOWN"
+        return "NONE"
 
     def _lower_board_nodes(self, memory_nodes, subgoal_nodes, marker_nodes):
         for node in memory_nodes:

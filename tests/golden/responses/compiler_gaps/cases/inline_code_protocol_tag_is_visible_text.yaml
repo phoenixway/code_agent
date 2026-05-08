@@ -6,7 +6,7 @@ legacy_expectation:
   invalid_kind: null
 compiler_expectation:
   current_status: ready
-  expected_shape: PLAINTEXT_ONLY
+  expected_shape: PURE_PLAINTEXT
   expected_error_code: null
   notes: The lexer correctly identifies inline code blocks and the parser treats them as literal text, not protocol.
 migration_target:

@@ -67,6 +67,8 @@ class ProtocolSpec:
 
 
 class ResponseShape(str, Enum):
+    PURE_PLAINTEXT = "pure_plaintext"
+    SUBGOAL_WITH_TEXT = "subgoal_with_text"
     PLAINTEXT_ONLY = "plaintext_only"
     MEMORY_TEXT = "memory_text"
     ACTION_ONLY = "action_only"
@@ -254,9 +256,12 @@ class ResponseIR:
     visible_text: str = ""
     has_pre_action_text: bool = False
     pre_action_text: str = ""
+    visible_text_source: str = ""
     has_action: bool = False
     action_count: int = 0
     has_checkpoint: bool = False
+    has_memory_tags: bool = False
+    has_subgoal_tags: bool = False
     has_memory_checkpoint: bool = False
     has_plan_checkpoint: bool = False
     has_file_content: bool = False

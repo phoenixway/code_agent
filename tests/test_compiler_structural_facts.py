@@ -232,6 +232,17 @@ GOLDEN_CASES = [
         },
     },
     {
+        "case_id": "memory_and_subgoal_with_visible_text",
+        "response": '<fact>A fact.</fact><subgoal action="create" id="s1">Plan step</subgoal>Visible answer.',
+        "expected_shape": "SUBGOAL_WITH_TEXT",
+        "expected_facts": {
+            "has_memory_tags": True,
+            "has_subgoal_tags": True,
+            "has_memory_checkpoint": False,
+            "visible_text_source": "CHECKPOINT_ACCOMPANYING_TEXT",
+        },
+    },
+    {
         "case_id": "think_only_no_visible_text",
         "response": "<think>private</think>",
         "expected_shape": None,
@@ -252,10 +263,6 @@ GOLDEN_CASES = [
 ]
 
 
-@pytest.mark.xfail(
-    reason="Phase 8 Step 4E compiler/runtime fact implementation not yet authorized",
-    strict=False,
-)
 @pytest.mark.parametrize(
     "case_id, response, expected_shape, expected_facts",
     [(c["case_id"], c["response"], c.get("expected_shape"), c["expected_facts"]) for c in GOLDEN_CASES],

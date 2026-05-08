@@ -16,6 +16,7 @@ from .models import (
     MemoryNode,
     ResponseAst,
     ResponseShape,
+    SubgoalNode,
     ThinkNode,
     VisibleTextNode,
 )
@@ -61,13 +62,30 @@ class ProtocolCompiler:
     def analyze(self, raw: str) -> CompilerAnalysis:
         ast, error, tokens = self.parser.parse(raw)
         if error is not None:
-            return CompilerAnalysis(tokens=tokens, ast=None, shape=ResponseShape.INVALID, error=error)
+            # For parse errors, we can't trust the AST. Don't lower.
+            return CompilerAnalysis(tokens=tokens, ast=ast, shape=ResponseShape.INVALID, error=error, ir=None)
+
         assert ast is not None
         shape, shape_error = self._classify(ast)
-        if shape_error is not None:
-            return CompilerAnalysis(tokens=tokens, ast=ast, shape=shape, error=shape_error)
-        ir, lowering_error = self.lowerer.lower(ast, shape)
-        return CompilerAnalysis(tokens=tokens, ast=ast, shape=shape, error=lowering_error, ir=ir)
+
+        ir = None
+        lowering_error = None
+        if shape_error is None:
+            # Valid shape, lower normally.
+            ir, lowering_error = self.lowerer.lower(ast, shape)
+        elif self._may_attach_structural_facts_ir(ast):
+            # It's a shape error, but on a safe AST (no actions/intents).
+            # We can still lower to get structural facts.
+            ir, lowering_error = self.lowerer.lower(ast, shape)
+
+        final_error = shape_error or lowering_error
+        return CompilerAnalysis(tokens=tokens, ast=ast, shape=shape, error=final_error, ir=ir)
+
+    def _may_attach_structural_facts_ir(self, ast: ResponseAst) -> bool:
+        """Returns True if an AST contains only nodes that are safe for structural fact lowering."""
+        if not ast or not ast.nodes:
+            return True
+        return not any(isinstance(node, (ActionNode, IntentNode, FileContentNode)) for node in ast.nodes)
 
     def _classify(self, ast: ResponseAst) -> tuple[ResponseShape, ErrorValue | None]:
         nodes = list(ast.nodes)
@@ -164,7 +182,8 @@ class ProtocolCompiler:
                 )
 
         if visible_nodes and len(action_nodes) == 1 and not intent_nodes:
-            return ResponseShape.PRE_ACTION_TEXT_AND_ACTION, None
+            if first_action_idx > last_visible_idx:
+                return ResponseShape.PRE_ACTION_TEXT_AND_ACTION, None
 
         if visible_nodes and (intent_nodes or len(action_nodes) > 1):
             if len(intent_nodes) == 1 and self._intent_mode(intent_nodes[0]) == "complete" and not action_nodes:
@@ -176,6 +195,14 @@ class ProtocolCompiler:
             )
 
         if len(intent_nodes) == 1 and len(action_nodes) == 1 and not visible_nodes:
+            first_intent_idx = nodes.index(intent_nodes[0])
+            first_action_idx = nodes.index(action_nodes[0])
+            if first_intent_idx > first_action_idx:
+                return ResponseShape.INVALID, self._error(
+                    "E_AMBIGUOUS_PROTOCOL_SYNTAX",
+                    action_nodes[0].span,
+                    invalid_part="action_before_intent_in_bundle",
+                )
             if isinstance(action_nodes[0].json_payload, list):
                 return ResponseShape.INVALID, self._error(
                     "E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION",
@@ -223,15 +250,20 @@ class ProtocolCompiler:
             )
 
         if visible_nodes and not action_nodes and not intent_nodes:
-            has_only_board = all(isinstance(node, (VisibleTextNode, ThinkNode, MemoryNode, MarkerNode, LiteralProtocolTagNode)) for node in nodes)
-            if has_only_board and any(isinstance(node, (MemoryNode, MarkerNode)) for node in nodes):
-                return ResponseShape.MEMORY_TEXT, None
-            return ResponseShape.PLAINTEXT_ONLY, None
+            has_only_board_and_text = all(
+                isinstance(node, (VisibleTextNode, ThinkNode, MemoryNode, SubgoalNode, MarkerNode, LiteralProtocolTagNode)) for node in nodes
+            )
+            if has_only_board_and_text:
+                if any(isinstance(node, SubgoalNode) for node in nodes):
+                    return ResponseShape.SUBGOAL_WITH_TEXT, None
+                if any(isinstance(node, (MemoryNode, MarkerNode)) for node in nodes):
+                    return ResponseShape.MEMORY_TEXT, None
+            return ResponseShape.PURE_PLAINTEXT, None
 
         if not action_nodes and not intent_nodes and not file_nodes:
             literal_only = all(isinstance(node, (LiteralProtocolTagNode, VisibleTextNode)) for node in nodes)
             if literal_only:
-                return ResponseShape.PLAINTEXT_ONLY, None
+                return ResponseShape.PURE_PLAINTEXT, None
 
         return ResponseShape.INVALID, self._error("E_AMBIGUOUS_PROTOCOL_SYNTAX", None)
 

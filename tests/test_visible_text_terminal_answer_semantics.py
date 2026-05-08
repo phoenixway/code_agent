@@ -19,8 +19,8 @@ from modules.agent.orchestration.shared.decision_models import ParsedModelOutput
 @pytest.mark.parametrize(
     "response,expected_shape",
     [
-        ("Just a plain text answer.", "PLAINTEXT_ONLY"),
-        ("<think>Thinking...</think>A plain text answer.", "PLAINTEXT_ONLY"),
+        ("Just a plain text answer.", "PURE_PLAINTEXT"),
+        ("<think>Thinking...</think>A plain text answer.", "PURE_PLAINTEXT"),
         (
             "<think>Thinking...</think><memory_update_done />A plain text answer.",
             "MEMORY_TEXT",
@@ -31,29 +31,23 @@ from modules.agent.orchestration.shared.decision_models import ParsedModelOutput
         ),
         (
             "<think>Thinking...</think><subgoal action='create' id='s1'>Subgoal</subgoal><memory_update_done />A plain text answer.",
-            # Current behavior: Subgoal tags are stripped, leaving only plaintext.
-            # This is a characterization of current behavior, not desired future behavior.
-            "PLAINTEXT_ONLY",
+            "SUBGOAL_WITH_TEXT",
         ),
         (
             "A plain text answer with a <subgoal action='create' id='s1'>subgoal</subgoal> in it.",
-            # Current behavior: Subgoal tags are stripped, leaving only plaintext.
-            "PLAINTEXT_ONLY",
+            "PURE_PLAINTEXT",
         ),
         (
-            "<intent mode='complete'>{}</intent>A plain text answer.",
+            '<intent mode="complete">{}</intent>A plain text answer.',
             "INTENT_COMPLETE_WITH_TEXT",
         ),
         (
-            "Some text before.<action>{}</action>",
-            # Current behavior: pre-action text is not its own shape; it's seen as plaintext.
-            # The action is ignored by the shaper in this case.
-            "PLAINTEXT_ONLY",
+            'Some text before.<action>{"type":"read_file","path":"README.md"}</action>',
+            "PRE_ACTION_TEXT_AND_ACTION",
         ),
         (
-            "<think>Thinking...</think>Some text before.<action>{}</action>",
-            # Current behavior: pre-action text is not its own shape; it's seen as plaintext.
-            "PLAINTEXT_ONLY",
+            '<think>Thinking...</think>Some text before.<action>{"type":"read_file","path":"README.md"}</action>',
+            "PRE_ACTION_TEXT_AND_ACTION",
         ),
     ],
     ids=[
@@ -61,20 +55,23 @@ from modules.agent.orchestration.shared.decision_models import ParsedModelOutput
         "think_plus_plaintext",
         "think_marker_plus_text",
         "think_fact_marker_plus_text",
-        "think_subgoal_marker_plus_text_is_plaintext",
+        "think_subgoal_marker_plus_text_is_subgoal_text",
         "mixed_text_and_subgoal_is_plaintext",
         "intent_complete_plus_text",
-        "pre_action_text_and_action_is_plaintext",
-        "think_pre_action_text_and_action_is_plaintext",
+        "pre_action_text_and_action",
+        "think_pre_action_text_and_action",
     ],
 )
-def test_compiler_shape_characterization_for_visible_text(response, expected_shape):
+def test_compiler_shape_for_visible_text(response, expected_shape):
     """
-    Characterizes the compiler's shape analysis for various combinations of
-    visible text and protocol tags. This covers scenarios 1, 3, 4, 5, 6, 11.
+    Tests the compiler's shape analysis for visible text combinations after Step 4E.
+    This covers scenarios 1, 3, 4, 5, 6, 11 from the original characterization.
+    Note: A subgoal tag embedded in prose is treated as literal text, so the
+    shape is PURE_PLAINTEXT, not SUBGOAL_WITH_TEXT.
     """
     compiler = ProtocolCompiler()
-    analysis = compiler.analyze(response.format('{"type":"read_file"}'))
+    # The intent payload can be an empty JSON object for this test.
+    analysis = compiler.analyze(response)
     assert analysis.shape.name == expected_shape
 
 

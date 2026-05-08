@@ -21,12 +21,18 @@ PROTOCOL_SPEC = ProtocolSpec(
         "fact": BlockSpec(name="fact", kind="closed", payload=PayloadSpec(type="text")),
         "finding": BlockSpec(name="finding", kind="closed", payload=PayloadSpec(type="text")),
         "decision": BlockSpec(name="decision", kind="closed", payload=PayloadSpec(type="text")),
+        "preference": BlockSpec(name="preference", kind="closed", payload=PayloadSpec(type="text")),
         "path": BlockSpec(name="path", kind="closed", payload=PayloadSpec(type="text")),
         "progress": BlockSpec(name="progress", kind="closed", payload=PayloadSpec(type="text")),
         "memory_review": BlockSpec(name="memory_review", kind="self_closing"),
         "subgoal": BlockSpec(name="subgoal", kind="closed", payload=PayloadSpec(type="text")),
     },
     shapes={
+        "PURE_PLAINTEXT": ShapeSpec(name="PURE_PLAINTEXT", sequence=("think?", "visible_text*")),
+        "SUBGOAL_WITH_TEXT": ShapeSpec(
+            name="SUBGOAL_WITH_TEXT",
+            sequence=("think?", "board*", "memory_update_done?", "visible_text+"),
+        ),
         "PLAINTEXT_ONLY": ShapeSpec(name="PLAINTEXT_ONLY", sequence=("visible_text*",)),
         "MEMORY_TEXT": ShapeSpec(
             name="MEMORY_TEXT",

@@ -2,7 +2,7 @@ name: plaintext_final
 input: |
   This is a normal assistant answer.
 expected:
-  shape: PLAINTEXT_ONLY
+  shape: PURE_PLAINTEXT
   error_code: null
   recovery_id: null
   has_ir: true

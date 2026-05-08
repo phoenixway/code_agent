@@ -33,7 +33,7 @@ def test_plaintext_only_lowers_to_final_answer_ir():
 
     analysis = compiler.analyze("Ось відповідь.\nТег `<action>` тут лише як приклад.")
 
-    assert analysis.shape == ResponseShape.PLAINTEXT_ONLY
+    assert analysis.shape == ResponseShape.PURE_PLAINTEXT
     assert analysis.error is None
     assert analysis.ir is not None
     assert analysis.ir.visible_answer == "Ось відповідь.\nТег `<action>` тут лише як приклад."

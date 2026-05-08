@@ -55,7 +55,7 @@ class TestRuntimeProtocolSemantics(unittest.TestCase):
         snapshot = runtime_semantics_from_compiler_analysis(analysis)
 
         self.assertEqual("compiler", snapshot.source)
-        self.assertEqual("PLAINTEXT_ONLY", snapshot.shape)
+        self.assertEqual("PURE_PLAINTEXT", snapshot.shape)
         self.assertTrue(snapshot.is_valid)
         self.assertTrue(snapshot.has_visible_answer)
         self.assertEqual("Hello world", snapshot.visible_text)
@@ -168,6 +168,10 @@ class TestRuntimeProtocolSemantics(unittest.TestCase):
             has_visible_answer=False,
             pre_action_text="",
             has_pre_action_text=False,
+            visible_text_source="UNKNOWN",
+            has_memory_tags=False,
+            has_subgoal_tags=False,
+            has_memory_checkpoint=False,
             memory_ops=(),
             subgoal_ops=(),
             has_file_content=False,
@@ -275,6 +279,10 @@ class TestRuntimeProtocolSemantics(unittest.TestCase):
             has_visible_answer=False,
             pre_action_text="",
             has_pre_action_text=False,
+            visible_text_source="UNKNOWN",
+            has_memory_tags=False,
+            has_subgoal_tags=False,
+            has_memory_checkpoint=False,
             memory_ops=(),
             subgoal_ops=(),
             has_file_content=False,
@@ -415,6 +423,10 @@ class TestRuntimeProtocolSemantics(unittest.TestCase):
             has_visible_answer=False,
             pre_action_text="",
             has_pre_action_text=False,
+            visible_text_source="UNKNOWN",
+            has_memory_tags=False,
+            has_subgoal_tags=False,
+            has_memory_checkpoint=False,
             memory_ops=(),
             subgoal_ops=(),
             has_file_content=False,
@@ -469,6 +481,10 @@ class TestRuntimeProtocolSemantics(unittest.TestCase):
             has_visible_answer=False,
             pre_action_text="",
             has_pre_action_text=False,
+            visible_text_source="UNKNOWN",
+            has_memory_tags=False,
+            has_subgoal_tags=False,
+            has_memory_checkpoint=False,
             memory_ops=(),
             subgoal_ops=(),
             has_file_content=False,
@@ -529,6 +545,10 @@ class TestRuntimeProtocolSemantics(unittest.TestCase):
             has_visible_answer=False,
             pre_action_text="",
             has_pre_action_text=False,
+            visible_text_source="UNKNOWN",
+            has_memory_tags=False,
+            has_subgoal_tags=False,
+            has_memory_checkpoint=False,
             memory_ops=(),
             subgoal_ops=(),
             has_file_content=False,
@@ -592,7 +612,8 @@ class TestRuntimeProtocolSemantics(unittest.TestCase):
         snapshot = RuntimeProtocolSemantics(
             source="compiler", shape="INVALID", is_valid=False, error_code="E1", recovery_id="R1", invalid_kind="K1",
             action_count=0, has_action=False, action_ops=(), intent_ops=(), visible_text="", has_visible_answer=False,
-            pre_action_text="", has_pre_action_text=False, memory_ops=(), subgoal_ops=(), has_file_content=False,
+            pre_action_text="", has_pre_action_text=False, visible_text_source="UNKNOWN", has_memory_tags=False,
+            has_subgoal_tags=False, has_memory_checkpoint=False, memory_ops=(), subgoal_ops=(), has_file_content=False,
             file_content="", effects_preview=()
         )
         p_out_snapshot = ParsedModelOutput(response="", runtime_protocol_semantics=snapshot, invalid_kind="legacy_kind")
