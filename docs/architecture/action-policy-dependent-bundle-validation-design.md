@@ -111,10 +111,14 @@ The following steps are future candidates. Each requires a separate approval.
 - **Step 3B: `ActionPolicyHandler` Refactor (Done)**:
     - **Goal**: Internally refactor `ActionPolicyHandler.validate_atomic_bundle_action` to produce the new typed `AtomicBundleActionValidationResult`.
     - **Implementation**: The method was refactored to return the typed result. The legacy `ok`, `reason`, and `details` fields were preserved exactly for backward compatibility. Characterization tests were updated to assert the new `kind` and continue to pass, proving no behavior change. No consumers were migrated.
-- **Candidate Step 4: Consumer Migration (Ready for Review)**:
-    - Refactor `ResponsePipelinePrevalidationMixin._reject_invalid_atomic_bundle_before_transition` to use the new typed result from `validate_atomic_bundle_action`.
-    - The `if/elif` logic would switch on `result.kind` instead of string comparisons.
-    - All characterization tests must continue to pass.
+- **Step 4: Consumer Migration (Approved for Implementation)**:
+    - **Goal**: Refactor `ResponsePipelinePrevalidationMixin._reject_invalid_atomic_bundle_before_transition` to use the new typed result from `validate_atomic_bundle_action`.
+    - **Implementation**:
+        - The migration is authorized for `ResponsePipelinePrevalidationMixin._reject_invalid_atomic_bundle_before_transition` only.
+        - The `if/elif` logic will be refactored to switch on `result.kind` instead of string comparisons on `result.reason`.
+        - The implementation must continue to use the legacy `result.reason` and `result.details` fields for generating prompts, log metadata, and `AtomicBundlePlan` fields to ensure exact behavior preservation.
+        - All characterization tests must continue to pass without weakening expectations.
+        - Future cleanup to remove the legacy `reason`/`details` fields is not authorized by this step.
 
 ## 7. Explicitly Deferred
 
@@ -133,4 +137,4 @@ The following steps are future candidates. Each requires a separate approval.
 
 ## 9. Recommendation
 
-This design is approved. The producer-side refactor of `ActionPolicyHandler` is complete. The next step is to review and approve the implementation of **Phase 7, Step 4: Consumer Migration**.
+This design is approved. The producer-side refactor of `ActionPolicyHandler` is complete. The implementation of **Phase 7, Step 4: Consumer Migration** is now approved.

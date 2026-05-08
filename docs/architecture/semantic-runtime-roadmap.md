@@ -628,15 +628,20 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
-#### Phase 7 Step 4: Consumer Migration (Design Review)
+#### Phase 7 Step 4: Consumer Migration
 
 - **Status**: Not Started.
-- **Goal**: Review and approve the migration of the first consumer (`ResponsePipelinePrevalidationMixin`) to use the typed result `kind`.
+- **Goal**: Migrate `ResponsePipelinePrevalidationMixin._reject_invalid_atomic_bundle_before_transition` to use the typed `AtomicBundleActionValidationResult.kind`.
 - **Allowed**:
-    - Documentation updates to approve or reject the candidate design for Step 4.
+    - Refactor `_reject_invalid_atomic_bundle_before_transition` to branch on `result.kind`.
+    - Preserve legacy `result.reason` and `result.details` usage for prompts, logs, and plans.
+    - Update characterization tests in `tests/test_response_pipeline_prevalidation.py` to keep them green.
 - **Forbidden**:
-    - Any production code or test changes.
-- **Done When**: A decision on whether to proceed with the Step 4 implementation is documented.
+    - Migrating any other consumer.
+    - Changing `ActionPolicyHandler`.
+    - Changing prompts, reason strings, or source markers.
+    - Any runtime behavior changes.
+- **Done When**: The consumer is migrated, all characterization tests pass, and runtime behavior is unchanged.
 
 ---
 
