@@ -170,8 +170,8 @@ This document is the single source of truth for the current state of the Semanti
   - Runtime behavior is unchanged.
 - **Phase 8: Visible Text & Terminal Answer Semantics (Design)**
   - This phase has been opened to clarify authority for visible text and terminal answer semantics.
+  - **Step 1 (Inventory)**: The design-only inventory of current behaviors is complete.
   - The scope includes terminal plaintext completion, intent completion with visible answer, and memory/subgoal checkpoint + text combinations.
-  - The first step is to create a design-only inventory of current behaviors.
   - Implementation is not authorized until a design is approved.
 
 ## Known Authority Boundaries
@@ -188,7 +188,7 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Implement Phase 8 Step 1: Design-only inventory of visible text / terminal answer semantics.
+- Approve and implement Phase 8 Step 2: Characterization tests for visible text/terminal answer semantics.
 
 ## Test Status
 

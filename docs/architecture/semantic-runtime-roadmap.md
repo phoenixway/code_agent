@@ -657,14 +657,35 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 - **Status**: Design Started.
 - **Goal**: Clarify authority for visible text, terminal answers, and checkpoint+text combinations.
-- **Scope**:
-    - Terminal plaintext completion logic.
-    - Intent completion with visible answer.
-    - Memory/subgoal checkpoint + visible text combinations.
-    - `MEMORY_TEXT` vs `PLAINTEXT_ONLY` shape transitions.
-    - Authority boundaries between compiler, runtime semantics, intent transition, plan board, memory board, response pipeline, and pre-dispatch stop logic.
-- **Forbidden**: Implementation before a design is approved.
-- **Done When**: A design is approved for clarifying visible text semantics.
+- **Forbidden**: Implementation of production code changes before characterization tests are complete and a refactoring plan is approved.
+- **Done When**: A dedicated `TerminalAnswerClassifier` is implemented, all relevant consumers are migrated, and legacy helpers are removed.
+
+---
+
+#### Phase 8 Step 1: Design-Only Inventory
+
+- **Status**: Done.
+- **Goal**: Create a detailed inventory of all components involved in visible text and terminal answer semantics.
+- **Done When**: The inventory in `docs/architecture/visible-text-terminal-answer-semantics-design.md` was completed.
+
+---
+
+#### Phase 8 Step 2: Characterization Tests
+
+- **Status**: Not Started.
+- **Goal**: Add characterization tests to lock down the exact behavior of all identified components and scenarios related to visible text and terminal answers.
+- **Allowed**: Add new test files and test cases that assert current behavior.
+- **Forbidden**: Any production code changes.
+- **Done When**: The characterization test suite is complete and all tests pass.
+
+---
+
+#### Phase 8 Step 3: Typed Model Scaffolding (Design)
+
+- **Status**: Not Started.
+- **Goal**: Design and implement the scaffolding for a typed result model (e.g., `TerminalAnswerKind`, `TerminalAnswerSemanticResult`).
+- **Forbidden**: Implementation before design approval.
+- **Done When**: The typed models are created with passing unit tests.
 
 ---
 
