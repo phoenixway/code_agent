@@ -54,4 +54,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 50. Phase 8 Step 1 (design-only inventory): done.
 51. Phase 8 Step 2 (characterization tests) design: approved.
 52. Phase 8 Step 2 (characterization tests) implementation: done.
-53. Next: Phase 8 Step 3 (Design Review) to decide on typed models.
+53. Phase 8 Step 3 (Design Review): done. Approved typed model scaffolding.
+54. Next: Implement Phase 8 Step 3A (scaffolding only).

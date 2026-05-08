@@ -2,6 +2,7 @@ import threading
 import asyncio
 import functools
 import re
+import sys
 from typing import Any, Optional
 
 from textual.widgets import Static
@@ -63,6 +64,13 @@ class TuiUI:
         "◓",
         "◑",
         "◒",
+    )
+    TERMINAL_TAB_FRAMES = (
+        "·  ",
+        "•• ",
+        "•••",
+        " ••",
+        "  •",
     )
 
     def __init__(self, app, history_widget: VerticalScroll, status_bar: StatusBar):
@@ -263,18 +271,51 @@ class TuiUI:
         spinner_index: int = 0,
     ) -> str:
         base = str(base_header_text or "").strip() or "Angelica"
+        return base
+
+    @classmethod
+    def _compose_terminal_tab_title(
+        cls,
+        base_header_text: str,
+        activity_label: str = "",
+        spinner_index: int = 0,
+    ) -> str:
+        base = str(base_header_text or "").strip() or "Angelica"
         activity = str(activity_label or "").strip()
         if not activity:
             return base
         frame = cls.TITLE_SPINNER_FRAMES[spinner_index % len(cls.TITLE_SPINNER_FRAMES)]
-        return f"{frame} {activity} · {base}"
+        return f"{frame} {base}"
 
     def _render_title(self) -> None:
-        self.app.title = self._compose_window_title(
+        title = self._compose_window_title(
             self._base_header_text,
             self._title_activity_label,
             self._title_spinner_index,
         )
+        self.app.title = title
+        terminal_title = self._compose_terminal_tab_title(
+            self._base_header_text,
+            self._title_activity_label,
+            self._title_spinner_index,
+        )
+        self._emit_terminal_title(terminal_title)
+
+    @staticmethod
+    def _emit_terminal_title(title: str) -> None:
+        text = str(title or "").replace("\x1b", "").replace("\x07", "").strip()
+        if not text:
+            return
+        # OSC 0/1/2 cover common terminal title targets:
+        # 0 = icon + window, 1 = icon/tab, 2 = window title.
+        payload = f"\033]0;{text}\007\033]1;{text}\007\033]2;{text}\007"
+        try:
+            stream = getattr(sys, "__stdout__", None) or sys.stdout
+            if stream is not None:
+                stream.write(payload)
+                stream.flush()
+        except Exception:
+            pass
 
     @ui_task
     async def update_token_status(self, history_tokens: int, max_tokens: int, session_tokens: int):

@@ -178,6 +178,11 @@ This document is the single source of truth for the current state of the Semanti
   - Key behaviors characterized include compiler shape analysis, `ResponseSemantics.is_plaintext_answer_path`, `looks_like_leaked_system_result`, `terminal_plaintext_completion_status`, and `_is_internal_summary_instead_of_final_answer`.
   - Tests were added/expanded in `tests/test_visible_text_terminal_answer_semantics.py`, `tests/test_output_recovery.py`, and `tests/test_terminal_plaintext_completion_guard.py`.
   - All tests passed, and no production code was changed. Runtime behavior is unchanged.
+- **Phase 8 Step 3: Typed Model Scaffolding (Design)**
+  - The design review of characterization test results is complete.
+  - The review concluded that the ambiguity of current signals (e.g., `compiler_shape=PLAINTEXT_ONLY` for multiple distinct scenarios) justifies introducing a typed result model.
+  - The design for a `TerminalAnswerKind` enum and `TerminalAnswerSemanticResult` dataclass is approved for scaffolding only.
+  - Implementation of the classifier logic and migration of consumers is not authorized.
 
 ## Known Authority Boundaries
 
@@ -193,7 +198,7 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- **Phase 8 Step 3 (Design Review)**: Review characterization test results and decide whether to approve the design for a typed result model for terminal answer semantics (e.g., `TerminalAnswerKind`). Implementation is not authorized.
+- **Phase 8 Step 3A (Implementation)**: Implement the scaffolding for the `TerminalAnswerKind` enum and `TerminalAnswerSemanticResult` dataclass. This is a scaffolding-only step with no logic or consumer changes.
 
 ## Test Status
 

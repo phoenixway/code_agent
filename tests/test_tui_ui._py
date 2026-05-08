@@ -87,7 +87,7 @@ class TestTuiUiSanitizer(unittest.TestCase):
             "thinking",
             spinner_index=2,
         )
-        self.assertEqual("◑ thinking · gemini-2.5-pro", title)
+        self.assertEqual("gemini-2.5-pro", title)
 
     def test_activity_label_is_shortened_for_tab_title(self):
         shortened = TuiUI._shorten_title_activity(
@@ -96,6 +96,14 @@ class TestTuiUiSanitizer(unittest.TestCase):
         )
         self.assertTrue(shortened.endswith("…"))
         self.assertLessEqual(len(shortened), 24)
+
+    def test_terminal_tab_title_uses_calmer_animation_pattern(self):
+        title = TuiUI._compose_terminal_tab_title(
+            "gemini-2.5-pro",
+            "thinking",
+            spinner_index=2,
+        )
+        self.assertEqual("◑ gemini-2.5-pro", title)
 
 
 if __name__ == "__main__":

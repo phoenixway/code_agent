@@ -680,12 +680,22 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
-#### Phase 8 Step 3: Typed Model Scaffolding (Design Review)
+#### Phase 8 Step 3: Typed Model Scaffolding (Design)
+
+- **Status**: Done.
+- **Goal**: Review characterization test results and decide whether to approve the design of a typed result model for terminal answer semantics (e.g., `TerminalAnswerKind`).
+- **Forbidden**: Implementation was not authorized by default.
+- **Done When**: The design review was completed. The decision was to approve the design and proceed with a scaffolding-only implementation step (3A).
+
+---
+
+#### Phase 8 Step 3A: Typed Model Scaffolding (Implementation)
 
 - **Status**: Approved / Not Started.
-- **Goal**: Review characterization test results and decide whether to approve the design of a typed result model for terminal answer semantics (e.g., `TerminalAnswerKind`).
-- **Forbidden**: Implementation is not authorized. Any production code changes.
-- **Done When**: A decision on whether to proceed with designing the typed models is documented.
+- **Goal**: Create the scaffolding for the `TerminalAnswerKind` enum and `TerminalAnswerSemanticResult` dataclass.
+- **Allowed**: Create new files for the typed models and add basic unit tests for the types themselves.
+- **Forbidden**: Do not implement the `TerminalAnswerClassifier`. Do not implement any classification logic. Do not migrate any consumers. Do not change any runtime behavior.
+- **Done When**: The enum and dataclass are defined in new files with passing tests for the types. No production logic has been changed.
 
 ---
 

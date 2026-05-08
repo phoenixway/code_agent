@@ -48,15 +48,49 @@ This inventory documents the current state of components involved in visible tex
 
 - **Step 1: Design-Only Inventory (Done)**: This document.
 - **Step 2: Characterization Tests (Done)**: Added characterization tests to lock down the exact behavior of all identified components and scenarios. This was a tests-only step. No production code was changed. Key behaviors characterized include compiler shape analysis, `ResponseSemantics.is_plaintext_answer_path`, `terminal_plaintext_completion_status`, and others.
-- **Step 3: Typed Model Scaffolding (Design Review)**: Review characterization test results and decide whether to approve the design of a typed result model (e.g., `TerminalAnswerKind`, `TerminalAnswerSemanticResult`). Implementation is not authorized.
+- **Step 3: Typed Model Scaffolding (Design)**: The design for the typed model scaffolding is complete and approved for a scaffolding-only implementation (Step 3A).
+- **Step 3A: Typed Model Scaffolding (Implementation)**: Create the `TerminalAnswerKind` enum and `TerminalAnswerSemanticResult` dataclass. This is a scaffolding-only step.
 - **Step 4: Classifier Implementation (Shadow Mode)**: Implement the `TerminalAnswerClassifier` and run it in shadow mode, logging its classifications against legacy decisions without changing behavior.
 - **Step 5: First Consumer Migration**: Migrate the lowest-risk consumer (e.g., `is_leaked_system_result`) to use the new classifier.
 - **Step 6: Authority Consolidation**: Systematically migrate remaining consumers (`IntentTransitionHandler`, `PreDispatchPipeline`, etc.) to the new classifier, removing legacy logic one component at a time.
 - **Step 7: Cleanup**: Once all consumers are migrated, remove the old regex helpers and redundant logic.
 
-## 6. Next Step
+## 6. Design Review and Decision (Step 3)
 
-The design-only inventory (Step 1) and characterization tests (Step 2) are complete. The approved next step is to conduct the **Phase 8, Step 3: Typed Model Scaffolding (Design Review)**. This review will determine whether to proceed with designing the typed models. Implementation is not authorized at this stage. The `TerminalAnswerClassifier` remains a candidate only.
+The design review of the characterization test results (Step 2) is complete.
+
+### Characterization Findings
+The tests revealed significant ambiguity in the current system:
+- The compiler `shape=PLAINTEXT_ONLY` is used for multiple distinct semantic meanings, including simple plaintext, pre-action text with an action, and text with stripped subgoal tags. This makes the shape unreliable for policy decisions.
+- `terminal_plaintext_completion_status` has fragile heuristics (e.g., rejecting "Done.") and strips protocol tags, hiding potential leaks.
+- `_is_internal_summary_instead_of_final_answer` fails to detect planning-like text that should not be a final answer.
+
+### Decision
+The ambiguity of current signals justifies introducing a typed result model to create a single, explicit source of truth.
+
+**Decision: Proceed with a typed model.**
+
+The proposed model consists of:
+- `TerminalAnswerKind` (Enum): A set of explicit classifications for terminal answer semantics.
+- `TerminalAnswerSemanticResult` (Dataclass): A container for the `kind` and any associated data (e.g., the extracted visible text).
+
+### Candidate `TerminalAnswerKind` Enum
+Based on the characterization tests, the initial candidate kinds are:
+- `UNKNOWN`: Default or unclassifiable.
+- `NO_VISIBLE_TEXT`: No user-visible text was found.
+- `PLAINTEXT_TERMINAL_ANSWER`: A valid, complete final answer in plain text.
+- `CHECKPOINT_ONLY`: The response contains only memory/subgoal checkpoints with no visible text.
+- `CHECKPOINT_WITH_VISIBLE_TEXT`: The response contains both checkpoints and visible text.
+- `INTENT_COMPLETE_WITH_VISIBLE_TEXT`: The response completes an intent and provides visible text.
+- `PRE_ACTION_VISIBLE_TEXT_WITH_ACTION`: The response contains visible text preceding an action.
+- `LEAKED_SYSTEM_RESULT`: The response appears to contain a leaked system/tool result.
+- `INTERNAL_SUMMARY_LIKE_TEXT`: The text appears to be internal planning or summary, not a final answer.
+- `INVALID_OR_TRUNCATED_TERMINAL_TEXT`: The text appears to be an incomplete or invalid final answer.
+
+### Next Step
+The design is approved for **Phase 8, Step 3A: Typed Model Scaffolding (Implementation)**. This is a narrow, scaffolding-only step.
+
+**Implementation is NOT authorized for the classifier itself or for any consumer migration.** The `TerminalAnswerClassifier` remains a candidate only.
 
 ## 7. Explicitly Deferred
 
