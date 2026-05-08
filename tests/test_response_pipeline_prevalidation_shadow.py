@@ -56,6 +56,7 @@ class TestResponsePipelinePrevalidationShadow(unittest.TestCase):
         # Assert classifier was instantiated and classify was called
         MockClassifier.assert_called_once()
         mock_instance.classify.assert_called_once()
+        self.assertEqual(parsed_output.terminal_answer_semantic_result.kind, TerminalAnswerKind.PLAINTEXT_TERMINAL_ANSWER)
 
         # Assert logger was called with the shadow result
         self.harness.stage_logger.log.assert_any_call(
@@ -91,6 +92,7 @@ class TestResponsePipelinePrevalidationShadow(unittest.TestCase):
         # Assert that production-relevant fields are not mutated by the shadow call
         self.assertEqual(parsed_output.invalid_kind, "initial_kind")
         self.assertIsNotNone(parsed_output.runtime_protocol_semantics)
+        self.assertEqual(parsed_output.terminal_answer_semantic_result.kind, TerminalAnswerKind.UNKNOWN)
 
     @patch("modules.agent.orchestration.responses.response_pipeline_prevalidation.terminal_plaintext_completion_status")
     @patch("modules.agent.orchestration.responses.response_pipeline_prevalidation.TerminalAnswerClassifier")
@@ -108,6 +110,7 @@ class TestResponsePipelinePrevalidationShadow(unittest.TestCase):
 
         # Assert the main return value is still valid
         self.assertIsNotNone(analysis_result)
+        self.assertIsNone(parsed_output.terminal_answer_semantic_result)
 
         # Assert the error was logged
         self.harness.stage_logger.log.assert_any_call(
@@ -141,6 +144,7 @@ class TestResponsePipelinePrevalidationShadow(unittest.TestCase):
 
         # Assert the main return value is still valid
         self.assertIsNotNone(analysis_result)
+        self.assertEqual(parsed_output.terminal_answer_semantic_result.kind, TerminalAnswerKind.UNKNOWN)
 
         # Assert that the snapshot log was attempted
         self.harness.stage_logger.log.assert_any_call(
@@ -241,6 +245,7 @@ class TestResponsePipelinePrevalidationShadow(unittest.TestCase):
         parsed_output = ParsedModelOutput(response="")
         self.harness._apply_compiler_diagnosis(parsed_output, "Execution snapshot style text.")
 
+        self.assertEqual(parsed_output.terminal_answer_semantic_result.kind, TerminalAnswerKind.INTERNAL_SUMMARY_LIKE_TEXT)
         self.harness.stage_logger.log.assert_any_call(
             "terminal_answer_classifier_shadow",
             "snapshot",

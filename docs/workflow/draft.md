@@ -78,4 +78,6 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 74. Phase 8 Step 4J Consumer Migration Design Gate: done.
 75. Phase 8 Step 4K First Consumer Migration (Design): done.
 76. Step 4K design correction from read-only preflight: typed result primary signal plus legacy fallback; strict replacement forbidden for Step 4L.
-77. Next: Phase 8 Step 4L First Consumer Migration (Implementation), pending explicit approval.
+77. Phase 8 Step 4L First Consumer Migration (Implementation): done.
+78. Step 4L migrated only the leaked-system-result guard in `ResponsePipelineStagesMixin`; typed classifier result is primary signal, legacy accessor remains production fallback.
+79. Next: Phase 8 Step 4M Post-Migration Parity Review / Fallback Retirement Design Gate (review/design only; no fallback removal, no new consumer migration, no production behavior change).

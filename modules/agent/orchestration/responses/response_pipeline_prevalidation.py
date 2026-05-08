@@ -232,6 +232,7 @@ class ResponsePipelinePrevalidationMixin:
                 is_internal_summary=is_internal_summary,
             )
             result = self._shadow_terminal_answer_classifier.classify(classifier_input)
+            parsed_output.terminal_answer_semantic_result = result
 
             legacy_kind, _ = self._get_legacy_terminal_answer_kind(response, parsed_output)
             is_match = None

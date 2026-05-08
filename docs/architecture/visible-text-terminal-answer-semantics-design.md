@@ -593,11 +593,38 @@ The `TerminalAnswerClassifier` runs inside `ResponsePipelinePrevalidationMixin._
     -   Manually inspect shadow logs after deployment to confirm that `is_match` remains `True` for the `LEAKED_SYSTEM_RESULT` classification path.
     -   Update `tests/test_response_pipeline_prevalidation_shadow.py` to assert that the `legacy_kind` and `classifier_kind` match for this case, formalizing the parity check.
 
-### 13.6. Next Step
+### 13.6. Closure
 
-The design (Step 4K) is complete. The proposed next step is **Phase 8, Step 4L: First Consumer Migration (Implementation)**. Step 4L must be a behavior-preserving migration that uses the typed result as the primary signal plus legacy fallback. Strict replacement is explicitly forbidden. Implementation is not authorized until Step 4L is formally approved.
+Step 4K is complete, and the Step 4L implementation has now been completed.
 
-## 14. Explicitly Deferred
+- The migrated consumer is the leaked-system-result guard in `ResponsePipelineStagesMixin`.
+- The implementation uses the typed `TerminalAnswerClassifier` result as the primary signal.
+- The legacy `is_leaked_system_result(response)` accessor remains the production fallback.
+- The fallback applies both when the typed result is absent and when it is present but not `LEAKED_SYSTEM_RESULT`.
+- The outer `has_any_action_proposal(...)` guard remains in place.
+- `_run_terminal_answer_classifier_shadow` was not renamed.
+- No other consumers were migrated.
+- `TerminalAnswerClassifier` is still not sole authority.
+- Production behavior is intended to remain equivalent.
+- Tests passed.
+
+## 14. Phase 8 Step 4M: Post-Migration Parity Review / Fallback Retirement Design Gate
+
+- **Status**: Not Started.
+- **Goal**: Review the Step 4L migration and decide whether a future fallback-retirement design can even be proposed.
+- **Scope**: Review-only analysis of the leaked-system-result migration.
+- **Allowed**: Documentation updates, parity review, and comparison of classifier vs legacy accessor behavior.
+- **Forbidden**:
+  - Fallback removal
+  - New consumer migration
+  - Production behavior changes
+- **Review Focus**:
+  - Compare the classifier's stricter `SYSTEM RESULT:` prefix rule with the broader legacy accessor regex.
+  - Inspect shadow/parity evidence after Step 4L.
+  - Determine whether the fallback can ever be retired safely.
+  - Confirm that no authority expansion is justified yet.
+
+## 15. Explicitly Deferred
 
 - A full refactor of `ResponsePipeline` or `DispatchPipeline`.
 - Changes to `ActionPolicy`.

@@ -9,6 +9,7 @@ from ..shared.decision_models import ResponsePipelineOutcome
 from ..shared.trace import compact_compiler_replay
 from .protocol_decision_bridge import compiler_invalid_kind_for_output, resolve_protocol_authority
 from .semantic_accessors import is_leaked_system_result
+from .terminal_answer_models import TerminalAnswerKind
 
 
 @dataclass
@@ -588,29 +589,33 @@ class ResponsePipelineStagesMixin:
                 memory_checkpoint_and_text=True,
             )
 
-        if (
-            not self.semantics.has_any_action_proposal(parsed_output, parsed_action_count)
-            and is_leaked_system_result(response)
-        ):
-            self.guards.set_reflection_repair_pending(False)
-            self.guards.set_nonproductive_thinking_state(False)
-            self.stage_logger.log(
-                "response_pipeline",
-                "continue",
-                reason="leaked_system_result_in_assistant_text",
-                source="output_recovery",
+        if not self.semantics.has_any_action_proposal(parsed_output, parsed_action_count):
+            typed_result = getattr(parsed_output, "terminal_answer_semantic_result", None)
+            is_typed_leak = (
+                typed_result is not None
+                and typed_result.kind == TerminalAnswerKind.LEAKED_SYSTEM_RESULT
             )
-            return ResponsePipelineOutcome.continue_with(
-                self.prompt_builder.build_leaked_system_result_recovery_prompt(),
-                response_text=response,
-                segments=segments,
-                parsed_output=parsed_output,
-                parsed_action_count=0,
-                malformed_action_retries=0,
-                audit_marker_retries=0,
-                reason="leaked_system_result_in_assistant_text",
-                source="output_recovery",
-            )
+            is_legacy_leak = False if is_typed_leak else is_leaked_system_result(response)
+            if is_typed_leak or is_legacy_leak:
+                self.guards.set_reflection_repair_pending(False)
+                self.guards.set_nonproductive_thinking_state(False)
+                self.stage_logger.log(
+                    "response_pipeline",
+                    "continue",
+                    reason="leaked_system_result_in_assistant_text",
+                    source="output_recovery",
+                )
+                return ResponsePipelineOutcome.continue_with(
+                    self.prompt_builder.build_leaked_system_result_recovery_prompt(),
+                    response_text=response,
+                    segments=segments,
+                    parsed_output=parsed_output,
+                    parsed_action_count=0,
+                    malformed_action_retries=0,
+                    audit_marker_retries=0,
+                    reason="leaked_system_result_in_assistant_text",
+                    source="output_recovery",
+                )
 
         authority = resolve_protocol_authority(parsed_output, parsed_action_count)
         if authority.suppress_legacy_invalid_kind:

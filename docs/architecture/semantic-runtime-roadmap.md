@@ -832,7 +832,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 8 Step 4L: First Consumer Migration (Implementation)
 
-- **Status**: Not Started.
+- **Status**: Done.
 - **Goal**: Implement the first, narrow, behavior-preserving migration of a consumer to the `TerminalAnswerClassifier`.
 - **Scope**: The `is_leaked_system_result` check in `ResponsePipelineStagesMixin`.
 - **Prerequisite**: Step 4K design must be complete and approved.
@@ -855,6 +855,35 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - The accessor uses a broader `.search(...)` pattern
   - The current consumer checks raw response text
 - **Done When**: The `is_leaked_system_result` consumer is migrated in a behavior-preserving way, all tests pass, and the legacy accessor remains the production fallback.
+- **Completed Outcome**:
+  - The leaked-system-result guard in `ResponsePipelineStagesMixin` now uses the typed `TerminalAnswerClassifier` result as the primary signal.
+  - The legacy `is_leaked_system_result(response)` accessor remains the production fallback.
+  - The fallback applies both when the typed result is absent and when it is present but not `LEAKED_SYSTEM_RESULT`.
+  - The outer guard `not self.semantics.has_any_action_proposal(parsed_output, parsed_action_count)` is preserved.
+  - `_run_terminal_answer_classifier_shadow` was not renamed.
+  - No other consumers were migrated.
+  - `TerminalAnswerClassifier` is not sole authority.
+  - Production behavior is intended to remain equivalent.
+  - Tests passed.
+
+---
+
+#### Phase 8 Step 4M: Post-Migration Parity Review / Fallback Retirement Design Gate
+
+- **Status**: Not Started.
+- **Goal**: Review the first consumer migration and determine whether fallback retirement can even be proposed in a later step.
+- **Prerequisite**: Step 4L must be complete.
+- **Allowed**: Design-only review, parity analysis, and documentation updates.
+- **Forbidden**:
+  - Removing the legacy leaked-system-result fallback
+  - Any new consumer migration
+  - Any production behavior change
+- **Review Focus**:
+  - Review whether the fallback can ever be retired safely
+  - Compare the classifier regex with the broader legacy accessor regex
+  - Inspect Step 4L shadow/parity evidence after migration
+  - Confirm whether any mismatch still requires the legacy accessor as production fallback
+- **Done When**: The review is documented, and a recommendation is made about whether a future fallback-retirement proposal is safe to design.
 
 ---
 

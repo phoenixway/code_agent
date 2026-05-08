@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 8 Step 4K: First Consumer Migration (Design)
+- **Phase**: Phase 8 Step 4L: First Consumer Migration (Implementation)
 - **Status**: Complete.
-- **Next Step**: Phase 8 Step 4L: First Consumer Migration (Implementation), pending explicit approval.
-- **Boundary**: Consumer migration remains blocked. Production behavior remains unchanged.
+- **Next Step**: Phase 8 Step 4M: Post-Migration Parity Review / Fallback Retirement Design Gate.
+- **Boundary**: Only the first narrow consumer migration is complete. No other consumer migration is authorized, `TerminalAnswerClassifier` is not sole authority, and production behavior is intended to remain equivalent.
 
 ## Step 4I Parity Matrix
 
@@ -269,6 +269,18 @@ This document is the single source of truth for the current state of the Semanti
   - The classifier is not yet sole authority for leaked-system-result detection.
   - A future implementation step, `Phase 8 Step 4L`, was proposed.
   - This was a design-only step. No production code was changed, and consumer migration remains blocked.
+- **Phase 8 Step 4L: First Consumer Migration (Implementation) (Complete)**
+  - The first narrow consumer migration is now complete.
+  - Migrated consumer: the leaked-system-result guard in `ResponsePipelineStagesMixin`.
+  - The implementation uses the typed `TerminalAnswerClassifier` result as the primary signal.
+  - The legacy `is_leaked_system_result(response)` accessor remains the production fallback.
+  - The fallback applies both when the typed result is absent and when it is present but not `LEAKED_SYSTEM_RESULT`.
+  - The existing outer guard `not self.semantics.has_any_action_proposal(parsed_output, parsed_action_count)` is preserved.
+  - `_run_terminal_answer_classifier_shadow` was not renamed.
+  - No other consumers were migrated.
+  - `TerminalAnswerClassifier` is still not sole authority.
+  - Production behavior is intended to remain equivalent.
+  - Tests passed.
 ## Known Authority Boundaries
 
 - **Compiler**: Authoritative for precise, structural diagnostics. A compiler-`INVALID` response must never be dispatched.
@@ -282,6 +294,15 @@ This document is the single source of truth for the current state of the Semanti
 - **Scope Creep**: The `history.py` refactor is explicitly blocked.
 
 ## Next Intended Step
+
+- **Phase 8 Step 4M: Post-Migration Parity Review / Fallback Retirement Design Gate**
+  - This is a review/design-only step.
+  - Review whether the leaked-system-result fallback can ever be retired.
+  - Compare the classifier regex path with the broader legacy accessor regex path.
+  - Inspect Step 4L parity evidence and shadow-log agreement after the first migration.
+  - No fallback removal.
+  - No new consumer migration.
+  - No production behavior change.
 
 - **Phase 8 Step 4L: First Consumer Migration (Implementation)**: Implement the approved design from Step 4K to migrate the `is_leaked_system_result` check in `ResponsePipelineStagesMixin`. This step is not yet authorized and requires explicit approval to begin.
   - Step 4L must remain behavior-preserving.

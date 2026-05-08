@@ -31,6 +31,7 @@ class ParsedModelOutput:
     compiler_recovery_id: str = ""
     compiler_ir: Any = None
     runtime_protocol_semantics: Any = None
+    terminal_answer_semantic_result: Any = None
 
 
 @dataclass
