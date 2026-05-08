@@ -546,15 +546,16 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
-### Future Phase Candidate: ActionPolicy-Dependent Bundle Validation
+### Phase 7: ActionPolicy-Dependent Bundle Validation
 
-- **Goal**: Review and potentially refactor `ActionPolicy`-dependent bundle validation logic.
+- **Status**: Design in Review.
+- **Goal**: Refactor `ActionPolicy`-dependent bundle validation logic, migrating the `_reject_invalid_atomic_bundle_before_transition` consumer.
 - **Scope**: `ResponsePipelinePrevalidationMixin._reject_invalid_atomic_bundle_before_transition` and its dependencies on `ActionPolicyHandler`.
-- **Status**: Deferred. Requires new design.
+- **Forbidden**: Implementation before design approval.
 
 ---
 
-### Phase 7: Plan-First Bundle Execution
+### Phase 8: Plan-First Bundle Execution
 
 - **Goal**: Refactor `DispatchPipeline` to execute from a plan derived from semantic accessors, not from reparsed segments.
 - **Allowed**: Modify `ResponsePipeline` to build an `ExecutionPlan` using semantic accessors. Modify `DispatchPipeline` to execute this plan.
@@ -563,7 +564,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
-### Phase 8: RecoveryStrategy Registry Expansion
+### Phase 9: RecoveryStrategy Registry Expansion
 
 - **Goal**: Expand the `CompilerRecoveryRegistry` to cover more structural errors.
 - **Allowed**: Add new strategies for errors currently handled by legacy `invalid_kind` routing.
@@ -572,7 +573,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
-### Phase 9: Observability/Replay
+### Phase 10: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.
 - **Allowed**: Log the inputs and outputs of semantic accessors. Create a debug tool to replay a response through the semantic layer.
@@ -581,7 +582,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
-### Phase 10: Legacy Cleanup
+### Phase 11: Legacy Cleanup
 
 - **Goal**: Remove deprecated legacy fields and helpers.
 - **Allowed**: Remove `ResponseSemantics`, `has_action_segment`, and other legacy fields from `ParsedModelOutput`.

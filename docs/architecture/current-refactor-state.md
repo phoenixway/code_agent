@@ -156,6 +156,10 @@ This document is the single source of truth for the current state of the Semanti
   - The `BundleSemanticValidator` was created, implemented with compiler-only logic (error-code and shape-driven), and verified with parity tests.
   - The first, lowest-risk consumer was migrated.
   - The review of the next consumer concluded that `ActionPolicy`/`segments`-dependent logic should be deferred, and Phase 6 is now complete.
+- **Post-Phase 6 Planning Review**
+  - A review of next phase candidates was conducted, comparing `ActionPolicy`-dependent bundle validation, plan-first execution, and visible text semantics.
+  - **Recommendation**: Proceed with a new phase focused on `ActionPolicy`-dependent bundle validation as the most logical continuation of the bundle validation thread.
+  - The old "Phase 7: Plan-First Bundle Execution" will be deferred and re-numbered to Phase 8.
 
 ## Known Authority Boundaries
 
@@ -171,7 +175,7 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Plan for the next major refactoring phase (e.g., `ActionPolicy`-dependent bundle validation or Phase 7).
+- Design the new "Phase 7: ActionPolicy-Dependent Bundle Validation".
 
 ## Test Status
 

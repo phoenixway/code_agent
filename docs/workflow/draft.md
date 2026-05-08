@@ -39,4 +39,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 35. Phase 6 Step 3 (first consumer migration) implementation: done.
 36. Phase 6 Step 4 (next consumer migration review): done.
 37. Phase 6 is complete.
-38. Next: Plan for the next major refactoring phase (e.g., `ActionPolicy`-dependent bundle validation or Phase 7).
+38. Post-Phase 6 planning review: done.
+39. Next: Design the new Phase 7 (ActionPolicy-Dependent Bundle Validation).
