@@ -168,6 +168,9 @@ This document is the single source of truth for the current state of the Semanti
   - The tests lock down the existing behavior of `ActionPolicyHandler.validate_atomic_bundle_action` and `ResponsePipelinePrevalidationMixin._reject_invalid_atomic_bundle_before_transition`.
   - All tests passed.
   - No production code was changed, and no runtime behavior was changed.
+- **Phase 7 Step 3A: Typed Result Scaffolding (Design)**
+  - The review of characterization tests concluded that introducing a typed result enum is justified.
+  - Implementation is authorized for Step 3A (scaffolding only). This includes creating the `AtomicBundlePolicyResultKind` enum and the new `AtomicBundleActionValidationResult` dataclass in a new `modules/agent/orchestration/runtime/action_policy_models.py` file, but not migrating any producers or consumers.
 
 ## Known Authority Boundaries
 
@@ -183,7 +186,7 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Review characterization test results and decide whether to approve Phase 7 Step 3 (Typed Result Introduction).
+- Implement Phase 7 Step 3A: Typed Result Scaffolding only.
 
 ## Test Status
 
