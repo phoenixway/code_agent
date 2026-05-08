@@ -728,11 +728,11 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 8 Step 4D.1: New Fact Characterization Test Implementation
 
-- **Status**: Not Started.
+- **Status**: Done.
 - **Goal**: Implement the characterization tests designed in Step 4D.
 - **Prerequisite**: Step 4D must be complete.
 - **Forbidden**: Any production code changes.
-- **Done When**: The new characterization tests are implemented and failing as expected.
+- **Done When**: The new golden characterization tests were implemented in `tests/test_compiler_structural_facts.py` and marked as `xfail`.
 
 ---
 

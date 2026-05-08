@@ -59,4 +59,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 55. Phase 8 Step 4A (Design-Only Review): done. Conclusion: signals insufficient.
 56. Phase 8 Step 4C (Design): done.
 57. Phase 8 Step 4D (Design): done.
-58. Next: Phase 8 Step 4D.1 (Implementation) for new fact characterization tests.
+58. Phase 8 Step 4D.1 (Implementation): done.
+59. Next: Phase 8 Step 4E (Implementation) for compiler/runtime facts.

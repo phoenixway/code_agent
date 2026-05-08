@@ -202,6 +202,10 @@ This document is the single source of truth for the current state of the Semanti
   - The design for characterization tests for the new structural facts and shape improvements is complete.
   - The design specifies tests for `has_subgoal_tags`, `has_memory_tags`, `has_memory_checkpoint`, and improved compiler shapes (`PURE_PLAINTEXT`, `SUBGOAL_WITH_TEXT`, `PRE_ACTION_TEXT_AND_ACTION`).
   - Implementation is not authorized until Step 4D.1.
+- **Phase 8 Step 4D.1: New Fact Characterization Test Implementation**
+  - Implemented golden characterization tests in `tests/test_compiler_structural_facts.py` to specify the target behavior for new compiler facts and shapes.
+  - The tests are marked `xfail` and are expected to fail until Step 4E is complete.
+  - No production code was changed. Runtime behavior is unchanged.
 
 ## Known Authority Boundaries
 
@@ -217,7 +221,7 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- **Phase 8 Step 4D.1: New Fact Characterization Test Implementation**: Implement the characterization tests designed in Step 4D. This is a tests-only step. Production code changes are not authorized.
+- **Phase 8 Step 4E: Compiler/Runtime Fact Implementation**: Implement the compiler and `RuntimeProtocolSemantics` changes to make the new characterization tests pass. This is not yet authorized.
 
 ## Test Status
 

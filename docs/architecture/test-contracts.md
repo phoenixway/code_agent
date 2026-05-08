@@ -13,6 +13,7 @@ This document lists key tests that protect critical invariants of the response p
 | **Output recovery routes based on compiler metadata** | `test_output_recovery_compiler_strategy_routing_with_snapshot` | `tests/test_runtime_protocol_semantics.py` |
 | **Search quality classification is diagnostic-only** | (No specific test) | `modules/agent/orchestration/runtime/action_policy.py` |
 | | The `_log_search_quality` method in `ActionPolicyHandler` only logs; it does not return a decision or block dispatch. | |
+| **Compiler provides structural facts for terminal answers** | `test_golden_structural_facts` | `tests/test_compiler_structural_facts.py` |
 
 ---
 
