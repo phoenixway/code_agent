@@ -60,10 +60,10 @@ class TuiUI:
     CHAT_OUTPUT_PREVIEW_MAX_CHARS = 4000
     TOOL_ARG_PREVIEW_MAX_CHARS = 1200
     TITLE_SPINNER_FRAMES = (
-        "◐",
-        "◓",
-        "◑",
-        "◒",
+        "∙",
+        "•",
+        "●",
+        "•",
     )
     TERMINAL_TAB_FRAMES = (
         "·  ",
