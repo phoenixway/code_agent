@@ -1,14 +1,15 @@
 """
 Phase 8: Typed models for terminal answer semantics.
-
-This is a scaffolding-only implementation. The classifier that produces these
-models is not yet implemented, and no consumers have been migrated.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .runtime_protocol_semantics import RuntimeProtocolSemantics
 
 
 class TerminalAnswerKind(str, Enum):
@@ -27,13 +28,20 @@ class TerminalAnswerKind(str, Enum):
 
 
 @dataclass(frozen=True)
+class TerminalAnswerClassifierInput:
+    """An immutable snapshot of inputs for the TerminalAnswerClassifier."""
+
+    runtime_semantics: "RuntimeProtocolSemantics"
+    raw_response_text: str
+
+
+@dataclass(frozen=True)
 class TerminalAnswerSemanticResult:
     """A structured result from classifying terminal answer semantics."""
 
     kind: TerminalAnswerKind
-    has_visible_text: bool
-    is_terminal: bool
-    visible_text: str = ""
-    reason: str = ""
-    source: str = ""
+    source: str
+    reason_code: str
+    evidence: tuple[str, ...] = field(default_factory=tuple)
+    visible_text: str | None = None
     details: dict[str, object] | None = field(default=None, compare=False)

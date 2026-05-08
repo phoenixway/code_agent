@@ -350,7 +350,94 @@ This matrix classifies each `TerminalAnswerKind` candidate based on the support 
 | **`INVALID_OR_TRUNCATED_TERMINAL_TEXT`** | `DEFERRED_LEGACY_REGEX` | No structural fact exists. This remains dependent on legacy regex heuristics. |
 | **`UNKNOWN`** | `READY_FOR_SHADOW_CLASSIFIER` | Serves as the fallback for any unhandled or ambiguous cases. |
 
-## 11. Explicitly Deferred
+## 11. Phase 8 Step 4B Redux: TerminalAnswerClassifier Shadow Mode Design
+
+This design step is complete. It defines the future `TerminalAnswerClassifier` and its shadow-mode validation plan.
+
+- **Status**: Design Complete.
+- **Next Step**: **Phase 8 Step 4H: Shadow Wiring / Diagnostic Logging**.
+- **Implementation Status**: The `TerminalAnswerClassifier` class and its models are implemented as of Step 4G. Runtime integration for shadow-mode logging is deferred to Step 4H.
+
+### 11.1. Design Overview
+
+The `TerminalAnswerClassifier` will be a new, dedicated component responsible for classifying the semantic meaning of a model's response when it contains user-visible text. It will replace a scattered collection of regex helpers and ambiguous heuristics with a single, testable source of truth.
+
+During its initial implementation (Step 4G), it will run in **shadow mode only**. It will have no effect on runtime behavior, dispatch decisions, or user-visible output. Its purpose will be to generate diagnostic data to prove its parity with existing logic.
+
+### 11.2. Classifier Location and Name
+
+- **File**: `modules/agent/orchestration/responses/terminal_answer_classifier.py`
+- **Class**: `TerminalAnswerClassifier`
+
+### 11.3. Input and Output Models
+
+The classifier consumes an immutable input snapshot and produces a structured typed result. These models were implemented in Step 4G.
+
+-   **Input Model**: `TerminalAnswerClassifierInput` (dataclass)
+    -   `runtime_semantics`: `RuntimeProtocolSemantics`
+    -   `raw_response_text`: `str`
+
+-   **Output Model**: `TerminalAnswerSemanticResult` (dataclass)
+    -   `kind`: `TerminalAnswerKind`
+    -   `source`: `str` (e.g., `compiler_fact`, `legacy_regex`, `runtime_policy`, `fallback`)
+    -   `reason_code`: A stable string for machine-readable classification logic.
+    -   `evidence`: A tuple of strings naming the facts used for classification.
+    -   `visible_text`: An optional `str` containing the extracted visible text.
+    -   `details`: An optional dictionary for diagnostic data, for shadow/debug use only.
+
+### 11.4. Classification Algorithm
+
+The classifier must be deterministic and priority-ordered. It will use a combination of new compiler-derived structural facts and existing legacy/policy helpers.
+
+**Note**: The initial implementation in Step 4G covers only the compiler-fact branches (priorities 4-10). The legacy helper branches (1-3) are deferred to a later step (e.g., 4H or 4I) when their imports can be safely wired.
+
+| Priority | `TerminalAnswerKind` | Logic / Evidence | `source` |
+|---|---|---|---|
+| 1 | `INVALID_OR_TRUNCATED_TERMINAL_TEXT` | Call legacy `terminal_plaintext_completion_status` helper. If it returns `invalid` or `truncated`. | `legacy_regex` |
+| 2 | `LEAKED_SYSTEM_RESULT` | Call legacy `is_leaked_system_result` helper. If `True`. | `legacy_regex` |
+| 3 | `INTERNAL_SUMMARY_LIKE_TEXT` | Call legacy `_is_internal_summary_instead_of_final_answer` helper. If `True`. | `runtime_policy` |
+| 4 | `PRE_ACTION_VISIBLE_TEXT_WITH_ACTION` | `input.runtime_semantics.visible_text_source == "PRE_ACTION_TEXT"` | `compiler_fact` |
+| 5 | `INTENT_COMPLETE_WITH_VISIBLE_TEXT` | `input.runtime_semantics.visible_text_source == "INTENT_COMPLETION_TEXT"` | `compiler_fact` |
+| 6 | `CHECKPOINT_WITH_VISIBLE_TEXT` | `input.runtime_semantics.visible_text_source == "CHECKPOINT_ACCOMPANYING_TEXT"` | `compiler_fact` |
+| 7 | `CHECKPOINT_ONLY` | `(has_memory_tags or has_subgoal_tags or has_memory_checkpoint)` is `True` AND `has_visible_answer` and `has_pre_action_text` are `False`. | `compiler_fact` |
+| 8 | `PLAINTEXT_TERMINAL_ANSWER` | `input.runtime_semantics.visible_text_source == "PURE_PLAINTEXT"` | `compiler_fact` |
+| 9 | `NO_VISIBLE_TEXT` | `has_visible_answer` and `has_pre_action_text` are `False`. | `compiler_fact` |
+| 10 | `UNKNOWN` | Fallback for all other cases. | `fallback` |
+
+### 11.5. Shadow-Mode Validation Plan
+
+Step 4G introduced the classifier as an isolated shadow-safe component. Step 4H will wire it into runtime shadow execution and diagnostic logging.
+
+1.  **Instantiation (Step 4H)**: The `TerminalAnswerClassifier` will be instantiated within a component that has access to the necessary inputs (e.g., `ResponsePipeline`).
+2.  **Execution (Step 4H)**: It will be called after the `RuntimeProtocolSemantics` snapshot is created. Its result will be stored in a temporary variable and used for logging only.
+3.  **No Behavior Change**: The result of the shadow-mode classification **must not** be used to alter control flow, dispatch decisions, UI output, or any other runtime behavior. All existing logic paths must remain unchanged.
+4.  **Comparison and Logging (Step 4H)**: A dedicated logging function will be called to compare the `TerminalAnswerClassifier`'s result against the results of the legacy heuristics it is intended to replace.
+    -   **Log Entry**: Each log entry should contain:
+        -   `response_id`
+        -   `classifier_kind`: The `kind` from the new classifier.
+        -   `legacy_kind`: The classification derived from the existing logic path (e.g., from `is_plaintext_answer_path`).
+        -   `is_match`: `True` if the kinds are equivalent, `False` otherwise.
+        -   `classifier_evidence`: The `source`, `reason_code`, and `evidence` from the new classifier.
+        -   `legacy_evidence`: The name of the legacy helper and its raw inputs.
+5.  **Parity Goal**: The goal of shadow mode is to collect data and iterate on the classifier's logic (in later steps) until it achieves high parity with the legacy system for all core cases, while providing clearer, more accurate classifications for ambiguous cases.
+
+### 11.6. Completed Step 4G Tests and Future Step 4H Tests
+
+-   **Completed in Step 4G**:
+    -   Unit tests for the `TerminalAnswerClassifier` class, testing each of the implemented compiler-fact branches in isolation (`tests/test_terminal_answer_classifier.py`).
+-   **Deferred to Step 4H (or later)**:
+    -   **Parity Tests**: A new test suite (`tests/test_terminal_answer_classifier_parity.py`) that runs a large set of diverse response snippets through both the legacy logic and the new classifier, asserting that the logged `is_match` field is `True` for all expected cases.
+    -   **Integration Tests**: Tests to ensure the shadow-mode execution does not alter runtime behavior.
+
+### 11.7. Explicitly Deferred
+
+-   **Runtime Shadow Wiring/Logging**: Deferred to Step 4H.
+-   **Legacy Helper Branches**: Implementation of branches that depend on legacy helpers (e.g., for `LEAKED_SYSTEM_RESULT`) is deferred until safe imports and integration can be designed.
+-   **Consumer Migration**: No consumers will be migrated until shadow-mode validation is complete and a new migration phase is approved.
+-   **Legacy Helper Removal**: Legacy regex helpers (`is_leaked_system_result`, etc.) will be preserved until all their consumers are migrated away.
+-   **Final-Answer Correctness Policy**: The classifier provides structural classification. The runtime policy decision of whether a `PLAINTEXT_TERMINAL_ANSWER` is a *correct* final answer remains a separate, runtime-owned concern.
+
+## 12. Explicitly Deferred
 
 - A full refactor of `ResponsePipeline` or `DispatchPipeline`.
 - Changes to `ActionPolicy`.

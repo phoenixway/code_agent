@@ -213,7 +213,17 @@ This document is the single source of truth for the current state of the Semanti
   - A design-only review concluded that the structural facts from Step 4E are sufficient to proceed with the design of a shadow-mode `TerminalAnswerClassifier`.
   - A new test file, `tests/test_terminal_answer_fact_sufficiency.py`, was added to prove sufficiency without changing production code.
   - The design of the classifier is now unblocked, but implementation and consumer migration remain blocked.
-No runtime consumers were migrated, and no dispatch or policy behavior was intentionally changed.
+- **Phase 8 Step 4B (Redux): TerminalAnswerClassifier Shadow Mode Design (Complete)**
+  - The design for the `TerminalAnswerClassifier` and its shadow-mode validation plan is complete and documented in `docs/architecture/visible-text-terminal-answer-semantics-design.md`.
+  - This is a design-only step. No production code was changed.
+  - Implementation of the classifier is not authorized until Step 4G is approved.
+  - No runtime consumers were migrated, and no dispatch or policy behavior was intentionally changed.
+- **Phase 8 Step 4G: TerminalAnswerClassifier Shadow Implementation (Complete)**
+  - Implemented the `TerminalAnswerClassifier` as an isolated, shadow-safe component in `modules/agent/orchestration/responses/terminal_answer_classifier.py`.
+  - The implementation follows the design from Step 4B Redux, but defers branches that depend on legacy helpers.
+  - Unit tests were added in `tests/test_terminal_answer_classifier.py` to cover the implemented compiler-fact branches.
+  - No runtime shadow execution hook was added, and no consumers were migrated.
+  - No dispatch, policy, or user-visible behavior was changed.
 ## Known Authority Boundaries
 
 - **Compiler**: Authoritative for precise, structural diagnostics. A compiler-`INVALID` response must never be dispatched.
@@ -228,7 +238,7 @@ No runtime consumers were migrated, and no dispatch or policy behavior was inten
 
 ## Next Intended Step
 
-- **Phase 8 Step 4B (Redux): TerminalAnswerClassifier Shadow Mode Design**: Design the `TerminalAnswerClassifier` and a plan for running it in shadow mode to validate its behavior against existing logic. Implementation and consumer migration remain blocked until this design is approved.
+- **Phase 8 Step 4H: Shadow Wiring / Diagnostic Logging**: Wire the isolated `TerminalAnswerClassifier` into the `ResponsePipeline` for shadow-mode execution. Add diagnostic logging to compare its output against legacy logic. This is a behavior-preserving step. Consumer migration remains blocked. This step is pending explicit approval.
 
 ## Test Status
 

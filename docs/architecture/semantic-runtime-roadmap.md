@@ -768,11 +768,31 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 8 Step 4B (Redux): TerminalAnswerClassifier Shadow Mode Design
 
-- **Status**: Not Started.
+- **Status**: Done.
 - **Goal**: Design the `TerminalAnswerClassifier` and a plan for running it in shadow mode.
 - **Prerequisite**: Phase 8 Step 4F must be complete.
 - **Forbidden**: Implementation is not authorized. Any production code changes.
-- **Done When**: The design for the classifier and its shadow-mode operation is complete and approved.
+- **Done When**: The design for the classifier and its shadow-mode operation was completed and documented.
+
+---
+
+#### Phase 8 Step 4G: TerminalAnswerClassifier Shadow Implementation
+
+- **Status**: Done.
+- **Goal**: Implement the `TerminalAnswerClassifier` as an isolated, shadow-safe component.
+- **Prerequisite**: Step 4B (Redux) design must be complete and approved.
+- **Forbidden**: Consumer migration. Any changes to runtime behavior, dispatch, or policy. The classifier must not affect any production logic.
+- **Done When**: The `TerminalAnswerClassifier` was implemented with unit tests covering compiler-fact branches. The implementation is isolated, and no runtime shadow hook was added.
+
+---
+
+#### Phase 8 Step 4H: Shadow Wiring / Diagnostic Logging
+
+- **Status**: Not Started.
+- **Goal**: Wire the isolated `TerminalAnswerClassifier` into the `ResponsePipeline` for shadow-mode execution and add diagnostic logging.
+- **Prerequisite**: Step 4G must be complete.
+- **Forbidden**: Consumer migration. Any changes to runtime behavior.
+- **Done When**: The classifier is called in shadow mode, and its results are logged for parity analysis without affecting production logic.
 
 ---
 

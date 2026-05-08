@@ -64,4 +64,6 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 60. Phase 8 Step 4E implementation: done.
 61. Phase 8 Step 4F shadow sufficiency / parity review: done.
 62. Note: parser atom coverage prerequisite recorded.
-63. Next: Phase 8 Step 4B (Redux): TerminalAnswerClassifier Shadow Mode Design.
+63. Phase 8 Step 4B (Redux): TerminalAnswerClassifier Shadow Mode Design: done.
+64. Phase 8 Step 4G: TerminalAnswerClassifier Shadow Implementation (isolated): done.
+65. Next: Phase 8 Step 4H: Shadow Wiring / Diagnostic Logging, pending explicit approval.
