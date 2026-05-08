@@ -740,9 +740,9 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 - **Status**: Not Started.
 - **Goal**: Implement the compiler/runtime changes for the new structural facts.
-- **Prerequisite**: Step 4D.1 must be complete.
-- **Forbidden**: Consumer migration.
-- **Done When**: The new structural facts are implemented and the new characterization tests pass.
+- **Prerequisite**: Step 4D.1 is complete. The Step 4E design gate for compiler authority is documented and accepted.
+- **Forbidden**: Consumer migration. Implementing new facts with regex scans in `RuntimeProtocolSemantics`.
+- **Done When**: The new structural facts are implemented in the compiler/IR and the new characterization tests pass.
 
 ---
 

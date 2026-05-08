@@ -298,8 +298,23 @@ A new parameterized test will map various responses to the expected `visible_tex
 - This ensures the test suite remains green while providing a clear specification for the compiler implementation in Step 4E.
 - No production code will be changed in Step 4D.1.
 
+### Implementation Constraints for Step 4E
+
+Before implementation of Step 4E is authorized, the following design constraints are established:
+
+-   **Facts-First, Shape-Minimal**: The primary goal of Step 4E is to implement the new structural *facts* (`has_memory_tags`, etc.) in the compiler's IR and `RuntimeProtocolSemantics`. Shape improvements are secondary.
+-   **No New Board-Only Shapes**: Step 4E must **not** introduce new compiler shapes for board-only or marker-only responses (e.g., `CHECKPOINT_ONLY`, `BOARD_ONLY`). These responses may retain their current shape classification for compatibility. The golden tests for these cases correctly specify `expected_shape=None`.
+-   **Deferred Shape Taxonomy**: A more detailed taxonomy of board-only shapes is deferred to a future phase. Step 4E only guarantees the structural facts and the specific shape improvements (`PURE_PLAINTEXT`, `SUBGOAL_WITH_TEXT`, `PRE_ACTION_TEXT_AND_ACTION`) required by the golden tests.
+-   **`<preference>` Tag Compatibility**: For legacy compatibility, the compiler implementation in Step 4E must treat the `<preference>` tag as a memory tag, ensuring `has_memory_tags` is `True` when it is present.
+
 ### Next Step
-The design (Step 4D) is complete. The approved next step is to conduct **Phase 8, Step 4D.1: New Fact Characterization Test Implementation**. This is a tests-only step. Implementation of production code is not authorized.
+
+-   **Step 4D.1 (Test Implementation)** is complete. The golden `xfail` tests are in place.
+-   **Step 4E (Design Gate)** is complete. The implementation constraints (facts-first, no new regex) are documented.
+-   The next step is **Phase 8, Step 4E: Compiler/Runtime Fact Implementation**.
+-   Implementation for Step 4E is **not yet authorized** and is pending explicit approval.
+-   When authorized, Step 4E must implement the new facts using compiler AST/IR-derived data, not new regex scans.
+-   Consumer migration and the `TerminalAnswerClassifier` remain blocked until after Step 4E is complete.
 
 ## 10. Explicitly Deferred
 

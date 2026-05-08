@@ -16,6 +16,17 @@ A response that the compiler deems structurally `INVALID` must **never** be disp
 
 ---
 
+## Compiler/Parser Authority for Structural Protocol Facts
+
+The Protocol Compiler and its underlying parser are the single source of truth for all structural protocol facts.
+
+-   **New Facts from Compiler Only**: New structural facts introduced in Phase 8 (`has_memory_tags`, `has_subgoal_tags`, `has_memory_checkpoint`, `visible_text_source`) must be derived from the compiler's AST and exposed through the `ResponseIR`.
+-   **No New Regex in Runtime Semantics**: `RuntimeProtocolSemantics` and `semantic_accessors` must **not** introduce new regex-based parsing to produce these facts. Their role is to adapt compiler-derived data, not to create it.
+-   **Legacy Regex Preservation**: Existing legacy regex paths (e.g., in `ResponseSemantics`) may be preserved for backward compatibility with un-migrated consumers, but they must not be the source for new `RuntimeProtocolSemantics` fields.
+-   **Step 4E Implementation Constraint**: The implementation of Phase 8 Step 4E must adhere to this rule. It is forbidden to implement `has_memory_tags`, `has_subgoal_tags`, etc., using new regex scans in the runtime layer.
+
+---
+
 ## Consumer Inventory
 
 This table documents every major consumer of response semantics, their current data sources, and their migration path. It is the primary artifact of the "Phase 2: Consumer Inventory" audit.

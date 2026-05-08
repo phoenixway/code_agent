@@ -221,7 +221,7 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- **Phase 8 Step 4E: Compiler/Runtime Fact Implementation**: Implement the compiler and `RuntimeProtocolSemantics` changes to make the new characterization tests pass. This is not yet authorized.
+- **Phase 8 Step 4E: Compiler/Runtime Fact Implementation**: Implement the compiler and `RuntimeProtocolSemantics` changes to make the new characterization tests pass. This step is pending explicit approval and is not yet authorized.
 
 ## Test Status
 
