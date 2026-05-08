@@ -178,10 +178,11 @@ This document is the single source of truth for the current state of the Semanti
   - The new `kind` field is now populated, but the legacy `ok`, `reason`, and `details` fields were preserved for backward compatibility.
   - Characterization tests in `tests/test_action_policy.py` were updated to assert the new `kind` and continue to pass, proving no behavior change.
   - No consumers were migrated.
-- **Phase 7 Step 4: Consumer Migration (Design)**
-  - The design for migrating `ResponsePipelinePrevalidationMixin._reject_invalid_atomic_bundle_before_transition` to use the typed `AtomicBundleActionValidationResult.kind` is approved.
-  - The design requires preserving legacy `reason` and `details` fields for prompts, logs, and plans to ensure exact behavior preservation.
-  - Implementation is authorized for this consumer only.
+- **Phase 7 Step 4: Consumer Migration (Implementation)**
+  - Migrated `ResponsePipelinePrevalidationMixin._reject_invalid_atomic_bundle_before_transition` to use `AtomicBundleActionValidationResult.kind` for branch selection.
+  - A fallback to the legacy `reason` string was preserved for backward compatibility.
+  - The use of legacy `reason` and `details` fields for prompts, logs, and plans was preserved to ensure exact behavior preservation.
+  - All characterization tests passed, and runtime behavior is unchanged.
 
 ## Known Authority Boundaries
 
@@ -197,7 +198,7 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Implement Phase 7 Step 4: Consumer Migration (`ResponsePipelinePrevalidationMixin`).
+- Conduct Phase 7 closure review: decide whether to conclude the phase or defer cleanup of legacy `reason`/`details` branching.
 
 ## Test Status
 

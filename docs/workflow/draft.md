@@ -47,4 +47,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 43. Phase 7 Step 3B (`ActionPolicyHandler` internal refactor) design: approved.
 44. Phase 7 Step 3B implementation: done.
 45. Phase 7 Step 4 (consumer migration) design: approved.
-46. Next: Implement Phase 7 Step 4 only.
+46. Phase 7 Step 4 implementation: done.
+47. Next: Conduct Phase 7 closure review.

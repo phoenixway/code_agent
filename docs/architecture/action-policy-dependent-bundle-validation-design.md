@@ -111,14 +111,15 @@ The following steps are future candidates. Each requires a separate approval.
 - **Step 3B: `ActionPolicyHandler` Refactor (Done)**:
     - **Goal**: Internally refactor `ActionPolicyHandler.validate_atomic_bundle_action` to produce the new typed `AtomicBundleActionValidationResult`.
     - **Implementation**: The method was refactored to return the typed result. The legacy `ok`, `reason`, and `details` fields were preserved exactly for backward compatibility. Characterization tests were updated to assert the new `kind` and continue to pass, proving no behavior change. No consumers were migrated.
-- **Step 4: Consumer Migration (Approved for Implementation)**:
+- **Step 4: Consumer Migration (Done)**:
     - **Goal**: Refactor `ResponsePipelinePrevalidationMixin._reject_invalid_atomic_bundle_before_transition` to use the new typed result from `validate_atomic_bundle_action`.
     - **Implementation**:
-        - The migration is authorized for `ResponsePipelinePrevalidationMixin._reject_invalid_atomic_bundle_before_transition` only.
-        - The `if/elif` logic will be refactored to switch on `result.kind` instead of string comparisons on `result.reason`.
-        - The implementation must continue to use the legacy `result.reason` and `result.details` fields for generating prompts, log metadata, and `AtomicBundlePlan` fields to ensure exact behavior preservation.
-        - All characterization tests must continue to pass without weakening expectations.
-        - Future cleanup to remove the legacy `reason`/`details` fields is not authorized by this step.
+        - The migration of `_reject_invalid_atomic_bundle_before_transition` is complete.
+        - The logic now uses `result.kind` for branch selection for the `REJECTED_MISSING_FILE_CONTENT` case.
+        - A fallback to the legacy `result.reason == "missing_file_content_block"` was preserved to ensure backward compatibility.
+        - The implementation continues to use the legacy `result.reason` and `result.details` fields for generating prompts, log metadata, and `AtomicBundlePlan` fields, preserving exact behavior.
+        - All characterization tests continue to pass.
+        - Runtime behavior is unchanged.
 
 ## 7. Explicitly Deferred
 
@@ -137,4 +138,4 @@ The following steps are future candidates. Each requires a separate approval.
 
 ## 9. Recommendation
 
-This design is approved. The producer-side refactor of `ActionPolicyHandler` is complete. The implementation of **Phase 7, Step 4: Consumer Migration** is now approved.
+This design is approved. The producer-side refactor of `ActionPolicyHandler` and the consumer migration in `ResponsePipelinePrevalidationMixin` are complete. The next step is to conduct a closure review for Phase 7 to decide whether to conclude the phase or defer any cleanup of the legacy `reason`/`details` branching.

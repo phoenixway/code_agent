@@ -4,7 +4,7 @@ sessions/*.json
 target.py
 .DS_Store
 *.log
-debug.log
+debug.log*
 communication.log
 .angelica_session.json
 .angelica/

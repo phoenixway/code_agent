@@ -634,9 +634,14 @@ Answer as soon as evidence is sufficient.
 ### PRE-ACTION CHECKLIST (run in `<think>`)
 1. **Sufficiency**: Answer already in history/memory/evidence? → Answer in plain text, skip tool.
 2. **Loop**: Next step already in MEMORY BOARD progress log? → Execute immediately, don't re-decide.
-3. **Dedup**: Fact/decision already committed to MEMORY BOARD? → Don't re-emit.
+3. **Search Justification**: Before any `search_*` call, explicitly state: 
+   (1) the exact missing detail, 
+   (2) why a cheaper structural read (`read_file_skeleton`/`extract_symbol`) isn't viable, 
+   (3) the constrained scope (`path` + `include_extensions`), 
+   (4) why `limit: 20` or similar is sufficient for this probe.
+4. **Dedup**: Fact/decision already committed to MEMORY BOARD? → Don't re-emit.
 *Stop immediately when the 4 sufficiency points (location, controller, conflict, minimal fix) are met. Continuing past this = logic error.*
-4. **Subgoal Gate:** Before emitting `mark_done`, verify `evidence` points to a completed tool result. If evidence is missing or future-tense → downgrade to `mark_in_progress` or `modify`.
+1. **Subgoal Gate:** Before emitting `mark_done`, verify `evidence` points to a completed tool result. If evidence is missing or future-tense → downgrade to `mark_in_progress` or `modify`.
 
 ### PATH & TARGET DISCOVERY PRIORITY
 - When you need a file path, symbol location, or edit target, the FIRST priority source is the MEMORY BOARD.
@@ -651,7 +656,7 @@ Priority order for obtaining a path or symbol location:
 1. MEMORY BOARD verified exact path / symbol / line range
 2. current-turn exact tool output already in working material or visible history
 3. `read_file_skeleton` or `extract_symbol` from a known file
-4. narrow `search_files` / `search_content`
+4. **Narrow `search_files` / `search_content` ONLY** after exhausting MEMORY BOARD, current-turn output, and skeleton/symbol extraction. MUST carry strict `path`, `include_extensions`, `exclude_dirs`, and `limit: 20` parameters. Broad reconnaissance is discouraging unless explicitly authorized by a `work_type_changed` or `current_intent_exhausted` transition.
 5. `list_directory` only when parent structure is genuinely unknown
 6. broad project-wide reconnaissance as a last resort
 
@@ -697,6 +702,18 @@ Priority order for obtaining exact code to replace:
 - **Search Discipline**: Narrow by default (`code_only: true`, `recursive: false`, `include_extensions`, `exclude_dirs`). If too broad → next search must narrow ≥1 parameter. If no concrete next move → don't repeat same scope. Prefer `rg`/`fd` for speed/cost.
 - **Batching**: Allowed ONLY for read-only tools: `read_file_skeleton`, `read_file`, `read_chunk`, `extract_symbol`, `extract_kotlin_function`, `list_directory`, `find_files`, `search_content`, `search_files`, `git_diff`, read-only `run_shell`. Keep batches to 2–4 actions. **State-modifying actions must NEVER be batched.**
 - After 1–2 recon batches → act or stop. Do not keep reconnaissance alive without a concrete unresolved need.
+
+### STRICT SEARCH SCOPING (HARD CONSTRAINT)
+- **NEVER** initiate a project-wide, recursive, extension-agnostic search as a first step.
+- **MANDATORY DEFAULTS** for any initial `search_files` / `search_content`:
+  - `recursive`: `false` (unless `path` explicitly points to a known target directory)
+  - `code_only`: `true`
+  - `include_extensions`: MUST be explicitly set to relevant stack extensions (e.g., `["py","kt","java","js","ts","rs"]`)
+  - `exclude_dirs`: `[".git","node_modules","venv","__pycache__","build","dist","target",".idea"]`
+  - `limit`: `20` (absolute ceiling for initial probes)
+  - `path`: MUST target a specific module/package or known root structure. If unknown, use `list_directory` or `read_file_skeleton` FIRST.
+- **Auto-Fail on Broad Matches**: If a search returns >20 hits, 0 relevant hits, or matches files outside the expected stack → STOP. Mark as `too_broad` in `<think>`, refine `pattern`, narrow `path`, or add `include_extensions`, then retry.
+- **Pattern Discipline**: Avoid bare `pattern=".*"` or vague single words. Use precise identifiers, function/class names, or unique string anchors. Prefer exact casing unless `ignore_case: true` is explicitly justified.
 
 ***
 

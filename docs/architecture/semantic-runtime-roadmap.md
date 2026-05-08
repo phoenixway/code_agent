@@ -630,7 +630,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 7 Step 4: Consumer Migration
 
-- **Status**: Not Started.
+- **Status**: Done.
 - **Goal**: Migrate `ResponsePipelinePrevalidationMixin._reject_invalid_atomic_bundle_before_transition` to use the typed `AtomicBundleActionValidationResult.kind`.
 - **Allowed**:
     - Refactor `_reject_invalid_atomic_bundle_before_transition` to branch on `result.kind`.
@@ -641,7 +641,19 @@ This document outlines the phased plan to migrate the runtime from legacy respon
     - Changing `ActionPolicyHandler`.
     - Changing prompts, reason strings, or source markers.
     - Any runtime behavior changes.
-- **Done When**: The consumer is migrated, all characterization tests pass, and runtime behavior is unchanged.
+- **Done When**: The consumer was migrated with a legacy `reason` fallback, all characterization tests passed, and runtime behavior was unchanged.
+
+---
+
+#### Phase 7 Closure Review
+
+- **Status**: Not Started.
+- **Goal**: Decide whether to conclude Phase 7 or defer any cleanup/removal of legacy `reason`/`details` branching.
+- **Allowed**:
+    - Documentation updates to approve or reject a plan for legacy field cleanup.
+- **Forbidden**:
+    - Any production code or test changes.
+- **Done When**: A decision on whether to proceed with cleanup is documented.
 
 ---
 
