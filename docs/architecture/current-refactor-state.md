@@ -6,7 +6,7 @@ This document is the single source of truth for the current state of the Semanti
 
 - **Phase**: Phase 8 Step 4K: First Consumer Migration (Design)
 - **Status**: Complete.
-- **Next Step**: Phase 8 Step 4L: First Consumer Migration (Implementation).
+- **Next Step**: Phase 8 Step 4L: First Consumer Migration (Implementation), pending explicit approval.
 - **Boundary**: Consumer migration remains blocked. Production behavior remains unchanged.
 
 ## Step 4I Parity Matrix
