@@ -103,7 +103,7 @@ class TestTuiUiSanitizer(unittest.TestCase):
             "thinking",
             spinner_index=2,
         )
-        self.assertEqual("● gemini-2.5-pro", title)
+        self.assertEqual("◝ gemini-2.5-pro", title)
 
 
 if __name__ == "__main__":

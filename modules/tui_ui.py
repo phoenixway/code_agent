@@ -60,10 +60,12 @@ class TuiUI:
     CHAT_OUTPUT_PREVIEW_MAX_CHARS = 4000
     TOOL_ARG_PREVIEW_MAX_CHARS = 1200
     TITLE_SPINNER_FRAMES = (
-        "∙",
-        "•",
-        "●",
-        "•",
+        "◜",
+        "◠",
+        "◝",
+        "◞",
+        "◡",
+        "◟",
     )
     TERMINAL_TAB_FRAMES = (
         "·  ",
@@ -230,7 +232,7 @@ class TuiUI:
     def _ensure_title_spinner_timer(self) -> None:
         if self._title_spinner_timer is None:
             self._title_spinner_timer = self.app.set_interval(
-                0.14,
+                0.24,
                 self._advance_title_spinner,
                 pause=True,
             )

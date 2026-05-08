@@ -49,8 +49,9 @@ This inventory documents the current state of components involved in visible tex
 - **Step 1: Design-Only Inventory (Done)**: This document.
 - **Step 2: Characterization Tests (Done)**: Added characterization tests to lock down the exact behavior of all identified components and scenarios. This was a tests-only step. No production code was changed. Key behaviors characterized include compiler shape analysis, `ResponseSemantics.is_plaintext_answer_path`, `terminal_plaintext_completion_status`, and others.
 - **Step 3: Typed Model Scaffolding (Design)**: The design for the typed model scaffolding is complete and approved for a scaffolding-only implementation (Step 3A).
-- **Step 3A: Typed Model Scaffolding (Implementation)**: Create the `TerminalAnswerKind` enum and `TerminalAnswerSemanticResult` dataclass. This is a scaffolding-only step.
-- **Step 4: Classifier Implementation (Shadow Mode)**: Implement the `TerminalAnswerClassifier` and run it in shadow mode, logging its classifications against legacy decisions without changing behavior.
+- **Step 3A: Typed Model Scaffolding (Implementation)**: Done. Created `TerminalAnswerKind` enum and `TerminalAnswerSemanticResult` dataclass in `terminal_answer_models.py`. No classifier logic was implemented, and no consumers were migrated.
+- **Step 4A: Compiler/Runtime Semantics Tag Coverage Review (Design-Only)**: Review whether `RuntimeProtocolSemantics` exposes enough structural facts to support a reliable `TerminalAnswerClassifier`.
+- **Step 4B: Classifier Implementation (Shadow Mode) (Design Review)**: Design the `TerminalAnswerClassifier` and a plan for running it in shadow mode. Implementation is not authorized.
 - **Step 5: First Consumer Migration**: Migrate the lowest-risk consumer (e.g., `is_leaked_system_result`) to use the new classifier.
 - **Step 6: Authority Consolidation**: Systematically migrate remaining consumers (`IntentTransitionHandler`, `PreDispatchPipeline`, etc.) to the new classifier, removing legacy logic one component at a time.
 - **Step 7: Cleanup**: Once all consumers are migrated, remove the old regex helpers and redundant logic.
@@ -88,11 +89,36 @@ Based on the characterization tests, the initial candidate kinds are:
 - `INVALID_OR_TRUNCATED_TERMINAL_TEXT`: The text appears to be an incomplete or invalid final answer.
 
 ### Next Step
-The design is approved for **Phase 8, Step 3A: Typed Model Scaffolding (Implementation)**. This is a narrow, scaffolding-only step.
+The scaffolding (Step 3A) is complete. The approved next step is to conduct the **Phase 8, Step 4A: Compiler/Runtime Semantics Tag Coverage Review**. This is a design-only review to ensure the `TerminalAnswerClassifier` will have sufficient structural data. Implementation of the classifier is not authorized.
 
-**Implementation is NOT authorized for the classifier itself or for any consumer migration.** The `TerminalAnswerClassifier` remains a candidate only.
+## 7. Compiler/Runtime Semantics Tag Coverage Review (Step 4A)
 
-## 7. Explicitly Deferred
+Before designing the `TerminalAnswerClassifier`, a review is required to ensure the compiler and `RuntimeProtocolSemantics` adapter provide sufficient structural information.
+
+### Problem
+Characterization tests (Step 2) revealed that the compiler currently collapses multiple semantically distinct responses into `shape=PLAINTEXT_ONLY`. This includes cases with subgoals, memory checkpoints, and pre-action text. A reliable classifier cannot be built on this ambiguous signal and would be forced to fall back to fragile regex on the raw response.
+
+### Review Question
+Does the `RuntimeProtocolSemantics` snapshot expose enough structural facts for the `TerminalAnswerClassifier` to reliably classify all `TerminalAnswerKind` scenarios without resorting to raw-response regex?
+
+### Inventory
+The review should produce an inventory mapping each `TerminalAnswerKind` to the compiler/runtime signals available to classify it.
+- **Current Compiler Shape**: e.g., `PLAINTEXT_ONLY`, `MEMORY_TEXT`.
+- **Current `RuntimeProtocolSemantics` Fields**: e.g., `has_visible_answer`, `has_pre_action_text`.
+- **Structural Facts Available?**: Are memory, subgoal, intent, and action tags represented as structured data?
+- **Signal Sufficiency**: Is the combination of signals sufficient for this `TerminalAnswerKind`?
+- **Missing Facts**: What structural facts are missing from `RuntimeProtocolSemantics`?
+
+### Likely Missing Facts to Investigate
+- `has_memory_checkpoint` / `has_memory_tags`
+- `has_subgoal_tags`
+- `has_intent_completion`
+- `has_pre_action_visible_text`
+- `has_action_after_visible_text`
+- `checkpoint_kind` (e.g., memory vs. subgoal)
+- `visible_text_source` (e.g., pre-action, post-intent)
+
+## 8. Explicitly Deferred
 
 - A full refactor of `ResponsePipeline` or `DispatchPipeline`.
 - Changes to `ActionPolicy`.

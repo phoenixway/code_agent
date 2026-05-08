@@ -691,11 +691,30 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 8 Step 3A: Typed Model Scaffolding (Implementation)
 
-- **Status**: Approved / Not Started.
+- **Status**: Done.
 - **Goal**: Create the scaffolding for the `TerminalAnswerKind` enum and `TerminalAnswerSemanticResult` dataclass.
 - **Allowed**: Create new files for the typed models and add basic unit tests for the types themselves.
 - **Forbidden**: Do not implement the `TerminalAnswerClassifier`. Do not implement any classification logic. Do not migrate any consumers. Do not change any runtime behavior.
-- **Done When**: The enum and dataclass are defined in new files with passing tests for the types. No production logic has been changed.
+- **Done When**: `terminal_answer_models.py` and `test_terminal_answer_models.py` were created. The `TerminalAnswerKind` enum and `TerminalAnswerSemanticResult` dataclass were defined. All tests passed, and no runtime behavior was changed.
+
+---
+
+#### Phase 8 Step 4A: Compiler/Runtime Semantics Tag Coverage Review (Design-Only)
+
+- **Status**: Approved / Not Started.
+- **Goal**: Review whether `RuntimeProtocolSemantics` exposes enough structural facts to support a reliable `TerminalAnswerClassifier`.
+- **Forbidden**: Any production code or test changes.
+- **Done When**: The design-only review is complete and documented in `visible-text-terminal-answer-semantics-design.md`.
+
+---
+
+#### Phase 8 Step 4B: Classifier Implementation (Shadow Mode) (Design Review)
+
+- **Status**: Not Started.
+- **Goal**: Design the `TerminalAnswerClassifier` and a plan for running it in shadow mode.
+- **Prerequisite**: Phase 8 Step 4A must be complete.
+- **Forbidden**: Implementation is not authorized. Any production code changes.
+- **Done When**: A decision on whether to proceed with designing the classifier is documented.
 
 ---
 

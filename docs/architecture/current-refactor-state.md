@@ -183,6 +183,12 @@ This document is the single source of truth for the current state of the Semanti
   - The review concluded that the ambiguity of current signals (e.g., `compiler_shape=PLAINTEXT_ONLY` for multiple distinct scenarios) justifies introducing a typed result model.
   - The design for a `TerminalAnswerKind` enum and `TerminalAnswerSemanticResult` dataclass is approved for scaffolding only.
   - Implementation of the classifier logic and migration of consumers is not authorized.
+- **Phase 8 Step 3A: Typed Model Scaffolding (Implementation)**
+  - Created `modules/agent/orchestration/responses/terminal_answer_models.py` with `TerminalAnswerKind` enum and `TerminalAnswerSemanticResult` dataclass.
+  - Created `tests/test_terminal_answer_models.py` with unit tests for the new types.
+  - All tests passed.
+  - No `TerminalAnswerClassifier` was created, no classification logic was implemented, and no consumers were migrated.
+  - Runtime behavior is unchanged.
 
 ## Known Authority Boundaries
 
@@ -198,7 +204,7 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- **Phase 8 Step 3A (Implementation)**: Implement the scaffolding for the `TerminalAnswerKind` enum and `TerminalAnswerSemanticResult` dataclass. This is a scaffolding-only step with no logic or consumer changes.
+- **Phase 8 Step 4A (Design-Only Review)**: Review compiler/runtime semantics tag coverage to ensure sufficient structural facts are available for the `TerminalAnswerClassifier`. Implementation of the classifier is not authorized.
 
 ## Test Status
 

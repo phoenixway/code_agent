@@ -55,4 +55,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 51. Phase 8 Step 2 (characterization tests) design: approved.
 52. Phase 8 Step 2 (characterization tests) implementation: done.
 53. Phase 8 Step 3 (Design Review): done. Approved typed model scaffolding.
-54. Next: Implement Phase 8 Step 3A (scaffolding only).
+54. Phase 8 Step 3A (scaffolding): done.
+55. Next: Phase 8 Step 4A (Design-Only Review) for compiler/runtime semantics tag coverage.
