@@ -5,7 +5,7 @@
 - **Step 2A (Error-Code Logic) Status**: Done
 - **Step 2B (Shape Logic) Status**: Step 2B.3 Done
 - **Step 2C (Parity Testing) Status**: Done
-- **Step 3 (Consumer Migration) Status**: Design in Review
+- **Step 3 (Consumer Migration) Status**: Design Approved
 
 ## 1. Purpose and Guiding Principles
 
@@ -301,7 +301,7 @@ This section details the design for Step 2C. Implementation is complete. Parity 
 
 ### 8.8. Step 3 Design: First Consumer Migration
 
-This section details the design for Step 3. Implementation is not authorized until this design is approved.
+This section details the design for Step 3. Implementation is authorized for the `ResponsePipelinePrevalidationMixin._reject_compiler_invalid_atomic_bundle_before_transition` consumer only.
 
 - **Scope and Boundaries**:
   - **Goal**: Migrate the first, lowest-risk consumer of bundle validation logic to use the `BundleSemanticValidator`.

@@ -162,7 +162,7 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Design and approve Phase 6 Step 3 (first consumer migration for `BundleSemanticValidator`).
+- Implement Phase 6 Step 3 (first consumer migration for `BundleSemanticValidator`).
 
 ## Test Status
 
