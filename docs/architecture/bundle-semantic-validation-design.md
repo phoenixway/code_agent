@@ -4,8 +4,8 @@
 - **Step 1 (Scaffolding) Status**: Done
 - **Step 2A (Error-Code Logic) Status**: Done
 - **Step 2B (Shape Logic) Status**: Step 2B.3 Done
-- **Step 2C Status**: Design in Review
-- **Step 2C Implementation**: Not authorized
+- **Step 2C Status**: Design Approved
+- **Step 2C Implementation**: Authorized (Tests Only)
 
 ## 1. Purpose and Guiding Principles
 
@@ -272,7 +272,7 @@ This section details the design for Step 2B.3. Implementation is complete for th
 
 ### 8.7. Step 2C Design: Parity Testing
 
-This section details the design for Step 2C. Implementation is not authorized until this design is approved.
+This section details the design for Step 2C. Implementation is authorized for tests only, as described below. Production code changes and consumer migration are forbidden.
 
 - **Scope and Boundaries**:
   - **Goal**: Create parity tests that prove the `BundleSemanticValidator`'s classifications are behaviorally equivalent to the documented legacy logic for all classifications implemented through Step 2B.

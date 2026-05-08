@@ -504,14 +504,19 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 6 Step 2C: Parity Testing
 
-- **Status**: Design in Review.
-- **Goal**: Design and document parity tests to prove behavioral equivalence between the `BundleSemanticValidator` and the legacy prevalidation logic before any consumer migration.
+- **Status**: Not Started.
+- **Goal**: Implement parity tests to prove behavioral equivalence between the `BundleSemanticValidator` and the documented legacy logic for all classifications implemented through Step 2B.
 - **Allowed**:
-    - Update `docs/architecture/bundle-semantic-validation-design.md` with the detailed design for Step 2C.
+    - Create a new test file: `tests/test_bundle_semantic_validator_parity.py`.
+    - Use explicit mapping tables and `pytest.mark.parametrize` fixtures.
+    - Update `tests/test_bundle_semantic_validator.py` only if necessary for shared test fixtures.
 - **Forbidden**:
-    - Implementation before design approval.
+    - Any production code changes.
     - Migrating any consumers.
-- **Done When**: The design for Step 2C is documented and ready for approval.
+    - Adding any new classification behavior to the validator.
+    - Classifying `ACTION_ONLY` or any visible-text shapes.
+    - Implementing `INVALID_INTENT_COMPLETE_WITH_ACTION`.
+- **Done When**: The parity tests are implemented with passing results, and no production code has been changed.
 
 ---
 

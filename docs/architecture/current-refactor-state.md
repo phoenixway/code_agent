@@ -156,7 +156,7 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Design and approve Phase 6 Step 2C (`BundleSemanticValidator` parity testing).
+- Implement Phase 6 Step 2C (`BundleSemanticValidator` parity tests only).
 
 ## Test Status
 
