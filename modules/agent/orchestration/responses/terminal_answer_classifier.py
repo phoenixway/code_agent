@@ -80,7 +80,17 @@ class TerminalAnswerClassifier:
                 visible_text=visible_text,
             )
 
-        # 3. Compiler fact: Pre-action text
+        # 3. Internal summary-like text
+        if input.is_internal_summary:
+            return TerminalAnswerSemanticResult(
+                kind=TerminalAnswerKind.INTERNAL_SUMMARY_LIKE_TEXT,
+                source="runtime_policy",
+                reason_code="legacy_internal_summary_helper",
+                evidence=("is_internal_summary",),
+                visible_text=visible_text,
+            )
+
+        # 4. Compiler fact: Pre-action text
         if semantics.visible_text_source == "PRE_ACTION_TEXT":
             return TerminalAnswerSemanticResult(
                 kind=TerminalAnswerKind.PRE_ACTION_VISIBLE_TEXT_WITH_ACTION,
@@ -90,7 +100,7 @@ class TerminalAnswerClassifier:
                 visible_text=semantics.pre_action_text,
             )
 
-        # 4. Compiler fact: Intent completion text
+        # 5. Compiler fact: Intent completion text
         if semantics.visible_text_source == "INTENT_COMPLETION_TEXT":
             return TerminalAnswerSemanticResult(
                 kind=TerminalAnswerKind.INTENT_COMPLETE_WITH_VISIBLE_TEXT,
@@ -100,7 +110,7 @@ class TerminalAnswerClassifier:
                 visible_text=visible_text,
             )
 
-        # 5. Compiler fact: Checkpoint accompanying text
+        # 6. Compiler fact: Checkpoint accompanying text
         if semantics.visible_text_source == "CHECKPOINT_ACCOMPANYING_TEXT":
             return TerminalAnswerSemanticResult(
                 kind=TerminalAnswerKind.CHECKPOINT_WITH_VISIBLE_TEXT,
@@ -110,7 +120,7 @@ class TerminalAnswerClassifier:
                 visible_text=visible_text,
             )
 
-        # 6. Compiler fact: Checkpoint only
+        # 7. Compiler fact: Checkpoint only
         if (
             semantics.has_memory_tags or semantics.has_subgoal_tags or semantics.has_memory_checkpoint
         ) and not semantics.has_visible_answer and not semantics.has_pre_action_text:
@@ -121,7 +131,7 @@ class TerminalAnswerClassifier:
                 evidence=("has_memory_tags", "has_subgoal_tags", "has_memory_checkpoint"),
             )
 
-        # 7. Compiler fact: Pure plaintext
+        # 8. Compiler fact: Pure plaintext
         if semantics.visible_text_source == "PURE_PLAINTEXT":
             return TerminalAnswerSemanticResult(
                 kind=TerminalAnswerKind.PLAINTEXT_TERMINAL_ANSWER,
@@ -131,7 +141,7 @@ class TerminalAnswerClassifier:
                 visible_text=visible_text,
             )
 
-        # 8. Compiler fact: No visible text
+        # 9. Compiler fact: No visible text
         if not semantics.has_visible_answer and not semantics.has_pre_action_text:
             return TerminalAnswerSemanticResult(
                 kind=TerminalAnswerKind.NO_VISIBLE_TEXT,
@@ -140,7 +150,7 @@ class TerminalAnswerClassifier:
                 evidence=("has_visible_answer", "has_pre_action_text"),
             )
 
-        # 9. Fallback
+        # 10. Fallback
         return TerminalAnswerSemanticResult(
             kind=TerminalAnswerKind.UNKNOWN,
             source="fallback",

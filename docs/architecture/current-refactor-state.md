@@ -5,12 +5,28 @@ This document is the single source of truth for the current state of the Semanti
 ## Current Phase
 
 - **Phase**: Phase 8 Step 4I: Parity Matrix / Legacy Helper Integration
-- **Status**: In Progress.
+- **Status**: Complete.
   - **Part 1 (Complete)**: Parity logging with `legacy_kind` and `is_match` is implemented.
   - **Part 2 (Complete)**: The `LEAKED_SYSTEM_RESULT` legacy rule is integrated into the `TerminalAnswerClassifier`.
   - **Part 3 (Complete)**: The `INVALID_OR_TRUNCATED_TERMINAL_TEXT` legacy rule is integrated into the `TerminalAnswerClassifier`.
-- **Next Step**: Part 4, integrating the `INTERNAL_SUMMARY_LIKE_TEXT` rule, is pending explicit approval.
+  - **Part 4 (Complete)**: The `INTERNAL_SUMMARY_LIKE_TEXT` legacy rule is integrated into the `TerminalAnswerClassifier`.
+- **Next Step**: Phase 8 Step 4J: Consumer Migration Design Gate.
 - **Boundary**: Consumer migration remains blocked. Production behavior remains unchanged.
+
+## Step 4I Parity Matrix
+
+| `TerminalAnswerKind` | Implemented in classifier? | Source type | Legacy parity logging available? | Consumer migration status | Remaining risk / deferred notes |
+|---|---|---|---|---|---|
+| `LEAKED_SYSTEM_RESULT` | Yes | `legacy_compatible_rule` | Yes | Blocked | Regex-compatible rule only; classifier remains shadow-only. |
+| `INVALID_OR_TRUNCATED_TERMINAL_TEXT` | Yes | `legacy_compatible_rule` | Yes | Blocked | Depends on legacy plaintext-completion heuristic; no policy migration. |
+| `INTERNAL_SUMMARY_LIKE_TEXT` | Yes | `runtime_policy` | Yes | Blocked | Caller-computed boolean flag; no stateful runtime objects enter classifier. |
+| `PRE_ACTION_VISIBLE_TEXT_WITH_ACTION` | Yes | `compiler_fact` | No dedicated legacy parity kind | Blocked | Compiler-fact classification exists, but no consumer migration is approved. |
+| `INTENT_COMPLETE_WITH_VISIBLE_TEXT` | Yes | `compiler_fact` | No dedicated legacy parity kind | Blocked | Structural fact only; runtime final-answer policy remains separate. |
+| `CHECKPOINT_WITH_VISIBLE_TEXT` | Yes | `compiler_fact` | No dedicated legacy parity kind | Blocked | Board/checkpoint consumers are not migrated. |
+| `CHECKPOINT_ONLY` | Yes | `compiler_fact` | No dedicated legacy parity kind | Blocked | Shadow signal only; no board consumer migration. |
+| `PLAINTEXT_TERMINAL_ANSWER` | Yes | `compiler_fact` | Yes | Blocked | Classifier output is not dispatch or stop authority. |
+| `NO_VISIBLE_TEXT` | Yes | `compiler_fact` | Indirectly | Blocked | Fallback structural case only; no consumer authority changes. |
+| `UNKNOWN` | Yes | `fallback` | Indirectly | Blocked | Safe shadow fallback for non-matching cases. |
 
 ## Completed Governance
 
@@ -235,12 +251,13 @@ This document is the single source of truth for the current state of the Semanti
   - The actual comparison against legacy logic is deferred to a later step.
   - The call is protected by an exception handler to prevent it from affecting runtime behavior.
   - No consumers were migrated, and no production behavior was changed.
-- **Phase 8 Step 4I: Parity Matrix / Legacy Helper Integration (In Progress)**
+- **Phase 8 Step 4I: Parity Matrix / Legacy Helper Integration (Complete)**
   - **Part 1 (Complete)**: Implemented a diagnostic helper in `ResponsePipelinePrevalidationMixin` to compute a `legacy_kind` for terminal answers. The shadow logging now records both `classifier_kind` and `legacy_kind`, and computes `is_match`.
   - **Part 2 (Complete)**: Integrated the `LEAKED_SYSTEM_RESULT` legacy rule into the `TerminalAnswerClassifier`.
   - **Part 3 (Complete)**: Integrated the `INVALID_OR_TRUNCATED_TERMINAL_TEXT` legacy rule into the `TerminalAnswerClassifier`.
-  - This enables building a parity matrix from logs.
-  - Integration of other legacy helper branches into the classifier is deferred.
+  - **Part 4 (Complete)**: Integrated the `INTERNAL_SUMMARY_LIKE_TEXT` legacy rule into the `TerminalAnswerClassifier` using a caller-computed boolean flag in shadow mode.
+  - A Step 4I parity matrix is now documented for all `TerminalAnswerKind` classifications.
+  - All approved Step 4I legacy helper branches are now integrated in shadow mode.
   - No production behavior was changed.
 ## Known Authority Boundaries
 
@@ -256,7 +273,7 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- **Phase 8 Step 4I (Part 4): Legacy Helper Integration**: Integrate the `INTERNAL_SUMMARY_LIKE_TEXT` rule into the `TerminalAnswerClassifier` in shadow mode. This is pending explicit approval. Consumer migration remains blocked, and production behavior must remain unchanged.
+- **Phase 8 Step 4J: Consumer Migration Design Gate**: Review the Step 4I parity matrix and available shadow-log parity evidence, then decide whether a narrow consumer migration target can be proposed. This is a review/design-only step. No consumers may be migrated, and production behavior must remain unchanged.
 
 ## Test Status
 

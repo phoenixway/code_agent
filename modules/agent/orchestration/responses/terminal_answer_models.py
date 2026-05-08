@@ -37,6 +37,7 @@ class TerminalAnswerClassifierInput:
 
     runtime_semantics: "RuntimeProtocolSemantics"
     raw_response_text: str
+    is_internal_summary: bool = False
 
 
 @dataclass(frozen=True)

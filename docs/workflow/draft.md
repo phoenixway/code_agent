@@ -71,4 +71,8 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 67. Phase 8 Step 4I (Part 2): Legacy Helper Integration (LEAKED_SYSTEM_RESULT): done.
 68. Phase 8 Step 4I (Part 3) design gate (INVALID_OR_TRUNCATED): done.
 69. Phase 8 Step 4I (Part 3) implementation: done.
-70. Next: Phase 8 Step 4I (Part 4) Legacy Helper Integration (`INTERNAL_SUMMARY_LIKE_TEXT`), pending explicit approval.
+70. Phase 8 Step 4I (Part 4) design gate (`INTERNAL_SUMMARY_LIKE_TEXT`): done.
+71. Phase 8 Step 4I (Part 4) implementation (`INTERNAL_SUMMARY_LIKE_TEXT`): done.
+72. Phase 8 Step 4I parity matrix / closure docs: done.
+73. Phase 8 Step 4I: complete.
+74. Next: Phase 8 Step 4J Consumer Migration Design Gate (review/design-only, no consumer migration).

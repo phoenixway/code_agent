@@ -26,6 +26,7 @@ class TestResponsePipelinePrevalidationShadow(unittest.TestCase):
                 self.stage_logger = MagicMock()
                 self.parser = MagicMock()
                 self.semantics = MagicMock()
+                self._is_internal_summary_instead_of_final_answer = MagicMock(return_value=False)
 
             def _compiler_invalid_kind(self, compiler_analysis):
                 return ""
@@ -34,8 +35,6 @@ class TestResponsePipelinePrevalidationShadow(unittest.TestCase):
         # Default mock behaviors
         self.harness.parser.parse.return_value = []
         self.harness.semantics.looks_like_leaked_system_result.return_value = False
-        if hasattr(self.harness.semantics, "_is_internal_summary_instead_of_final_answer"):
-            self.harness.semantics._is_internal_summary_instead_of_final_answer.return_value = False
         if hasattr(self.harness.semantics, "is_plaintext_answer_path"):
             self.harness.semantics.is_plaintext_answer_path.return_value = False
 
@@ -230,5 +229,26 @@ class TestResponsePipelinePrevalidationShadow(unittest.TestCase):
             classifier_evidence=["raw_response_text", "visible_text"],
             classifier_visible_text_present=True,
             legacy_kind="invalid_or_truncated_terminal_text",
+            is_match=True,
+        )
+
+    @patch("modules.agent.orchestration.responses.response_pipeline_prevalidation.terminal_plaintext_completion_status")
+    def test_shadow_classifier_logs_internal_summary_kind_match(self, mock_status):
+        """Tests that internal summary parity is logged when the helper returns True."""
+        mock_status.return_value = (True, "", "")
+        self.harness._is_internal_summary_instead_of_final_answer.return_value = True
+
+        parsed_output = ParsedModelOutput(response="")
+        self.harness._apply_compiler_diagnosis(parsed_output, "Execution snapshot style text.")
+
+        self.harness.stage_logger.log.assert_any_call(
+            "terminal_answer_classifier_shadow",
+            "snapshot",
+            classifier_kind="internal_summary_like_text",
+            classifier_source="runtime_policy",
+            classifier_reason_code="legacy_internal_summary_helper",
+            classifier_evidence=["is_internal_summary"],
+            classifier_visible_text_present=True,
+            legacy_kind="internal_summary_like_text",
             is_match=True,
         )

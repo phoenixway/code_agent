@@ -162,3 +162,41 @@ class TestTerminalAnswerClassifier(unittest.TestCase):
         input_data = TerminalAnswerClassifierInput(semantics, raw_text)
         result = self.classifier.classify(input_data)
         self.assertEqual(result.kind, TerminalAnswerKind.INVALID_OR_TRUNCATED_TERMINAL_TEXT)
+
+    def test_classify_internal_summary_like_text(self):
+        """Tests that an internal summary flag is classified correctly."""
+        raw_text = "Execution snapshot style text."
+        semantics = MockRuntimeSemantics(
+            visible_text_source="PURE_PLAINTEXT",
+            has_visible_answer=True,
+            visible_text=raw_text,
+        )
+        input_data = TerminalAnswerClassifierInput(semantics, raw_text, is_internal_summary=True)
+        result = self.classifier.classify(input_data)
+        self.assertEqual(result.kind, TerminalAnswerKind.INTERNAL_SUMMARY_LIKE_TEXT)
+        self.assertEqual(result.source, "runtime_policy")
+        self.assertEqual(result.reason_code, "legacy_internal_summary_helper")
+
+    def test_leaked_system_result_has_priority_over_internal_summary(self):
+        """Tests that leaked system result has priority over internal summary."""
+        raw_text = "SYSTEM RESULT: The tool output is..."
+        semantics = MockRuntimeSemantics(
+            visible_text_source="PURE_PLAINTEXT",
+            has_visible_answer=True,
+            visible_text=raw_text,
+        )
+        input_data = TerminalAnswerClassifierInput(semantics, raw_text, is_internal_summary=True)
+        result = self.classifier.classify(input_data)
+        self.assertEqual(result.kind, TerminalAnswerKind.LEAKED_SYSTEM_RESULT)
+
+    def test_truncated_text_has_priority_over_internal_summary(self):
+        """Tests that truncated text has priority over internal summary."""
+        raw_text = "Hello"
+        semantics = MockRuntimeSemantics(
+            visible_text_source="PURE_PLAINTEXT",
+            has_visible_answer=True,
+            visible_text=raw_text,
+        )
+        input_data = TerminalAnswerClassifierInput(semantics, raw_text, is_internal_summary=True)
+        result = self.classifier.classify(input_data)
+        self.assertEqual(result.kind, TerminalAnswerKind.INVALID_OR_TRUNCATED_TERMINAL_TEXT)

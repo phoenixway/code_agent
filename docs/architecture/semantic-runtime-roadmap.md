@@ -798,15 +798,24 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 8 Step 4I: Parity Matrix / Legacy Helper Integration
 
-- **Status**: In Progress (Parts 1, 2, and 3 Complete).
+- **Status**: Done.
 - **Goal**: Analyze shadow logs and begin integrating legacy helper branches into the classifier.
 - **Prerequisite**: Step 4H must be complete.
 - **Forbidden**: Consumer migration. Any changes to runtime behavior.
 - **Done When (Part 1)**: The shadow logging was updated to compute and record `legacy_kind` and `is_match`, enabling parity analysis.
 - **Done When (Part 2)**: The `LEAKED_SYSTEM_RESULT` legacy rule was integrated into the classifier.
 - **Done When (Part 3)**: The `INVALID_OR_TRUNCATED_TERMINAL_TEXT` legacy rule was integrated into the classifier.
-- **Done When (Part 4)**: The `INTERNAL_SUMMARY_LIKE_TEXT` legacy rule is integrated into the classifier.
+- **Done When (Part 4)**: The `INTERNAL_SUMMARY_LIKE_TEXT` legacy rule is implemented in the classifier.
 - **Done When (Full)**: A parity matrix is documented, and all key legacy helper branches are integrated into the classifier with passing tests.
+- **Post-Step Boundary**: The classifier remains shadow/diagnostic only. Any consumer migration or authority change requires a new explicitly approved step after the Step 4I parity/closure review.
+
+#### Phase 8 Step 4J: Consumer Migration Design Gate
+
+- **Status**: Next / Not Started.
+- **Goal**: Review the completed Step 4I parity matrix and available shadow-log parity evidence, then decide whether a narrow consumer migration target can be proposed.
+- **Allowed**: Design-only review, parity analysis, migration-candidate selection, and documentation updates.
+- **Forbidden**: Consumer migration. Any dispatch, policy, UI, or other production behavior change. Any authority transfer to the classifier.
+- **Done When**: A design/review conclusion is documented that either proposes a specific narrow migration target for later approval or explicitly defers migration due to parity/risk concerns.
 
 ---
 

@@ -395,9 +395,9 @@ The classifier must be deterministic and priority-ordered. It will use a combina
 |---|---|---|---|---|
 | 1 | `LEAKED_SYSTEM_RESULT` | A pure-function regex check for the complete `SYSTEM RESULT:` marker at the start of the response. This must not match a bare `SYSTEM RESULT` prefix. | `legacy_compatible_rule` | **Done** |
 | 2 | `INVALID_OR_TRUNCATED_TERMINAL_TEXT` | For `PURE_PLAINTEXT` candidates, a pure-function rule compatible with `terminal_plaintext_completion_status`, but only when the response is not a complete leaked-system marker. | `legacy_compatible_rule` | **Done** |
-| 3 | `INTERNAL_SUMMARY_LIKE_TEXT` | Future shadow-only integration with the existing internal-summary detection logic. Exact input contract is pending Part 4 approval. | `runtime_policy` | Deferred / pending Part 4 |
+| 3 | `INTERNAL_SUMMARY_LIKE_TEXT` | `input.is_internal_summary is True`. The flag is computed by the caller using the legacy `_is_internal_summary_instead_of_final_answer` helper. | `runtime_policy` | **Done** |
 
-Part 3 intentionally does not integrate internal-summary detection or runtime history state. That remains deferred to Part 4.
+Part 3 integrated `INVALID_OR_TRUNCATED_TERMINAL_TEXT`. Part 4 integrated `INTERNAL_SUMMARY_LIKE_TEXT` using a caller-computed boolean flag, without passing stateful runtime objects into the classifier.
 | 4 | `PRE_ACTION_VISIBLE_TEXT_WITH_ACTION` | `input.runtime_semantics.visible_text_source == "PRE_ACTION_TEXT"` | `compiler_fact` | Done (Step 4G) |
 | 5 | `INTENT_COMPLETE_WITH_VISIBLE_TEXT` | `input.runtime_semantics.visible_text_source == "INTENT_COMPLETION_TEXT"` | `compiler_fact` | Done (Step 4G) |
 | 6 | `CHECKPOINT_WITH_VISIBLE_TEXT` | `input.runtime_semantics.visible_text_source == "CHECKPOINT_ACCOMPANYING_TEXT"` | `compiler_fact` | Done (Step 4G) |
@@ -405,6 +405,23 @@ Part 3 intentionally does not integrate internal-summary detection or runtime hi
 | 8 | `PLAINTEXT_TERMINAL_ANSWER` | `input.runtime_semantics.visible_text_source == "PURE_PLAINTEXT"` | `compiler_fact` | Done (Step 4G) |
 | 9 | `NO_VISIBLE_TEXT` | `has_visible_answer` and `has_pre_action_text` are `False`. | `compiler_fact` | Done (Step 4G) |
 | 10 | `UNKNOWN` | Fallback for all other cases. | `fallback` | Done (Step 4G) |
+
+### 11.4A. Step 4I Parity Matrix
+
+| `TerminalAnswerKind` | Implemented in classifier? | Source type | Legacy parity logging available? | Consumer migration status | Remaining risk / deferred notes |
+|---|---|---|---|---|---|
+| `LEAKED_SYSTEM_RESULT` | Yes | `legacy_compatible_rule` | Yes | Blocked | Uses a classifier-local pure-function rule for the complete `SYSTEM RESULT:` marker. |
+| `INVALID_OR_TRUNCATED_TERMINAL_TEXT` | Yes | `legacy_compatible_rule` | Yes | Blocked | Depends on legacy-compatible plaintext completion heuristics. |
+| `INTERNAL_SUMMARY_LIKE_TEXT` | Yes | `runtime_policy` | Yes | Blocked | Flag is computed by the caller from legacy runtime policy logic; classifier stays input-pure. |
+| `PRE_ACTION_VISIBLE_TEXT_WITH_ACTION` | Yes | `compiler_fact` | No dedicated legacy parity kind | Blocked | Structural classification only; no dispatch or policy authority. |
+| `INTENT_COMPLETE_WITH_VISIBLE_TEXT` | Yes | `compiler_fact` | No dedicated legacy parity kind | Blocked | Consumer migration remains deferred. |
+| `CHECKPOINT_WITH_VISIBLE_TEXT` | Yes | `compiler_fact` | No dedicated legacy parity kind | Blocked | Board/checkpoint consumers remain on existing logic. |
+| `CHECKPOINT_ONLY` | Yes | `compiler_fact` | No dedicated legacy parity kind | Blocked | Shadow-only signal; no board routing changes. |
+| `PLAINTEXT_TERMINAL_ANSWER` | Yes | `compiler_fact` | Yes | Blocked | Terminal-answer correctness policy is still runtime-owned. |
+| `NO_VISIBLE_TEXT` | Yes | `compiler_fact` | Indirectly | Blocked | Structural no-visible-text fallback only. |
+| `UNKNOWN` | Yes | `fallback` | Indirectly | Blocked | Safe shadow fallback for all unmatched cases. |
+
+Step 4I is complete. Any move from shadow diagnostics toward consumer migration requires a separate Phase 8 Step 4J design/review gate.
 
 ### 11.5. Shadow-Mode Validation Plan
 
@@ -440,6 +457,27 @@ Step 4G introduced the classifier as an isolated shadow-safe component. Step 4H 
 -   **Consumer Migration**: No consumers will be migrated until shadow-mode validation is complete and a new migration phase is approved.
 -   **Legacy Helper Removal**: Legacy regex helpers (`is_leaked_system_result`, etc.) will be preserved until all their consumers are migrated away.
 -   **Final-Answer Correctness Policy**: The classifier provides structural classification. The runtime policy decision of whether a `PLAINTEXT_TERMINAL_ANSWER` is a *correct* final answer remains a separate, runtime-owned concern.
+
+### 11.8. Phase 8 Step 4I Part 4 Design Gate: `INTERNAL_SUMMARY_LIKE_TEXT`
+
+- **Status**: Complete.
+- **Goal**: Integrate the `INTERNAL_SUMMARY_LIKE_TEXT` legacy rule into the `TerminalAnswerClassifier` in shadow mode.
+- **Input Contract**:
+    - The `TerminalAnswerClassifierInput` will be extended with a new boolean field: `is_internal_summary: bool = False`.
+    - The caller (`ResponsePipelinePrevalidationMixin._run_terminal_answer_classifier_shadow`) will be responsible for computing this flag by calling the legacy helper (e.g., `ResponseSemantics._is_internal_summary_instead_of_final_answer(parsed_output)`).
+    - This avoids passing `parsed_output` or other complex state into the classifier, keeping it pure with respect to its inputs.
+- **Implementation Result**:
+    - `TerminalAnswerClassifierInput` now carries `is_internal_summary: bool = False`.
+    - `ResponsePipelinePrevalidationMixin._run_terminal_answer_classifier_shadow` computes the flag with the existing `_is_internal_summary_instead_of_final_answer(parsed_output)` helper and passes only the boolean into the classifier.
+    - `TerminalAnswerClassifier.classify` returns `INTERNAL_SUMMARY_LIKE_TEXT` at priority 3 when `input.is_internal_summary` is `True`.
+    - `_get_legacy_terminal_answer_kind` now includes the same internal-summary parity branch at the corresponding priority.
+- **Testing**:
+    - `tests/test_terminal_answer_classifier.py` covers the positive case and priority interactions with leaked-system and truncated text.
+    - `tests/test_response_pipeline_prevalidation_shadow.py` verifies parity logging for the internal-summary case.
+- **Forbidden Changes**:
+    - The `TerminalAnswerClassifier` must not call the legacy helper directly.
+    - The `TerminalAnswerClassifierInput` must not be modified to include `parsed_output`, `ResponseSemantics`, or any other stateful object.
+    - The result of this classification must not affect production control flow.
 
 ## 12. Explicitly Deferred
 
