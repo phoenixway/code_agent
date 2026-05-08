@@ -215,6 +215,46 @@ def test_terminal_plaintext_status_accepts_complete_short_confirmation():
     assert visible == "Готово. План збережено у `docs/refactoring_plan.md`."
 
 
+@pytest.mark.parametrize(
+    "text,is_ok,reason_frag,expected_visible",
+    [
+        # Current behavior: "Done." is considered too short.
+        ("Done.", False, "too_short", "Done."),
+        ("Done", False, "too_short", "Done"),
+        ("This is a complete sentence.", True, "", "This is a complete sentence."),
+        ("This is a complete sentence. And another one.", True, "", "This is a complete sentence. And another one."),
+        # Current behavior: dangling words are caught by lack of punctuation.
+        ("This is not complete because", False, "no_terminal_punctuation", "This is not complete because"),
+        # Current behavior: control tags are stripped, and the remaining text is judged.
+        # "Done." is too short. The reason is not about the tag leak itself.
+        ("Done. <think>I should not leak this.</think>", False, "too_short", "Done."),
+        ("Done. <action>...</action>", False, "too_short", "Done."),
+    ],
+    ids=[
+        "short_complete_sentence_fails",
+        "short_incomplete_word",
+        "longer_complete_sentence",
+        "multiple_sentences",
+        "dangling_end_no_punctuation",
+        "leaked_think_tag_too_short",
+        "leaked_action_tag_too_short",
+    ],
+)
+def test_terminal_plaintext_completion_status_characterization(text, is_ok, reason_frag, expected_visible):
+    """Characterizes terminal_plaintext_completion_status for various inputs. This covers scenario 12."""
+    response = completion_response(text)
+    ok, reason, visible = terminal_plaintext_completion_status(response)
+
+    assert ok is is_ok
+    if reason_frag:
+        assert reason_frag in reason
+    else:
+        assert reason == ""
+    # Current behavior strips control tags before returning visible text;
+    # this is characterization, not desired future behavior.
+    assert visible == expected_visible
+
+
 @pytest.mark.asyncio
 async def test_complete_with_truncated_plaintext_is_rejected_before_intent_commit():
     state = DummyState()

@@ -83,6 +83,51 @@ class TestModelOutputRecoveryHandler(unittest.TestCase):
         # Verify accessor was called
         self.assertEqual(mock_accessor.call_count, 3)
 
+    # --- Characterization tests for visible text semantics ---
+
+    def test_is_internal_summary_instead_of_final_answer(self):
+        """
+        Characterizes `_is_internal_summary_instead_of_final_answer` behavior.
+        This covers scenario 8.
+        """
+        # Case 1: A response that looks like a plan.
+        # Current behavior: This is NOT classified as an internal summary.
+        # This test characterizes that current actual behavior.
+        p_out_summary = ParsedModelOutput(
+            response="Okay, I will do that. The plan is to first read the file, then edit it.",
+            has_action_segment=False,
+            visible_text="Okay, I will do that. The plan is to first read the file, then edit it.",
+            invalid_kind="",
+        )
+        self.assertFalse(self.handler._is_internal_summary_instead_of_final_answer(p_out_summary))
+
+        # Case 2: A normal plaintext answer
+        p_out_normal = ParsedModelOutput(
+            response="The file has been updated successfully.",
+            has_action_segment=False,
+            visible_text="The file has been updated successfully.",
+            invalid_kind="",
+        )
+        self.assertFalse(self.handler._is_internal_summary_instead_of_final_answer(p_out_normal))
+
+        # Case 3: Has an action, so it's not a final answer path
+        p_out_action = ParsedModelOutput(
+            response='<action>{"type":"read_file"}</action>',
+            has_action_segment=True,
+            visible_text="",
+            invalid_kind="",
+        )
+        self.assertFalse(self.handler._is_internal_summary_instead_of_final_answer(p_out_action))
+
+        # Case 4: Has another invalid_kind, which takes precedence
+        p_out_invalid = ParsedModelOutput(
+            response="Okay, I will do that. The plan is to first read the file, then edit it.",
+            has_action_segment=False,
+            visible_text="Okay, I will do that. The plan is to first read the file, then edit it.",
+            invalid_kind="some_other_error",
+        )
+        self.assertFalse(self.handler._is_internal_summary_instead_of_final_answer(p_out_invalid))
+
 
 if __name__ == "__main__":
     unittest.main()
