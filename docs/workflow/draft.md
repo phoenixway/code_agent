@@ -57,4 +57,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 53. Phase 8 Step 3 (Design Review): done. Approved typed model scaffolding.
 54. Phase 8 Step 3A (scaffolding): done.
 55. Phase 8 Step 4A (Design-Only Review): done. Conclusion: signals insufficient.
-56. Next: Phase 8 Step 4C (Design) for compiler fact scaffolding.
+56. Phase 8 Step 4C (Design): done.
+57. Next: Phase 8 Step 4D (Design) for new fact characterization tests.

@@ -708,22 +708,61 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
-#### Phase 8 Step 4B: Classifier Implementation (Shadow Mode) (Design Review)
+#### Phase 8 Step 4C: Compiler Fact Scaffolding (Design)
 
-- **Status**: Deferred.
-- **Goal**: Design the `TerminalAnswerClassifier` and a plan for running it in shadow mode.
-- **Prerequisite**: Phase 8 Step 4C must be complete.
-- **Forbidden**: Implementation is not authorized. Any production code changes.
-- **Done When**: A decision on whether to proceed with designing the classifier is documented.
+- **Status**: Done.
+- **Goal**: Design the addition of new structural facts to the compiler and `RuntimeProtocolSemantics` to address coverage gaps.
+- **Forbidden**: Any production code or test changes.
+- **Done When**: The design for adding new structural facts was completed and documented in `visible-text-terminal-answer-semantics-design.md`.
 
 ---
 
-#### Phase 8 Step 4C: Compiler Fact Scaffolding (Design)
+#### Phase 8 Step 4D: New Fact Characterization Test Design
 
 - **Status**: Approved / Not Started.
-- **Goal**: Design the addition of new structural facts to the compiler and `RuntimeProtocolSemantics` to address coverage gaps.
+- **Goal**: Design characterization tests for the new structural facts and shape improvements proposed in Step 4C.
 - **Forbidden**: Any production code or test changes.
-- **Done When**: The design for adding new structural facts is complete and approved for implementation.
+- **Done When**: The test cases are designed and documented.
+
+---
+
+#### Phase 8 Step 4D.1: New Fact Characterization Test Implementation
+
+- **Status**: Not Started.
+- **Goal**: Implement the characterization tests designed in Step 4D.
+- **Prerequisite**: Step 4D must be complete.
+- **Forbidden**: Any production code changes.
+- **Done When**: The new characterization tests are implemented and failing as expected.
+
+---
+
+#### Phase 8 Step 4E: Compiler/Runtime Fact Implementation
+
+- **Status**: Not Started.
+- **Goal**: Implement the compiler/runtime changes for the new structural facts.
+- **Prerequisite**: Step 4D.1 must be complete.
+- **Forbidden**: Consumer migration.
+- **Done When**: The new structural facts are implemented and the new characterization tests pass.
+
+---
+
+#### Phase 8 Step 4F: Shadow Sufficiency / Parity Review
+
+- **Status**: Not Started.
+- **Goal**: Prove the new structural facts are sufficient for the `TerminalAnswerClassifier`.
+- **Prerequisite**: Step 4E must be complete.
+- **Forbidden**: Consumer migration.
+- **Done When**: Parity tests confirm the new facts can support the classifications from the Step 2 characterization tests.
+
+---
+
+#### Phase 8 Step 4B (Redux): TerminalAnswerClassifier Shadow Mode Design
+
+- **Status**: Deferred.
+- **Goal**: Design the `TerminalAnswerClassifier` and a plan for running it in shadow mode.
+- **Prerequisite**: Phase 8 Step 4F must be complete.
+- **Forbidden**: Implementation is not authorized. Any production code changes.
+- **Done When**: A decision on whether to proceed with designing the classifier is documented.
 
 ---
 

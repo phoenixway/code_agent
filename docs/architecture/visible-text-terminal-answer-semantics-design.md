@@ -117,7 +117,55 @@ This design-only review is complete. It assessed whether `RuntimeProtocolSemanti
 ### Next Step
 The review (Step 4A) is complete. The approved next step is to conduct **Phase 8, Step 4C: Compiler Fact Scaffolding (Design)**. This is a design-only step to plan the addition of new structural facts to the compiler and `RuntimeProtocolSemantics` to address the gaps identified above. Implementation of the classifier remains blocked.
 
-## 8. Explicitly Deferred
+## 8. Phase 8 Step 4C: Compiler Fact Scaffolding (Design)
+
+This design step is complete. It defines the new structural facts required for the `TerminalAnswerClassifier` to function reliably. Implementation is not authorized until a new design for implementation steps is approved.
+
+### Conclusion
+The review in Step 4A concluded that `RuntimeProtocolSemantics` lacks sufficient structural facts. This design proposes adding them to the compiler and the runtime adapter. The goal is to provide unambiguous, structural signals that the future `TerminalAnswerClassifier` can use, replacing fragile regex heuristics.
+
+### Proposed New Structural Facts
+
+The following facts should be added to the compiler's analysis and exposed through `ResponseIR` and `RuntimeProtocolSemantics`.
+
+| Fact | Type | Meaning | Source | Location |
+|---|---|---|---|---|
+| **`has_subgoal_tags`** | `bool` | `True` if one or more `<subgoal>` tags are present. | Compiler AST | `ResponseIR` -> `RuntimeProtocolSemantics` |
+| **`has_memory_tags`** | `bool` | `True` if memory board tags (e.g., `<fact>`, `<finding>`) are present. Excludes `<subgoal>`. | Compiler AST | `ResponseIR` -> `RuntimeProtocolSemantics` |
+| **`has_memory_checkpoint`** | `bool` | `True` if a `<memory_update_done />` tag is present. | Compiler AST | `ResponseIR` -> `RuntimeProtocolSemantics` |
+| **`visible_text_source`** | `Enum` | Classifies the semantic context of visible text. Candidates: `NONE`, `PURE_PLAINTEXT`, `PRE_ACTION_TEXT`, `INTENT_COMPLETION_TEXT`, `CHECKPOINT_ACCOMPANYING_TEXT`, `UNKNOWN`. | Compiler Shape | `ResponseIR` -> `RuntimeProtocolSemantics` |
+
+### Proposed Compiler Shape Improvements
+
+To support `visible_text_source` and fix issues found during characterization, the compiler's shape classification logic needs improvement:
+
+1.  **`PRE_ACTION_TEXT_AND_ACTION`**: The compiler must reliably identify this shape. The characterization tests showed it currently misclassifies some cases as `PLAINTEXT_ONLY`. This shape should be returned for `VisibleTextNode` followed by `ActionNode`.
+2.  **`SUBGOAL_WITH_TEXT`**: A new shape should be introduced for responses containing both `<subgoal>` tags and visible text. The compiler currently misclassifies this as `PLAINTEXT_ONLY`. This would be analogous to the existing `MEMORY_TEXT` shape.
+3.  **`PURE_PLAINTEXT`**: The existing `PLAINTEXT_ONLY` shape is ambiguous. A new, more specific shape should be used for responses that contain only visible text and optional `<think>` blocks, with no other control tags.
+
+These shape improvements are the source of truth for the `visible_text_source` enum.
+
+### Boundaries and Deferred Items
+
+- **Structural Facts Only**: These changes are limited to exposing purely structural information. Policy decisions (e.g., `is_internal_summary`) remain deferred.
+- **Legacy Fallbacks**: Detection of truncated text and leaked system results will remain on their legacy regex-based implementations for now.
+- **No `TerminalAnswerClassifier`**: Implementation of the classifier remains blocked until these structural facts are implemented and verified.
+
+### Proposed Implementation Slicing
+
+This design will be implemented in the following sequence of steps, each requiring separate approval:
+
+- **Step 4D: New Fact Characterization Test Design**: Design characterization tests for the new structural facts and shape improvements. This is a design-only step to define the test cases.
+- **Step 4D.1: New Fact Characterization Test Implementation**: Implement the characterization tests. This is a tests-only step. The tests are expected to fail until the compiler changes are made.
+- **Step 4E: Compiler/Runtime Fact Implementation**: Implement the required changes in `ProtocolCompiler` and `RuntimeProtocolSemantics` to make the new characterization tests pass. No consumers will be migrated.
+- **Step 4F: Shadow Sufficiency / Parity Review**: Design and implement a "shadow mode" or parity test suite to compare the output of the (still-unwritten) `TerminalAnswerClassifier` against the existing characterization tests from Step 2, proving the new facts are sufficient.
+- **Step 4B (Redux): TerminalAnswerClassifier Shadow Mode Design**: With the structural facts in place, the design of the `TerminalAnswerClassifier` (originally Step 4B) can be resumed.
+
+### Next Step
+
+The design (Step 4C) is complete. The approved next step is to conduct **Phase 8, Step 4D: New Fact Characterization Tests (Design)**. This is a design-only step to plan the tests for the new compiler facts. Implementation is not authorized.
+
+## 9. Explicitly Deferred
 
 - A full refactor of `ResponsePipeline` or `DispatchPipeline`.
 - Changes to `ActionPolicy`.

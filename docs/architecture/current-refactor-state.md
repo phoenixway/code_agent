@@ -194,6 +194,10 @@ This document is the single source of truth for the current state of the Semanti
   - The review concluded that `RuntimeProtocolSemantics` lacks sufficient structural facts to reliably build the `TerminalAnswerClassifier`.
   - Key gaps include ambiguous shapes (`PLAINTEXT_ONLY`) and missing recognition of subgoal tags with visible text.
   - Recommendation: Defer classifier implementation and proceed with a design phase to add the missing structural facts.
+- **Phase 8 Step 4C: Compiler Fact Scaffolding (Design)**
+  - The design for adding new structural facts to the compiler and `RuntimeProtocolSemantics` is complete.
+  - The design proposes new facts (`has_subgoal_tags`, `has_memory_tags`, etc.) and compiler shape improvements to provide unambiguous signals for the future `TerminalAnswerClassifier`.
+  - Implementation is not authorized.
 
 ## Known Authority Boundaries
 
@@ -209,7 +213,7 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- **Phase 8 Step 4C (Design)**: Design the addition of new structural facts to the compiler and `RuntimeProtocolSemantics` to address coverage gaps. Implementation is not authorized.
+- **Phase 8 Step 4D: New Fact Characterization Tests (Design)**: Design characterization tests for the new structural facts and shape improvements. Implementation is not authorized.
 
 ## Test Status
 
