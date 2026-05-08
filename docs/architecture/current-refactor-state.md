@@ -173,6 +173,11 @@ This document is the single source of truth for the current state of the Semanti
   - **Step 1 (Inventory)**: The design-only inventory of current behaviors is complete.
   - The scope includes terminal plaintext completion, intent completion with visible answer, and memory/subgoal checkpoint + text combinations.
   - Implementation is not authorized until a design is approved.
+- **Phase 8 Step 2: Characterization Tests (Implementation)**
+  - Added characterization tests to lock down the exact behavior of all identified components and scenarios related to visible text and terminal answers.
+  - Key behaviors characterized include compiler shape analysis, `ResponseSemantics.is_plaintext_answer_path`, `looks_like_leaked_system_result`, `terminal_plaintext_completion_status`, and `_is_internal_summary_instead_of_final_answer`.
+  - Tests were added/expanded in `tests/test_visible_text_terminal_answer_semantics.py`, `tests/test_output_recovery.py`, and `tests/test_terminal_plaintext_completion_guard.py`.
+  - All tests passed, and no production code was changed. Runtime behavior is unchanged.
 
 ## Known Authority Boundaries
 
@@ -188,7 +193,7 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Implement Phase 8 Step 2: Characterization tests for visible text/terminal answer semantics. This is a tests-only step.
+- **Phase 8 Step 3 (Design Review)**: Review characterization test results and decide whether to approve the design for a typed result model for terminal answer semantics (e.g., `TerminalAnswerKind`). Implementation is not authorized.
 
 ## Test Status
 

@@ -672,20 +672,20 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 8 Step 2: Characterization Tests
 
-- **Status**: Approved / Not Started.
+- **Status**: Done.
 - **Goal**: Add characterization tests to lock down the exact behavior of all identified components and scenarios related to visible text and terminal answers.
 - **Allowed**: Add new test files and test cases that assert current behavior. This is a tests-only step.
 - **Forbidden**: Any production code changes. Do not implement `TerminalAnswerClassifier` or any typed models. Do not migrate any consumers. Do not change runtime behavior.
-- **Done When**: The characterization test suite is complete and all tests pass.
+- **Done When**: The characterization test suite was completed, and all tests passed. No production code was changed.
 
 ---
 
-#### Phase 8 Step 3: Typed Model Scaffolding (Design)
+#### Phase 8 Step 3: Typed Model Scaffolding (Design Review)
 
-- **Status**: Not Started.
-- **Goal**: Design the scaffolding for a typed result model (e.g., `TerminalAnswerKind`, `TerminalAnswerSemanticResult`).
-- **Forbidden**: Implementation is not authorized by default and requires separate approval after Step 2 is complete.
-- **Done When**: The design for the typed models is approved.
+- **Status**: Approved / Not Started.
+- **Goal**: Review characterization test results and decide whether to approve the design of a typed result model for terminal answer semantics (e.g., `TerminalAnswerKind`).
+- **Forbidden**: Implementation is not authorized. Any production code changes.
+- **Done When**: A decision on whether to proceed with designing the typed models is documented.
 
 ---
 

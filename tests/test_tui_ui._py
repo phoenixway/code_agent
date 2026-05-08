@@ -75,6 +75,28 @@ class TestTuiUiSanitizer(unittest.TestCase):
         self.assertEqual("retry", widget.view_model["action_kind"])
         self.assertTrue(widget.view_model["action_enabled"])
 
+    def test_window_title_without_activity_is_base_header(self):
+        self.assertEqual(
+            "gemini-2.5-pro",
+            TuiUI._compose_window_title("gemini-2.5-pro"),
+        )
+
+    def test_window_title_with_activity_uses_spinner_and_base_header(self):
+        title = TuiUI._compose_window_title(
+            "gemini-2.5-pro",
+            "thinking",
+            spinner_index=2,
+        )
+        self.assertEqual("◑ thinking · gemini-2.5-pro", title)
+
+    def test_activity_label_is_shortened_for_tab_title(self):
+        shortened = TuiUI._shorten_title_activity(
+            "Reading /very/long/path/to/a/file/that/should/not/take/the/whole/tab/title.py",
+            max_chars=24,
+        )
+        self.assertTrue(shortened.endswith("…"))
+        self.assertLessEqual(len(shortened), 24)
+
 
 if __name__ == "__main__":
     unittest.main()

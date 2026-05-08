@@ -58,6 +58,12 @@ class TuiUI:
     }
     CHAT_OUTPUT_PREVIEW_MAX_CHARS = 4000
     TOOL_ARG_PREVIEW_MAX_CHARS = 1200
+    TITLE_SPINNER_FRAMES = (
+        "◐",
+        "◓",
+        "◑",
+        "◒",
+    )
 
     def __init__(self, app, history_widget: VerticalScroll, status_bar: StatusBar):
         self.app = app
@@ -65,6 +71,10 @@ class TuiUI:
         self.status_bar = status_bar
         self.main_thread = threading.main_thread()
         self._auto_scroll_bottom_threshold = 3
+        self._base_header_text = "Angelica"
+        self._title_activity_label = ""
+        self._title_spinner_index = 0
+        self._title_spinner_timer = None
 
     def _count_confirmation(self):
         """Track how many confirmation dialogs were shown in current session."""
@@ -191,18 +201,80 @@ class TuiUI:
     @ui_task
     async def start_thinking(self):
         self.status_bar.start_thinking()
+        self._set_title_activity("thinking")
 
     @ui_task
     async def start_action(self, text: str):
         self.status_bar.start_action(text)
+        label = str(text or "").strip() or "working"
+        self._set_title_activity(label)
 
     @ui_task
     async def stop_loading(self):
         self.status_bar.stop()
+        self._clear_title_activity()
 
     @ui_task
     async def update_header(self, text: str):
-        self.app.title = text
+        self._base_header_text = str(text or "").strip() or "Angelica"
+        self._render_title()
+
+    def _ensure_title_spinner_timer(self) -> None:
+        if self._title_spinner_timer is None:
+            self._title_spinner_timer = self.app.set_interval(
+                0.14,
+                self._advance_title_spinner,
+                pause=True,
+            )
+
+    def _set_title_activity(self, label: str) -> None:
+        self._title_activity_label = self._shorten_title_activity(label)
+        self._title_spinner_index = 0
+        self._ensure_title_spinner_timer()
+        if self._title_spinner_timer is not None:
+            self._title_spinner_timer.resume()
+        self._render_title()
+
+    def _clear_title_activity(self) -> None:
+        self._title_activity_label = ""
+        if self._title_spinner_timer is not None:
+            self._title_spinner_timer.pause()
+        self._render_title()
+
+    def _advance_title_spinner(self) -> None:
+        self._title_spinner_index = (self._title_spinner_index + 1) % len(self.TITLE_SPINNER_FRAMES)
+        self._render_title()
+
+    @classmethod
+    def _shorten_title_activity(cls, label: str, max_chars: int = 32) -> str:
+        text = str(label or "").strip()
+        if not text:
+            return "working"
+        compact = re.sub(r"\s+", " ", text)
+        if len(compact) <= max_chars:
+            return compact
+        return compact[: max_chars - 1].rstrip() + "…"
+
+    @classmethod
+    def _compose_window_title(
+        cls,
+        base_header_text: str,
+        activity_label: str = "",
+        spinner_index: int = 0,
+    ) -> str:
+        base = str(base_header_text or "").strip() or "Angelica"
+        activity = str(activity_label or "").strip()
+        if not activity:
+            return base
+        frame = cls.TITLE_SPINNER_FRAMES[spinner_index % len(cls.TITLE_SPINNER_FRAMES)]
+        return f"{frame} {activity} · {base}"
+
+    def _render_title(self) -> None:
+        self.app.title = self._compose_window_title(
+            self._base_header_text,
+            self._title_activity_label,
+            self._title_spinner_index,
+        )
 
     @ui_task
     async def update_token_status(self, history_tokens: int, max_tokens: int, session_tokens: int):

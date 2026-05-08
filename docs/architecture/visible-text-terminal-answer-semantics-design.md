@@ -47,8 +47,8 @@ This inventory documents the current state of components involved in visible tex
 ## 5. Proposed Phase Slicing
 
 - **Step 1: Design-Only Inventory (Done)**: This document.
-- **Step 2: Characterization Tests (Approved for Implementation)**: Add characterization tests to lock down the exact behavior of all identified components and scenarios. This step is tests-only. No production code will be changed.
-- **Step 3: Typed Model Scaffolding (Design)**: Design the `TerminalAnswerKind` enum and `TerminalAnswerSemanticResult` dataclass. Implementation is not authorized by default and requires separate approval after Step 2 is complete.
+- **Step 2: Characterization Tests (Done)**: Added characterization tests to lock down the exact behavior of all identified components and scenarios. This was a tests-only step. No production code was changed. Key behaviors characterized include compiler shape analysis, `ResponseSemantics.is_plaintext_answer_path`, `terminal_plaintext_completion_status`, and others.
+- **Step 3: Typed Model Scaffolding (Design Review)**: Review characterization test results and decide whether to approve the design of a typed result model (e.g., `TerminalAnswerKind`, `TerminalAnswerSemanticResult`). Implementation is not authorized.
 - **Step 4: Classifier Implementation (Shadow Mode)**: Implement the `TerminalAnswerClassifier` and run it in shadow mode, logging its classifications against legacy decisions without changing behavior.
 - **Step 5: First Consumer Migration**: Migrate the lowest-risk consumer (e.g., `is_leaked_system_result`) to use the new classifier.
 - **Step 6: Authority Consolidation**: Systematically migrate remaining consumers (`IntentTransitionHandler`, `PreDispatchPipeline`, etc.) to the new classifier, removing legacy logic one component at a time.
@@ -56,7 +56,7 @@ This inventory documents the current state of components involved in visible tex
 
 ## 6. Next Step
 
-The design-only inventory (Step 1) is complete. The approved next step is to implement **Phase 8, Step 2: Characterization Tests**. This step is tests-only and will provide the necessary safety net to proceed with refactoring. The `TerminalAnswerClassifier` remains a candidate only, and design for Step 3 (Typed Model Scaffolding) is not yet authorized.
+The design-only inventory (Step 1) and characterization tests (Step 2) are complete. The approved next step is to conduct the **Phase 8, Step 3: Typed Model Scaffolding (Design Review)**. This review will determine whether to proceed with designing the typed models. Implementation is not authorized at this stage. The `TerminalAnswerClassifier` remains a candidate only.
 
 ## 7. Explicitly Deferred
 
