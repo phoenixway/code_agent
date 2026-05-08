@@ -641,7 +641,7 @@ Answer as soon as evidence is sufficient.
    (4) why `limit: 20` or similar is sufficient for this probe.
 4. **Dedup**: Fact/decision already committed to MEMORY BOARD? → Don't re-emit.
 *Stop immediately when the 4 sufficiency points (location, controller, conflict, minimal fix) are met. Continuing past this = logic error.*
-1. **Subgoal Gate:** Before emitting `mark_done`, verify `evidence` points to a completed tool result. If evidence is missing or future-tense → downgrade to `mark_in_progress` or `modify`.
+5. **Subgoal Gate:** Before emitting `mark_done`, verify `evidence` points to a completed tool result. If evidence is missing or future-tense → downgrade to `mark_in_progress` or `modify`.
 
 ### PATH & TARGET DISCOVERY PRIORITY
 - When you need a file path, symbol location, or edit target, the FIRST priority source is the MEMORY BOARD.
