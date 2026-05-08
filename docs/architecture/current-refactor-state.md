@@ -188,7 +188,7 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Review and approve Phase 7 Step 3B: `ActionPolicyHandler` internal refactor to use the new typed result model.
+- Implement Phase 7 Step 3B: `ActionPolicyHandler` internal refactor to use the new typed result model.
 
 ## Test Status
 

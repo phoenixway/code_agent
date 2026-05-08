@@ -600,15 +600,31 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
-#### Phase 7 Step 3B: `ActionPolicyHandler` Refactor (Design Review)
+#### Phase 7 Step 3B: `ActionPolicyHandler` Refactor (Design)
 
-- **Status**: Not Started.
+- **Status**: Done.
 - **Goal**: Review and approve the internal refactor of `ActionPolicyHandler.validate_atomic_bundle_action` to use the new typed result model.
 - **Allowed**:
     - Documentation updates to approve or reject the candidate design for Step 3B.
 - **Forbidden**:
     - Any production code or test changes.
-- **Done When**: A decision on whether to proceed with the Step 3B implementation is documented.
+- **Done When**: A decision on whether to proceed with the Step 3B implementation was documented.
+
+---
+
+#### Phase 7 Step 3B: `ActionPolicyHandler` Refactor (Implementation)
+
+- **Status**: Not Started.
+- **Goal**: Internally refactor `ActionPolicyHandler.validate_atomic_bundle_action` to return the new typed `AtomicBundleActionValidationResult`.
+- **Allowed**:
+    - Refactor `validate_atomic_bundle_action` to return `AtomicBundleActionValidationResult` with a `kind`.
+    - Preserve the legacy `ok`, `reason`, and `details` fields in the result for compatibility.
+    - Keep all characterization tests in `tests/test_action_policy.py` green without modification.
+- **Forbidden**:
+    - Migrating `ResponsePipelinePrevalidationMixin` or any other consumer.
+    - Changing prompts, reason strings, or source markers.
+    - Any runtime behavior changes.
+- **Done When**: `validate_atomic_bundle_action` is refactored, and all characterization tests pass.
 
 ---
 

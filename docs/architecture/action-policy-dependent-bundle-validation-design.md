@@ -108,9 +108,11 @@ The following steps are future candidates. Each requires a separate approval.
 - **Step 3A: Typed Result Scaffolding (Done)**:
     - **Goal**: Create the scaffolding for the typed result model.
     - **Implementation**: Created `modules/agent/orchestration/runtime/action_policy_models.py` with the `AtomicBundlePolicyResultKind` enum and `AtomicBundleActionValidationResult` dataclass. Added `tests/test_action_policy_models.py`. All tests passed. No runtime behavior was changed.
-- **Candidate Step 3B: `ActionPolicyHandler` Refactor (Ready for Review)**:
-    - Refactor `ActionPolicyHandler.validate_atomic_bundle_action` to return the new `AtomicBundleActionValidationResult` with the typed `kind`.
-    - This would be an internal refactor of `ActionPolicyHandler`. All characterization tests from Step 2 must continue to pass without any changes to the tests themselves.
+- **Step 3B: `ActionPolicyHandler` Refactor (Implementation Authorized)**:
+    - **Goal**: Internally refactor `ActionPolicyHandler.validate_atomic_bundle_action` to produce the new typed `AtomicBundleActionValidationResult`.
+    - **Scope**: This is a producer-only refactor.
+    - **Compatibility**: The refactored method must preserve the exact legacy `ok`, `reason`, and `details` fields in its return value to ensure no downstream consumers are affected. All characterization tests must pass without modification.
+    - **Forbidden**: Do not migrate the consumer (`ResponsePipelinePrevalidationMixin`) to use the new `kind` field.
 - **Candidate Step 4: Consumer Migration (Not Authorized)**:
     - Refactor `ResponsePipelinePrevalidationMixin._reject_invalid_atomic_bundle_before_transition` to use the new typed result from `validate_atomic_bundle_action`.
     - The `if/elif` logic would switch on `result.kind` instead of string comparisons.
