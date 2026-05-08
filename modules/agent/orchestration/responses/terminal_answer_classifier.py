@@ -11,12 +11,19 @@ class TerminalAnswerClassifier:
     """
     Classifies the semantic meaning of a model's response when it contains
     user-visible text.
+
+    This classifier is currently running in a shadow-only mode. Its results are
+    logged for diagnostic purposes and do not affect production behavior.
     """
 
     def classify(self, input: TerminalAnswerClassifierInput) -> TerminalAnswerSemanticResult:
         """
         Classifies the terminal answer semantics based on a priority-ordered
         set of rules.
+
+        The classification relies on compiler-derived structural facts from
+        RuntimeProtocolSemantics. Branches that depend on legacy regex helpers
+        are currently deferred.
         """
         semantics = input.runtime_semantics
         visible_text = semantics.visible_text or semantics.pre_action_text

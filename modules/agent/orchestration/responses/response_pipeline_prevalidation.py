@@ -9,7 +9,7 @@ from .bundle_semantic_validator import BundleResultKind, BundleSemanticValidator
 from .protocol_decision_bridge import COMPILER_INVALID_KIND_BY_CODE
 from .runtime_protocol_semantics import compact_runtime_protocol_semantics, runtime_semantics_from_compiler_analysis
 from .terminal_answer_classifier import TerminalAnswerClassifier
-from .terminal_answer_models import TerminalAnswerClassifierInput
+from .terminal_answer_models import TerminalAnswerClassifierInput, TerminalAnswerKind
 
 
 class ResponsePipelinePrevalidationMixin:
@@ -193,7 +193,19 @@ class ResponsePipelinePrevalidationMixin:
         return compiler_analysis
 
     def _run_terminal_answer_classifier_shadow(self, parsed_output, response: str):
-        """Runs the TerminalAnswerClassifier in shadow mode for diagnostics."""
+        """
+        Runs the TerminalAnswerClassifier in shadow mode for diagnostics.
+
+        This method is behavior-preserving:
+        - It is called after the main compiler diagnosis is complete.
+        - Its result is logged for analysis but NOT used for any production
+          decision (e.g., invalid_kind, dispatch, policy).
+        - All exceptions from the classifier or logging are caught and logged
+          as a secondary error, ensuring the shadow path cannot break the
+          production pipeline.
+        - The `legacy_kind` and `is_match` fields are populated to enable
+          parity analysis.
+        """
         if not hasattr(self, "stage_logger") or not self.stage_logger:
             return
 
@@ -212,6 +224,11 @@ class ResponsePipelinePrevalidationMixin:
             )
             result = self._shadow_terminal_answer_classifier.classify(classifier_input)
 
+            legacy_kind, _ = self._get_legacy_terminal_answer_kind(response, parsed_output)
+            is_match = None
+            if legacy_kind is not None:
+                is_match = result.kind.value == legacy_kind
+
             self.stage_logger.log(
                 "terminal_answer_classifier_shadow",
                 "snapshot",
@@ -220,8 +237,8 @@ class ResponsePipelinePrevalidationMixin:
                 classifier_reason_code=result.reason_code,
                 classifier_evidence=list(result.evidence),
                 classifier_visible_text_present=bool(result.visible_text),
-                legacy_kind=None,
-                is_match=None,
+                legacy_kind=legacy_kind,
+                is_match=is_match,
             )
         except Exception as e:
             try:
@@ -235,6 +252,50 @@ class ResponsePipelinePrevalidationMixin:
                 # If the error logger itself fails, swallow the exception
                 # to ensure the shadow path never affects production.
                 pass
+
+    def _get_legacy_terminal_answer_kind(self, response: str, parsed_output) -> tuple[str | None, str | None]:
+        """
+        Computes a legacy classification for diagnostic comparison.
+
+        This is a diagnostic-only helper for the shadow classifier path. It may
+        be inefficient as it re-parses the response to safely call legacy
+        helpers without changing their production signatures.
+        """
+        # This is a diagnostic-only helper. It may be inefficient.
+
+        # Priority 1: Leaked system result
+        if hasattr(self.semantics, "looks_like_leaked_system_result"):
+            if self.semantics.looks_like_leaked_system_result(response):
+                return TerminalAnswerKind.LEAKED_SYSTEM_RESULT.value, "looks_like_leaked_system_result"
+
+        # Priority 2: Truncated/invalid completion
+        valid, reason, _ = terminal_plaintext_completion_status(response)
+        if not valid:
+            return (
+                TerminalAnswerKind.INVALID_OR_TRUNCATED_TERMINAL_TEXT.value,
+                f"terminal_plaintext_completion_status:{reason}",
+            )
+
+        # Priority 3: Internal summary (best effort)
+        if hasattr(self.semantics, "_is_internal_summary_instead_of_final_answer"):
+            try:
+                if self.semantics._is_internal_summary_instead_of_final_answer(response, parsed_output):
+                    return TerminalAnswerKind.INTERNAL_SUMMARY_LIKE_TEXT.value, "_is_internal_summary_instead_of_final_answer"
+            except Exception:
+                pass
+
+        # Priority 4: Plaintext answer path
+        if hasattr(self.semantics, "is_plaintext_answer_path"):
+            try:
+                # Re-parsing is inefficient but safe for a shadow path.
+                segments = self.parser.parse(response)
+                parsed_action_count = sum(1 for seg in segments if getattr(seg, "type", "") == "action")
+                if self.semantics.is_plaintext_answer_path(response, parsed_output, parsed_action_count):
+                    return TerminalAnswerKind.PLAINTEXT_TERMINAL_ANSWER.value, "is_plaintext_answer_path"
+            except Exception:
+                pass
+
+        return None, None
 
     def _has_any_action_proposal(self, parsed_output, *, parsed_action_count: int = 0) -> bool:
         try:

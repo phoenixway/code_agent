@@ -230,6 +230,12 @@ This document is the single source of truth for the current state of the Semanti
   - The actual comparison against legacy logic is deferred to a later step.
   - The call is protected by an exception handler to prevent it from affecting runtime behavior.
   - No consumers were migrated, and no production behavior was changed.
+- **Phase 8 Step 4I: Parity Matrix / Legacy Helper Integration (Part 1 Complete)**
+  - Implemented a diagnostic helper in `ResponsePipelinePrevalidationMixin` to compute a `legacy_kind` for terminal answers.
+  - The shadow logging now records both `classifier_kind` and `legacy_kind`, and computes `is_match`.
+  - This enables building a parity matrix from logs.
+  - Integration of legacy helper branches into the classifier itself is deferred.
+  - No production behavior was changed.
 ## Known Authority Boundaries
 
 - **Compiler**: Authoritative for precise, structural diagnostics. A compiler-`INVALID` response must never be dispatched.
@@ -244,7 +250,7 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- **Phase 8 Step 4I: Parity Matrix / Legacy Helper Integration**: Analyze the shadow-mode diagnostic logs to build a parity matrix. Begin integrating legacy helper branches into the classifier to improve parity, with dedicated tests. This is a behavior-preserving step. Consumer migration remains blocked. This step is pending explicit approval.
+- **Phase 8 Step 4I (Part 2): Legacy Helper Integration**: Analyze the parity data from logs. Begin integrating legacy helper branches (e.g., for `LEAKED_SYSTEM_RESULT`) into the `TerminalAnswerClassifier` to improve parity. This is a behavior-preserving step. Consumer migration remains blocked. This step is pending explicit approval.
 
 ## Test Status
 

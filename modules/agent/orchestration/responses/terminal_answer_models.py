@@ -1,5 +1,9 @@
 """
 Phase 8: Typed models for terminal answer semantics.
+
+These models support the TerminalAnswerClassifier, which is currently running in
+a shadow-only mode. The results are for diagnostic logging and do not affect
+production behavior, dispatch, or policy decisions.
 """
 
 from __future__ import annotations

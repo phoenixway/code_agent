@@ -412,15 +412,15 @@ Step 4G introduced the classifier as an isolated shadow-safe component. Step 4H 
 2.  **Execution (Done in Step 4H)**: It is called from `_apply_compiler_diagnosis` after the `RuntimeProtocolSemantics` snapshot is created. Its result is logged for diagnostic purposes and is not used for any production decisions. The call is wrapped in a `try...except` block to ensure safety.
 3.  **No Behavior Change**: The result of the shadow-mode classification **must not** be used to alter control flow, dispatch decisions, UI output, or any other runtime behavior. All existing logic paths must remain unchanged.
 4.  **Comparison and Logging (Step 4H / 4I)**: A dedicated logging function will be called to record the `TerminalAnswerClassifier`'s result.
-    -   **Step 4H**: Logs the classifier's output as a shadow signal (`classifier_kind`, `classifier_source`, etc.). The `legacy_kind` and `is_match` fields are placeholders (`None`).
-    -   **Step 4I (Future)**: Will add logic to compute the `legacy_kind` and `is_match` fields to enable direct parity comparison in the logs.
-    -   **Log Entry**: Each log entry should contain:
+    -   **Step 4H**: Logged the classifier's output as a shadow signal.
+    -   **Step 4I (Part 1)**: Implemented a diagnostic helper to compute `legacy_kind` from existing legacy helpers (`looks_like_leaked_system_result`, `terminal_plaintext_completion_status`, `is_plaintext_answer_path`, etc.). The shadow log now populates `legacy_kind` and `is_match`.
+    -   **Log Entry**: Each log entry now contains:
         -   `response_id`
         -   `classifier_kind`: The `kind` from the new classifier.
-        -   `legacy_kind`: The classification derived from the existing logic path (deferred to Step 4I).
-        -   `is_match`: `True` if the kinds are equivalent (deferred to Step 4I).
+        -   `legacy_kind`: The classification derived from legacy logic.
+        -   `is_match`: `True` if the kinds are equivalent.
         -   `classifier_evidence`: The `source`, `reason_code`, and `evidence` from the new classifier.
-        -   `legacy_evidence`: The name of the legacy helper and its raw inputs (deferred to Step 4I).
+        -   `legacy_evidence`: The name of the legacy helper and its raw inputs (deferred).
 5.  **Parity Goal**: The goal of shadow mode is to collect data and iterate on the classifier's logic (in later steps) until it achieves high parity with the legacy system for all core cases, while providing clearer, more accurate classifications for ambiguous cases.
 
 ### 11.6. Completed Step 4G Tests and Future Step 4H Tests

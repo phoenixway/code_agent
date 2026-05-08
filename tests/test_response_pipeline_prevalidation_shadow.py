@@ -1,3 +1,13 @@
+"""
+Tests for the TerminalAnswerClassifier shadow-mode wiring.
+
+These tests verify that:
+- The shadow classifier is invoked during the response pipeline.
+- The shadow path is safe and does not affect production behavior.
+- Exceptions in the shadow path are caught and do not break the pipeline.
+- Diagnostic logs include both the new classifier's output and a comparable
+  legacy classification for parity analysis.
+"""
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -14,15 +24,26 @@ class TestResponsePipelinePrevalidationShadow(unittest.TestCase):
             def __init__(self):
                 self.protocol_compiler = ProtocolCompiler()
                 self.stage_logger = MagicMock()
+                self.parser = MagicMock()
+                self.semantics = MagicMock()
 
             def _compiler_invalid_kind(self, compiler_analysis):
                 return ""
 
         self.harness = Harness()
+        # Default mock behaviors
+        self.harness.parser.parse.return_value = []
+        self.harness.semantics.looks_like_leaked_system_result.return_value = False
+        if hasattr(self.harness.semantics, "_is_internal_summary_instead_of_final_answer"):
+            self.harness.semantics._is_internal_summary_instead_of_final_answer.return_value = False
+        if hasattr(self.harness.semantics, "is_plaintext_answer_path"):
+            self.harness.semantics.is_plaintext_answer_path.return_value = False
 
+    @patch("modules.agent.orchestration.responses.response_pipeline_prevalidation.terminal_plaintext_completion_status")
     @patch("modules.agent.orchestration.responses.response_pipeline_prevalidation.TerminalAnswerClassifier")
-    def test_shadow_classifier_is_invoked(self, MockClassifier):
+    def test_shadow_classifier_is_invoked(self, MockClassifier, mock_status):
         """Tests that the shadow classifier is invoked during diagnosis."""
+        mock_status.return_value = (True, "", "")
         mock_instance = MockClassifier.return_value
         mock_instance.classify.return_value = TerminalAnswerSemanticResult(
             kind=TerminalAnswerKind.PLAINTEXT_TERMINAL_ANSWER,
@@ -31,7 +52,7 @@ class TestResponsePipelinePrevalidationShadow(unittest.TestCase):
         )
 
         parsed_output = ParsedModelOutput(response="")
-        self.harness._apply_compiler_diagnosis(parsed_output, "Hello world")
+        self.harness._apply_compiler_diagnosis(parsed_output, "Hello world.")
 
         # Assert classifier was instantiated and classify was called
         MockClassifier.assert_called_once()
@@ -72,9 +93,11 @@ class TestResponsePipelinePrevalidationShadow(unittest.TestCase):
         self.assertEqual(parsed_output.invalid_kind, "initial_kind")
         self.assertIsNotNone(parsed_output.runtime_protocol_semantics)
 
+    @patch("modules.agent.orchestration.responses.response_pipeline_prevalidation.terminal_plaintext_completion_status")
     @patch("modules.agent.orchestration.responses.response_pipeline_prevalidation.TerminalAnswerClassifier")
-    def test_shadow_classifier_exception_is_caught(self, MockClassifier):
+    def test_shadow_classifier_exception_is_caught(self, MockClassifier, mock_status):
         """Tests that an exception in the shadow classifier is caught and logged."""
+        mock_status.return_value = (True, "", "")
         mock_instance = MockClassifier.return_value
         test_exception = ValueError("Classifier failed")
         mock_instance.classify.side_effect = test_exception
@@ -82,7 +105,7 @@ class TestResponsePipelinePrevalidationShadow(unittest.TestCase):
         parsed_output = ParsedModelOutput(response="")
 
         # This call should not raise an exception
-        analysis_result = self.harness._apply_compiler_diagnosis(parsed_output, "Hello world")
+        analysis_result = self.harness._apply_compiler_diagnosis(parsed_output, "Hello world.")
 
         # Assert the main return value is still valid
         self.assertIsNotNone(analysis_result)
@@ -95,9 +118,11 @@ class TestResponsePipelinePrevalidationShadow(unittest.TestCase):
             error_message="Classifier failed",
         )
 
+    @patch("modules.agent.orchestration.responses.response_pipeline_prevalidation.terminal_plaintext_completion_status")
     @patch("modules.agent.orchestration.responses.response_pipeline_prevalidation.TerminalAnswerClassifier")
-    def test_shadow_logging_exception_is_caught(self, MockClassifier):
+    def test_shadow_logging_exception_is_caught(self, MockClassifier, mock_status):
         """Tests that an exception in the shadow logger is caught and logged."""
+        mock_status.return_value = (True, "", "")
         mock_instance = MockClassifier.return_value
         mock_instance.classify.return_value = TerminalAnswerSemanticResult(
             kind=TerminalAnswerKind.UNKNOWN, source="fallback", reason_code="test"
@@ -113,7 +138,7 @@ class TestResponsePipelinePrevalidationShadow(unittest.TestCase):
         parsed_output = ParsedModelOutput(response="")
 
         # This call should not raise an exception
-        analysis_result = self.harness._apply_compiler_diagnosis(parsed_output, "Hello world")
+        analysis_result = self.harness._apply_compiler_diagnosis(parsed_output, "Hello world.")
 
         # Assert the main return value is still valid
         self.assertIsNotNone(analysis_result)
@@ -132,4 +157,82 @@ class TestResponsePipelinePrevalidationShadow(unittest.TestCase):
             "error",
             error_class="ValueError",
             error_message="Logger failed",
+        )
+
+    @patch("modules.agent.orchestration.responses.response_pipeline_prevalidation.terminal_plaintext_completion_status")
+    @patch("modules.agent.orchestration.responses.response_pipeline_prevalidation.TerminalAnswerClassifier")
+    def test_shadow_classifier_logs_legacy_kind_and_match(self, MockClassifier, mock_status):
+        """Tests that legacy_kind and is_match are computed and logged."""
+        mock_status.return_value = (True, "", "")
+        mock_instance = MockClassifier.return_value
+        mock_instance.classify.return_value = TerminalAnswerSemanticResult(
+            kind=TerminalAnswerKind.LEAKED_SYSTEM_RESULT,
+            source="compiler_fact",
+            reason_code="test",
+        )
+
+        # Configure legacy semantics to match
+        self.harness.semantics.looks_like_leaked_system_result.return_value = True
+
+        parsed_output = ParsedModelOutput(response="")
+        self.harness._apply_compiler_diagnosis(parsed_output, "SYSTEM RESULT: ...")
+
+        # Assert logger was called with correct legacy kind and match status
+        self.harness.stage_logger.log.assert_any_call(
+            "terminal_answer_classifier_shadow",
+            "snapshot",
+            classifier_kind="leaked_system_result",
+            classifier_source="compiler_fact",
+            classifier_reason_code="test",
+            classifier_evidence=[],
+            classifier_visible_text_present=False,
+            legacy_kind="leaked_system_result",
+            is_match=True,
+        )
+
+        # Configure legacy semantics to mismatch
+        self.harness.semantics.looks_like_leaked_system_result.return_value = False
+        if hasattr(self.harness.semantics, "is_plaintext_answer_path"):
+            self.harness.semantics.is_plaintext_answer_path.return_value = True
+
+        self.harness._apply_compiler_diagnosis(parsed_output, "Just text.")
+
+        # Assert logger was called with correct legacy kind and mismatch status
+        self.harness.stage_logger.log.assert_any_call(
+            "terminal_answer_classifier_shadow",
+            "snapshot",
+            classifier_kind="leaked_system_result",
+            classifier_source="compiler_fact",
+            classifier_reason_code="test",
+            classifier_evidence=[],
+            classifier_visible_text_present=False,
+            legacy_kind="plaintext_terminal_answer",
+            is_match=False,
+        )
+
+    @patch("modules.agent.orchestration.responses.response_pipeline_prevalidation.terminal_plaintext_completion_status")
+    @patch("modules.agent.orchestration.responses.response_pipeline_prevalidation.TerminalAnswerClassifier")
+    def test_shadow_classifier_logs_legacy_truncated_kind(self, MockClassifier, mock_status):
+        """Tests that legacy_kind is correctly identified for truncated text."""
+        mock_status.return_value = (False, "truncated", "Hello")
+        mock_instance = MockClassifier.return_value
+        mock_instance.classify.return_value = TerminalAnswerSemanticResult(
+            kind=TerminalAnswerKind.PLAINTEXT_TERMINAL_ANSWER,
+            source="compiler_fact",
+            reason_code="test",
+        )
+
+        parsed_output = ParsedModelOutput(response="")
+        self.harness._apply_compiler_diagnosis(parsed_output, "Hello")
+
+        self.harness.stage_logger.log.assert_any_call(
+            "terminal_answer_classifier_shadow",
+            "snapshot",
+            classifier_kind="plaintext_terminal_answer",
+            classifier_source="compiler_fact",
+            classifier_reason_code="test",
+            classifier_evidence=[],
+            classifier_visible_text_present=False,
+            legacy_kind="invalid_or_truncated_terminal_text",
+            is_match=False,
         )
