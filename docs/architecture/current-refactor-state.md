@@ -4,8 +4,12 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase 4: Behavior-Preserving Wrapper Migration (Complete)**
-- **Status**: All planned wrapper migrations are complete. The remaining migration review is also complete.
+- **Phase**: Phase 8 Step 4I: Parity Matrix / Legacy Helper Integration
+- **Status**: In Progress.
+  - **Part 1 (Complete)**: Parity logging with `legacy_kind` and `is_match` is implemented.
+  - **Part 2 (Complete)**: The `LEAKED_SYSTEM_RESULT` legacy rule is integrated into the `TerminalAnswerClassifier`.
+- **Next Step**: Part 3, integrating the `INVALID_OR_TRUNCATED_TERMINAL_TEXT` rule, is pending explicit approval.
+- **Boundary**: Consumer migration remains blocked. Production behavior remains unchanged.
 
 ## Completed Governance
 
