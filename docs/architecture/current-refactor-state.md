@@ -198,6 +198,10 @@ This document is the single source of truth for the current state of the Semanti
   - The design for adding new structural facts to the compiler and `RuntimeProtocolSemantics` is complete.
   - The design proposes new facts (`has_subgoal_tags`, `has_memory_tags`, etc.) and compiler shape improvements to provide unambiguous signals for the future `TerminalAnswerClassifier`.
   - Implementation is not authorized.
+- **Phase 8 Step 4D: New Fact Characterization Tests (Design)**
+  - The design for characterization tests for the new structural facts and shape improvements is complete.
+  - The design specifies tests for `has_subgoal_tags`, `has_memory_tags`, `has_memory_checkpoint`, and improved compiler shapes (`PURE_PLAINTEXT`, `SUBGOAL_WITH_TEXT`, `PRE_ACTION_TEXT_AND_ACTION`).
+  - Implementation is not authorized until Step 4D.1.
 
 ## Known Authority Boundaries
 
@@ -213,7 +217,7 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- **Phase 8 Step 4D: New Fact Characterization Tests (Design)**: Design characterization tests for the new structural facts and shape improvements. Implementation is not authorized.
+- **Phase 8 Step 4D.1: New Fact Characterization Test Implementation**: Implement the characterization tests designed in Step 4D. This is a tests-only step. Production code changes are not authorized.
 
 ## Test Status
 

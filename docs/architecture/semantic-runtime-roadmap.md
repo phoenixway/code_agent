@@ -719,10 +719,10 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 8 Step 4D: New Fact Characterization Test Design
 
-- **Status**: Approved / Not Started.
+- **Status**: Done.
 - **Goal**: Design characterization tests for the new structural facts and shape improvements proposed in Step 4C.
 - **Forbidden**: Any production code or test changes.
-- **Done When**: The test cases are designed and documented.
+- **Done When**: The test cases were designed and documented in `visible-text-terminal-answer-semantics-design.md`.
 
 ---
 

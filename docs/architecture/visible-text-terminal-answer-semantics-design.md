@@ -163,9 +163,145 @@ This design will be implemented in the following sequence of steps, each requiri
 
 ### Next Step
 
-The design (Step 4C) is complete. The approved next step is to conduct **Phase 8, Step 4D: New Fact Characterization Tests (Design)**. This is a design-only step to plan the tests for the new compiler facts. Implementation is not authorized.
+The design (Step 4C) is complete. The approved next step was to conduct **Phase 8, Step 4D: New Fact Characterization Tests (Design)**. This design step is now complete.
 
-## 9. Explicitly Deferred
+## 9. Phase 8 Step 4D: New Fact Characterization Test Design
+
+This design step is complete. It defines the characterization tests required to validate the new structural facts and compiler shape improvements proposed in Step 4C.
+
+### Goal
+To create a suite of tests that will lock down the behavior of the new compiler facts and shapes. These tests will initially be expected to fail (`xfail`) and will serve as the specification for the implementation work in Step 4E.
+
+### Test Location
+The new tests will be added to `tests/test_runtime_protocol_semantics.py` or a new dedicated test file like `tests/test_compiler_structural_facts.py`.
+
+### Protocol Tag Inventory
+To ensure full coverage, the tests must account for all compiler-visible protocol tags.
+
+- **Non-Board Control Tags**: `<think>`, `<intent>`, `<action>`, `<file_content>`
+- **Memory Content Tags**: `<fact>`, `<finding>`, `<decision>`, `<preference>`, `<progress>`, `<path>`
+- **Memory Review Tag**: `<memory_review />`
+- **Memory Checkpoint Marker**: `<memory_update_done />`
+- **Plan/Subgoal Tag**: `<subgoal>`
+
+**Compatibility Risk**: Legacy `ResponseSemantics` treats `<preference>` as a memory tag. The Step 4D.1 tests and Step 4E implementation must ensure the compiler also recognizes `<preference>` as a memory tag to avoid regressions.
+
+### Test Design: Board and Checkpoint Facts
+
+These tests will target the new boolean facts on `RuntimeProtocolSemantics`.
+
+#### `has_subgoal_tags`
+- **Test Case 1**: Response with one `<subgoal>` tag.
+  - **Input**: `<subgoal action='create' id='s1'>Subgoal</subgoal>`
+  - **Expected**: `snapshot.has_subgoal_tags` is `True`.
+- **Test Case 2**: Response with multiple `<subgoal>` tags.
+  - **Input**: `<subgoal ...>...</subgoal><subgoal ...>...</subgoal>`
+  - **Expected**: `snapshot.has_subgoal_tags` is `True`.
+- **Test Case 3**: Response with no `<subgoal>` tags.
+  - **Input**: `<fact>A fact.</fact>`
+  - **Expected**: `snapshot.has_subgoal_tags` is `False`.
+- **Test Case 4**: Response with `<subgoal>` and other memory tags.
+  - **Input**: `<fact>A fact.</fact><subgoal ...>...</subgoal>`
+  - **Expected**: `snapshot.has_subgoal_tags` is `True`.
+
+#### `has_memory_tags`
+- **Test Case 1**: Response with memory content tags (`<fact>`, `<finding>`, `<decision>`, `<preference>`, `<progress>`, `<path>`).
+  - **Input**: `<fact>A fact.</fact><preference>A preference.</preference>`
+  - **Expected**: `snapshot.has_memory_tags` is `True`.
+- **Test Case 2**: Response with memory review tag (`<memory_review />`).
+  - **Input**: `<memory_review />`
+  - **Expected**: `snapshot.has_memory_tags` is `True`.
+- **Test Case 3**: Response with only `<subgoal>` tags.
+  - **Input**: `<subgoal ...>...</subgoal>`
+  - **Expected**: `snapshot.has_memory_tags` is `False`.
+- **Test Case 4**: Response with only `<memory_update_done />`.
+  - **Input**: `<memory_update_done />`
+  - **Expected**: `snapshot.has_memory_tags` is `False`.
+- **Test Case 5**: Response with memory tags and subgoal tags.
+  - **Input**: `<fact>A fact.</fact><subgoal ...>...</subgoal>`
+  - **Expected**: `snapshot.has_memory_tags` is `True`.
+
+#### `has_memory_checkpoint`
+- **Test Case 1**: Response with `<memory_update_done />`.
+  - **Input**: `<memory_update_done />`
+  - **Expected**: `snapshot.has_memory_checkpoint` is `True`.
+- **Test Case 2**: Response with memory tags but no checkpoint.
+  - **Input**: `<fact>A fact.</fact>`
+  - **Expected**: `snapshot.has_memory_checkpoint` is `False`.
+- **Test Case 3**: Response with both memory tags and checkpoint.
+  - **Input**: `<fact>A fact.</fact><memory_update_done />`
+  - **Expected**: `snapshot.has_memory_checkpoint` is `True`.
+
+### Test Design: Compiler Shape Improvements
+
+These tests will target the compiler's `shape` output and the corresponding `visible_text_source` on the `RuntimeProtocolSemantics` snapshot.
+
+#### `PURE_PLAINTEXT` Shape
+- **Test Case 1**: Simple plaintext.
+  - **Input**: `Hello world.`
+  - **Expected Shape**: `PURE_PLAINTEXT`
+  - **Expected VTS**: `PURE_PLAINTEXT`
+- **Test Case 2**: Plaintext with `<think>`.
+  - **Input**: `<think>...</think>Hello world.`
+  - **Expected Shape**: `PURE_PLAINTEXT`
+  - **Expected VTS**: `PURE_PLAINTEXT`
+
+#### `PRE_ACTION_TEXT_AND_ACTION` Shape
+- **Test Case 1**: Text before an action.
+  - **Input**: `Okay, I will read the file.<action>{"type":"read_file","path":"README.md"}</action>`
+  - **Expected Shape**: `PRE_ACTION_TEXT_AND_ACTION`
+  - **Expected VTS**: `PRE_ACTION_TEXT`
+  - **Expected Facts**: `snapshot.has_pre_action_text` is `True`, `snapshot.pre_action_text` contains "Okay, I will read the file.".
+
+#### `SUBGOAL_WITH_TEXT` Shape
+- **Test Case 1**: Subgoal tag with accompanying text.
+  - **Input**: `<subgoal ...>...</subgoal>Now, let's proceed.`
+  - **Expected Shape**: `SUBGOAL_WITH_TEXT`
+  - **Expected VTS**: `CHECKPOINT_ACCOMPANYING_TEXT`
+- **Test Case 2**: Memory tags with accompanying text.
+  - **Input**: `<fact>...</fact>Here is a summary.`
+  - **Expected Shape**: `MEMORY_TEXT` (existing shape)
+  - **Expected VTS**: `CHECKPOINT_ACCOMPANYING_TEXT`
+
+#### `INTENT_COMPLETE_WITH_TEXT` Shape
+- **Test Case 1**: Intent complete with text.
+  - **Input**: `<intent mode="complete">{}</intent>All done.`
+  - **Expected Shape**: `INTENT_COMPLETE_WITH_TEXT` (existing shape)
+  - **Expected VTS**: `INTENT_COMPLETION_TEXT`
+
+### Test Design: `visible_text_source` Enum
+
+A new parameterized test will map various responses to the expected `visible_text_source` (VTS) value.
+
+| Response Snippet | Expected `visible_text_source` | Notes |
+|---|---|---|
+| `(no visible text)` | `NONE` | e.g., `<action>{"type":"read_file","path":"README.md"}</action>` only |
+| `Just text.` | `PURE_PLAINTEXT` | |
+| `Text before <action>{"type":"read_file","path":"README.md"}</action>` | `PRE_ACTION_TEXT` | |
+| `<intent mode="complete">{}</intent>Text.` | `INTENT_COMPLETION_TEXT` | |
+| `<fact>...</fact>Text.` | `CHECKPOINT_ACCOMPANYING_TEXT` | |
+| `<subgoal>...</subgoal>Text.` | `CHECKPOINT_ACCOMPANYING_TEXT` | |
+| `<think>...</think>` | `NONE` | No visible text |
+| `<action>{"type":"read_file","path":"README.md"}</action><intent>{}</intent>` | `UNKNOWN` | Invalid combination, shape is INVALID |
+
+### Optional Facts Review
+
+- **`has_pre_action_visible_text`**: This describes the valid `PRE_ACTION_TEXT_AND_ACTION` shape where visible text appears before an action. This is redundant with `visible_text_source`. The existing `has_pre_action_text` boolean on `RuntimeProtocolSemantics` is sufficient. No new test is needed beyond what's designed for that shape.
+- **Visible text after action**: The case of visible text appearing *after* an action is an error condition (`E_VISIBLE_TEXT_AFTER_ACTION`). The compiler already detects this. It should not be a structural fact on a valid IR. No test needed.
+- **`checkpoint_kind`**: This would be a useful enum (`MEMORY`, `SUBGOAL`, etc.) but is a larger change.
+  - **Decision**: Defer `checkpoint_kind`. The boolean flags (`has_memory_tags`, `has_subgoal_tags`) are sufficient for the immediate needs of the `TerminalAnswerClassifier` design.
+
+### Implementation Plan for Tests (Step 4D.1)
+
+- The tests designed here will be implemented in Step 4D.1.
+- They will be marked with `@pytest.mark.xfail(reason="Not implemented in compiler yet")`.
+- This ensures the test suite remains green while providing a clear specification for the compiler implementation in Step 4E.
+- No production code will be changed in Step 4D.1.
+
+### Next Step
+The design (Step 4D) is complete. The approved next step is to conduct **Phase 8, Step 4D.1: New Fact Characterization Test Implementation**. This is a tests-only step. Implementation of production code is not authorized.
+
+## 10. Explicitly Deferred
 
 - A full refactor of `ResponsePipeline` or `DispatchPipeline`.
 - Changes to `ActionPolicy`.
