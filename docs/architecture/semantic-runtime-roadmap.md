@@ -522,7 +522,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 6 Step 3: First Consumer Migration
 
-- **Status**: Not Started.
+- **Status**: Done.
 - **Goal**: Implement the first, lowest-risk consumer migration to use the `BundleSemanticValidator`.
 - **Scope**: `ResponsePipelinePrevalidationMixin._reject_compiler_invalid_atomic_bundle_before_transition` only.
 - **Allowed**:
@@ -534,7 +534,19 @@ This document outlines the phased plan to migrate the runtime from legacy respon
     - `BundleSemanticValidator` classification changes.
     - Changing prompts, reason strings, or source markers.
     - Any runtime behavior changes.
-- **Done When**: The consumer is migrated, all tests pass, and runtime behavior is unchanged.
+- **Done When**: The consumer was migrated, `tests/test_response_pipeline_prevalidation.py` was added, all tests passed, and runtime behavior was unchanged.
+
+---
+
+#### Phase 6 Step 4: Next Consumer Migration Review
+
+- **Status**: Design in Review.
+- **Goal**: Review whether to migrate another consumer or conclude Phase 6 before `ActionPolicy`/`segments`-dependent branches.
+- **Allowed**:
+    - Update `docs/architecture/bundle-semantic-validation-design.md` with the design for Step 4.
+- **Forbidden**:
+    - Implementation before design approval.
+- **Done When**: The design for Step 4 is documented and ready for approval.
 
 ---
 

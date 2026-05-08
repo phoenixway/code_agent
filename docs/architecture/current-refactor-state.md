@@ -147,6 +147,11 @@ This document is the single source of truth for the current state of the Semanti
   - All tests passed.
   - No production code was changed, and no consumers were migrated.
   - Runtime behavior is unchanged.
+- **Phase 6 Step 3: First Consumer Migration (Implementation)**
+  - Migrated `ResponsePipelinePrevalidationMixin._reject_compiler_invalid_atomic_bundle_before_transition` to use `BundleSemanticValidator`.
+  - Added `tests/test_response_pipeline_prevalidation.py` to prove exact behavior preservation.
+  - All tests passed, and runtime behavior is unchanged.
+  - No other consumers were migrated.
 
 ## Known Authority Boundaries
 
@@ -162,7 +167,7 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Implement Phase 6 Step 3 (first consumer migration for `BundleSemanticValidator`).
+- Design and approve Phase 6 Step 4 (next consumer migration review for `BundleSemanticValidator`).
 
 ## Test Status
 

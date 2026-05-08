@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ..shared.decision_models import AtomicBundlePlan, NormalizedModelResponse, ResponsePipelineOutcome
 from ..parsers.visible_text import sanitize_visible_text_for_user, terminal_plaintext_completion_status
+from .bundle_semantic_validator import BundleResultKind, BundleSemanticValidator
 from .protocol_decision_bridge import COMPILER_INVALID_KIND_BY_CODE
 from .runtime_protocol_semantics import compact_runtime_protocol_semantics, runtime_semantics_from_compiler_analysis
 
@@ -408,10 +409,20 @@ class ResponsePipelinePrevalidationMixin:
             return None
 
         compiler_code = str(getattr(parsed_output, "compiler_error_code", "") or "").strip()
-        legacy_invalid_kind = str(getattr(parsed_output, "invalid_kind", "") or "").strip()
         if compiler_code not in {"E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION", "E_FILE_CONTENT_REQUIRES_ACTION"}:
             return None
-        if legacy_invalid_kind not in {"action_payload_array", "multiple_actions", "file_content_must_follow_action"}:
+
+        validator = BundleSemanticValidator()
+        validation_result = validator.validate(parsed_output)
+
+        if validation_result.kind not in {
+            BundleResultKind.INVALID_ACTION_ARRAY,
+            BundleResultKind.INVALID_MULTIPLE_ACTIONS,
+            BundleResultKind.INVALID_FILE_CONTENT_PAIRING,
+        }:
+            return None
+
+        if validation_result.kind == BundleResultKind.INVALID_FILE_CONTENT_PAIRING and compiler_code != "E_FILE_CONTENT_REQUIRES_ACTION":
             return None
 
         previewer = getattr(self.intent_transitions, "preview_payload_decision", None)
@@ -452,13 +463,15 @@ class ResponsePipelinePrevalidationMixin:
             )
 
         invalid_part = "file_content" if compiler_code == "E_FILE_CONTENT_REQUIRES_ACTION" else "action"
+        reason_text = self._compiler_atomic_bundle_reason_text(parsed_output, invalid_part=invalid_part)
+
         blocked_action = ""
         proposed_intent = getattr(preview, "active_intent", None)
         if proposed_intent is not None:
             blocked_action = str(getattr(proposed_intent, "intent_type", "") or "")
 
-        reason_text = self._compiler_atomic_bundle_reason_text(parsed_output, invalid_part=invalid_part)
         plan.invalid_part = invalid_part
+        legacy_invalid_kind = str(getattr(parsed_output, "invalid_kind", "") or "").strip()
         plan.bundle_reason = legacy_invalid_kind or compiler_code
         plan.blocked_action = blocked_action
         self.stage_logger.log(

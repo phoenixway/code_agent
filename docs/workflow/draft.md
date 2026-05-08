@@ -36,5 +36,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 32. Phase 6 Step 2B.2 (READONLY_ACTION_BATCH_CANDIDATE shape) implementation: done.
 33. Phase 6 Step 2B.3 (NO_BUNDLE_SHAPE for INTENT_ONLY) implementation: done.
 34. Phase 6 Step 2C (parity testing) implementation: done.
-35. Phase 6 Step 3 (first consumer migration) design: approved.
-36. Next: Implement Phase 6 Step 3 only.
+35. Phase 6 Step 3 (first consumer migration) implementation: done.
+36. Next: Design and approve Phase 6 Step 4 (next consumer migration review).
