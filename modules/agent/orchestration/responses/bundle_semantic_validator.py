@@ -134,5 +134,7 @@ class BundleSemanticValidator:
             return BundleValidationResult(kind=BundleResultKind.INTENT_ACTION_BUNDLE_CANDIDATE)
         elif shape == "READ_ONLY_BATCH_CANDIDATE":
             return BundleValidationResult(kind=BundleResultKind.READONLY_ACTION_BATCH_CANDIDATE)
+        elif shape == "INTENT_ONLY":
+            return BundleValidationResult(kind=BundleResultKind.NO_BUNDLE_SHAPE)
 
         return BundleValidationResult(kind=BundleResultKind.UNKNOWN)

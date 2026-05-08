@@ -120,16 +120,6 @@ def test_validate_returns_unknown_for_empty_parsed_output():
     assert validator.validate(parsed_output=MockParsedOutput()).kind == BundleResultKind.UNKNOWN
 
 
-def test_validate_still_returns_unknown_for_unapproved_shape_only_metadata():
-    """
-    Tests that shape-only metadata for unapproved shapes still returns UNKNOWN.
-    """
-    validator = BundleSemanticValidator()
-    # INTENT_ONLY is a valid shape but not yet implemented in Step 2B
-    parsed_output = MockParsedOutput(compiler_shape="INTENT_ONLY")
-    result = validator.validate(parsed_output=parsed_output)
-    assert result.kind == BundleResultKind.UNKNOWN
-
 
 def test_validate_ignores_segments_argument():
     """
@@ -186,8 +176,9 @@ class MockIR:
         ({"compiler_shape": "INTENT_ACTION_BUNDLE"}, BundleResultKind.INTENT_ACTION_BUNDLE_CANDIDATE),
         # Step 2B.2: READONLY_ACTION_BATCH_CANDIDATE shape classification
         ({"compiler_shape": "READ_ONLY_BATCH_CANDIDATE"}, BundleResultKind.READONLY_ACTION_BATCH_CANDIDATE),
+        # Step 2B.3: NO_BUNDLE_SHAPE classification
+        ({"compiler_shape": "INTENT_ONLY"}, BundleResultKind.NO_BUNDLE_SHAPE),
         # Deferred shapes should return UNKNOWN
-        ({"compiler_shape": "INTENT_ONLY"}, BundleResultKind.UNKNOWN),
         ({"compiler_shape": "ACTION_ONLY"}, BundleResultKind.UNKNOWN),
         ({"compiler_shape": "PLAINTEXT_ONLY"}, BundleResultKind.UNKNOWN),
         ({"compiler_shape": "INTENT_COMPLETE_WITH_TEXT"}, BundleResultKind.UNKNOWN),
@@ -246,6 +237,25 @@ def test_step2a_error_code_takes_precedence_over_readonly_batch_shape():
     # The error code should win, not the shape.
     assert result.kind == BundleResultKind.INVALID_MULTIPLE_ACTIONS
     assert result.kind != BundleResultKind.READONLY_ACTION_BATCH_CANDIDATE
+
+
+def test_step2a_error_code_takes_precedence_over_intent_only_shape():
+    """
+    Tests that Step 2A error-code logic takes precedence over INTENT_ONLY shape.
+    """
+    validator = BundleSemanticValidator()
+    # This has an INTENT_ONLY shape but also a Step 2A error
+    parsed_output = MockParsedOutput(
+        compiler_shape="INTENT_ONLY",
+        compiler_error_code="E_FILE_CONTENT_REQUIRES_ACTION",
+        invalid_kind="file_content_must_follow_action",
+    )
+
+    result = validator.validate(parsed_output=parsed_output)
+
+    # The error code should win, not the shape.
+    assert result.kind == BundleResultKind.INVALID_FILE_CONTENT_PAIRING
+    assert result.kind != BundleResultKind.NO_BUNDLE_SHAPE
 
 
 @pytest.mark.parametrize(
