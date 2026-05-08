@@ -1,6 +1,6 @@
 raw: |
   Тег `<action>` означає tool call, а не видимий текст для користувача.
-shape: PLAINTEXT_ONLY
+shape: PURE_PLAINTEXT
 valid: true
 transition_applied: false
 action_dispatched: false

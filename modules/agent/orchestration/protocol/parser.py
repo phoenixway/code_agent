@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import replace
 from typing import Any
 
 from .lexer import ProtocolLexer
@@ -75,8 +76,10 @@ class ProtocolParser:
         while i < len(tokens):
             token = tokens[i]
             if isinstance(token, TextToken):
-                if token.text:
-                    nodes.append(VisibleTextNode(text=token.text, span=token.span))
+                split_nodes, split_error = self._parse_text_token(token)
+                if split_error is not None:
+                    return None, split_error, tokens
+                nodes.extend(split_nodes)
                 i += 1
                 continue
             if isinstance(token, InlineCodeToken):
@@ -92,6 +95,8 @@ class ProtocolParser:
                     nodes.append(MarkerNode(span=token.span))
                 elif token.name == "memory_review":
                     nodes.append(MemoryNode(tag=token.name, attrs=token.attrs, content=None, span=token.span))
+                elif token.name == "intent":
+                    nodes.append(IntentNode(attrs=token.attrs, raw_payload="", json_payload=None, json_error=None, span=token.span))
                 else:
                     nodes.append(LiteralProtocolTagNode(text=token.span.excerpt, context="self_closing", span=token.span))
                 i += 1
@@ -109,6 +114,16 @@ class ProtocolParser:
             i = next_index
 
         return ResponseAst(raw=text, nodes=tuple(nodes)), None, tokens
+
+    def _parse_text_token(self, token: TextToken) -> tuple[list[Node], ErrorValue | None]:
+        if not token.text:
+            return [], None
+
+        split_nodes = self._split_trailing_action_suffix(token)
+        if split_nodes is not None:
+            return split_nodes, None
+
+        return [VisibleTextNode(text=token.text, span=token.span)], None
 
     def _parse_block(self, tokens: tuple[Any, ...], start_index: int) -> tuple[Node, int] | ErrorValue:
         token = tokens[start_index]
@@ -171,6 +186,37 @@ class ProtocolParser:
         if name in self.MEMORY_TAGS:
             return MemoryNode(tag=name, attrs=token.attrs, content=body_text or None, span=body_span), closing_index + 1
         return LiteralProtocolTagNode(text=body_text, context="unknown_block", span=body_span), closing_index + 1
+
+    def _split_trailing_action_suffix(self, token: TextToken) -> list[Node] | None:
+        text = token.text
+        for match in reversed(list(re.finditer(r"<action\b", text, flags=re.IGNORECASE))):
+            action_start = match.start()
+            prefix_text = text[:action_start]
+            if not prefix_text.strip():
+                continue
+
+            suffix_text = text[action_start:]
+            ast, error, _ = self.parse(suffix_text)
+            if error is not None or ast is None or not ast.nodes:
+                continue
+
+            first_node = ast.nodes[0]
+            trailing_nodes = ast.nodes[1:]
+            if not isinstance(first_node, ActionNode):
+                continue
+            if any(not isinstance(node, VisibleTextNode) or node.text.strip() for node in trailing_nodes):
+                continue
+
+            nodes: list[Node] = [
+                VisibleTextNode(
+                    text=prefix_text,
+                    span=self._span_from_offsets(token, 0, action_start),
+                )
+            ]
+            for node in ast.nodes:
+                nodes.append(replace(node, span=self._offset_span(node.span, token.span.start + action_start)))
+            return nodes
+        return None
 
     def _find_matching_end(self, tokens: tuple[Any, ...], start_index: int, name: str) -> int | None:
         depth = 0
@@ -259,6 +305,22 @@ class ProtocolParser:
             action_dispatched=False,
             recovery_id=spec.recovery_id,
         )
+
+    def _span_from_offsets(self, token: TextToken, start: int, end: int) -> Span:
+        return self._absolute_span(token.text, token.span.start, start, end)
+
+    def _offset_span(self, span: Span, delta: int) -> Span:
+        return Span(
+            start=span.start + delta,
+            end=span.end + delta,
+            excerpt=span.excerpt,
+        )
+
+    def _absolute_span(self, text: str, base: int, start: int, end: int) -> Span:
+        excerpt = text[start:end]
+        if len(excerpt) > 160:
+            excerpt = excerpt[:157] + "..."
+        return Span(start=base + start, end=base + end, excerpt=excerpt)
 
     def _merge_spans(self, start: Span, end: Span) -> Span:
         excerpt = start.excerpt

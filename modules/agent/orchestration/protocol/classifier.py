@@ -70,21 +70,34 @@ class ProtocolCompiler:
 
         ir = None
         lowering_error = None
+        # For valid shapes, or for safe invalid shapes, we can lower to get IR.
+        # "Safe" invalid shapes are those without action/intent/file_content nodes,
+        # which could have dispatch implications if IR were generated.
         if shape_error is None:
-            # Valid shape, lower normally.
             ir, lowering_error = self.lowerer.lower(ast, shape)
-        elif self._may_attach_structural_facts_ir(ast):
-            # It's a shape error, but on a safe AST (no actions/intents).
-            # We can still lower to get structural facts.
+        elif self._may_attach_structural_facts_ir(ast, shape_error):
             ir, lowering_error = self.lowerer.lower(ast, shape)
 
         final_error = shape_error or lowering_error
         return CompilerAnalysis(tokens=tokens, ast=ast, shape=shape, error=final_error, ir=ir)
 
-    def _may_attach_structural_facts_ir(self, ast: ResponseAst) -> bool:
-        """Returns True if an AST contains only nodes that are safe for structural fact lowering."""
+    def _may_attach_structural_facts_ir(self, ast: ResponseAst, error: ErrorValue) -> bool:
+        """
+        Returns True if an AST contains only nodes that are safe for structural fact lowering,
+        even if the shape is technically invalid.
+        """
+        # Never lower if the error itself is about a dangerous tag inside think.
+        if error and error.code in (
+            "E_ACTION_INSIDE_THINK",
+            "E_INTENT_INSIDE_THINK",
+            "E_FILE_CONTENT_INSIDE_THINK",
+        ):
+            return False
+
         if not ast or not ast.nodes:
             return True
+
+        # Check for top-level dangerous nodes.
         return not any(isinstance(node, (ActionNode, IntentNode, FileContentNode)) for node in ast.nodes)
 
     def _classify(self, ast: ResponseAst) -> tuple[ResponseShape, ErrorValue | None]:
@@ -123,6 +136,16 @@ class ProtocolCompiler:
                 invalid_part="intent",
             )
 
+        if visible_nodes and len(intent_nodes) == 1 and not action_nodes:
+            if self._intent_mode(intent_nodes[0]) == "complete":
+                return ResponseShape.INTENT_COMPLETE_WITH_TEXT, None
+
+        if visible_nodes and len(action_nodes) == 1 and not intent_nodes:
+            first_action_idx = next((i for i, n in enumerate(nodes) if isinstance(n, ActionNode)), -1)
+            last_visible_idx = nodes.index(visible_nodes[-1]) if visible_nodes else -1
+            if first_action_idx > last_visible_idx:
+                return ResponseShape.PRE_ACTION_TEXT_AND_ACTION, None
+
         if file_nodes:
             if not action_nodes:
                 return ResponseShape.INVALID, self._error(
@@ -155,10 +178,6 @@ class ProtocolCompiler:
                     invalid_part="file_content_action_mismatch",
                 )
 
-        if visible_nodes and len(intent_nodes) == 1 and not action_nodes:
-            if self._intent_mode(intent_nodes[0]) == "complete":
-                return ResponseShape.INTENT_COMPLETE_WITH_TEXT, None
-
         first_action_idx = next((i for i, n in enumerate(nodes) if isinstance(n, ActionNode)), -1)
         last_visible_idx = (
             nodes.index(visible_nodes[-1]) if visible_nodes else -1
@@ -180,10 +199,6 @@ class ProtocolCompiler:
                     nodes[last_visible_idx].span,
                     invalid_part="visible_text_after_intent",
                 )
-
-        if visible_nodes and len(action_nodes) == 1 and not intent_nodes:
-            if first_action_idx > last_visible_idx:
-                return ResponseShape.PRE_ACTION_TEXT_AND_ACTION, None
 
         if visible_nodes and (intent_nodes or len(action_nodes) > 1):
             if len(intent_nodes) == 1 and self._intent_mode(intent_nodes[0]) == "complete" and not action_nodes:

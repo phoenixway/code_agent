@@ -1,11 +1,8 @@
 """
-Phase 8, Step 4D.1: Golden characterization tests for compiler/runtime structural facts.
+Phase 8: Golden characterization tests for compiler/runtime structural facts.
 
-These tests lock down the future, target behavior of the compiler and
-RuntimeProtocolSemantics adapter regarding new structural facts needed for the
-TerminalAnswerClassifier.
-
-These tests are expected to fail until the implementation in Step 4E is complete.
+These tests lock down the behavior of the compiler and RuntimeProtocolSemantics
+adapter regarding new structural facts needed for the TerminalAnswerClassifier.
 """
 
 import pytest
@@ -13,8 +10,7 @@ import pytest
 from modules.agent.orchestration.protocol.classifier import ProtocolCompiler
 from modules.agent.orchestration.responses.runtime_protocol_semantics import runtime_semantics_from_compiler_analysis
 
-# Golden test matrix for future compiler/runtime structural facts.
-# These tests are expected to fail until Phase 8 Step 4E is implemented.
+# Golden test matrix for compiler/runtime structural facts.
 GOLDEN_CASES = [
     # A. Memory content tags
     {
@@ -270,8 +266,9 @@ GOLDEN_CASES = [
 )
 def test_golden_structural_facts(case_id, response, expected_shape, expected_facts):
     """
-    Golden characterization test for future compiler/runtime structural facts.
-    This test will fail until the compiler and RuntimeProtocolSemantics are updated.
+    Golden characterization test for compiler/runtime structural facts.
+    This test verifies that the compiler and RuntimeProtocolSemantics correctly
+    produce the structural facts and shapes defined in Phase 8.
     """
     compiler = ProtocolCompiler()
     analysis = compiler.analyze(response)
