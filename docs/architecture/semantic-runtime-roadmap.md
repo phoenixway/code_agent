@@ -486,7 +486,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 6 Step 2B.3: NO_BUNDLE_SHAPE Classification
 
-- **Status**: Not Started.
+- **Status**: Done.
 - **Goal**: Implement the `NO_BUNDLE_SHAPE` classification for the `INTENT_ONLY` shape.
 - **Allowed**:
     - Add logic to `BundleSemanticValidator.validate` to classify `NO_BUNDLE_SHAPE` for the `INTENT_ONLY` compiler shape.
@@ -498,7 +498,20 @@ This document outlines the phased plan to migrate the runtime from legacy respon
     - Migrating any consumers.
     - Calling `ActionPolicy`.
     - Any runtime behavior changes.
-- **Done When**: The Step 2B.3 logic is implemented with passing tests, and no consumers are migrated.
+- **Done When**: The Step 2B.3 logic was implemented with passing tests, and no consumers were migrated.
+
+---
+
+#### Phase 6 Step 2C: Parity Testing
+
+- **Status**: Design in Review.
+- **Goal**: Design and document parity tests to prove behavioral equivalence between the `BundleSemanticValidator` and the legacy prevalidation logic before any consumer migration.
+- **Allowed**:
+    - Update `docs/architecture/bundle-semantic-validation-design.md` with the detailed design for Step 2C.
+- **Forbidden**:
+    - Implementation before design approval.
+    - Migrating any consumers.
+- **Done When**: The design for Step 2C is documented and ready for approval.
 
 ---
 

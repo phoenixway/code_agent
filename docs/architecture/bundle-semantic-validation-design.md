@@ -3,8 +3,9 @@
 - **Phase 6 Status**: Approved
 - **Step 1 (Scaffolding) Status**: Done
 - **Step 2A (Error-Code Logic) Status**: Done
-- **Step 2B (Shape Logic) Status**: Step 2B.3 Design Approved
-- **Step 2 Implementation**: Authorized for Step 2B.3 (`INTENT_ONLY` shape).
+- **Step 2B (Shape Logic) Status**: Step 2B.3 Done
+- **Step 2C Status**: Design in Review
+- **Step 2C Implementation**: Not authorized
 
 ## 1. Purpose and Guiding Principles
 
@@ -221,7 +222,7 @@ The following shapes are **out of scope** for Step 2B and must result in `UNKNOW
 To ensure a safe and incremental implementation, Step 2B can be broken down:
 - **Step 2B.1 (Done)**: Implemented `INTENT_ACTION_BUNDLE_CANDIDATE` classification.
 - **Step 2B.2 (Done)**: Implemented `READONLY_ACTION_BATCH_CANDIDATE` classification.
-- **Step 2B.3 (Design Approved)**: Implement `NO_BUNDLE_SHAPE` classification for `INTENT_ONLY`.
+- **Step 2B.3 (Done)**: Implemented `NO_BUNDLE_SHAPE` classification for `INTENT_ONLY`.
 
 #### 8.6.6. Step 2B.2 Design Details: READONLY_ACTION_BATCH_CANDIDATE
 
@@ -248,7 +249,7 @@ This section details the design for Step 2B.2. Implementation is not authorized 
 
 #### 8.6.7. Step 2B.3 Design Details: NO_BUNDLE_SHAPE
 
-This section details the design for Step 2B.3. Implementation is authorized for the `INTENT_ONLY` shape classification only.
+This section details the design for Step 2B.3. Implementation is complete for the `INTENT_ONLY` shape classification.
 
 - **Scope and Boundaries**:
   - **Precedence**: This logic must only run if no classification was found in Step 2A (error codes) or prior Step 2B sub-steps.
@@ -268,6 +269,27 @@ This section details the design for Step 2B.3. Implementation is authorized for 
   - **Precedence Tests**: Add tests to prove that Step 2A, 2B.1, and 2B.2 classifications take precedence.
   - **Deferred Shape Tests**: Ensure `ACTION_ONLY` and visible-text shapes still return `UNKNOWN`.
   - **Boundary Tests**: Ensure existing tests prove `ActionPolicyHandler` is not called and `segments` are ignored.
+
+### 8.7. Step 2C Design: Parity Testing
+
+This section details the design for Step 2C. Implementation is not authorized until this design is approved.
+
+- **Scope and Boundaries**:
+  - **Goal**: Create a new test file with parity tests that prove the `BundleSemanticValidator`'s classifications are behaviorally equivalent to the legacy logic in `ResponsePipelinePrevalidationMixin` for the classifications implemented in Step 2A and 2B.
+  - **Allowed**:
+    - Create a new test file (e.g., `tests/test_bundle_semantic_validator_parity.py`).
+    - Use test fixtures and `pytest.mark.parametrize` to drive tests from a shared set of `ParsedModelOutput` scenarios.
+    - For each scenario, assert that the `BundleSemanticValidator`'s `BundleResultKind` matches the expected outcome from the legacy logic.
+  - **Forbidden**:
+    - The parity tests **must not** re-implement or simulate the legacy logic. They should assert against known, expected outcomes for given inputs.
+    - The parity tests must not change any production code.
+    - No consumer migration is authorized.
+
+- **Test Strategy**:
+  - Create fixtures for `ParsedModelOutput` that represent the key scenarios covered by `_reject_compiler_invalid_atomic_bundle_before_transition`.
+  - Create a mapping of `(compiler_error_code, invalid_kind)` tuples to the expected `BundleResultKind`.
+  - Use `pytest.mark.parametrize` to iterate through this mapping, call `BundleSemanticValidator.validate`, and assert the result.
+  - This approach proves that the validator correctly implements the documented mapping from the legacy logic without being tightly coupled to its implementation details.
 
 ## 9. Explicitly Deferred
 

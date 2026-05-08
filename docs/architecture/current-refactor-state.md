@@ -136,6 +136,11 @@ This document is the single source of truth for the current state of the Semanti
   - Added unit tests, which passed.
   - No consumers were migrated, and no other shape logic was implemented.
   - Runtime behavior is unchanged.
+- **Phase 6 Step 2B.3: Shape-Driven Logic (Implementation)**
+  - Implemented the `NO_BUNDLE_SHAPE` classification for the `INTENT_ONLY` shape in `BundleSemanticValidator`.
+  - Added unit tests, which passed.
+  - No consumers were migrated, and no other shape logic was implemented.
+  - Runtime behavior is unchanged.
 
 ## Known Authority Boundaries
 
@@ -151,7 +156,7 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Implement Phase 6 Step 2B.3 (`BundleSemanticValidator` `NO_BUNDLE_SHAPE` logic for `INTENT_ONLY`).
+- Design and approve Phase 6 Step 2C (`BundleSemanticValidator` parity testing).
 
 ## Test Status
 
