@@ -275,20 +275,28 @@ This section details the design for Step 2B.3. Implementation is complete for th
 This section details the design for Step 2C. Implementation is not authorized until this design is approved.
 
 - **Scope and Boundaries**:
-  - **Goal**: Create a new test file with parity tests that prove the `BundleSemanticValidator`'s classifications are behaviorally equivalent to the legacy logic in `ResponsePipelinePrevalidationMixin` for the classifications implemented in Step 2A and 2B.
-  - **Allowed**:
-    - Create a new test file (e.g., `tests/test_bundle_semantic_validator_parity.py`).
-    - Use test fixtures and `pytest.mark.parametrize` to drive tests from a shared set of `ParsedModelOutput` scenarios.
-    - For each scenario, assert that the `BundleSemanticValidator`'s `BundleResultKind` matches the expected outcome from the legacy logic.
+  - **Goal**: Create parity tests that prove the `BundleSemanticValidator`'s classifications are behaviorally equivalent to the documented legacy logic for all classifications implemented through Step 2B.
+  - **In-Scope Classifications**: The parity tests must cover only the following `BundleResultKind`s, which are already implemented:
+    - `INVALID_ACTION_ARRAY`
+    - `INVALID_MULTIPLE_ACTIONS`
+    - `INVALID_FILE_CONTENT_PAIRING`
+    - `INTENT_ACTION_BUNDLE_CANDIDATE`
+    - `READONLY_ACTION_BATCH_CANDIDATE`
+    - `NO_BUNDLE_SHAPE`
+  - **Allowed Files**:
+    - Create a new test file: `tests/test_bundle_semantic_validator_parity.py`.
+    - Update `tests/test_bundle_semantic_validator.py` only if necessary for shared test fixtures.
   - **Forbidden**:
-    - The parity tests **must not** re-implement or simulate the legacy logic. They should assert against known, expected outcomes for given inputs.
+    - The parity tests **must not** add any new classification behavior to the validator.
+    - Do not classify `ACTION_ONLY` or any visible-text shapes.
+    - Do not implement `INVALID_INTENT_COMPLETE_WITH_ACTION`.
     - The parity tests must not change any production code.
     - No consumer migration is authorized.
 
 - **Test Strategy**:
-  - Create fixtures for `ParsedModelOutput` that represent the key scenarios covered by `_reject_compiler_invalid_atomic_bundle_before_transition`.
-  - Create a mapping of `(compiler_error_code, invalid_kind)` tuples to the expected `BundleResultKind`.
-  - Use `pytest.mark.parametrize` to iterate through this mapping, call `BundleSemanticValidator.validate`, and assert the result.
+  - The tests must use explicit, declarative fixtures (e.g., mapping tables, `pytest.mark.parametrize`) to define the expected `BundleResultKind` for a given `ParsedModelOutput` fixture.
+  - The tests must prove equivalence with the documented mappings. They **must not** re-implement or simulate complex legacy helper logic inside the tests, which would create a second, hidden validator.
+  - If any direct comparison to a legacy helper is used, it must be narrow, read-only, and serve only to bootstrap a test case, not to define the expected outcome.
   - This approach proves that the validator correctly implements the documented mapping from the legacy logic without being tightly coupled to its implementation details.
 
 ## 9. Explicitly Deferred
