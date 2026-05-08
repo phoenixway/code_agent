@@ -6,7 +6,7 @@
 - **Step 2B (Shape Logic) Status**: Step 2B.3 Done
 - **Step 2C (Parity Testing) Status**: Done
 - **Step 3 (Consumer Migration) Status**: Done
-- **Step 4 (Next Consumer Review) Status**: Design in Review
+- **Step 4 (Next Consumer Review) Status**: Done
 
 ## 1. Purpose and Guiding Principles
 
@@ -327,14 +327,13 @@ This section details the design for Step 3. Implementation is complete for the `
   - Existing tests for `_reject_compiler_invalid_atomic_bundle_before_transition` must continue to pass.
   - If coverage is insufficient, add new tests to prove that the migrated logic produces the exact same `PreDispatchDecision` as the old logic for all covered `compiler_error_code`s. This includes asserting on the `handled` status, `reason` string, `source` marker, and any `next_query` text.
 
-### 8.9. Step 4 Design: Next Consumer Migration Review
+### 8.9. Step 4: Next Consumer Migration Review
 
-This section details the design for Step 4. Implementation is not authorized until this design is approved.
+This section documents the review for Step 4.
 
-- **Scope and Boundaries**:
-  - **Goal**: Decide whether to migrate the next consumer, `_reject_invalid_atomic_bundle_before_transition`, or to conclude Phase 6.
-  - **Analysis**: This next consumer depends on `segments` and `ActionPolicyHandler.validate_atomic_bundle_action`. Migrating it would require the `BundleSemanticValidator` to also depend on these, significantly increasing its complexity and coupling it to runtime policy.
-  - **Recommendation**: Conclude Phase 6 after Step 3. The `BundleSemanticValidator` has successfully centralized all compiler-only prevalidation logic. The remaining `segments`/`ActionPolicy`-dependent logic should be addressed in a future, dedicated phase focused on `ActionPolicy` refactoring.
+- **Conclusion**: The review is complete. Phase 6 is concluded.
+- **Reasoning**: The next candidate consumer, `_reject_invalid_atomic_bundle_before_transition`, depends on `segments` and `ActionPolicyHandler.validate_atomic_bundle_action`. Migrating it would violate the `BundleSemanticValidator`'s charter as a compiler-only structural classifier by coupling it to runtime policy.
+- **Outcome**: The `BundleSemanticValidator` has successfully centralized all compiler-only prevalidation logic. The remaining `segments`/`ActionPolicy`-dependent logic is deferred to a future, dedicated phase focused on `ActionPolicy` refactoring.
 
 ## 9. Explicitly Deferred
 

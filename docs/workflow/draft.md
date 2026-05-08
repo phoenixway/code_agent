@@ -37,4 +37,6 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 33. Phase 6 Step 2B.3 (NO_BUNDLE_SHAPE for INTENT_ONLY) implementation: done.
 34. Phase 6 Step 2C (parity testing) implementation: done.
 35. Phase 6 Step 3 (first consumer migration) implementation: done.
-36. Next: Design and approve Phase 6 Step 4 (next consumer migration review).
+36. Phase 6 Step 4 (next consumer migration review): done.
+37. Phase 6 is complete.
+38. Next: Plan for the next major refactoring phase (e.g., `ActionPolicy`-dependent bundle validation or Phase 7).

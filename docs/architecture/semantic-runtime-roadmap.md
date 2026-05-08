@@ -372,13 +372,12 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
-### Phase 6: Bundle Semantic Validation Pass
+### Phase 6: Bundle Semantic Validation Pass (Complete)
 
-- **Status**: Design Approved.
+- **Status**: Done.
 - **Goal**: Centralize atomic bundle validation logic into a new `BundleSemanticValidator`.
-- **Allowed**: Create a design for the `BundleSemanticValidator` that classifies bundle structure and safety.
-- **Forbidden**: Implementation before design approval. Changing the logic of what constitutes a valid bundle.
-- **Done When**: The design for the `BundleSemanticValidator` is approved.
+- **Outcome**: The `BundleSemanticValidator` was created and successfully centralized all compiler-only bundle prevalidation logic. The first consumer was migrated. `ActionPolicy`/`segments`-dependent logic remains deferred.
+- **Done When**: The review in Step 4 concluded the phase.
 
 ---
 
@@ -540,13 +539,18 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 6 Step 4: Next Consumer Migration Review
 
-- **Status**: Design in Review.
+- **Status**: Done.
 - **Goal**: Review whether to migrate another consumer or conclude Phase 6 before `ActionPolicy`/`segments`-dependent branches.
-- **Allowed**:
-    - Update `docs/architecture/bundle-semantic-validation-design.md` with the design for Step 4.
-- **Forbidden**:
-    - Implementation before design approval.
-- **Done When**: The design for Step 4 is documented and ready for approval.
+- **Conclusion**: Phase 6 is complete. The next candidate consumer (`_reject_invalid_atomic_bundle_before_transition`) is deferred as it depends on `ActionPolicy` and `segments`, which are out of scope.
+- **Done When**: The review was completed and the decision to conclude Phase 6 was documented.
+
+---
+
+### Future Phase Candidate: ActionPolicy-Dependent Bundle Validation
+
+- **Goal**: Review and potentially refactor `ActionPolicy`-dependent bundle validation logic.
+- **Scope**: `ResponsePipelinePrevalidationMixin._reject_invalid_atomic_bundle_before_transition` and its dependencies on `ActionPolicyHandler`.
+- **Status**: Deferred. Requires new design.
 
 ---
 

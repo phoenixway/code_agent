@@ -152,6 +152,10 @@ This document is the single source of truth for the current state of the Semanti
   - Added `tests/test_response_pipeline_prevalidation.py` to prove exact behavior preservation.
   - All tests passed, and runtime behavior is unchanged.
   - No other consumers were migrated.
+- **Phase 6: Bundle Semantic Validation Pass (Complete)**
+  - The `BundleSemanticValidator` was created, implemented with compiler-only logic (error-code and shape-driven), and verified with parity tests.
+  - The first, lowest-risk consumer was migrated.
+  - The review of the next consumer concluded that `ActionPolicy`/`segments`-dependent logic should be deferred, and Phase 6 is now complete.
 
 ## Known Authority Boundaries
 
@@ -167,7 +171,7 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Design and approve Phase 6 Step 4 (next consumer migration review for `BundleSemanticValidator`).
+- Plan for the next major refactoring phase (e.g., `ActionPolicy`-dependent bundle validation or Phase 7).
 
 ## Test Status
 
