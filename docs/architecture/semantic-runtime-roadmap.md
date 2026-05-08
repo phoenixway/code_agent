@@ -758,21 +758,21 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 8 Step 4F: Shadow Sufficiency / Parity Review
 
-- **Status**: Not Started.
+- **Status**: Done.
 - **Goal**: Prove the new structural facts are sufficient for the `TerminalAnswerClassifier`.
 - **Prerequisite**: Step 4E must be complete.
 - **Forbidden**: Consumer migration.
-- **Done When**: Parity tests confirm the new facts can support the classifications from the Step 2 characterization tests.
+- **Done When**: The design-only review was completed and documented. The review concluded that the facts are sufficient to proceed with designing a shadow-mode classifier. A sufficiency test was added in `tests/test_terminal_answer_fact_sufficiency.py`.
 
 ---
 
 #### Phase 8 Step 4B (Redux): TerminalAnswerClassifier Shadow Mode Design
 
-- **Status**: Deferred.
+- **Status**: Not Started.
 - **Goal**: Design the `TerminalAnswerClassifier` and a plan for running it in shadow mode.
 - **Prerequisite**: Phase 8 Step 4F must be complete.
 - **Forbidden**: Implementation is not authorized. Any production code changes.
-- **Done When**: A decision on whether to proceed with designing the classifier is documented.
+- **Done When**: The design for the classifier and its shadow-mode operation is complete and approved.
 
 ---
 

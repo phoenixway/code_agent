@@ -319,10 +319,38 @@ The implementation of Step 4E reinforced key architectural principles:
 
 -   **Step 4D.1 (Test Implementation)** is complete. The golden characterization tests are in place.
 -   **Step 4E (Compiler/Runtime Fact Implementation)** is complete. The new structural facts are implemented in the compiler, and the characterization tests from Step 4D.1 are passing.
--   The next step is **Phase 8, Step 4F: Shadow Sufficiency / Parity Review**.
--   Implementation of the `TerminalAnswerClassifier` remains blocked until Step 4F validates that the new structural facts are sufficient to replace the legacy classification logic.
+-   **Step 4F (Shadow Sufficiency / Parity Review)** is complete. The review concluded that the structural facts are sufficient to proceed with the design of a shadow-mode `TerminalAnswerClassifier`.
+-   The next step is **Phase 8, Step 4B (Redux): TerminalAnswerClassifier Shadow Mode Design**.
+-   Implementation of the `TerminalAnswerClassifier` remains blocked, but the design phase is now authorized.
 
-## 10. Explicitly Deferred
+## 10. Phase 8 Step 4F: Shadow Sufficiency / Parity Review
+
+This design-only review is complete. It assessed whether the new compiler/parser/IR-derived facts from Step 4E are sufficient to support a future `TerminalAnswerClassifier`.
+
+### Conclusion
+**Sufficient for Shadow-Mode Design.** The new structural facts provide a strong foundation for classifying the core `TerminalAnswerKind` candidates. While several kinds remain dependent on legacy regex or runtime policy, the structural distinctions are now clear enough to proceed with designing a `TerminalAnswerClassifier` that can run in shadow mode.
+
+- **What this unblocks**: **Phase 8, Step 4B (Redux): TerminalAnswerClassifier Shadow Mode Design**. The design of the classifier can now begin.
+- **What remains blocked**: The **implementation** of the classifier and the migration of any consumers are still forbidden until the shadow-mode design is complete and approved.
+
+### Sufficiency Matrix
+
+This matrix classifies each `TerminalAnswerKind` candidate based on the support from the new structural facts.
+
+| `TerminalAnswerKind` | Status | Supporting Facts / Rationale |
+|---|---|---|
+| **`NO_VISIBLE_TEXT`** | `READY_FOR_SHADOW_CLASSIFIER` | `snapshot.has_visible_answer is False` and `snapshot.has_pre_action_text is False`. |
+| **`PLAINTEXT_TERMINAL_ANSWER`** | `READY_FOR_SHADOW_CLASSIFIER` | `snapshot.visible_text_source == "PURE_PLAINTEXT"`. Final-answer correctness remains a runtime policy, but the structure is identifiable. |
+| **`CHECKPOINT_ONLY`** | `READY_FOR_SHADOW_CLASSIFIER` | `(has_memory_tags or has_subgoal_tags or has_memory_checkpoint)` with no visible text. |
+| **`CHECKPOINT_WITH_VISIBLE_TEXT`** | `READY_FOR_SHADOW_CLASSIFIER` | `snapshot.visible_text_source == "CHECKPOINT_ACCOMPANYING_TEXT"`. |
+| **`INTENT_COMPLETE_WITH_VISIBLE_TEXT`** | `READY_FOR_SHADOW_CLASSIFIER` | `snapshot.visible_text_source == "INTENT_COMPLETION_TEXT"`. |
+| **`PRE_ACTION_VISIBLE_TEXT_WITH_ACTION`** | `READY_FOR_SHADOW_CLASSIFIER` | `snapshot.visible_text_source == "PRE_ACTION_TEXT"`. |
+| **`LEAKED_SYSTEM_RESULT`** | `DEFERRED_LEGACY_REGEX` | No structural fact exists. This remains dependent on the `is_leaked_system_result` regex helper. |
+| **`INTERNAL_SUMMARY_LIKE_TEXT`** | `DEFERRED_RUNTIME_POLICY` | This is a high-level semantic/policy judgment, not a structural fact. It will remain a runtime heuristic. |
+| **`INVALID_OR_TRUNCATED_TERMINAL_TEXT`** | `DEFERRED_LEGACY_REGEX` | No structural fact exists. This remains dependent on legacy regex heuristics. |
+| **`UNKNOWN`** | `READY_FOR_SHADOW_CLASSIFIER` | Serves as the fallback for any unhandled or ambiguous cases. |
+
+## 11. Explicitly Deferred
 
 - A full refactor of `ResponsePipeline` or `DispatchPipeline`.
 - Changes to `ActionPolicy`.

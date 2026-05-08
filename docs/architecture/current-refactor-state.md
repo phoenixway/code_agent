@@ -209,6 +209,10 @@ This document is the single source of truth for the current state of the Semanti
 - **Phase 8 Step 4E: Compiler/Runtime Fact Implementation (Complete)**
   - Implemented compiler, parser, and IR changes to support new structural facts (`has_memory_tags`, `has_subgoal_tags`, `has_memory_checkpoint`, `visible_text_source`) and improved shapes (`PURE_PLAINTEXT`, `SUBGOAL_WITH_TEXT`, `PRE_ACTION_TEXT_AND_ACTION`, `INTENT_COMPLETE_WITH_TEXT`).
   - The work was confined to the compiler/parser/IR layer. No consumers were migrated, no `TerminalAnswerClassifier` was implemented, and no new runtime regex fact detection was added.
+- **Phase 8 Step 4F: Shadow Sufficiency / Parity Review (Complete)**
+  - A design-only review concluded that the structural facts from Step 4E are sufficient to proceed with the design of a shadow-mode `TerminalAnswerClassifier`.
+  - A new test file, `tests/test_terminal_answer_fact_sufficiency.py`, was added to prove sufficiency without changing production code.
+  - The design of the classifier is now unblocked, but implementation and consumer migration remain blocked.
 No runtime consumers were migrated, and no dispatch or policy behavior was intentionally changed.
 ## Known Authority Boundaries
 
@@ -224,7 +228,7 @@ No runtime consumers were migrated, and no dispatch or policy behavior was inten
 
 ## Next Intended Step
 
-- **Phase 8 Step 4F: Shadow Sufficiency / Parity Review**: Verify that the new compiler/parser/IR-derived facts are sufficient to support the design of a `TerminalAnswerClassifier` in shadow-mode. Classifier implementation and consumer migration remain blocked until Step 4F is complete.
+- **Phase 8 Step 4B (Redux): TerminalAnswerClassifier Shadow Mode Design**: Design the `TerminalAnswerClassifier` and a plan for running it in shadow mode to validate its behavior against existing logic. Implementation and consumer migration remain blocked until this design is approved.
 
 ## Test Status
 
