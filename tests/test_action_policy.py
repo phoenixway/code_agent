@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from modules.agent.orchestration.runtime.action_policy import ActionPolicyHandler
+from modules.agent.orchestration.runtime.action_policy_models import AtomicBundlePolicyResultKind
 
 
 class MockAgent:
@@ -42,6 +43,7 @@ def test_validate_atomic_bundle_rejects_multiple_commands(action_policy_harness,
     monkeypatch.setattr(action_policy_harness, "_atomic_bundle_candidate_commands", MagicMock(return_value=[{}, {}]))
     result = action_policy_harness.validate_atomic_bundle_action(ctx=None, segments=[], proposed_active_intent=None)
     assert not result.ok
+    assert result.kind == AtomicBundlePolicyResultKind.REJECTED_MULTIPLE_ACTIONS
     assert result.reason == "atomic_bundle_requires_exactly_one_action"
     assert "exactly one valid <action> block" in result.details["message"]
 
@@ -54,6 +56,7 @@ def test_validate_atomic_bundle_rejects_noop_edit(action_policy_harness, monkeyp
     result = action_policy_harness.validate_atomic_bundle_action(ctx=None, segments=[], proposed_active_intent=None)
 
     assert not result.ok
+    assert result.kind == AtomicBundlePolicyResultKind.REJECTED_INVALID_SHAPE
     assert result.reason == "noop_edit"
     assert result.details["message"] == "noop edit prompt"
     assert result.details["blocked_action"] == "edit_file"
@@ -67,6 +70,7 @@ def test_validate_atomic_bundle_rejects_missing_file_content(action_policy_harne
     result = action_policy_harness.validate_atomic_bundle_action(ctx=None, segments=[], proposed_active_intent=None)
 
     assert not result.ok
+    assert result.kind == AtomicBundlePolicyResultKind.REJECTED_MISSING_FILE_CONTENT
     assert result.reason == "missing_file_content_block"
     assert "requires a complete <file_content>" in result.details["message"]
     assert result.details["blocked_action"] == "write_file_block"
@@ -84,6 +88,7 @@ def test_validate_atomic_bundle_rejects_if_intent_required(action_policy_harness
     )
 
     assert not result.ok
+    assert result.kind == AtomicBundlePolicyResultKind.REJECTED_INTENT_ACTION_NOT_ALLOWED
     assert result.reason == "intent_action_not_allowed"
     assert result.details["blocked_action"] == "some_action"
     assert result.details["allowed_actions"] == ["other_action"]
@@ -105,6 +110,7 @@ def test_validate_atomic_bundle_rejects_on_pre_action_check_fail(action_policy_h
     )
 
     assert not result.ok
+    assert result.kind == AtomicBundlePolicyResultKind.REJECTED_PRE_ACTION_CHECK
     assert result.reason == "pre_action_check_failed"
     assert result.details["message"] == "some error"
     assert result.details["blocked_action"] == "some_action"
@@ -125,3 +131,4 @@ def test_validate_atomic_bundle_passes_when_all_checks_ok(action_policy_harness,
     )
 
     assert result.ok
+    assert result.kind == AtomicBundlePolicyResultKind.OK

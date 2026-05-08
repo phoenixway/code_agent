@@ -2,20 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from ...intent_runtime import IntentRuntime
+from .action_policy_models import AtomicBundleActionValidationResult, AtomicBundlePolicyResultKind
 from .action_policy_state import ActionPolicyStateAdapter
 from .search_quality import classify_search_action_quality
 from ..responses.stage_logging import OrchestrationStageLogger
 from ..shared.decision_models import ActionPolicyDecision
-
-
-@dataclass
-class AtomicBundleActionValidationResult:
-    ok: bool
-    reason: str = ""
-    details: dict | None = None
 
 
 class _AtomicBundlePreviewState:
@@ -453,30 +445,37 @@ class ActionPolicyHandler:
 
     def _bundle_file_body_validation(self, command: dict, *, compiler_action_op=None, compiler_file_content=None) -> AtomicBundleActionValidationResult:
         if not isinstance(command, dict):
-            return AtomicBundleActionValidationResult(False, "invalid_action_payload", {})
+            return AtomicBundleActionValidationResult(
+                kind=AtomicBundlePolicyResultKind.REJECTED_INVALID_SHAPE,
+                ok=False,
+                reason="invalid_action_payload",
+                details={},
+            )
         action_type = str(command.get("type") or command.get("action") or "").strip().lower()
         if action_type not in self.FILE_BODY_ACTIONS:
-            return AtomicBundleActionValidationResult(True)
+            return AtomicBundleActionValidationResult(kind=AtomicBundlePolicyResultKind.OK, ok=True)
         effective_file_content = command.get("file_content")
         if not isinstance(effective_file_content, str) and isinstance(compiler_file_content, str):
             effective_file_content = compiler_file_content
         if action_type in {"write_file_block", "append_file_block"}:
             if not isinstance(effective_file_content, str):
                 return AtomicBundleActionValidationResult(
-                    False,
-                    "missing_file_content_block",
-                    {
+                    kind=AtomicBundlePolicyResultKind.REJECTED_MISSING_FILE_CONTENT,
+                    ok=False,
+                    reason="missing_file_content_block",
+                    details={
                         "message": f"{action_type} requires a complete <file_content>...</file_content> block immediately after </action>.",
                         "blocked_action": action_type,
                     },
                 )
-            return AtomicBundleActionValidationResult(True)
+            return AtomicBundleActionValidationResult(kind=AtomicBundlePolicyResultKind.OK, ok=True)
         if isinstance(command.get("content"), str) or isinstance(effective_file_content, str):
-            return AtomicBundleActionValidationResult(True)
+            return AtomicBundleActionValidationResult(kind=AtomicBundlePolicyResultKind.OK, ok=True)
         return AtomicBundleActionValidationResult(
-            False,
-            "missing_file_content_block",
-            {
+            kind=AtomicBundlePolicyResultKind.REJECTED_MISSING_FILE_CONTENT,
+            ok=False,
+            reason="missing_file_content_block",
+            details={
                 "message": f"{action_type} requires file body content, either inline JSON content or a following <file_content> block.",
                 "blocked_action": action_type,
             },
@@ -493,9 +492,10 @@ class ActionPolicyHandler:
         candidate_commands = self._atomic_bundle_candidate_commands(segments, parsed_output=parsed_output)
         if len(candidate_commands) != 1:
             return AtomicBundleActionValidationResult(
-                False,
-                "atomic_bundle_requires_exactly_one_action",
-                {"message": "Atomic intent/action bundle requires exactly one valid <action> block."},
+                kind=AtomicBundlePolicyResultKind.REJECTED_MULTIPLE_ACTIONS,
+                ok=False,
+                reason="atomic_bundle_requires_exactly_one_action",
+                details={"message": "Atomic intent/action bundle requires exactly one valid <action> block."},
             )
 
         action_segments = [
@@ -506,9 +506,10 @@ class ActionPolicyHandler:
         shape_guard = self._handle_action_shape_guard(seg, 1, command=effective_command)
         if shape_guard is not None:
             return AtomicBundleActionValidationResult(
-                False,
-                str(getattr(shape_guard, "reason", "") or "invalid_action_shape"),
-                {
+                kind=AtomicBundlePolicyResultKind.REJECTED_INVALID_SHAPE,
+                ok=False,
+                reason=str(getattr(shape_guard, "reason", "") or "invalid_action_shape"),
+                details={
                     "message": str(getattr(shape_guard, "next_query", "") or ""),
                     "blocked_action": str(effective_command.get("type") or effective_command.get("action") or "").strip(),
                 },
@@ -542,9 +543,10 @@ class ActionPolicyHandler:
         )
         if required:
             return AtomicBundleActionValidationResult(
-                False,
-                reason,
-                {
+                kind=AtomicBundlePolicyResultKind.REJECTED_INTENT_ACTION_NOT_ALLOWED,
+                ok=False,
+                reason=reason,
+                details={
                     "blocked_action": action_type,
                     "allowed_actions": list(getattr(proposed_active_intent, "allowed_actions", []) or []),
                 },
@@ -557,16 +559,17 @@ class ActionPolicyHandler:
             stop_info = preview_runtime.pre_action_check(command)
             if isinstance(stop_info, dict):
                 return AtomicBundleActionValidationResult(
-                    False,
-                    str(stop_info.get("reason") or "intent_action_not_allowed"),
-                    {
+                    kind=AtomicBundlePolicyResultKind.REJECTED_PRE_ACTION_CHECK,
+                    ok=False,
+                    reason=str(stop_info.get("reason") or "intent_action_not_allowed"),
+                    details={
                         **stop_info,
                         "blocked_action": action_type,
                         "allowed_actions": list(getattr(proposed_active_intent, "allowed_actions", []) or []),
                     },
                 )
 
-        return AtomicBundleActionValidationResult(True)
+        return AtomicBundleActionValidationResult(kind=AtomicBundlePolicyResultKind.OK, ok=True)
 
     def _log_search_quality(self, command: dict):
         quality = self._classify_search_quality(command)
