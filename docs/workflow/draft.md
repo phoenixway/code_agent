@@ -40,5 +40,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 36. Phase 6 Step 4 (next consumer migration review): done.
 37. Phase 6 is complete.
 38. Post-Phase 6 planning review: done.
-39. Phase 7 (ActionPolicy-Dependent Bundle Validation) design: created.
-40. Next: Review and approve the Phase 7 design.
+39. Phase 7 (ActionPolicy-Dependent Bundle Validation) design: approved.
+40. Next: Implement Phase 7 Step 2 (characterization tests) only.

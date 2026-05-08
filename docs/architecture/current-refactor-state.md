@@ -160,6 +160,9 @@ This document is the single source of truth for the current state of the Semanti
   - A review of next phase candidates was conducted, comparing `ActionPolicy`-dependent bundle validation, plan-first execution, and visible text semantics.
   - **Recommendation**: Proceed with a new phase focused on `ActionPolicy`-dependent bundle validation as the most logical continuation of the bundle validation thread.
   - The old "Phase 7: Plan-First Bundle Execution" will be deferred and re-numbered to Phase 8.
+- **Phase 7: ActionPolicy-Dependent Bundle Validation (Design)**
+  - The design for refactoring `ActionPolicy`-dependent bundle validation logic is approved.
+  - Implementation is authorized for Step 2 (characterization tests) only.
 
 ## Known Authority Boundaries
 
@@ -175,7 +178,7 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Design the new "Phase 7: ActionPolicy-Dependent Bundle Validation".
+- Implement Phase 7, Step 2: Characterization Tests only.
 
 ## Test Status
 

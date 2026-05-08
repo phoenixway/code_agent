@@ -548,11 +548,27 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ### Phase 7: ActionPolicy-Dependent Bundle Validation
 
-- **Status**: Design in Review.
+- **Status**: Design Approved.
 - **Goal**: Refactor `ActionPolicy`-dependent bundle validation logic, focusing on the `_reject_invalid_atomic_bundle_before_transition` consumer.
 - **Scope**: `ResponsePipelinePrevalidationMixin._reject_invalid_atomic_bundle_before_transition` and its dependency `ActionPolicyHandler.validate_atomic_bundle_action`.
 - **Design**: The canonical design is documented in `docs/architecture/action-policy-dependent-bundle-validation-design.md`.
-- **Forbidden**: Implementation before design approval.
+- **Forbidden**: Implementation of production code changes before characterization tests are complete and a refactoring plan is approved.
+
+---
+
+#### Phase 7 Step 2: Characterization Tests
+
+- **Status**: Not Started.
+- **Goal**: Add characterization tests to lock down the exact current behavior of `ActionPolicy`-dependent bundle validation.
+- **Allowed**:
+    - Add characterization tests in `tests/test_response_pipeline_prevalidation.py` and/or a new `tests/test_action_policy.py`.
+- **Forbidden**:
+    - Any production code changes.
+    - Introducing typed result enums.
+    - Refactoring `ActionPolicyHandler` or `ResponsePipelinePrevalidationMixin`.
+    - Migrating any consumers.
+    - Any runtime behavior changes.
+- **Done When**: The characterization tests are implemented with passing results, and no production code has been changed.
 
 ---
 
