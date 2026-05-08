@@ -75,4 +75,6 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 71. Phase 8 Step 4I (Part 4) implementation (`INTERNAL_SUMMARY_LIKE_TEXT`): done.
 72. Phase 8 Step 4I parity matrix / closure docs: done.
 73. Phase 8 Step 4I: complete.
-74. Next: Phase 8 Step 4J Consumer Migration Design Gate (review/design-only, no consumer migration).
+74. Phase 8 Step 4J Consumer Migration Design Gate: done.
+75. Phase 8 Step 4K First Consumer Migration (Design): done.
+76. Next: Phase 8 Step 4L First Consumer Migration (Implementation).

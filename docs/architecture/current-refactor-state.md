@@ -4,13 +4,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 8 Step 4I: Parity Matrix / Legacy Helper Integration
+- **Phase**: Phase 8 Step 4K: First Consumer Migration (Design)
 - **Status**: Complete.
-  - **Part 1 (Complete)**: Parity logging with `legacy_kind` and `is_match` is implemented.
-  - **Part 2 (Complete)**: The `LEAKED_SYSTEM_RESULT` legacy rule is integrated into the `TerminalAnswerClassifier`.
-  - **Part 3 (Complete)**: The `INVALID_OR_TRUNCATED_TERMINAL_TEXT` legacy rule is integrated into the `TerminalAnswerClassifier`.
-  - **Part 4 (Complete)**: The `INTERNAL_SUMMARY_LIKE_TEXT` legacy rule is integrated into the `TerminalAnswerClassifier`.
-- **Next Step**: Phase 8 Step 4J: Consumer Migration Design Gate.
+- **Next Step**: Phase 8 Step 4L: First Consumer Migration (Implementation).
 - **Boundary**: Consumer migration remains blocked. Production behavior remains unchanged.
 
 ## Step 4I Parity Matrix
@@ -259,6 +255,16 @@ This document is the single source of truth for the current state of the Semanti
   - A Step 4I parity matrix is now documented for all `TerminalAnswerKind` classifications.
   - All approved Step 4I legacy helper branches are now integrated in shadow mode.
   - No production behavior was changed.
+- **Phase 8 Step 4J: Consumer Migration Design Gate (Complete)**
+  - A design-only review of the Step 4I parity matrix and shadow-log evidence was completed.
+  - The review concluded that `LEAKED_SYSTEM_RESULT` is a safe candidate for a first, narrow consumer migration.
+  - A new design-only step, `Phase 8 Step 4K`, was proposed to formally design this migration.
+  - Consumer migration remains blocked, and no production behavior was changed.
+- **Phase 8 Step 4K: First Consumer Migration (Design) (Complete)**
+  - The design for migrating the `is_leaked_system_result` check in `ResponsePipelineStagesMixin` to use the `TerminalAnswerClassifier` is complete.
+  - The design specifies how to attach the classifier's result to `parsed_output` and migrate the consumer to read the typed `kind`.
+  - A future implementation step, `Phase 8 Step 4L`, was proposed.
+  - This was a design-only step. No production code was changed, and consumer migration remains blocked.
 ## Known Authority Boundaries
 
 - **Compiler**: Authoritative for precise, structural diagnostics. A compiler-`INVALID` response must never be dispatched.
@@ -273,7 +279,7 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- **Phase 8 Step 4J: Consumer Migration Design Gate**: Review the Step 4I parity matrix and available shadow-log parity evidence, then decide whether a narrow consumer migration target can be proposed. This is a review/design-only step. No consumers may be migrated, and production behavior must remain unchanged.
+- **Phase 8 Step 4L: First Consumer Migration (Implementation)**: Implement the approved design from Step 4K to migrate the `is_leaked_system_result` check in `ResponsePipelineStagesMixin`. This step is not yet authorized and requires explicit approval to begin.
 
 ## Test Status
 

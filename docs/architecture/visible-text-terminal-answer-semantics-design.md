@@ -479,7 +479,103 @@ Step 4G introduced the classifier as an isolated shadow-safe component. Step 4H 
     - The `TerminalAnswerClassifierInput` must not be modified to include `parsed_output`, `ResponseSemantics`, or any other stateful object.
     - The result of this classification must not affect production control flow.
 
-## 12. Explicitly Deferred
+## 12. Phase 8 Step 4J: Consumer Migration Design Gate
+
+- **Status**: Complete.
+- **Goal**: Review the Step 4I parity matrix and shadow-log evidence to determine if a safe, narrow consumer migration target can be proposed for a future step.
+- **Conclusion**: The review is complete. The `LEAKED_SYSTEM_RESULT` classification shows high parity and is based on a pure-function, legacy-compatible rule. Its primary consumer is a simple guard in `ResponsePipelineStagesMixin`. This makes it the strongest candidate for a first, narrow, behavior-preserving migration.
+- **Recommendation**: Proceed with a new design-only step, **Phase 8 Step 4K**, to formally design the migration of the `is_leaked_system_result` check in `ResponsePipelineStagesMixin` to consume the `TerminalAnswerClassifier`'s result. Implementation will be deferred to a subsequent Step 4L.
+
+### 12.1. Migration Candidate Risk Matrix
+
+| `TerminalAnswerKind` | Migration Risk | Rationale | Proposed Next Step |
+|---|---|---|---|
+| `LEAKED_SYSTEM_RESULT` | **Low** | High parity confirmed in shadow logs. Based on a simple, legacy-compatible regex rule. Consumer is a simple guard, not complex policy. | **Propose for Step 4K Design** |
+| `INVALID_OR_TRUNCATED_TERMINAL_TEXT` | **Medium** | High parity, but logic is more complex (length heuristics). Consumer (`_reject_truncated_terminal_completion_before_transition`) is tied to intent completion policy. | Defer |
+| `INTERNAL_SUMMARY_LIKE_TEXT` | **High** | Parity is good, but the classification depends on a caller-computed flag derived from runtime policy (`_is_internal_summary_instead_of_final_answer`). Migrating the consumer would require refactoring policy logic, which is out of scope. | Defer |
+| `PLAINTEXT_TERMINAL_ANSWER` | **High** | This is a core final-answer path. While structural identification is good, migrating consumers (`IntentTransitionHandler`, `PreDispatchPipeline`) touches final-answer and stop-gate authority, which is frozen. | Defer |
+| `PRE_ACTION_VISIBLE_TEXT_WITH_ACTION` | **High** | Structural fact is clear, but there is no direct legacy consumer. Creating a new behavior based on this classification is a feature change, not a migration. | Defer |
+| `INTENT_COMPLETE_WITH_VISIBLE_TEXT` | **High** | Touches intent completion policy, which is a high-risk area. | Defer |
+| `CHECKPOINT_WITH_VISIBLE_TEXT` | **Medium** | Consumers are board handlers. Migration is plausible but more complex than the `LEAKED_SYSTEM_RESULT` guard. | Defer |
+| `CHECKPOINT_ONLY` | **Medium** | Similar to `CHECKPOINT_WITH_VISIBLE_TEXT`. | Defer |
+| `NO_VISIBLE_TEXT` | **N/A** | This is a fallback case; there is no specific consumer to migrate. | Defer |
+
+### 12.2. Next Step
+
+The design gate (Step 4J) is complete. The next intended step is **Phase 8, Step 4K: First Consumer Migration (Design)**. This is a design-only step to plan the migration of the `is_leaked_system_result` check. Implementation is not authorized.
+
+## 13. Phase 8 Step 4K: First Consumer Migration (Design)
+
+- **Status**: Complete.
+- **Goal**: Design the first, narrow, behavior-preserving migration of a consumer to the `TerminalAnswerClassifier`.
+- **Scope**: The `is_leaked_system_result` check in `ResponsePipelineStagesMixin`.
+
+### 13.1. Current Consumer Path
+
+- **Consumer**: `ResponsePipelineStagesMixin._run_post_classification_stage` calls a helper that uses `semantic_accessors.is_leaked_system_result`.
+- **Logic**: The helper checks if the raw response text contains a leaked `SYSTEM RESULT`.
+- **Behavior**: If a leak is detected, it returns a `LoopControlDecision` to stop the loop and display a sanitized message to the user, preventing the raw tool output from being shown.
+- **Data Flow**: `ResponsePipelineStagesMixin` -> `semantic_accessors.is_leaked_system_result(raw_response_text)` -> `bool`
+
+### 13.2. Proposed Future Migration
+
+The goal is to migrate this consumer to use the `TerminalAnswerClassifier`'s result, which is already being computed in shadow mode.
+
+#### 13.2.1. Making the Classifier Result Available
+
+The `TerminalAnswerClassifier` runs inside `ResponsePipelinePrevalidationMixin._run_terminal_answer_classifier_shadow`. Its result is currently only used for logging.
+
+- **Proposed Change**: In a future implementation step (4L), `_run_terminal_answer_classifier_shadow` will be renamed to `_run_terminal_answer_classifier` and will attach its result to the `parsed_output` object.
+- **New Field**: A new field, `terminal_answer_semantic_result: TerminalAnswerSemanticResult | None`, will be added to the `ParsedModelOutput` dataclass.
+- **Population**: `_run_terminal_answer_classifier` will populate `parsed_output.terminal_answer_semantic_result` with the result from the classifier. The shadow logging will continue unchanged.
+
+#### 13.2.2. Migrating the Consumer
+
+- **Proposed Change**: The check in `ResponsePipelineStagesMixin._run_post_classification_stage` will be modified to read from the new field on `parsed_output`.
+- **New Logic**:
+  ```python
+  # old
+  if is_leaked_system_result(response):
+      ...
+
+  # new
+  if parsed_output.terminal_answer_semantic_result and parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.LEAKED_SYSTEM_RESULT:
+      ...
+  ```
+- **Behavior Preservation**: This change is behavior-preserving because the `TerminalAnswerClassifier`'s `LEAKED_SYSTEM_RESULT` rule was designed to be a legacy-compatible, pure-function equivalent of the `is_leaked_system_result` accessor. Shadow logs from Step 4I have confirmed high parity.
+
+### 13.3. Implementation Constraints (for Step 4L)
+
+- **File Scope**: Changes are limited to:
+    - `modules/agent/orchestration/shared/decision_models.py` (to add `terminal_answer_semantic_result` to `ParsedModelOutput`).
+    - `modules/agent/orchestration/responses/response_pipeline_prevalidation.py` (to populate the new field).
+    - `modules/agent/orchestration/responses/response_pipeline_stages.py` (to migrate the consumer).
+- **No Classifier Changes**: The `TerminalAnswerClassifier` logic must not be changed.
+- **Preserve Legacy Accessor**: The `semantic_accessors.is_leaked_system_result` function must not be removed, as other consumers may still use it.
+- **No Other Migrations**: Only the `is_leaked_system_result` consumer is in scope. No other `TerminalAnswerKind` consumers should be migrated.
+- **No Behavior Change**: The user-facing behavior must be identical. The change must not alter when a leaked system result is detected.
+
+### 13.4. Safety and Rollback Plan
+
+- **Safety Gate**: The `_run_terminal_answer_classifier` call will remain inside a `try...except` block to ensure that any unexpected failure in the classifier does not break the production pipeline.
+- **Rollback**: The change is small and contained. It can be fully reverted with `git revert <commit_hash>`.
+- **Fallback (Optional)**: For extra safety during deployment, the implementation could include a fallback to the old logic if the new field is not present, but this is likely unnecessary given the simple nature of the change.
+
+### 13.5. Test Plan (for Step 4L)
+
+1.  **Unit Tests**:
+    -   Update `tests/test_response_pipeline_stages.py` to verify that the stage correctly handles the `LEAKED_SYSTEM_RESULT` kind from `parsed_output.terminal_answer_semantic_result`.
+2.  **Integration Tests**:
+    -   Add a new integration test in a suitable location (e.g., `tests/test_response_pipeline.py`) that provides a response with a leaked system result and asserts that the pipeline correctly identifies it and produces the expected `LoopControlDecision`.
+3.  **Parity Verification**:
+    -   Manually inspect shadow logs after deployment to confirm that `is_match` remains `True` for the `LEAKED_SYSTEM_RESULT` classification path.
+    -   Update `tests/test_response_pipeline_prevalidation_shadow.py` to assert that the `legacy_kind` and `classifier_kind` match for this case, formalizing the parity check.
+
+### 13.6. Next Step
+
+The design (Step 4K) is complete. The proposed next step is **Phase 8, Step 4L: First Consumer Migration (Implementation)**. This step will implement the changes described in this design. Implementation is not authorized until Step 4L is formally approved.
+
+## 14. Explicitly Deferred
 
 - A full refactor of `ResponsePipeline` or `DispatchPipeline`.
 - Changes to `ActionPolicy`.

@@ -811,11 +811,34 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 8 Step 4J: Consumer Migration Design Gate
 
-- **Status**: Next / Not Started.
+- **Status**: Done.
 - **Goal**: Review the completed Step 4I parity matrix and available shadow-log parity evidence, then decide whether a narrow consumer migration target can be proposed.
 - **Allowed**: Design-only review, parity analysis, migration-candidate selection, and documentation updates.
 - **Forbidden**: Consumer migration. Any dispatch, policy, UI, or other production behavior change. Any authority transfer to the classifier.
-- **Done When**: A design/review conclusion is documented that either proposes a specific narrow migration target for later approval or explicitly defers migration due to parity/risk concerns.
+- **Done When**: The review was completed and documented in `visible-text-terminal-answer-semantics-design.md`. The review proposed a new Step 4K to design the first consumer migration.
+
+---
+
+#### Phase 8 Step 4K: First Consumer Migration (Design)
+
+- **Status**: Done.
+- **Goal**: Design the first, narrow, behavior-preserving migration of a consumer to the `TerminalAnswerClassifier`.
+- **Scope**: The `is_leaked_system_result` check in `ResponsePipelineStagesMixin`.
+- **Allowed**: Design-only documentation updates.
+- **Forbidden**: Implementation. Any production code changes. Any behavior changes. Migration of any other consumer.
+- **Done When**: The design for migrating the `is_leaked_system_result` check was documented and approved.
+
+---
+
+#### Phase 8 Step 4L: First Consumer Migration (Implementation)
+
+- **Status**: Not Started.
+- **Goal**: Implement the first, narrow, behavior-preserving migration of a consumer to the `TerminalAnswerClassifier`.
+- **Scope**: The `is_leaked_system_result` check in `ResponsePipelineStagesMixin`.
+- **Prerequisite**: Step 4K design must be complete and approved.
+- **Allowed**: Implement the changes as specified in the Step 4K design.
+- **Forbidden**: Any changes not specified in the Step 4K design. Any runtime behavior changes. Migration of any other consumer.
+- **Done When**: The `is_leaked_system_result` consumer is migrated, all tests pass, and behavior is confirmed to be preserved.
 
 ---
 
