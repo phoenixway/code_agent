@@ -52,4 +52,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 48. Phase 7 is complete.
 49. Next phase selected: Visible Text / Terminal Answer Semantics (Phase 8).
 50. Phase 8 Step 1 (design-only inventory): done.
-51. Next: Approve and implement Phase 8 Step 2 (characterization tests).
+51. Phase 8 Step 2 (characterization tests) design: approved.
+52. Next: Implement Phase 8 Step 2 characterization tests only.

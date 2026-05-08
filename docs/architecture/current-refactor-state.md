@@ -188,7 +188,7 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Approve and implement Phase 8 Step 2: Characterization tests for visible text/terminal answer semantics.
+- Implement Phase 8 Step 2: Characterization tests for visible text/terminal answer semantics. This is a tests-only step.
 
 ## Test Status
 

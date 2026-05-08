@@ -672,10 +672,10 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 8 Step 2: Characterization Tests
 
-- **Status**: Not Started.
+- **Status**: Approved / Not Started.
 - **Goal**: Add characterization tests to lock down the exact behavior of all identified components and scenarios related to visible text and terminal answers.
-- **Allowed**: Add new test files and test cases that assert current behavior.
-- **Forbidden**: Any production code changes.
+- **Allowed**: Add new test files and test cases that assert current behavior. This is a tests-only step.
+- **Forbidden**: Any production code changes. Do not implement `TerminalAnswerClassifier` or any typed models. Do not migrate any consumers. Do not change runtime behavior.
 - **Done When**: The characterization test suite is complete and all tests pass.
 
 ---

@@ -47,16 +47,16 @@ This inventory documents the current state of components involved in visible tex
 ## 5. Proposed Phase Slicing
 
 - **Step 1: Design-Only Inventory (Done)**: This document.
-- **Step 2: Characterization Tests (Ready for Review)**: Add characterization tests to lock down the exact behavior of all identified components and scenarios.
+- **Step 2: Characterization Tests (Approved for Implementation)**: Add characterization tests to lock down the exact behavior of all identified components and scenarios. This step is tests-only. No production code will be changed.
 - **Step 3: Typed Model Scaffolding (Design)**: Design the `TerminalAnswerKind` enum and `TerminalAnswerSemanticResult` dataclass. Implementation is not authorized by default and requires separate approval after Step 2 is complete.
 - **Step 4: Classifier Implementation (Shadow Mode)**: Implement the `TerminalAnswerClassifier` and run it in shadow mode, logging its classifications against legacy decisions without changing behavior.
 - **Step 5: First Consumer Migration**: Migrate the lowest-risk consumer (e.g., `is_leaked_system_result`) to use the new classifier.
 - **Step 6: Authority Consolidation**: Systematically migrate remaining consumers (`IntentTransitionHandler`, `PreDispatchPipeline`, etc.) to the new classifier, removing legacy logic one component at a time.
 - **Step 7: Cleanup**: Once all consumers are migrated, remove the old regex helpers and redundant logic.
 
-## 6. Recommended Next Step
+## 6. Next Step
 
-The design-only inventory (Step 1) is complete. The next logical and safe step is to approve and implement **Phase 8, Step 2: Characterization Tests**. This will provide the necessary safety net to proceed with refactoring.
+The design-only inventory (Step 1) is complete. The approved next step is to implement **Phase 8, Step 2: Characterization Tests**. This step is tests-only and will provide the necessary safety net to proceed with refactoring. The `TerminalAnswerClassifier` remains a candidate only, and design for Step 3 (Typed Model Scaffolding) is not yet authorized.
 
 ## 7. Explicitly Deferred
 
