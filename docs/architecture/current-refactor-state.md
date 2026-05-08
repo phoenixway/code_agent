@@ -141,6 +141,12 @@ This document is the single source of truth for the current state of the Semanti
   - Added unit tests, which passed.
   - No consumers were migrated, and no other shape logic was implemented.
   - Runtime behavior is unchanged.
+- **Phase 6 Step 2C: Parity Testing (Implementation)**
+  - Created `tests/test_bundle_semantic_validator_parity.py` to prove behavioral equivalence for all implemented classifications.
+  - Parity tests cover Step 2A (error-code) and Step 2B (shape) mappings, including precedence and fallback cases.
+  - All tests passed.
+  - No production code was changed, and no consumers were migrated.
+  - Runtime behavior is unchanged.
 
 ## Known Authority Boundaries
 
@@ -156,7 +162,7 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- Implement Phase 6 Step 2C (`BundleSemanticValidator` parity tests only).
+- Design and approve Phase 6 Step 3 (first consumer migration for `BundleSemanticValidator`).
 
 ## Test Status
 

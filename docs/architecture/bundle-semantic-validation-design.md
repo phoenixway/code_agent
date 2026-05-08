@@ -4,8 +4,8 @@
 - **Step 1 (Scaffolding) Status**: Done
 - **Step 2A (Error-Code Logic) Status**: Done
 - **Step 2B (Shape Logic) Status**: Step 2B.3 Done
-- **Step 2C Status**: Design Approved
-- **Step 2C Implementation**: Authorized (Tests Only)
+- **Step 2C (Parity Testing) Status**: Done
+- **Step 3 (Consumer Migration) Status**: Design in Review
 
 ## 1. Purpose and Guiding Principles
 
@@ -270,9 +270,9 @@ This section details the design for Step 2B.3. Implementation is complete for th
   - **Deferred Shape Tests**: Ensure `ACTION_ONLY` and visible-text shapes still return `UNKNOWN`.
   - **Boundary Tests**: Ensure existing tests prove `ActionPolicyHandler` is not called and `segments` are ignored.
 
-### 8.7. Step 2C Design: Parity Testing
+### 8.7. Step 2C: Parity Testing
 
-This section details the design for Step 2C. Implementation is authorized for tests only, as described below. Production code changes and consumer migration are forbidden.
+This section details the design for Step 2C. Implementation is complete. Parity tests were added in `tests/test_bundle_semantic_validator_parity.py` and all tests passed. No production code was changed.
 
 - **Scope and Boundaries**:
   - **Goal**: Create parity tests that prove the `BundleSemanticValidator`'s classifications are behaviorally equivalent to the documented legacy logic for all classifications implemented through Step 2B.
@@ -298,6 +298,33 @@ This section details the design for Step 2C. Implementation is authorized for te
   - The tests must prove equivalence with the documented mappings. They **must not** re-implement or simulate complex legacy helper logic inside the tests, which would create a second, hidden validator.
   - If any direct comparison to a legacy helper is used, it must be narrow, read-only, and serve only to bootstrap a test case, not to define the expected outcome.
   - This approach proves that the validator correctly implements the documented mapping from the legacy logic without being tightly coupled to its implementation details.
+
+### 8.8. Step 3 Design: First Consumer Migration
+
+This section details the design for Step 3. Implementation is not authorized until this design is approved.
+
+- **Scope and Boundaries**:
+  - **Goal**: Migrate the first, lowest-risk consumer of bundle validation logic to use the `BundleSemanticValidator`.
+  - **Candidate Consumer**: `ResponsePipelinePrevalidationMixin._reject_compiler_invalid_atomic_bundle_before_transition`. This method is a pure compiler-metadata-driven check and maps directly to the classifications implemented in Step 2A.
+  - **Allowed**:
+    - Modify `ResponsePipelinePrevalidationMixin` to call `BundleSemanticValidator.validate`.
+    - Use the returned `BundleResultKind` to drive the rejection logic, replacing the existing `if/elif` chain on `compiler_error_code` and `invalid_kind`.
+    - Update tests for `ResponsePipelinePrevalidationMixin` to confirm behavior is preserved.
+  - **Forbidden**:
+    - Migrating any other consumer. The scope is strictly limited to `_reject_compiler_invalid_atomic_bundle_before_transition`. This explicitly excludes:
+      - `_reject_invalid_atomic_bundle_before_transition`
+      - `ActionPolicyHandler.validate_atomic_bundle_action`
+      - `ActionPolicyHandler.decide`
+      - `DispatchPipeline`
+    - Replacing the legacy logic branch until tests prove exact behavior preservation.
+    - Leaving commented-out legacy logic in the final implementation. Do not add a feature flag unless separately approved.
+    - Changing any part of the `PreDispatchDecision` outcome. The migration must preserve the exact `handled` status, `reason` string, `source` marker, and any `next_query` text.
+    - Changing any runtime behavior.
+    - Migrating logic that depends on `segments` or `ActionPolicyHandler`.
+
+- **Test Strategy**:
+  - Existing tests for `_reject_compiler_invalid_atomic_bundle_before_transition` must continue to pass.
+  - If coverage is insufficient, add new tests to prove that the migrated logic produces the exact same `PreDispatchDecision` as the old logic for all covered `compiler_error_code`s. This includes asserting on the `handled` status, `reason` string, `source` marker, and any `next_query` text.
 
 ## 9. Explicitly Deferred
 

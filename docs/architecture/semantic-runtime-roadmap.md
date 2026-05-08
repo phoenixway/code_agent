@@ -504,7 +504,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 6 Step 2C: Parity Testing
 
-- **Status**: Not Started.
+- **Status**: Done.
 - **Goal**: Implement parity tests to prove behavioral equivalence between the `BundleSemanticValidator` and the documented legacy logic for all classifications implemented through Step 2B.
 - **Allowed**:
     - Create a new test file: `tests/test_bundle_semantic_validator_parity.py`.
@@ -516,7 +516,22 @@ This document outlines the phased plan to migrate the runtime from legacy respon
     - Adding any new classification behavior to the validator.
     - Classifying `ACTION_ONLY` or any visible-text shapes.
     - Implementing `INVALID_INTENT_COMPLETE_WITH_ACTION`.
-- **Done When**: The parity tests are implemented with passing results, and no production code has been changed.
+- **Done When**: The parity tests were implemented in `tests/test_bundle_semantic_validator_parity.py` with passing results, and no production code was changed.
+
+---
+
+#### Phase 6 Step 3: First Consumer Migration
+
+- **Status**: Design in Review.
+- **Goal**: Design the migration of the first, lowest-risk consumer to use the `BundleSemanticValidator`.
+- **Candidate Consumer**: `ResponsePipelinePrevalidationMixin._reject_compiler_invalid_atomic_bundle_before_transition`.
+- **Allowed**:
+    - Update `docs/architecture/bundle-semantic-validation-design.md` with the detailed design for Step 3.
+- **Forbidden**:
+    - Implementation before design approval.
+    - Migrating any other consumers.
+    - Changing any user-facing reason strings or recovery prompts.
+- **Done When**: The design for Step 3 is documented and ready for approval.
 
 ---
 
