@@ -33,4 +33,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 29. Phase 6 Step 1 (scaffolding): done.
 30. Phase 6 Step 2A (error-code logic) implementation: done.
 31. Phase 6 Step 2B.1 (INTENT_ACTION_BUNDLE shape) implementation: done.
-32. Next: Design and approve Phase 6 Step 2B.2 (READONLY_ACTION_BATCH_CANDIDATE shape).
+32. Phase 6 Step 2B.2 (READONLY_ACTION_BATCH_CANDIDATE shape) design: approved.
+33. Next: Implement Phase 6 Step 2B.2.
