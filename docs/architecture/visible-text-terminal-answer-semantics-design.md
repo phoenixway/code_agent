@@ -389,20 +389,20 @@ The classifier consumes an immutable input snapshot and produces a structured ty
 
 The classifier must be deterministic and priority-ordered. It will use a combination of new compiler-derived structural facts and existing legacy/policy helpers.
 
-**Note**: The initial implementation in Step 4G covers only the compiler-fact branches (priorities 4-10). The legacy helper branches (1-3) are deferred to a later step (e.g., 4H or 4I) when their imports can be safely wired.
+**Note**: The implementation of legacy helper branches is proceeding incrementally in Step 4I.
 
-| Priority | `TerminalAnswerKind` | Logic / Evidence | `source` |
-|---|---|---|---|
-| 1 | `INVALID_OR_TRUNCATED_TERMINAL_TEXT` | Call legacy `terminal_plaintext_completion_status` helper. If it returns `invalid` or `truncated`. | `legacy_regex` |
-| 2 | `LEAKED_SYSTEM_RESULT` | Call legacy `is_leaked_system_result` helper. If `True`. | `legacy_regex` |
-| 3 | `INTERNAL_SUMMARY_LIKE_TEXT` | Call legacy `_is_internal_summary_instead_of_final_answer` helper. If `True`. | `runtime_policy` |
-| 4 | `PRE_ACTION_VISIBLE_TEXT_WITH_ACTION` | `input.runtime_semantics.visible_text_source == "PRE_ACTION_TEXT"` | `compiler_fact` |
-| 5 | `INTENT_COMPLETE_WITH_VISIBLE_TEXT` | `input.runtime_semantics.visible_text_source == "INTENT_COMPLETION_TEXT"` | `compiler_fact` |
-| 6 | `CHECKPOINT_WITH_VISIBLE_TEXT` | `input.runtime_semantics.visible_text_source == "CHECKPOINT_ACCOMPANYING_TEXT"` | `compiler_fact` |
-| 7 | `CHECKPOINT_ONLY` | `(has_memory_tags or has_subgoal_tags or has_memory_checkpoint)` is `True` AND `has_visible_answer` and `has_pre_action_text` are `False`. | `compiler_fact` |
-| 8 | `PLAINTEXT_TERMINAL_ANSWER` | `input.runtime_semantics.visible_text_source == "PURE_PLAINTEXT"` | `compiler_fact` |
-| 9 | `NO_VISIBLE_TEXT` | `has_visible_answer` and `has_pre_action_text` are `False`. | `compiler_fact` |
-| 10 | `UNKNOWN` | Fallback for all other cases. | `fallback` |
+| Priority | `TerminalAnswerKind` | Logic / Evidence | `source` | Status (Step 4I) |
+|---|---|---|---|---|
+| 1 | `INVALID_OR_TRUNCATED_TERMINAL_TEXT` | Call legacy `terminal_plaintext_completion_status` helper. If it returns `invalid` or `truncated`. | `legacy_regex` | Deferred |
+| 2 | `LEAKED_SYSTEM_RESULT` | A pure-function regex check for `SYSTEM RESULT:` at the start of the response. | `legacy_compatible_rule` | **Done** |
+| 3 | `INTERNAL_SUMMARY_LIKE_TEXT` | Call legacy `_is_internal_summary_instead_of_final_answer` helper. If `True`. | `runtime_policy` | Deferred |
+| 4 | `PRE_ACTION_VISIBLE_TEXT_WITH_ACTION` | `input.runtime_semantics.visible_text_source == "PRE_ACTION_TEXT"` | `compiler_fact` | Done (Step 4G) |
+| 5 | `INTENT_COMPLETE_WITH_VISIBLE_TEXT` | `input.runtime_semantics.visible_text_source == "INTENT_COMPLETION_TEXT"` | `compiler_fact` | Done (Step 4G) |
+| 6 | `CHECKPOINT_WITH_VISIBLE_TEXT` | `input.runtime_semantics.visible_text_source == "CHECKPOINT_ACCOMPANYING_TEXT"` | `compiler_fact` | Done (Step 4G) |
+| 7 | `CHECKPOINT_ONLY` | `(has_memory_tags or has_subgoal_tags or has_memory_checkpoint)` is `True` AND `has_visible_answer` and `has_pre_action_text` are `False`. | `compiler_fact` | Done (Step 4G) |
+| 8 | `PLAINTEXT_TERMINAL_ANSWER` | `input.runtime_semantics.visible_text_source == "PURE_PLAINTEXT"` | `compiler_fact` | Done (Step 4G) |
+| 9 | `NO_VISIBLE_TEXT` | `has_visible_answer` and `has_pre_action_text` are `False`. | `compiler_fact` | Done (Step 4G) |
+| 10 | `UNKNOWN` | Fallback for all other cases. | `fallback` | Done (Step 4G) |
 
 ### 11.5. Shadow-Mode Validation Plan
 

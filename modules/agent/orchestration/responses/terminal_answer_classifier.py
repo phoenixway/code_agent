@@ -1,10 +1,25 @@
 from __future__ import annotations
 
+import re
+
 from .terminal_answer_models import (
     TerminalAnswerClassifierInput,
     TerminalAnswerKind,
     TerminalAnswerSemanticResult,
 )
+
+
+# This is a conservative regex based on the characterization test.
+# It's intentionally simple to avoid pulling in ResponseSemantics.
+_LEAKED_SYSTEM_RESULT_RE = re.compile(r"^\s*SYSTEM\s+RESULT", re.IGNORECASE)
+
+
+def _looks_like_leaked_system_result(text: str) -> bool:
+    """
+    A conservative, pure-function check for leaked system results.
+    Mirrors the legacy ResponseSemantics.looks_like_leaked_system_result.
+    """
+    return bool(_LEAKED_SYSTEM_RESULT_RE.match(text))
 
 
 class TerminalAnswerClassifier:
@@ -31,7 +46,17 @@ class TerminalAnswerClassifier:
         # Legacy helper-dependent classifications are deferred until those helpers
         # are available in the refactoring context.
         # 1. INVALID_OR_TRUNCATED_TERMINAL_TEXT (legacy_regex)
+
         # 2. LEAKED_SYSTEM_RESULT (legacy_regex)
+        if _looks_like_leaked_system_result(input.raw_response_text):
+            return TerminalAnswerSemanticResult(
+                kind=TerminalAnswerKind.LEAKED_SYSTEM_RESULT,
+                source="legacy_compatible_rule",
+                reason_code="looks_like_leaked_system_result",
+                evidence=("raw_response_text",),
+                visible_text=visible_text,
+            )
+
         # 3. INTERNAL_SUMMARY_LIKE_TEXT (runtime_policy)
 
         # 4. Compiler fact: Pre-action text

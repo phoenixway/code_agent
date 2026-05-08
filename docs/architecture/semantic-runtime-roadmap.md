@@ -798,12 +798,13 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 8 Step 4I: Parity Matrix / Legacy Helper Integration
 
-- **Status**: In Progress (Part 1 Complete).
+- **Status**: In Progress (Parts 1 and 2 Complete).
 - **Goal**: Analyze shadow logs and begin integrating legacy helper branches into the classifier.
 - **Prerequisite**: Step 4H must be complete.
 - **Forbidden**: Consumer migration. Any changes to runtime behavior.
 - **Done When (Part 1)**: The shadow logging was updated to compute and record `legacy_kind` and `is_match`, enabling parity analysis.
-- **Done When (Full)**: A parity matrix is documented, and at least one legacy helper branch is integrated into the classifier with passing tests.
+- **Done When (Part 2)**: The `LEAKED_SYSTEM_RESULT` legacy rule was integrated into the classifier.
+- **Done When (Full)**: A parity matrix is documented, and all key legacy helper branches are integrated into the classifier with passing tests.
 
 ---
 

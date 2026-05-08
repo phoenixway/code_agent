@@ -97,11 +97,8 @@ class TestTerminalAnswerClassifier(unittest.TestCase):
         self.assertEqual(result.kind, TerminalAnswerKind.UNKNOWN)
         self.assertEqual(result.source, "fallback")
 
-    def test_legacy_leaked_system_result_branch_is_not_implemented_yet_current_behavior(self):
-        """
-        Tests that a leaked system result is currently classified as PLAINTEXT,
-        as the legacy helper branch is not yet implemented.
-        """
+    def test_classify_leaked_system_result(self):
+        """Tests that a leaked system result is correctly classified."""
         raw_text = "SYSTEM RESULT: The tool output is..."
         semantics = MockRuntimeSemantics(
             visible_text_source="PURE_PLAINTEXT",
@@ -110,5 +107,30 @@ class TestTerminalAnswerClassifier(unittest.TestCase):
         )
         input_data = TerminalAnswerClassifierInput(semantics, raw_text)
         result = self.classifier.classify(input_data)
+        self.assertEqual(result.kind, TerminalAnswerKind.LEAKED_SYSTEM_RESULT)
+        self.assertEqual(result.source, "legacy_compatible_rule")
+
+    def test_leaked_system_result_has_priority(self):
+        """Tests that leaked system result has priority over plaintext."""
+        raw_text = "SYSTEM RESULT: The tool output is..."
+        # Even if compiler facts say PURE_PLAINTEXT, the legacy rule should win.
+        semantics = MockRuntimeSemantics(
+            visible_text_source="PURE_PLAINTEXT",
+            has_visible_answer=True,
+            visible_text=raw_text,
+        )
+        input_data = TerminalAnswerClassifierInput(semantics, raw_text)
+        result = self.classifier.classify(input_data)
+        self.assertEqual(result.kind, TerminalAnswerKind.LEAKED_SYSTEM_RESULT)
+
+    def test_normal_text_is_not_leaked_system_result(self):
+        """Tests that normal text is not misclassified as a leaked system result."""
+        raw_text = "This is a normal final answer."
+        semantics = MockRuntimeSemantics(
+            visible_text_source="PURE_PLAINTEXT",
+            has_visible_answer=True,
+            visible_text=raw_text,
+        )
+        input_data = TerminalAnswerClassifierInput(semantics, raw_text)
+        result = self.classifier.classify(input_data)
         self.assertEqual(result.kind, TerminalAnswerKind.PLAINTEXT_TERMINAL_ANSWER)
-        self.assertEqual(result.source, "compiler_fact")

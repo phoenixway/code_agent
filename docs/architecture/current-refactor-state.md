@@ -230,11 +230,11 @@ This document is the single source of truth for the current state of the Semanti
   - The actual comparison against legacy logic is deferred to a later step.
   - The call is protected by an exception handler to prevent it from affecting runtime behavior.
   - No consumers were migrated, and no production behavior was changed.
-- **Phase 8 Step 4I: Parity Matrix / Legacy Helper Integration (Part 1 Complete)**
-  - Implemented a diagnostic helper in `ResponsePipelinePrevalidationMixin` to compute a `legacy_kind` for terminal answers.
-  - The shadow logging now records both `classifier_kind` and `legacy_kind`, and computes `is_match`.
+- **Phase 8 Step 4I: Parity Matrix / Legacy Helper Integration (In Progress)**
+  - **Part 1 (Complete)**: Implemented a diagnostic helper in `ResponsePipelinePrevalidationMixin` to compute a `legacy_kind` for terminal answers. The shadow logging now records both `classifier_kind` and `legacy_kind`, and computes `is_match`.
+  - **Part 2 (Complete)**: Integrated the `LEAKED_SYSTEM_RESULT` legacy rule into the `TerminalAnswerClassifier`.
   - This enables building a parity matrix from logs.
-  - Integration of legacy helper branches into the classifier itself is deferred.
+  - Integration of other legacy helper branches into the classifier is deferred.
   - No production behavior was changed.
 ## Known Authority Boundaries
 
@@ -250,7 +250,7 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- **Phase 8 Step 4I (Part 2): Legacy Helper Integration**: Analyze the parity data from logs. Begin integrating legacy helper branches (e.g., for `LEAKED_SYSTEM_RESULT`) into the `TerminalAnswerClassifier` to improve parity. This is a behavior-preserving step. Consumer migration remains blocked. This step is pending explicit approval.
+- **Phase 8 Step 4I (Part 3): Legacy Helper Integration**: Analyze the parity data from logs. Begin integrating the next legacy helper branch (e.g., for `INVALID_OR_TRUNCATED_TERMINAL_TEXT`) into the `TerminalAnswerClassifier` to improve parity. This is a behavior-preserving step. Consumer migration remains blocked. This step is pending explicit approval.
 
 ## Test Status
 
