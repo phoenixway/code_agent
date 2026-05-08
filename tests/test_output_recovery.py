@@ -1,5 +1,6 @@
 """Unit tests for ModelOutputRecoveryHandler."""
 
+import asyncio
 import unittest
 from dataclasses import dataclass
 from types import SimpleNamespace
@@ -7,6 +8,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 from modules.agent.orchestration.responses.output_recovery import ModelOutputRecoveryHandler
+from modules.agent.orchestration.responses.terminal_answer_models import TerminalAnswerKind, TerminalAnswerSemanticResult
 from modules.agent.orchestration.shared.decision_models import ParsedModelOutput
 
 
@@ -127,6 +129,130 @@ class TestModelOutputRecoveryHandler(unittest.TestCase):
             invalid_kind="some_other_error",
         )
         self.assertFalse(self.handler._is_internal_summary_instead_of_final_answer(p_out_invalid))
+
+    def _prepare_decide_harness(self):
+        self.handler.prompt_builder.build_internal_summary_instead_of_final_answer_prompt.return_value = "summary_prompt"
+        self.handler._resolved_invalid_kind = MagicMock(return_value="")
+        self.handler._compiler_strategy_decision = MagicMock(return_value=None)
+        self.handler._is_missing_durable_state_checkpoint = MagicMock(return_value=False)
+        self.handler._state_changing_action_missing_operational_review = MagicMock(return_value=False)
+        self.handler._clear_missing_think_reflection_warning = MagicMock()
+        self.handler._build_fix_final_answer_missing_build_status = MagicMock(return_value=False)
+        self.handler._is_unproven_modify_completion_claim = MagicMock(return_value=False)
+        self.handler._state_changing_modify_checkpoint_reason = MagicMock(return_value="")
+        self.handler._is_missing_memory_update_done = MagicMock(return_value=False)
+        self.handler._has_any_action_proposal = MagicMock(return_value=False)
+        self.handler._clear_compiler_recovery_fingerprint = MagicMock()
+        self.handler._clear_architecture_defect_repeat = MagicMock()
+        self.handler._clear_recovery_loop_handoff_repeat = MagicMock()
+        self.handler._clear_large_malformed_response = MagicMock()
+        self.handler.semantics.has_complete_think_before_action = MagicMock(return_value=False)
+        self.handler.stage_logger.log = MagicMock()
+
+    def test_decide_internal_summary_typed_hint_with_legacy_confirmation(self):
+        self._prepare_decide_harness()
+        self.handler._is_internal_summary_instead_of_final_answer = MagicMock(return_value=True)
+        parsed = ParsedModelOutput(
+            response="Execution snapshot:\nActive goal: ...",
+            terminal_answer_semantic_result=TerminalAnswerSemanticResult(
+                kind=TerminalAnswerKind.INTERNAL_SUMMARY_LIKE_TEXT,
+                source="runtime_policy",
+                reason_code="legacy_internal_summary_helper",
+            ),
+        )
+
+        decision = asyncio.run(self.handler.decide(parsed, malformed_action_retries=0, audit_marker_retries=0))
+
+        self.assertTrue(decision.continue_loop)
+        self.assertEqual(decision.next_query, "summary_prompt")
+        self.assertEqual(decision.reason, "internal_summary_instead_of_final_answer")
+        self.assertEqual(decision.source, "output_recovery")
+
+    def test_decide_internal_summary_typed_hint_without_legacy_confirmation_does_not_expand_behavior(self):
+        self._prepare_decide_harness()
+        self.handler._is_internal_summary_instead_of_final_answer = MagicMock(return_value=False)
+        parsed = ParsedModelOutput(
+            response="Execution snapshot:\nActive goal: ...",
+            terminal_answer_semantic_result=TerminalAnswerSemanticResult(
+                kind=TerminalAnswerKind.INTERNAL_SUMMARY_LIKE_TEXT,
+                source="runtime_policy",
+                reason_code="legacy_internal_summary_helper",
+            ),
+        )
+
+        decision = asyncio.run(self.handler.decide(parsed, malformed_action_retries=0, audit_marker_retries=0))
+
+        self.assertFalse(decision.continue_loop)
+        self.assertEqual(decision.reason, "no_invalid_kind")
+        self.assertEqual(decision.source, "output_recovery")
+
+    def test_decide_internal_summary_fallback_when_typed_result_absent(self):
+        self._prepare_decide_harness()
+        self.handler._is_internal_summary_instead_of_final_answer = MagicMock(return_value=True)
+        parsed = ParsedModelOutput(response="Execution snapshot:\nActive goal: ...")
+
+        decision = asyncio.run(self.handler.decide(parsed, malformed_action_retries=0, audit_marker_retries=0))
+
+        self.assertTrue(decision.continue_loop)
+        self.assertEqual(decision.reason, "internal_summary_instead_of_final_answer")
+
+    def test_decide_internal_summary_fallback_when_typed_result_differs(self):
+        self._prepare_decide_harness()
+        self.handler._is_internal_summary_instead_of_final_answer = MagicMock(return_value=True)
+        parsed = ParsedModelOutput(
+            response="Execution snapshot:\nActive goal: ...",
+            terminal_answer_semantic_result=TerminalAnswerSemanticResult(
+                kind=TerminalAnswerKind.PLAINTEXT_TERMINAL_ANSWER,
+                source="compiler_fact",
+                reason_code="visible_text_source_is_pure_plaintext",
+            ),
+        )
+
+        decision = asyncio.run(self.handler.decide(parsed, malformed_action_retries=0, audit_marker_retries=0))
+
+        self.assertTrue(decision.continue_loop)
+        self.assertEqual(decision.reason, "internal_summary_instead_of_final_answer")
+
+    def test_decide_internal_summary_preserves_earlier_invalid_kind_precedence(self):
+        self._prepare_decide_harness()
+        self.handler._resolved_invalid_kind = MagicMock(return_value="malformed_action")
+        self.handler._compiler_strategy_decision = MagicMock(
+            return_value=SimpleNamespace(
+                handled=True,
+                continue_loop=True,
+                next_query="compiler_prompt",
+                stop_loop=False,
+                malformed_action_retries=0,
+                audit_marker_retries=0,
+                reason="malformed_action",
+                source="compiler_recovery_registry",
+            )
+        )
+        self.handler._is_internal_summary_instead_of_final_answer = MagicMock(return_value=True)
+        parsed = ParsedModelOutput(
+            response="Execution snapshot:\nActive goal: ...",
+            terminal_answer_semantic_result=TerminalAnswerSemanticResult(
+                kind=TerminalAnswerKind.INTERNAL_SUMMARY_LIKE_TEXT,
+                source="runtime_policy",
+                reason_code="legacy_internal_summary_helper",
+            ),
+        )
+
+        decision = asyncio.run(self.handler.decide(parsed, malformed_action_retries=0, audit_marker_retries=0))
+
+        self.assertEqual(decision.next_query, "compiler_prompt")
+        self.handler._is_internal_summary_instead_of_final_answer.assert_not_called()
+
+    def test_decide_internal_summary_non_summary_case_passes_through_unchanged(self):
+        self._prepare_decide_harness()
+        self.handler._is_internal_summary_instead_of_final_answer = MagicMock(return_value=False)
+        parsed = ParsedModelOutput(response="All done.")
+
+        decision = asyncio.run(self.handler.decide(parsed, malformed_action_retries=0, audit_marker_retries=0))
+
+        self.assertFalse(decision.continue_loop)
+        self.assertEqual(decision.reason, "no_invalid_kind")
+        self.assertEqual(decision.source, "output_recovery")
 
 
 if __name__ == "__main__":

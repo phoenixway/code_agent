@@ -367,7 +367,7 @@ class ResponsePipelinePrevalidationMixin:
             "Return only a complete concise plain-text final answer for the user."
         )
 
-    def _reject_truncated_terminal_completion_before_transition(self, raw_response: str, step):
+    def _reject_truncated_terminal_completion_before_transition(self, raw_response: str, step, *, parsed_output=None):
         payload = getattr(step, "intent_payload", None)
         if not isinstance(payload, dict):
             return None
@@ -375,6 +375,14 @@ class ResponsePipelinePrevalidationMixin:
         if payload_mode != "complete":
             return None
 
+        typed_result = getattr(parsed_output, "terminal_answer_semantic_result", None)
+        is_typed_invalid_or_truncated = (
+            typed_result is not None
+            and getattr(typed_result, "kind", None) == TerminalAnswerKind.INVALID_OR_TRUNCATED_TERMINAL_TEXT
+        )
+        # Step 4M.2 keeps the typed result as a primary hint only. The actual
+        # rejection decision remains gated by the legacy helper on raw_response
+        # because classifier and legacy semantics are not exact equivalents yet.
         valid, reason, visible_text = terminal_plaintext_completion_status(raw_response)
         if valid:
             return None
@@ -426,7 +434,7 @@ class ResponsePipelinePrevalidationMixin:
         )
         return segments, parsed_output
 
-    async def _reject_invalid_intent_followup_before_transition(self, ctx, raw_response: str, step):
+    async def _reject_invalid_intent_followup_before_transition(self, ctx, raw_response: str, step, *, preclassified=None):
         if getattr(step, "intent_payload", None) is None:
             return None
 
@@ -434,10 +442,13 @@ class ResponsePipelinePrevalidationMixin:
         if not response:
             return None
 
-        segments, parsed_output = self._classify_response_for_prevalidation(
-            response,
-            allow_think_autorepair=False,
-        )
+        if preclassified is None:
+            segments, parsed_output = self._classify_response_for_prevalidation(
+                response,
+                allow_think_autorepair=False,
+            )
+        else:
+            segments, parsed_output = preclassified
         parsed_output.model_stop_reason = str(getattr(step, "model_stop_reason", "") or "").strip()
 
         payload = getattr(step, "intent_payload", None)

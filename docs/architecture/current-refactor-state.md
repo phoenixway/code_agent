@@ -4,18 +4,18 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 8 Step 4L: First Consumer Migration (Implementation)
+- **Phase**: Phase 8 Step 4N.2: `INTERNAL_SUMMARY_LIKE_TEXT` consumer migration implementation
 - **Status**: Complete.
-- **Next Step**: Phase 8 Step 4M: Post-Migration Parity Review / Fallback Retirement Design Gate.
-- **Boundary**: Only the first narrow consumer migration is complete. No other consumer migration is authorized, `TerminalAnswerClassifier` is not sole authority, and production behavior is intended to remain equivalent.
+- **Next Step**: Phase 8 Step 4O: Terminal Answer Remaining Consumer Review / Final-Answer Path Preflight.
+- **Boundary**: `TerminalAnswerClassifier` is not policy authority or stop-gate authority. Future migrations must remain narrow and behavior-preserving. Legacy fallback is required unless exact semantic parity is proven.
 
 ## Step 4I Parity Matrix
 
 | `TerminalAnswerKind` | Implemented in classifier? | Source type | Legacy parity logging available? | Consumer migration status | Remaining risk / deferred notes |
 |---|---|---|---|---|---|
 | `LEAKED_SYSTEM_RESULT` | Yes | `legacy_compatible_rule` | Yes | Blocked | Regex-compatible rule only; classifier remains shadow-only. |
-| `INVALID_OR_TRUNCATED_TERMINAL_TEXT` | Yes | `legacy_compatible_rule` | Yes | Blocked | Depends on legacy plaintext-completion heuristic; no policy migration. |
-| `INTERNAL_SUMMARY_LIKE_TEXT` | Yes | `runtime_policy` | Yes | Blocked | Caller-computed boolean flag; no stateful runtime objects enter classifier. |
+| `INVALID_OR_TRUNCATED_TERMINAL_TEXT` | Yes | `legacy_compatible_rule` | Yes | First narrow consumer migrated | Legacy fallback remains required because the classifier uses `candidate_text` / `PURE_PLAINTEXT`, while the legacy guard uses `raw_response`. |
+| `INTERNAL_SUMMARY_LIKE_TEXT` | Yes | `runtime_policy` | Yes | Narrow consumer migrated | Typed result is a primary hint only; legacy runtime-policy helper remains the confirmation/fallback path. |
 | `PRE_ACTION_VISIBLE_TEXT_WITH_ACTION` | Yes | `compiler_fact` | No dedicated legacy parity kind | Blocked | Compiler-fact classification exists, but no consumer migration is approved. |
 | `INTENT_COMPLETE_WITH_VISIBLE_TEXT` | Yes | `compiler_fact` | No dedicated legacy parity kind | Blocked | Structural fact only; runtime final-answer policy remains separate. |
 | `CHECKPOINT_WITH_VISIBLE_TEXT` | Yes | `compiler_fact` | No dedicated legacy parity kind | Blocked | Board/checkpoint consumers are not migrated. |
@@ -295,19 +295,226 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- **Phase 8 Step 4M: Post-Migration Parity Review / Fallback Retirement Design Gate**
-  - This is a review/design-only step.
-  - Review whether the leaked-system-result fallback can ever be retired.
-  - Compare the classifier regex path with the broader legacy accessor regex path.
-  - Inspect Step 4L parity evidence and shadow-log agreement after the first migration.
-  - No fallback removal.
-  - No new consumer migration.
-  - No production behavior change.
+- **Phase 8 Step 4O: Terminal Answer Remaining Consumer Review / Final-Answer Path Preflight**
+  - Review the remaining terminal-answer consumers after Steps 4L, 4M.2, and 4N.2.
+  - Re-evaluate final-answer-path candidates before any migration touching final-answer or stop-gate authority.
+  - Keep board/checkpoint consumers deferred to their separate slice.
 
-- **Phase 8 Step 4L: First Consumer Migration (Implementation)**: Implement the approved design from Step 4K to migrate the `is_leaked_system_result` check in `ResponsePipelineStagesMixin`. This step is not yet authorized and requires explicit approval to begin.
-  - Step 4L must remain behavior-preserving.
-  - The typed classifier result must be the primary signal, but the legacy accessor must remain the production fallback.
-  - Strict replacement is forbidden for Step 4L.
+## Step 4M Batch Plan
+
+- **Conclusion**
+  - The Terminal Answers slice should not be closed yet.
+  - Legacy terminal-answer consumers remain a recurring bug source.
+  - Continue consumer migration in controlled small steps only.
+
+- **Remaining TerminalAnswer-related legacy consumers**
+  - `INVALID_OR_TRUNCATED_TERMINAL_TEXT` consumer:
+    `ResponsePipelinePrevalidationMixin._reject_truncated_terminal_completion_before_transition`
+  - `INTERNAL_SUMMARY_LIKE_TEXT` consumer:
+    output-recovery routing that handles `internal_summary_instead_of_final_answer`
+  - `PLAINTEXT_TERMINAL_ANSWER` / final-answer path consumers:
+    final-answer and stop-gate-adjacent logic remain deferred pending separate preflight
+  - `CHECKPOINT_WITH_VISIBLE_TEXT` / `CHECKPOINT_ONLY` consumers:
+    board/checkpoint handlers remain deferred to a separate slice
+
+- **Ranking**
+  - `INVALID_OR_TRUNCATED_TERMINAL_TEXT`
+    - Bug impact: High
+    - Migration risk: Medium
+    - Classifier readiness: High
+    - Policy/authority risk: Medium
+  - `INTERNAL_SUMMARY_LIKE_TEXT`
+    - Bug impact: Medium
+    - Migration risk: Medium
+    - Classifier readiness: Medium
+    - Policy/authority risk: High
+  - `PLAINTEXT_TERMINAL_ANSWER`
+    - Bug impact: High
+    - Migration risk: High
+    - Classifier readiness: Medium
+    - Policy/authority risk: High
+  - `CHECKPOINT_WITH_VISIBLE_TEXT` / `CHECKPOINT_ONLY`
+    - Bug impact: Medium
+    - Migration risk: Medium
+    - Classifier readiness: Medium
+    - Policy/authority risk: Medium
+
+- **Recommended ordered migration sequence**
+  - `Phase 8 Step 4M.1`: `INVALID_OR_TRUNCATED_TERMINAL_TEXT` consumer migration design
+  - `Phase 8 Step 4M.2`: `INVALID_OR_TRUNCATED_TERMINAL_TEXT` implementation
+  - `Phase 8 Step 4N.1`: `INTERNAL_SUMMARY_LIKE_TEXT` consumer migration design
+  - `Phase 8 Step 4N.2`: `INTERNAL_SUMMARY_LIKE_TEXT` implementation
+  - Later: `PLAINTEXT_TERMINAL_ANSWER` / final-answer path only after separate preflight
+  - Checkpoint/board consumers deferred to a separate board/checkpoint slice
+
+## Step 4M.1 Design
+
+- **Current consumer path**
+  - Exact function:
+    `ResponsePipelinePrevalidationMixin._reject_truncated_terminal_completion_before_transition`
+  - Current helper used:
+    `terminal_plaintext_completion_status(raw_response)`
+  - Current behavior on invalid/truncated terminal plaintext:
+    - only runs when `step.intent_payload` is a dict with `mode == "complete"`
+    - calls the legacy helper on the raw response text
+    - if the helper reports invalid/truncated text, clears terminal plaintext completion state
+    - logs `reason="truncated_terminal_plaintext_answer"` and `source="intent_completion_atomicity_guard"`
+    - returns `ResponsePipelineOutcome.continue_with(...)` using `_terminal_completion_recovery_prompt(...)`
+
+- **Current classifier readiness**
+  - `TerminalAnswerClassifier` already classifies `INVALID_OR_TRUNCATED_TERMINAL_TEXT`
+    using `terminal_plaintext_completion_status(candidate_text)` when
+    `runtime_semantics.visible_text_source == "PURE_PLAINTEXT"` and the text is not a complete leaked-system marker.
+  - Inputs used by the classifier:
+    - `runtime_semantics`
+    - `raw_response_text`
+    - internally derived `candidate_text = visible_text or raw_response_text`
+  - After Step 4L, the classifier result is attached to `ParsedModelOutput` as
+    `parsed_output.terminal_answer_semantic_result`.
+  - The classifier already runs early enough:
+    it executes in `_apply_compiler_diagnosis(...)`, before later prevalidation and stage consumers can inspect `parsed_output`.
+
+- **Parity / risk analysis**
+  - Similarity:
+    - both the legacy consumer and the classifier rely on the same legacy helper family:
+      `terminal_plaintext_completion_status(...)`
+  - Mismatch:
+    - the current consumer evaluates `terminal_plaintext_completion_status(raw_response)`
+    - the classifier evaluates the helper on `candidate_text`, and only on the `PURE_PLAINTEXT` classifier path
+    - this means the classifier is structurally narrower than the legacy guard
+  - Design conclusion:
+    - legacy fallback is required for Step 4M.2
+    - typed result can be the primary hint only inside the existing intent-completion guard
+    - if the typed result is absent, or present but not `INVALID_OR_TRUNCATED_TERMINAL_TEXT`, the legacy helper must still run
+  - Policy / intent-completion risk:
+    - this consumer is tied to `intent_payload.mode == "complete"`
+    - it is part of an intent-completion atomicity/policy path, not a free-standing terminal-answer authority
+    - Step 4M.2 must preserve all existing intent-completion preconditions and recovery behavior
+
+- **Proposed Step 4M.2 implementation**
+  - Scope only:
+    `ResponsePipelinePrevalidationMixin._reject_truncated_terminal_completion_before_transition`
+  - Proposed shape:
+    - preserve the existing `intent_payload` and `mode == "complete"` preconditions
+    - read `parsed_output.terminal_answer_semantic_result` if available at the call site
+    - treat `TerminalAnswerKind.INVALID_OR_TRUNCATED_TERMINAL_TEXT` as the primary hint
+    - always confirm the final rejection decision with `terminal_plaintext_completion_status(raw_response)`
+    - preserve the same state clearing, logging, recovery prompt, reason, and source
+  - Explicit non-goals:
+    - no stop-gate authority change
+    - no final-answer authority change
+    - no migration of any other consumer
+    - no classifier logic changes in Step 4M.2 unless a separate design step proves parity is insufficient
+
+- **Tests required for Step 4M.2**
+  - typed result path:
+    typed `INVALID_OR_TRUNCATED_TERMINAL_TEXT` triggers the same recovery outcome
+  - legacy fallback when typed result is absent
+  - legacy fallback when typed result is present but differs
+  - existing policy / preconditions preserved:
+    no rejection unless `intent_payload.mode == "complete"`
+  - no-behavior-change cases:
+    valid completion still passes through unchanged
+
+## Step 4M.2 Implementation
+
+- **Outcome**
+  - Migrated consumer:
+    `ResponsePipelinePrevalidationMixin._reject_truncated_terminal_completion_before_transition`
+  - Typed `INVALID_OR_TRUNCATED_TERMINAL_TEXT` is now the primary hint for this guard, with legacy confirmation.
+  - Legacy `terminal_plaintext_completion_status(raw_response)` remains the production fallback.
+  - The fallback applies when the typed result is absent or present but differs.
+  - Existing `intent_payload.mode == "complete"` precondition is preserved.
+  - Existing recovery behavior is preserved:
+    terminal completion state clearing, recovery prompt behavior, logging fields, `reason`, and `source`.
+  - No stop-gate, final-answer, policy, dispatch, UI, or parser behavior was changed.
+  - No other consumers were migrated.
+  - Tests passed.
+
+## Step 4N.1 Design
+
+- **Current internal-summary consumer path**
+  - Exact functions:
+    - `OutputRecoveryRoutingMixin.decide(...)`
+    - `OutputRecoveryRoutingMixin._resolved_invalid_kind(...)` / the local invalid-kind resolution flow inside `decide(...)`
+  - Current helper / policy used:
+    `ModelOutputRecoveryHandler._is_internal_summary_instead_of_final_answer(parsed_output)`
+  - Current behavior when internal summary is detected:
+    - if no earlier `invalid_kind` has already been selected, `decide(...)` sets
+      `invalid_kind = "internal_summary_instead_of_final_answer"`
+    - the routing branch logs `reason="internal_summary_instead_of_final_answer"`
+    - it returns `OutputRecoveryDecision.continue_with(...)`
+      using `build_internal_summary_instead_of_final_answer_prompt()`
+      with `source="output_recovery"`
+
+- **Current classifier readiness**
+  - `TerminalAnswerClassifier` classifies `INTERNAL_SUMMARY_LIKE_TEXT` when
+    `TerminalAnswerClassifierInput.is_internal_summary` is `True`.
+  - `is_internal_summary` is computed in
+    `ResponsePipelinePrevalidationMixin._run_terminal_answer_classifier_shadow(...)`
+    by calling the existing legacy helper
+    `_is_internal_summary_instead_of_final_answer(parsed_output)`.
+  - The typed result is attached to `ParsedModelOutput` as
+    `parsed_output.terminal_answer_semantic_result`.
+  - The consumer can access that typed result without reclassifying because
+    `parsed_output` is already handed into output-recovery routing.
+
+- **Parity / risk analysis**
+  - The typed classifier result and the existing consumer both depend on the same
+    runtime-policy helper family:
+    `_is_internal_summary_instead_of_final_answer(parsed_output)`.
+  - However, exact parity is still not proven for this consumer path because:
+    - the helper is runtime-policy logic, not a compiler fact
+    - the output-recovery flow is invalid-kind routing, where earlier invalid kinds
+      may take precedence before the internal-summary check runs
+    - this branch is part of recovery policy, not a free-standing terminal-answer authority
+  - Design conclusion:
+    - typed result may be a primary hint only
+    - legacy helper / existing invalid-kind logic remains the confirmation and fallback path
+    - typed result alone must not create a new internal-summary recovery if the
+      legacy policy helper would not do so
+
+- **Proposed Step 4N.2 implementation**
+  - Scope only:
+    the existing internal-summary recovery consumer in output-recovery routing
+  - Proposed shape:
+    - keep the current invalid-kind ordering in `decide(...)`
+    - inspect `parsed_output.terminal_answer_semantic_result` as a primary hint
+      for the internal-summary branch
+    - confirm with `_is_internal_summary_instead_of_final_answer(parsed_output)`
+      unless exact parity is proven
+    - preserve current recovery behavior, `reason`, `source`, logging, and prompt
+      `build_internal_summary_instead_of_final_answer_prompt()`
+  - Explicit non-goals:
+    - no stop-gate or final-answer authority change
+    - no migration of any other consumer
+    - no classifier logic changes in Step 4N.2
+
+- **Tests required for Step 4N.2**
+  - typed result path with legacy confirmation
+  - typed result alone must not expand behavior if parity is not exact
+  - fallback when typed result is absent
+  - fallback when typed result differs
+  - current non-summary cases pass through unchanged
+
+## Step 4N.2 Implementation
+
+- **Outcome**
+  - Migrated consumer:
+    internal-summary recovery in `OutputRecoveryRoutingMixin.decide(...)`
+  - Typed `INTERNAL_SUMMARY_LIKE_TEXT` is now a primary hint for this consumer.
+  - `_is_internal_summary_instead_of_final_answer(parsed_output)` remains the confirmation/fallback path.
+  - Typed result alone does not create a new recovery decision.
+  - Existing invalid-kind ordering and earlier invalid-kind precedence are preserved.
+  - Existing recovery behavior is preserved:
+    `invalid_kind="internal_summary_instead_of_final_answer"`,
+    `reason="internal_summary_instead_of_final_answer"`,
+    `source="output_recovery"`,
+    `build_internal_summary_instead_of_final_answer_prompt()`,
+    and existing logging behavior.
+  - No stop-gate, final-answer, policy, dispatch, UI, parser, or history behavior was changed.
+  - No other consumers were migrated.
+  - Tests passed.
 
 ## Test Status
 

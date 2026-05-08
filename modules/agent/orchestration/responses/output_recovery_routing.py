@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ..shared.decision_models import OutputRecoveryDecision, ParsedModelOutput
+from .terminal_answer_models import TerminalAnswerKind
 from .protocol_decision_bridge import COMPILER_INVALID_KIND_BY_CODE, compiler_invalid_kind_for_output
 from .runtime_protocol_semantics import output_recovery_compiler_metadata, output_recovery_structural_parity
 from .semantic_accessors import get_compiler_metadata
@@ -65,7 +66,15 @@ class OutputRecoveryRoutingMixin:
         if not missing_durable_checkpoint and not self._state_changing_action_missing_operational_review(parsed_output):
             self._clear_missing_think_reflection_warning()
 
-        if not invalid_kind and self._is_internal_summary_instead_of_final_answer(parsed_output):
+        typed_result = getattr(parsed_output, "terminal_answer_semantic_result", None)
+        is_typed_internal_summary = (
+            typed_result is not None
+            and getattr(typed_result, "kind", None) == TerminalAnswerKind.INTERNAL_SUMMARY_LIKE_TEXT
+        )
+        if not invalid_kind and is_typed_internal_summary:
+            if self._is_internal_summary_instead_of_final_answer(parsed_output):
+                invalid_kind = "internal_summary_instead_of_final_answer"
+        if not invalid_kind and not is_typed_internal_summary and self._is_internal_summary_instead_of_final_answer(parsed_output):
             invalid_kind = "internal_summary_instead_of_final_answer"
         if not invalid_kind and self._build_fix_final_answer_missing_build_status(parsed_output):
             invalid_kind = "build_fix_final_answer_missing_build_status"

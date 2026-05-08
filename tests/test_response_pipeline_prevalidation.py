@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from modules.agent.orchestration.responses.response_pipeline_prevalidation import ResponsePipelinePrevalidationMixin
+from modules.agent.orchestration.responses.terminal_answer_models import TerminalAnswerKind, TerminalAnswerSemanticResult
 from modules.agent.orchestration.runtime.action_policy_models import AtomicBundlePolicyResultKind
 from modules.agent.orchestration.shared.decision_models import AtomicBundlePlan, ResponsePipelineOutcome
 
@@ -315,3 +316,152 @@ def test_reject_invalid_atomic_bundle_passes_through_on_action_policy_ok(harness
         before_active_intent_id="",
         after_active_intent_id="test_intent_id",
     )
+
+
+def test_reject_truncated_terminal_completion_uses_typed_result_with_legacy_confirmation(harness, monkeypatch):
+    """Typed INVALID_OR_TRUNCATED_TERMINAL_TEXT rejects only when the legacy helper also rejects."""
+    harness.state.terminal_plaintext_completion_text = "stale"
+    harness.state.terminal_plaintext_completion_reason = "stale_reason"
+    monkeypatch.setattr(
+        "modules.agent.orchestration.responses.response_pipeline_prevalidation.terminal_plaintext_completion_status",
+        lambda raw_response: (False, "terminal_plaintext_too_short", "Hello"),
+    )
+    step = SimpleNamespace(intent_payload={"mode": "complete"})
+    parsed_output = MockParsedOutput(
+        terminal_answer_semantic_result=TerminalAnswerSemanticResult(
+            kind=TerminalAnswerKind.INVALID_OR_TRUNCATED_TERMINAL_TEXT,
+            source="legacy_compatible_rule",
+            reason_code="terminal_plaintext_completion_status:terminal_plaintext_too_short",
+            visible_text="Hello",
+        )
+    )
+
+    outcome = harness._reject_truncated_terminal_completion_before_transition(
+        "Hello",
+        step,
+        parsed_output=parsed_output,
+    )
+
+    assert isinstance(outcome, ResponsePipelineOutcome)
+    assert outcome.reason == "truncated_terminal_plaintext_answer"
+    assert outcome.source == "intent_completion_atomicity_guard"
+    assert harness.state.terminal_plaintext_completion_text == ""
+    assert harness.state.terminal_plaintext_completion_reason == "stale_reason"
+    harness.stage_logger.log.assert_called_with(
+        "response_pipeline",
+        "continue",
+        reason="truncated_terminal_plaintext_answer",
+        source="intent_completion_atomicity_guard",
+        visible_text_chars=5,
+        terminal_plaintext_reason="terminal_plaintext_too_short",
+    )
+
+
+def test_reject_truncated_terminal_completion_does_not_reject_on_typed_result_without_legacy_confirmation(
+    harness, monkeypatch
+):
+    """Typed invalid/truncated alone must not create a new rejection in Step 4M.2."""
+    monkeypatch.setattr(
+        "modules.agent.orchestration.responses.response_pipeline_prevalidation.terminal_plaintext_completion_status",
+        lambda raw_response: (True, "", "Hello world."),
+    )
+    step = SimpleNamespace(intent_payload={"mode": "complete"})
+    parsed_output = MockParsedOutput(
+        terminal_answer_semantic_result=TerminalAnswerSemanticResult(
+            kind=TerminalAnswerKind.INVALID_OR_TRUNCATED_TERMINAL_TEXT,
+            source="legacy_compatible_rule",
+            reason_code="terminal_plaintext_completion_status:terminal_plaintext_too_short",
+            visible_text="Hello",
+        )
+    )
+
+    outcome = harness._reject_truncated_terminal_completion_before_transition(
+        "Hello world.",
+        step,
+        parsed_output=parsed_output,
+    )
+
+    assert outcome is None
+
+
+def test_reject_truncated_terminal_completion_falls_back_when_typed_result_absent(harness, monkeypatch):
+    """Legacy plaintext helper remains the fallback when there is no typed result."""
+    monkeypatch.setattr(
+        "modules.agent.orchestration.responses.response_pipeline_prevalidation.terminal_plaintext_completion_status",
+        lambda raw_response: (False, "truncated", "Hello"),
+    )
+    step = SimpleNamespace(intent_payload={"mode": "complete"})
+
+    outcome = harness._reject_truncated_terminal_completion_before_transition("Hello", step)
+
+    assert isinstance(outcome, ResponsePipelineOutcome)
+    assert outcome.reason == "truncated_terminal_plaintext_answer"
+    assert outcome.source == "intent_completion_atomicity_guard"
+
+
+def test_reject_truncated_terminal_completion_falls_back_when_typed_result_differs(harness, monkeypatch):
+    """Legacy plaintext helper remains the fallback when typed result is present but not invalid/truncated."""
+    calls = []
+
+    def fake_status(raw_response):
+        calls.append(raw_response)
+        return False, "truncated", "Hello"
+
+    monkeypatch.setattr(
+        "modules.agent.orchestration.responses.response_pipeline_prevalidation.terminal_plaintext_completion_status",
+        fake_status,
+    )
+    step = SimpleNamespace(intent_payload={"mode": "complete"})
+    parsed_output = MockParsedOutput(
+        terminal_answer_semantic_result=TerminalAnswerSemanticResult(
+            kind=TerminalAnswerKind.PLAINTEXT_TERMINAL_ANSWER,
+            source="compiler_fact",
+            reason_code="visible_text_source_is_pure_plaintext",
+            visible_text="Hello world.",
+        )
+    )
+
+    outcome = harness._reject_truncated_terminal_completion_before_transition(
+        "Hello",
+        step,
+        parsed_output=parsed_output,
+    )
+
+    assert isinstance(outcome, ResponsePipelineOutcome)
+    assert calls == ["Hello"]
+
+
+def test_reject_truncated_terminal_completion_requires_complete_mode(harness, monkeypatch):
+    """The truncated terminal guard must not reject outside intent complete mode."""
+    called = False
+
+    def fake_status(raw_response):
+        nonlocal called
+        called = True
+        return False, "truncated", "Hello"
+
+    monkeypatch.setattr(
+        "modules.agent.orchestration.responses.response_pipeline_prevalidation.terminal_plaintext_completion_status",
+        fake_status,
+    )
+
+    outcome = harness._reject_truncated_terminal_completion_before_transition(
+        "Hello",
+        SimpleNamespace(intent_payload={"mode": "activate"}),
+    )
+
+    assert outcome is None
+    assert called is False
+
+
+def test_reject_truncated_terminal_completion_passes_through_for_valid_completion(harness, monkeypatch):
+    """Valid terminal completion must still pass through unchanged."""
+    monkeypatch.setattr(
+        "modules.agent.orchestration.responses.response_pipeline_prevalidation.terminal_plaintext_completion_status",
+        lambda raw_response: (True, "", "All done."),
+    )
+    step = SimpleNamespace(intent_payload={"mode": "complete"})
+
+    outcome = harness._reject_truncated_terminal_completion_before_transition("All done.", step)
+
+    assert outcome is None

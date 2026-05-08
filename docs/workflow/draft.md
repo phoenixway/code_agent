@@ -80,4 +80,10 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 76. Step 4K design correction from read-only preflight: typed result primary signal plus legacy fallback; strict replacement forbidden for Step 4L.
 77. Phase 8 Step 4L First Consumer Migration (Implementation): done.
 78. Step 4L migrated only the leaked-system-result guard in `ResponsePipelineStagesMixin`; typed classifier result is primary signal, legacy accessor remains production fallback.
-79. Next: Phase 8 Step 4M Post-Migration Parity Review / Fallback Retirement Design Gate (review/design only; no fallback removal, no new consumer migration, no production behavior change).
+79. Phase 8 Step 4M Terminal Answer Consumer Migration Batch Plan: done.
+80. Step 4M conclusion: keep the Terminal Answers slice open; migrate remaining legacy consumers in narrow behavior-preserving steps only.
+81. Phase 8 Step 4M.1 `INVALID_OR_TRUNCATED_TERMINAL_TEXT` consumer migration design: done.
+82. Phase 8 Step 4M.2 `INVALID_OR_TRUNCATED_TERMINAL_TEXT` consumer migration implementation: done.
+83. Phase 8 Step 4N.1 `INTERNAL_SUMMARY_LIKE_TEXT` consumer migration design: done.
+84. Phase 8 Step 4N.2 `INTERNAL_SUMMARY_LIKE_TEXT` consumer migration implementation: done.
+85. Next: Phase 8 Step 4O Terminal Answer Remaining Consumer Review / Final-Answer Path Preflight.

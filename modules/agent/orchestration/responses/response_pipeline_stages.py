@@ -105,11 +105,29 @@ class ResponsePipelineStagesMixin:
         )
         raw_response = normalized.normalized_response
 
-        terminal_completion_decision = self._reject_truncated_terminal_completion_before_transition(raw_response, step)
+        preclassified = None
+        payload = getattr(step, "intent_payload", None)
+        payload_mode = str((payload or {}).get("mode") or "").strip().lower() if isinstance(payload, dict) else ""
+        if payload_mode == "complete":
+            preclassified = self._classify_response_for_prevalidation(
+                raw_response,
+                allow_think_autorepair=False,
+            )
+
+        terminal_completion_decision = self._reject_truncated_terminal_completion_before_transition(
+            raw_response,
+            step,
+            parsed_output=preclassified[1] if preclassified is not None else None,
+        )
         if terminal_completion_decision is not None:
             return raw_response, None, terminal_completion_decision
 
-        atomicity_decision = await self._reject_invalid_intent_followup_before_transition(ctx, raw_response, step)
+        atomicity_decision = await self._reject_invalid_intent_followup_before_transition(
+            ctx,
+            raw_response,
+            step,
+            preclassified=preclassified,
+        )
         if atomicity_decision is not None:
             return raw_response, None, atomicity_decision
 
