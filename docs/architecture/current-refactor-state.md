@@ -4,9 +4,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 27 Step 4: Enable/validate compiler authority for `board_checkpoint.plan_checkpoint_with_action` via smoke profile
+- **Phase**: Phase 28 Step 1: Terminal Answer Synthetic Smoke Matrix Preflight
 - **Status**: Complete.
-- **Next Step**: Phase 27 Step 5: Live Angelica smoke for `board_checkpoint.plan_checkpoint_with_action` under the smoke profile.
+- **Next Step**: Phase 28 Step 2: Terminal Answer Synthetic Smoke Harness Skeleton + Authority Diagnostics.
 - **Boundary**: The checkpoint parity bridge remains diagnostic-only. Legacy board handlers still own commit behavior, the prepass compiler analysis remains observational, and `_apply_compiler_diagnosis` remains the effectful classification-stage path that recomputes on normalized response.
 
 ## Step 4I Parity Matrix
@@ -1082,6 +1082,61 @@ This document is the single source of truth for the current state of the Semanti
       - invalid open-`<think>` checkpoint action
   - No dispatch/action behavior changed.
   - No runtime behavior changed under the default registry.
+- **Phase 27 Step 5: `PLAN_CHECKPOINT_WITH_ACTION` Live Angelica Smoke (Complete)**
+  - Targeted live Angelica smoke passed under the smoke profile.
+  - Compiler authority was selected for `board_checkpoint.plan_checkpoint_with_action`.
+  - No fallback was used.
+  - The action/dispatch path remained preserved:
+    - `action_policy` passed with `action_count = 1`
+    - `response_pipeline` reached `dispatch`
+    - `pre_dispatch_pipeline` reached `dispatch_ready`
+  - Structural parity remained aligned and the runtime did not crash.
+  - Default registry remains `legacy`.
+- **Phase 27 Step 6: Plan-Domain Board/Checkpoint Smoke Closure (Complete)**
+  - The plan-domain board/checkpoint compiler-authority smoke slice is now complete for:
+    - `PLAN_CHECKPOINT_ONLY`
+    - `PLAN_CHECKPOINT_WITH_TEXT`
+    - `PLAN_CHECKPOINT_WITH_ACTION`
+  - Each validated branch now has:
+    - synthetic smoke coverage
+    - branch-specific authority diagnostics
+    - live Angelica smoke pass under the smoke profile
+  - Smoke profile may keep the validated plan-checkpoint compiler switches enabled for continued validation.
+  - The default registry remains `legacy`; no production authority flip happened.
+  - No memory checkpoint authority transfer happened.
+  - No board commit logic changed.
+  - No dispatch/action behavior changed.
+  - Memory checkpoint branches remain deferred because they include memory-engine commit semantics and should not be bundled with the plan-domain slice.
+- **Phase 28 Step 1: Terminal Answer Synthetic Smoke Matrix Preflight (Complete)**
+  - Terminal/final-answer consumers were inventoried across:
+    - `TerminalAnswerClassifier`
+    - `response_pipeline_prevalidation`
+    - `response_pipeline_stages`
+    - `output_recovery_routing`
+    - `response_semantics.is_plaintext_answer_path`
+    - legacy malformed-output helpers such as `is_leaked_system_result`
+  - Current authority shape:
+    - typed terminal-answer result exists and is attached to `ParsedModelOutput`
+    - some narrow consumers already use it as a hint or primary signal with legacy fallback
+    - final-answer / plaintext-answer authority is still largely legacy/runtime-policy driven
+  - Existing switch placeholders already exist and remain `legacy`:
+    - `terminal_answer.plaintext_terminal_answer`
+    - `terminal_answer.checkpoint_only`
+    - `terminal_answer.checkpoint_with_visible_text`
+  - No terminal-answer branch-specific authority diagnostics exist yet in the board/checkpoint style.
+  - Proposed first synthetic smoke matrix rows:
+    - pure plaintext terminal answer
+    - checkpoint only
+    - checkpoint with visible text
+    - pre-action text and action
+    - action only
+    - malformed or unclosed think
+    - leaked system result
+    - empty or missing answer
+    - intent plus terminal-answer mixed edge
+    - file-content plus visible-answer edge if supported
+  - No runtime behavior changed.
+  - No authority transfer happened.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 

@@ -137,4 +137,7 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 133. Phase 27 Step 2: done. Enabled and validated smoke-profile compiler authority for `board_checkpoint.plan_checkpoint_with_text` with positive and negative synthetic controls, while keeping the default registry legacy.
 134. Phase 27 Step 3: done. Targeted live Angelica smoke for `board_checkpoint.plan_checkpoint_with_text` passed under the smoke profile with compiler authority selected, no fallback, and no runtime crash.
 135. Phase 27 Step 4: done. Enabled and validated smoke-profile compiler authority for `board_checkpoint.plan_checkpoint_with_action` with positive and negative synthetic controls, while keeping the default registry legacy and leaving dispatch behavior unchanged.
-136. Next: Phase 27 Step 5: Live Angelica smoke for `board_checkpoint.plan_checkpoint_with_action` under the smoke profile.
+136. Phase 27 Step 5: done. Targeted live Angelica smoke for `board_checkpoint.plan_checkpoint_with_action` passed under the smoke profile with compiler authority selected, no fallback, preserved dispatch path, and no runtime crash.
+137. Phase 27 Step 6: done. Closed the plan-domain board/checkpoint compiler-authority smoke slice; smoke profile may keep validated plan branches enabled, while default production behavior remains legacy.
+138. Phase 28 Step 1: done. Inventoried terminal/final-answer consumers, confirmed existing terminal-answer switch placeholders remain legacy, and defined the initial synthetic smoke matrix without changing runtime behavior.
+139. Next: Phase 28 Step 2: Terminal Answer Synthetic Smoke Harness Skeleton + Authority Diagnostics.

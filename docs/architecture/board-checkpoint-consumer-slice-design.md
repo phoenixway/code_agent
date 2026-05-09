@@ -835,3 +835,49 @@ As of Phase 10, the semantic runtime refactor adopts a new guiding principle for
   - No board handler, memory-board, final-answer, stop-gate, `ActionPolicy`, parser, `history.py`, or classification-stage behavior changed.
 - **Next**:
   - Phase 27 Step 5: live Angelica smoke for `board_checkpoint.plan_checkpoint_with_action` under the smoke profile.
+
+### 4.6. Step 27.5: `PLAN_CHECKPOINT_WITH_ACTION` Live Angelica Smoke
+
+- **Goal**:
+  - Confirm that the smoke-profile compiler-authority action-bearing plan checkpoint branch works in a real Angelica run without swallowing dispatch.
+- **Completed Outcome**:
+  - Targeted live Angelica smoke passed for `PLAN_CHECKPOINT_WITH_ACTION`.
+  - Observed authority diagnostics:
+    - `branch = board_checkpoint.plan_checkpoint_with_action`
+    - `switch_value = compiler`
+    - `authority_source = compiler`
+    - `agreement = True`
+    - `fallback_used = False`
+    - `behavior_changed = False`
+  - Structural parity remained aligned.
+  - The action/dispatch path remained preserved.
+  - The runtime did not crash.
+- **What did not change**:
+  - The default registry remains `legacy`.
+  - No board handler, dispatch, final-answer, stop-gate, `ActionPolicy`, parser, `history.py`, or classification-stage behavior changed.
+- **Next**:
+  - Phase 27 Step 6: close the plan-domain board/checkpoint compiler-authority smoke slice and select the next validation domain.
+
+### 4.7. Step 27.6: Plan-Domain Board/Checkpoint Smoke Closure
+
+- **Decision**:
+  - Close the plan-domain board/checkpoint compiler-authority smoke slice for now.
+- **Validated under smoke profile**:
+  - `PLAN_CHECKPOINT_ONLY`
+  - `PLAN_CHECKPOINT_WITH_TEXT`
+  - `PLAN_CHECKPOINT_WITH_ACTION`
+- **Closure Outcome**:
+  - Each validated plan-domain branch now has:
+    - deterministic synthetic smoke coverage
+    - branch-specific authority diagnostics
+    - live Angelica smoke pass
+  - Smoke profile may keep the plan-domain compiler switches enabled for continued validation.
+  - The default registry remains `legacy`; no production authority flip happened.
+  - No memory checkpoint authority transfer happened.
+  - No board commit logic changed.
+  - No dispatch/action behavior changed.
+  - Memory checkpoint branches remain deferred because they include memory-engine commit semantics and should not be bundled with the plan-domain slice.
+- **Next Domain**:
+  - Phase 28: Terminal Answer / Final-Answer Synthetic Smoke Matrix
+- **Next Step**:
+  - Phase 28 Step 1: Terminal Answer Synthetic Smoke Matrix Preflight

@@ -2070,6 +2070,83 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 27 Step 5: live Angelica smoke for `board_checkpoint.plan_checkpoint_with_action` under the smoke profile.
 
+#### Phase 27 Step 5: `PLAN_CHECKPOINT_WITH_ACTION` Live Angelica Smoke
+
+- **Status**: Done.
+- **Goal**: Confirm that the smoke-profile compiler-authority action-bearing plan-checkpoint branch works in a real Angelica run without swallowing dispatch.
+- **Completed Outcome**:
+  - Targeted live Angelica smoke passed.
+  - Compiler authority was selected for `board_checkpoint.plan_checkpoint_with_action`.
+  - No fallback was used.
+  - The action/dispatch path remained preserved through:
+    - `action_policy`
+    - `response_pipeline`
+    - `pre_dispatch_pipeline`
+  - Structural parity remained aligned.
+  - No runtime crash occurred.
+  - The default registry remains `legacy`.
+- **Next**:
+  - Phase 27 Step 6: close the plan-domain board/checkpoint compiler-authority smoke slice and select the next validation domain.
+
+#### Phase 27 Step 6: Plan-Domain Board/Checkpoint Smoke Closure
+
+- **Status**: Done.
+- **Goal**: Close the validated plan-domain board/checkpoint compiler-authority smoke slice without enabling production authority by default.
+- **Completed Outcome**:
+  - The plan-domain branches validated under the smoke profile are:
+    - `PLAN_CHECKPOINT_ONLY`
+    - `PLAN_CHECKPOINT_WITH_TEXT`
+    - `PLAN_CHECKPOINT_WITH_ACTION`
+  - Each of those branches now has:
+    - synthetic smoke coverage
+    - authority diagnostics
+    - live Angelica smoke pass under the smoke profile
+  - Smoke profile may keep the plan-domain compiler switches enabled for continued validation.
+  - The default registry remains `legacy`; no production authority flip happened.
+  - No memory checkpoint authority transfer happened.
+  - No board commit logic changed.
+  - No dispatch/action behavior changed.
+  - Memory checkpoint branches remain deferred because they include memory-engine commit semantics.
+- **Next**:
+  - Phase 28 Step 1: Terminal Answer Synthetic Smoke Matrix Preflight.
+
+#### Phase 28 Step 1: Terminal Answer Synthetic Smoke Matrix Preflight
+
+- **Status**: Done.
+- **Goal**: Inventory the terminal-answer/final-answer authority surface and define the synthetic smoke matrix before enabling any new compiler-authority terminal-answer branches.
+- **Completed Outcome**:
+  - Inventory complete for the main terminal/final-answer consumers:
+    - `TerminalAnswerClassifier`
+    - `response_pipeline_prevalidation`
+    - `response_pipeline_stages`
+    - `output_recovery_routing`
+    - `response_semantics.is_plaintext_answer_path`
+    - leaked-system and malformed-output helpers
+  - Current authority split identified:
+    - typed terminal-answer results exist and are attached to `ParsedModelOutput`
+    - some narrow migrated consumers already use typed result with legacy fallback
+    - final-answer / plaintext-answer authority remains mostly legacy/runtime-policy driven
+  - Existing terminal-answer switch placeholders confirmed and left `legacy`:
+    - `terminal_answer.plaintext_terminal_answer`
+    - `terminal_answer.checkpoint_only`
+    - `terminal_answer.checkpoint_with_visible_text`
+  - Proposed synthetic smoke matrix rows include:
+    - pure plaintext terminal answer
+    - checkpoint only
+    - checkpoint with visible text
+    - pre-action text and action
+    - action only
+    - malformed or unclosed think
+    - leaked system result
+    - empty or missing answer
+    - intent plus terminal-answer mixed edge
+    - file-content plus visible-answer edge if supported
+  - Identified blocker: terminal-answer branch-specific authority diagnostics do not yet exist in the same style as board/checkpoint authority logging.
+  - No runtime behavior changed.
+  - No authority transfer happened.
+- **Next**:
+  - Phase 28 Step 2: Terminal Answer Synthetic Smoke Harness Skeleton + Authority Diagnostics.
+
 ---
 
 ### Phase 11: RecoveryStrategy Registry Expansion
