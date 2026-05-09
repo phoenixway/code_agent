@@ -608,3 +608,19 @@ The board/checkpoint consumer migration slice is now complete. The key outcomes 
 - A `BoardCheckpointSemanticResult` model provides observational data.
 - A default-off compiler authority switch for `PLAN_CHECKPOINT_ONLY` was successfully implemented and validated.
 - Legacy board handlers remain authoritative for all other branches and for all board commit logic.
+
+## 4. Refactor Governance: Typed Accessors + Branch Authority Switches
+
+As of Phase 10, the semantic runtime refactor adopts a new guiding principle for managing the transition from legacy to compiler-driven authority.
+
+- **Accessors/Resolvers are the Common Consumption Path**: All consumption of compiler/typed semantic results must go through approved accessors or resolvers (e.g., in `board_checkpoint_semantics.py`). Pipeline code must not read raw compiler facts directly for routing decisions.
+
+- **Branch-Specific Authority Switches**: The authority for a specific semantic decision (e.g., a single checkpoint branch) is controlled by an explicit, named switch. This switch determines whether the legacy implementation or the new compiler/typed implementation is authoritative.
+
+- **Centralized Switch Registry**: All authority switches must be centrally registered and documented. They must not be scattered as loose constants. The default state for each switch must be explicit.
+
+- **Validation Through Controlled Authority Transfer**: During development and refactoring, compiler authority may be enabled for selected branches to force real-world validation via smoke tests (e.g., Angelica runs).
+
+- **Production Safety**: Default and production behavior remains controlled by the central switch registry, not hardcoded constants. Switches for unvalidated branches must default to `off` (legacy authority).
+
+- **Fix-Forward on Regressions**: If enabling compiler authority for a branch reveals regressions, the preferred path is to fix the underlying compiler, parser, or semantic extraction logic rather than adding more complex legacy-only bypasses.

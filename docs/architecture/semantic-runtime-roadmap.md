@@ -1878,6 +1878,36 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Smoke tests are complete and the outcome is documented.
   - A decision is made to close the slice and proceed to Phase 11.
 
+#### Phase 10 Governance Update: Branch Authority Switches
+
+- **Status**: Done.
+- **Goal**: Document the new refactor governance principle of using explicit, branch-level switches to manage the transition from legacy to compiler-driven authority.
+- **Outcome**:
+  - The new strategy is now documented in `docs/architecture/board-checkpoint-consumer-slice-design.md`.
+  - Key principles:
+    - Accessors/resolvers are the common consumption path for typed semantic decisions.
+    - Branch-specific switches control whether legacy or compiler/typed authority wins.
+    - Switches must be centralized and documented.
+    - Smoke tests are required after enabling compiler authority.
+    - Regressions found via compiler authority should be fixed in the compiler/semantic layer, not bypassed with more legacy logic.
+
+#### Phase 10 Step 24: Central Refactor Switch Registry TOML
+
+- **Status**: Pending explicit approval.
+- **Goal**: Introduce a centralized TOML registry for refactor authority switches.
+- **Allowed**:
+  - Create registry file.
+  - Load switch defaults from the registry.
+  - Keep default behavior controlled and explicit.
+- **Forbidden**:
+  - Broad authority expansion in this step.
+  - Hardcoded scattered switch constants.
+  - Changing unrelated runtime behavior.
+- **Done When**:
+  - Every current authority switch is represented in the central registry.
+  - Code reads switch defaults from the registry or a small loader.
+  - Tests prove defaults are stable.
+
 ---
 
 ### Phase 11: RecoveryStrategy Registry Expansion

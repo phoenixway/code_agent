@@ -1000,6 +1000,16 @@ This document is the single source of truth for the current state of the Semanti
   - Smoke tests with the switch enabled showed no regressions, so the switch is considered safe to keep (but default-off).
   - The board/checkpoint slice is now considered complete.
 
+## Guiding Principles: Typed Accessors and Branch Authority Switches
+
+As of Phase 10, the semantic runtime refactor adopts a new guiding principle for managing the transition from legacy to compiler-driven authority. The model is:
+
+- **Accessors/Resolvers are the Common Consumption Path**: All consumption of compiler/typed semantic results must go through approved accessors or resolvers. Pipeline code must not read raw compiler facts directly for routing decisions.
+- **Branch-Specific Authority Switches**: The authority for a specific semantic decision is controlled by an explicit, named switch. This switch determines whether the legacy implementation or the new compiler/typed implementation is authoritative.
+- **Centralized Switch Registry**: All authority switches must be centrally registered and documented.
+- **Validation Through Controlled Authority Transfer**: During development, compiler authority may be enabled for selected branches to force real-world validation via smoke tests.
+- **Fix-Forward on Regressions**: If enabling compiler authority reveals regressions, the preferred path is to fix the underlying compiler or semantic extraction logic.
+
 ## Phase 9 Step 6D Outcome
 
 - **Conclusion**
