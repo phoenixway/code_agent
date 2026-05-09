@@ -1558,7 +1558,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 10 Step 7: Board/Checkpoint Parity Review / First Authority Migration Decision
 
-- **Status**: Pending explicit approval.
+- **Status**: Done.
 - **Goal**: Review parity evidence from Step 6 and decide whether any first authority migration is safe.
 - **Allowed**:
   - Read-only analysis.
@@ -1568,8 +1568,74 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Any board commit logic changes.
   - Any checkpoint routing changes.
   - Any reuse of prepass analysis inside `_run_classification_stage`.
+- **Completed Outcome**:
+  - **NO-GO** for a first authority migration at this time.
+  - Step 6 parity logs are useful observability, but they are not enough to replace handler parsing or commits.
+  - Mismatch reasons must be treated as diagnostic hints only.
+  - Legacy board handlers remain authoritative.
+  - The next safe step is direct characterization of board handler parsing/commit behavior.
+
+---
+
+#### Phase 10 Step 8: Direct Board Handler Parsing/Commit Characterization Tests
+
+- **Status**: Done.
+- **Goal**: Add direct characterization tests for `MemoryBoardStageHandler` and `PlanBoardStageHandler` parsing, cleanup, commit-aware behavior, and checkpoint outcome decisions.
+- **Allowed**:
+  - Tests only.
+  - Docs-only updates after tests pass.
+- **Forbidden**:
+  - Any production code changes.
+  - Any authority transfer.
+  - Any board commit logic changes.
+  - Any checkpoint routing changes.
+  - Any reuse of prepass analysis inside `_run_classification_stage`.
+- **Completed Outcome**:
+  - Direct handler characterization tests now lock down memory-board and plan-board parsing/cleanup/commit-aware decision surfaces.
+  - The current raw-vs-clean behavior and checkpoint outcome categories are now explicit.
+  - A surprising current behavior was recorded: `MemoryBoardStageHandler` resets its local checkpoint-only streak before incrementing it again.
+  - No production code changed.
+  - Authority remains unchanged: legacy board handlers are still authoritative and compiler/prepass facts remain structural-only observations.
+
+---
+
+#### Phase 10 Step 9: Board/Checkpoint Semantic Model Design
+
+- **Status**: Done.
+- **Goal**: Design the smallest semantic model that can describe board/checkpoint outcomes without transferring authority yet.
+- **Allowed**:
+  - Read-only code inspection.
+  - Docs-only design work.
+- **Forbidden**:
+  - Any production code changes.
+  - Any authority transfer.
+  - Any board commit logic or checkpoint routing changes.
+  - Any reuse of prepass analysis inside `_run_classification_stage`.
+- **Completed Outcome**:
+  - A smallest-safe observational model is now defined: `BoardCheckpointSemanticResult`.
+  - The model is separate from `TerminalAnswerClassifier`.
+  - It describes both legacy handler outcomes and compiler/prepass structural facts without transferring authority.
+  - The first implementation target is a skeleton + shadow population only.
+
+---
+
+#### Phase 10 Step 10: Board/Checkpoint Semantic Model Skeleton + Shadow Population
+
+- **Status**: Pending explicit approval.
+- **Goal**: Add the board/checkpoint semantic model types and populate them observationally from legacy handler outcomes and prepass/compiler facts.
+- **Allowed**:
+  - Dataclass / enum scaffolding only.
+  - Shadow/diagnostic population from already available handler outcomes and prepass facts.
+  - Attachment to `CheckpointStageState`.
+  - Diagnostic logging or observation.
+- **Forbidden**:
+  - Any routing change.
+  - Any board commit logic change.
+  - Any checkpoint flag mutation from the new model.
+  - Any authority transfer.
+  - Any reuse of prepass analysis inside `_run_classification_stage`.
 - **Done When**:
-  - The next safe checkpoint/board migration target is chosen, or a no-go/defer decision is recorded.
+  - The semantic model exists, is populated observationally, and no runtime behavior changes.
 
 ---
 

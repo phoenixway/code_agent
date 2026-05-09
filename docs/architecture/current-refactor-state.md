@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 10 Step 6: Board/Checkpoint Structural Parity Logging Implementation
+- **Phase**: Phase 10 Step 9: Board/Checkpoint Semantic Model Design
 - **Status**: Complete.
-- **Next Step**: Phase 10 Step 7: Board/Checkpoint Parity Review / First Authority Migration Decision.
-- **Boundary**: The first board/checkpoint migration remains diagnostic-only. Legacy board handlers still own commit behavior, the prepass compiler analysis remains observational, and `_apply_compiler_diagnosis` remains the effectful classification-stage path that recomputes on normalized response.
+- **Next Step**: Phase 10 Step 10: Board/Checkpoint Semantic Model Skeleton + Shadow Population.
+- **Boundary**: The checkpoint parity bridge remains diagnostic-only. Legacy board handlers still own commit behavior, the prepass compiler analysis remains observational, and `_apply_compiler_diagnosis` remains the effectful classification-stage path that recomputes on normalized response.
 
 ## Step 4I Parity Matrix
 
@@ -698,6 +698,111 @@ This document is the single source of truth for the current state of the Semanti
   - No dispatch, final-answer, stop-gate, `ActionPolicy`, parser, or `history.py` behavior changed.
 - **Next step**
   - Phase 10 Step 7: Board/Checkpoint Parity Review / First Authority Migration Decision.
+
+## Phase 10 Step 7: Board/Checkpoint Parity Review / First Authority Migration Decision (Complete)
+
+- **Conclusion**
+  - **NO-GO** for a first authority migration at this time.
+  - The Step 6 parity bridge is sufficient for observability, but not sufficient to replace handler parsing or commit logic.
+  - Mismatch reasons from Step 6 must be treated as diagnostic hints only, not as authoritative parity failures.
+- **Why authority migration is blocked**
+  - `MemoryBoardStageHandler` contains commit-aware logic that is not reduced to structural tag recognition:
+    - memory-engine apply results
+    - `clean_text` dependence
+    - raw-vs-clean visible-text fallback
+    - marker-only checkpoint handling
+    - checkpoint-only streak behavior
+  - `PlanBoardStageHandler` contains planner- and cleanup-aware logic that is not reduced to structural tag recognition:
+    - planner extraction/mutation behavior
+    - raw-vs-clean action detection
+    - visible-text stripping outcomes
+    - checkpoint-only vs checkpoint-with-text routing
+  - The prepass compiler analysis is on raw response, while handler decisions depend on handler-local cleaned/committed state.
+- **Authority boundary**
+  - Legacy board handlers remain authoritative.
+  - The parity bridge remains diagnostic-only.
+  - Compiler/prepass facts remain structural-only observations.
+  - `_run_classification_stage` still recomputes diagnosis on normalized response and does not reuse prepass analysis.
+- **Next step**
+  - Phase 10 Step 8: Direct Board Handler Parsing/Commit Characterization Tests.
+
+## Phase 10 Step 8: Direct Board Handler Parsing/Commit Characterization Tests (Complete)
+
+- **Conclusion**
+  - Direct unit-level characterization now exists for both `MemoryBoardStageHandler` and `PlanBoardStageHandler`.
+  - The handler tests lock down parsing, cleanup, commit-aware behavior, and checkpoint outcome decisions sufficiently to design a semantic model without guessing.
+- **Characterized memory-handler behavior**
+  - accepted memory mutations with `clean_text` pass-through
+  - rejected/no-op memory result pass-through
+  - raw-vs-clean visible-text fallback
+  - marker-only checkpoint behavior
+  - checkpoint-with-text and checkpoint-with-action outcomes
+  - engine-failure fallback behavior
+- **Characterized plan-handler behavior**
+  - planner unavailable fallback
+  - planner extract-error continuation path
+  - no-update pass-through and create-count reset
+  - checkpoint-with-text and checkpoint-with-action outcomes
+  - checkpoint-only continuation path
+  - summary print side effect when planner reports applied changes
+- **Surprising current behavior**
+  - `MemoryBoardStageHandler.apply()` resets the local checkpoint-only streak before incrementing it, so handler-local streak accumulation does not happen across calls by itself.
+  - This is now encoded as current behavior, not corrected behavior.
+- **Authority boundary unchanged**
+  - No production code changed.
+  - Legacy board handlers remain authoritative.
+  - Compiler/prepass facts remain structural-only observations.
+  - The parity bridge remains diagnostic-only.
+- **Next step**
+  - Phase 10 Step 9: Board/Checkpoint Semantic Model Design.
+
+## Phase 10 Step 9: Board/Checkpoint Semantic Model Design (Complete)
+
+- **Conclusion**
+  - The smallest safe typed model is a new observational result layer for board/checkpoint outcomes, separate from `TerminalAnswerClassifier`.
+  - Working design name: `BoardCheckpointSemanticResult`.
+  - It should represent both:
+    - legacy handler outcomes
+    - compiler/prepass structural facts
+  - It must not transfer authority.
+- **Proposed model shape**
+  - Companion types:
+    - `BoardCheckpointKind`
+    - `BoardCheckpointSource`
+    - `BoardCheckpointEvidence`
+  - Candidate kinds:
+    - `NONE`
+    - `MEMORY_CHECKPOINT_ONLY`
+    - `MEMORY_CHECKPOINT_WITH_TEXT`
+    - `MEMORY_CHECKPOINT_WITH_ACTION`
+    - `PLAN_CHECKPOINT_ONLY`
+    - `PLAN_CHECKPOINT_WITH_TEXT`
+    - `PLAN_CHECKPOINT_WITH_ACTION`
+    - `MIXED_BOARD_CHECKPOINT`
+    - `UNKNOWN`
+  - Core fields:
+    - `kind`
+    - `source`
+    - `reason_code`
+    - `evidence`
+    - `has_visible_text`
+    - `has_action`
+    - `clean_text_present`
+    - `raw_text_present`
+    - `legacy_plan_outcome`
+    - `legacy_memory_outcome`
+    - optional compiler/prepass summary fields
+    - optional parity/mismatch fields
+- **Authority boundary**
+  - The model is not:
+    - commit authority
+    - planner mutation authority
+    - memory-engine authority
+    - routing authority
+    - dispatch authority
+  - It must not replace commit results, mutate checkpoint flags, or drive routing in its first implementation.
+- **Next step**
+  - Phase 10 Step 10: Board/Checkpoint Semantic Model Skeleton + Shadow Population.
 
 ## Phase 9 Step 6D Outcome
 

@@ -1,6 +1,6 @@
 # Phase 10 Design: Board/Checkpoint Consumer Slice
 
-- **Phase 10 Status**: Step 6 Implementation Complete.
+- **Phase 10 Status**: Step 9 Design Complete.
 - **Scope**: Board and checkpoint-related response semantics.
 - **Non-Goals**:
   - No dispatch behavior changes.
@@ -198,6 +198,169 @@ This design-only step is complete. It analyzed whether it is safe for the classi
   - The parity bridge is diagnostic-only and does not mutate checkpoint flags or board decisions.
   - `_run_classification_stage` still recomputes compiler diagnosis on normalized response and does not reuse prepass analysis.
 
-### 3.8. Next Intended Step
+### 3.8. Step 7: Board/Checkpoint Parity Review / First Authority Migration Decision
 
-The next step is **Phase 10 Step 7: Board/Checkpoint Parity Review / First Authority Migration Decision**.
+- **Review Conclusion**: **NO-GO** for a first authority migration at this time.
+
+#### 3.8.1. Why authority migration is still blocked
+
+- The Step 6 parity bridge is useful observability, but it does not yet prove authority parity.
+- The compiler/prepass side reports structural facts on the raw response.
+- The board handlers decide outcomes after their own parsing, stripping, and commit-oriented cleanup paths.
+- `MemoryBoardStageHandler` still contains meaningful authority logic beyond tag detection:
+  - memory-engine commit application
+  - `clean_text` handling
+  - marker-only continuation behavior
+  - raw-vs-clean visible-text fallback
+  - checkpoint-only streak behavior
+- `PlanBoardStageHandler` still contains meaningful authority logic beyond structural recognition:
+  - planner extraction and mutation application
+  - raw-vs-clean action detection
+  - visible-text stripping and follow-up routing
+- Because of that, mismatch reasons from Step 6 must be treated as **diagnostic hints only**, not authoritative proof that compiler facts can replace handler parsing or commits.
+
+#### 3.8.2. Safe migration decision
+
+- **No-go items remain**:
+  - no replacement of handler parsing
+  - no replacement of handler commit logic
+  - no prepass-driven checkpoint flag decisions
+  - no classification-stage reuse of prepass analysis
+- The parity bridge remains diagnostic-only.
+- Legacy board handlers remain authoritative.
+- Compiler/prepass facts remain structural-only observations.
+
+#### 3.8.3. Additional characterization required before any authority transfer
+
+- Direct tests for `MemoryBoardStageHandler` parsing/commit behavior:
+  - accepted/rejected memory mutations
+  - `clean_text` dependence
+  - raw-vs-clean visible-text fallback
+  - marker-only checkpoint behavior
+  - checkpoint-only streak behavior
+- Direct tests for `PlanBoardStageHandler` parsing/commit behavior:
+  - planner extraction outcomes
+  - action preservation
+  - visible-text stripping outcomes
+  - checkpoint-only vs checkpoint-with-text decisions
+- Mismatch characterization between:
+  - raw-response prepass structural facts
+  - handler-local cleaned response / commit-aware outputs
+
+### 3.9. Step 8: Direct Board Handler Parsing/Commit Characterization Tests
+
+- **Test Outcome**:
+  - Direct unit-level characterization now exists for both `MemoryBoardStageHandler` and `PlanBoardStageHandler`.
+  - The tests lock down:
+    - accepted memory mutations
+    - rejected/no-op memory mutation behavior
+    - `clean_text` dependence
+    - raw-vs-clean visible-text fallback
+    - marker-only checkpoint behavior
+    - checkpoint-only vs checkpoint-with-text decisions
+    - checkpoint-with-action decisions
+    - planner unavailable / extract-error / no-op plan-update cases
+    - plan visible-text and action detection behavior
+    - plan summary print side effects
+- **Surprising current behavior recorded by tests**:
+  - `MemoryBoardStageHandler.apply()` resets the local checkpoint-only streak before incrementing it again, so the handler-local streak does not accumulate across calls by itself.
+  - This is now treated as current behavior, not a target behavior change.
+- **Authority boundary unchanged**:
+  - Legacy board handlers remain authoritative.
+  - Compiler/prepass facts remain structural-only observations.
+  - The Step 6 parity bridge remains diagnostic-only.
+
+### 3.10. Step 9: Board/Checkpoint Semantic Model Design
+
+- **Design Goal**:
+  - Introduce the smallest typed semantic model that can describe current board/checkpoint outcomes without transferring authority.
+  - The model is observational only. It must not decide policy, replace commits, mutate checkpoint flags, or drive routing in its first implementation.
+
+#### 3.10.1. Proposed Model
+
+- **Working name**: `BoardCheckpointSemanticResult`
+- **Companion enums / helper types**:
+  - `BoardCheckpointKind`
+  - `BoardCheckpointSource`
+  - `BoardCheckpointEvidence`
+
+#### 3.10.2. Proposed `BoardCheckpointKind`
+
+- `NONE`
+- `MEMORY_CHECKPOINT_ONLY`
+- `MEMORY_CHECKPOINT_WITH_TEXT`
+- `MEMORY_CHECKPOINT_WITH_ACTION`
+- `PLAN_CHECKPOINT_ONLY`
+- `PLAN_CHECKPOINT_WITH_TEXT`
+- `PLAN_CHECKPOINT_WITH_ACTION`
+- `MIXED_BOARD_CHECKPOINT`
+- `UNKNOWN`
+
+#### 3.10.3. Proposed `BoardCheckpointSource`
+
+- `legacy_handler_outcome`
+- `compiler_prepass_fact`
+- `combined_shadow`
+- `fallback`
+
+#### 3.10.4. Proposed Result Fields
+
+- `kind`
+- `source`
+- `reason_code`
+- `evidence`
+- `has_visible_text`
+- `has_action`
+- `clean_text_present`
+- `raw_text_present`
+- `legacy_plan_outcome`
+- `legacy_memory_outcome`
+- `compiler_shape`
+- `compiler_error_code`
+- `compiler_recovery_id`
+- `compiler_has_checkpoint`
+- `compiler_has_memory_tags`
+- `compiler_has_subgoal_tags`
+- `compiler_has_memory_checkpoint`
+- `compiler_visible_text_source`
+- `parity_available`
+- `parity_aligned`
+- `parity_mismatch_reason`
+
+#### 3.10.5. Model Semantics
+
+- The model must describe both:
+  - legacy handler outcomes
+  - structural compiler/prepass facts
+- The model must not flatten those into fake authority.
+- In particular:
+  - legacy memory outcome remains the authoritative description of what the memory handler decided
+  - legacy plan outcome remains the authoritative description of what the plan handler decided
+  - compiler/prepass fields remain structural observations attached for comparison and future migration planning
+
+#### 3.10.6. Authority Boundaries
+
+- `BoardCheckpointSemanticResult` is **not**:
+  - commit authority
+  - planner mutation authority
+  - memory-engine authority
+  - checkpoint routing authority
+  - dispatch authority
+  - final-answer or stop-gate authority
+- It must not:
+  - replace memory-engine commit results
+  - replace planner mutation results
+  - mutate checkpoint flags
+  - drive routing in its first implementation
+
+#### 3.10.7. Why this is the smallest safe model
+
+- It matches the current split architecture:
+  - handler-local commit-aware outcomes
+  - compiler/prepass structural observations
+- It avoids pretending structural facts are policy.
+- It gives a stable typed surface for later shadow population and parity review before any authority migration.
+
+### 3.11. Next Intended Step
+
+The next step is **Phase 10 Step 10: Board/Checkpoint Semantic Model Skeleton + Shadow Population**.
