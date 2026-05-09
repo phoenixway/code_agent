@@ -1,6 +1,6 @@
 # Phase 9 Design: Plan-First Bundle Execution
 
-- **Phase 9 Status**: Step 5D Preflight Complete
+- **Phase 9 Status**: Step 5E Metadata Bridge Complete
 - **Scope**: Action / bundle execution path only
 - **Non-Goals**:
   - No parser rewrite
@@ -640,6 +640,23 @@ If a future implementation goes beyond metadata-only, it will need:
   `Phase 9 Step 5E: Candidate Metadata Bridge Implementation`
   - keep actual dispatch segment-driven
   - surface candidate only as metadata/diagnostic/bridge evidence
+
+## Step 5E: Candidate Metadata Bridge Outcome
+
+- `PlanDispatchCandidate` is now surfaced as metadata/bridge evidence only.
+- Eligible single-action paths expose candidate metadata without changing
+  dispatcher input.
+- Non-eligible paths expose no candidate metadata.
+- Actual dispatch remains segment-driven.
+- `processed_segs`, `DispatchOutcomeHandler`, and `ExecutionCommit` behavior remain unchanged.
+
+## Step 5F: Metadata Bridge Parity Review / Candidate Adapter Decision
+
+Pending explicit approval.
+
+- review metadata bridge evidence from Step 5E
+- decide whether any candidate-derived adapter is justified
+- keep actual dispatch segment-driven until that review is complete
 
 ## Safety Gate
 

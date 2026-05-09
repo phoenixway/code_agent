@@ -1222,7 +1222,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 9 Step 5E: Candidate Metadata Bridge Implementation
 
-- **Status**: Pending explicit approval.
+- **Status**: Done.
 - **Goal**: Surface `PlanDispatchCandidate` as metadata/bridge evidence only,
   while keeping actual dispatch segment-driven.
 - **Allowed**:
@@ -1235,10 +1235,31 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Synthetic segment replacement
   - Multi-action migration
   - `ActionPolicy` authority changes
-- **Done When**:
+- **Completed Outcome**:
   - Eligible paths surface candidate metadata without changing dispatcher input.
   - `processed_segs` / dispatch outcome behavior remains unchanged.
   - Fallback remains explicit on all non-eligible paths.
+  - Actual dispatch remains segment-driven.
+
+#### Phase 9 Step 5F: Metadata Bridge Parity Review / Candidate Adapter Decision
+
+- **Status**: Pending explicit approval.
+- **Goal**: Review the metadata bridge evidence and decide whether any
+  candidate-derived adapter is justified for the eligible single-action slice.
+- **Allowed**:
+  - Read-only code inspection
+  - Design-only review
+  - Parity/risk analysis
+- **Forbidden**:
+  - Dispatch side-effect changes
+  - Synthetic segment replacement without explicit approval
+  - Direct candidate-driven dispatcher input
+  - Fallback removal
+  - Multi-action migration
+- **Done When**:
+  - The next narrowing choice is explicit.
+  - Required fallback points are re-validated.
+  - A narrow next implementation shape is concrete enough for approval.
 
 ---
 

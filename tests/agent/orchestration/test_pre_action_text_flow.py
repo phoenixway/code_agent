@@ -210,11 +210,13 @@ def test_single_action_plan_parity_probe_uses_existing_segments_for_eligible_sli
         segments=segments,
     )
 
-    bridged_segments, used_bridge, reason = dispatch_pipeline._resolve_dispatch_segments(iteration)
+    bridged_segments, used_bridge, reason, candidate = dispatch_pipeline._resolve_dispatch_segments(iteration)
 
     assert bridged_segments is segments
     assert used_bridge is True
     assert reason == "single_action_ir_parity"
+    assert candidate is not None
+    assert candidate.source == "compiler_ir"
 
 
 def test_single_action_plan_dispatch_candidate_builds_for_eligible_read_file(dispatch_pipeline: DispatchPipeline):
@@ -268,11 +270,12 @@ def test_single_action_plan_parity_probe_falls_back_without_execution_plan(dispa
         segments=segments,
     )
 
-    bridged_segments, used_bridge, reason = dispatch_pipeline._resolve_dispatch_segments(iteration)
+    bridged_segments, used_bridge, reason, candidate = dispatch_pipeline._resolve_dispatch_segments(iteration)
 
     assert bridged_segments is segments
     assert used_bridge is False
     assert reason == "no_execution_plan"
+    assert candidate is None
 
     candidate, candidate_reason = dispatch_pipeline._build_single_action_plan_dispatch_candidate(iteration)
 
@@ -292,11 +295,12 @@ def test_single_action_plan_parity_probe_falls_back_without_compiler_ir(dispatch
         segments=segments,
     )
 
-    bridged_segments, used_bridge, reason = dispatch_pipeline._resolve_dispatch_segments(iteration)
+    bridged_segments, used_bridge, reason, candidate = dispatch_pipeline._resolve_dispatch_segments(iteration)
 
     assert bridged_segments is segments
     assert used_bridge is False
     assert reason == "no_compiler_ir"
+    assert candidate is None
 
     candidate, candidate_reason = dispatch_pipeline._build_single_action_plan_dispatch_candidate(iteration)
 
@@ -323,11 +327,12 @@ def test_single_action_plan_parity_probe_falls_back_when_ir_action_count_is_not_
         segments=segments,
     )
 
-    bridged_segments, used_bridge, reason = dispatch_pipeline._resolve_dispatch_segments(iteration)
+    bridged_segments, used_bridge, reason, candidate = dispatch_pipeline._resolve_dispatch_segments(iteration)
 
     assert bridged_segments is segments
     assert used_bridge is False
     assert reason == "ir_action_count_not_one"
+    assert candidate is None
 
     candidate, candidate_reason = dispatch_pipeline._build_single_action_plan_dispatch_candidate(iteration)
 
@@ -357,11 +362,12 @@ def test_single_action_plan_parity_probe_falls_back_on_payload_mismatch(dispatch
         segments=segments,
     )
 
-    bridged_segments, used_bridge, reason = dispatch_pipeline._resolve_dispatch_segments(iteration)
+    bridged_segments, used_bridge, reason, candidate = dispatch_pipeline._resolve_dispatch_segments(iteration)
 
     assert bridged_segments is segments
     assert used_bridge is False
     assert reason == "payload_mismatch"
+    assert candidate is None
 
     candidate, candidate_reason = dispatch_pipeline._build_single_action_plan_dispatch_candidate(iteration)
 
@@ -425,11 +431,12 @@ def test_single_action_plan_parity_probe_falls_back_on_unsupported_action_shape(
         segments=segments,
     )
 
-    bridged_segments, used_bridge, reason = dispatch_pipeline._resolve_dispatch_segments(iteration)
+    bridged_segments, used_bridge, reason, candidate = dispatch_pipeline._resolve_dispatch_segments(iteration)
 
     assert bridged_segments is segments
     assert used_bridge is False
     assert reason == "unsupported_action_shape"
+    assert candidate is None
 
     candidate, candidate_reason = dispatch_pipeline._build_single_action_plan_dispatch_candidate(iteration)
 
@@ -501,3 +508,63 @@ async def test_dispatch_pipeline_eligible_bridge_keeps_dispatch_behavior_unchang
     dispatch_pipeline._dispatch_segments.assert_awaited_once()
     called_ctx, called_segments = dispatch_pipeline._dispatch_segments.await_args.args
     assert called_segments is segments
+    dispatch_pipeline.stage_logger.log.assert_any_call(
+        "post_dispatch_pipeline",
+        "start",
+        action_count=1,
+        pre_action_text_emitted=False,
+        pre_action_text_chars=0,
+        dispatch_bridge_used=True,
+        dispatch_bridge_reason="single_action_ir_parity",
+        dispatch_bridge_candidate={
+            "action_type": "read_file",
+            "action_summary": "read_file:README.md",
+            "source": "compiler_ir",
+            "matched_segment_index": 0,
+            "compiler_shape": "",
+            "transaction_kind": "atomic_intent_action_bundle",
+            "pre_action_text": "",
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_dispatch_pipeline_non_eligible_path_has_no_candidate_metadata(dispatch_pipeline: DispatchPipeline):
+    segments = [SimpleNamespace(type="action", content={"type": "read_file", "path": "README.md"})]
+    mock_plan = ExecutionPlan(
+        shape="ACTION_ONLY",
+        transaction_kind="atomic_intent_action_bundle",
+        action_effects=["read_file:OTHER.md"],
+    )
+    mock_iteration = SimpleNamespace(
+        execution_plan=mock_plan,
+        parsed_action_count=1,
+        parsed_output=SimpleNamespace(
+            compiler_ir=SimpleNamespace(
+                action_ops=[
+                    SimpleNamespace(
+                        action_type="read_file",
+                        payload={"type": "read_file", "path": "README.md"},
+                        file_content=None,
+                    )
+                ]
+            )
+        ),
+        segments=segments,
+    )
+
+    await dispatch_pipeline.run_iteration(MagicMock(), mock_iteration)
+
+    dispatch_pipeline._dispatch_segments.assert_awaited_once()
+    called_ctx, called_segments = dispatch_pipeline._dispatch_segments.await_args.args
+    assert called_segments is segments
+    dispatch_pipeline.stage_logger.log.assert_any_call(
+        "post_dispatch_pipeline",
+        "start",
+        action_count=1,
+        pre_action_text_emitted=False,
+        pre_action_text_chars=0,
+        dispatch_bridge_used=False,
+        dispatch_bridge_reason="action_effect_mismatch",
+        dispatch_bridge_candidate=None,
+    )

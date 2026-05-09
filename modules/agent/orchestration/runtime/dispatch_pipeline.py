@@ -122,15 +122,15 @@ class DispatchPipeline:
     def _single_action_plan_parity_probe(self, iteration):
         candidate, reason = self._build_single_action_plan_dispatch_candidate(iteration)
         if candidate is None:
-            return None, reason
+            return None, reason, None
         segments = getattr(iteration, "segments", None) or []
-        return segments, "single_action_ir_parity"
+        return segments, "single_action_ir_parity", candidate
 
     def _resolve_dispatch_segments(self, iteration):
-        bridged_segments, bridge_reason = self._single_action_plan_parity_probe(iteration)
+        bridged_segments, bridge_reason, candidate = self._single_action_plan_parity_probe(iteration)
         if bridged_segments is not None:
-            return bridged_segments, True, bridge_reason
-        return getattr(iteration, "segments", None) or [], False, bridge_reason
+            return bridged_segments, True, bridge_reason, candidate
+        return getattr(iteration, "segments", None) or [], False, bridge_reason, None
 
     async def _dispatch_segments(self, ctx, segments):
         if ctx.state_machine is not None:
@@ -186,7 +186,7 @@ class DispatchPipeline:
 
     async def run_iteration(self, ctx, iteration):
         execution_plan = getattr(iteration, "execution_plan", None)
-        dispatch_segments, bridge_used, bridge_reason = self._resolve_dispatch_segments(iteration)
+        dispatch_segments, bridge_used, bridge_reason, bridge_candidate = self._resolve_dispatch_segments(iteration)
         pre_action_text_emitted = False
         pre_action_text_chars = 0
         ui = getattr(self, "ui", None)
@@ -208,6 +208,19 @@ class DispatchPipeline:
             pre_action_text_chars=pre_action_text_chars,
             dispatch_bridge_used=bridge_used,
             dispatch_bridge_reason=bridge_reason,
+            dispatch_bridge_candidate=(
+                {
+                    "action_type": bridge_candidate.action_type,
+                    "action_summary": bridge_candidate.action_summary,
+                    "source": bridge_candidate.source,
+                    "matched_segment_index": bridge_candidate.matched_segment_index,
+                    "compiler_shape": bridge_candidate.compiler_shape,
+                    "transaction_kind": bridge_candidate.transaction_kind,
+                    "pre_action_text": bridge_candidate.pre_action_text or "",
+                }
+                if bridge_candidate is not None
+                else None
+            ),
         )
         processed_segs, sys_results, should_stop = await self._dispatch_segments(ctx, dispatch_segments)
         decision = await self.dispatch_outcome.handle(ctx, processed_segs, sys_results, should_stop)

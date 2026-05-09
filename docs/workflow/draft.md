@@ -97,4 +97,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 93. Phase 9 Step 5B IR-Derived Dispatch Candidate Contract: done.
 94. Phase 9 Step 5C IR-Derived Dispatch Candidate Implementation: done.
 95. Phase 9 Step 5D Candidate-to-Dispatcher Bridge Preflight: done.
-96. Next: Phase 9 Step 5E Candidate Metadata Bridge Implementation.
+96. Phase 9 Step 5E Candidate Metadata Bridge Implementation: done.
+97. Next: Phase 9 Step 5F Metadata Bridge Parity Review / Candidate Adapter Decision.

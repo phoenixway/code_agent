@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 9 Step 5D: Candidate-to-Dispatcher Bridge Preflight
+- **Phase**: Phase 9 Step 5E: Candidate Metadata Bridge Implementation
 - **Status**: Complete.
-- **Next Step**: Phase 9 Step 5E: Candidate Metadata Bridge Implementation.
-- **Boundary**: The parity probe is implemented and the IR-derived candidate surface exists, but actual dispatch remains segment-driven. Compiler/IR still owns structure, `ActionPolicy` still owns permission, the execution layer still owns side effects, and `ResponsePipeline` still orchestrates. Segment fallback remains in place and no observable dispatch behavior changed.
+- **Next Step**: Phase 9 Step 5F: Metadata Bridge Parity Review / Candidate Adapter Decision.
+- **Boundary**: The parity probe, IR-derived candidate, and candidate metadata bridge are implemented, but actual dispatch remains segment-driven. Compiler/IR still owns structure, `ActionPolicy` still owns permission, the execution layer still owns side effects, and `ResponsePipeline` still orchestrates. Segment fallback remains in place and no observable dispatch behavior changed.
 
 ## Step 4I Parity Matrix
 
@@ -295,8 +295,8 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- **Phase 9 Step 5E: Candidate Metadata Bridge Implementation**
-  - Surface the candidate as metadata/bridge evidence only.
+- **Phase 9 Step 5F: Metadata Bridge Parity Review / Candidate Adapter Decision**
+  - Review the metadata bridge evidence before any adapter narrowing.
   - Keep actual dispatch segment-driven.
   - Keep `segments` fallback where parity is not yet proven.
   - Keep `PLAINTEXT_TERMINAL_ANSWER` / final-answer-path migration deferred.
@@ -555,6 +555,26 @@ This document is the single source of truth for the current state of the Semanti
   - Keep actual dispatch segment-driven.
   - Preserve `processed_segs` / dispatch-outcome expectations.
   - Preserve all existing fallback points.
+
+## Phase 9 Step 5E Outcome
+
+- **Implemented**
+  - `PlanDispatchCandidate` is now surfaced as metadata/bridge evidence on the
+    eligible single-action path.
+  - Candidate metadata remains diagnostic only.
+  - Actual dispatcher input remains the original `segments` list/object.
+
+- **Coverage**
+  - Eligible single-action path surfaces candidate metadata.
+  - Non-eligible paths surface no candidate metadata.
+  - Dispatcher still receives the original segment list/object.
+  - Existing processed-segment and outcome behavior is unchanged.
+
+- **Behavior boundary**
+  - No dispatch side effects changed.
+  - No `ActionPolicy` authority changed.
+  - No fallback was removed or narrowed.
+  - Actual dispatch remains segment-driven.
 
 ## Step 4M Batch Plan
 
