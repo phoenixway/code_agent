@@ -1940,6 +1940,57 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Committing enabled switches to the main branch without approval.
   - Fixing regressions in this step; they must be documented for a separate fix-forward step.
 
+#### Phase 10 Step 26B: Synthetic Smoke Harness + Self-Closing Subgoal Compiler Fix
+
+- **Status**: Done.
+- **Goal**: Fix the concrete compiler gap found by targeted Angelica smoke and add deterministic synthetic smoke coverage for the `PLAN_CHECKPOINT_ONLY` compiler-authority branch.
+- **Completed Outcome**:
+  - The parser/compiler now recognizes self-closing `<subgoal .../>` and `<subgoal ... />` as structural checkpoint/subgoal tags.
+  - Safe board-only checkpoint protocol now compiles to `CHECKPOINT_ONLY` instead of `PURE_PLAINTEXT` or ambiguous invalid fallback.
+  - Deterministic synthetic smoke coverage was added for:
+    - self-closing `PLAN_CHECKPOINT_ONLY`
+    - checkpoint-with-text negative control
+    - checkpoint-with-action negative control
+    - action-only negative control
+  - The default registry remains unchanged, with all relevant switches on `legacy`.
+  - No runtime behavior changed outside the smoke-profile override.
+- **Next**:
+  - Phase 10 Step 26C: rerun targeted Angelica smoke with the `PLAN_CHECKPOINT_ONLY` compiler-authority profile.
+
+#### Phase 10 Step 26D: BoardCheckpoint Authority-Source Logging
+
+- **Status**: Done.
+- **Goal**: Add explicit diagnostics that distinguish shadow parity from actual board/checkpoint authority selection.
+- **Completed Outcome**:
+  - A new authority-resolution diagnostic was added for `board_checkpoint.plan_checkpoint_only`.
+  - The logged data now makes it explicit whether the effective branch decision came from:
+    - `legacy`
+    - `compiler`
+    - `legacy_fallback`
+  - Tests cover:
+    - default registry legacy mode
+    - smoke-profile compiler selection on an eligible compiler-only path
+    - compiler-switch fallback on incompatible typed facts
+    - non-checkpoint action-only negative control
+  - No routing or behavior changed.
+  - The default registry remains `legacy`.
+- **Next**:
+  - Phase 27 Step 1: Board/Checkpoint Synthetic Smoke Matrix Expansion.
+
+#### Phase 27: Synthetic Smoke Matrix Expansion Plan
+
+- **Status**: Planned.
+- **Goal**: Make synthetic smoke a required precondition for all branch-authority switches.
+- **Policy**:
+  - Synthetic smoke is mandatory before enabling compiler authority for any branch.
+  - Live Angelica smoke remains required, but cannot replace deterministic branch coverage.
+- **Initial matrix scope**:
+  - Board/checkpoint branches
+  - Terminal-answer / final-answer branches
+  - Dispatch / action branches
+  - Recovery / invalid-output branches
+  - Intent / protocol branches
+
 ---
 
 ### Phase 11: RecoveryStrategy Registry Expansion

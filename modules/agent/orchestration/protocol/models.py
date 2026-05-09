@@ -67,6 +67,7 @@ class ProtocolSpec:
 
 
 class ResponseShape(str, Enum):
+    CHECKPOINT_ONLY = "checkpoint_only"
     PURE_PLAINTEXT = "pure_plaintext"
     SUBGOAL_WITH_TEXT = "subgoal_with_text"
     PLAINTEXT_ONLY = "plaintext_only"

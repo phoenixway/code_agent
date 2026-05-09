@@ -16,8 +16,8 @@ from .board_checkpoint_semantics import resolve_memory_checkpoint_only_typed_pri
 from ..config.switch_registry import get_switch
 from .board_checkpoint_semantics import resolve_plan_checkpoint_and_action_typed_primary
 from .board_checkpoint_semantics import resolve_plan_checkpoint_and_text_typed_primary
+from .board_checkpoint_semantics import resolve_plan_checkpoint_only_authority
 from .board_checkpoint_semantics import resolve_plan_checkpoint_only_typed_primary
-from .board_checkpoint_semantics import resolve_plan_checkpoint_only_with_compiler_switch
 from .protocol_decision_bridge import compiler_invalid_kind_for_output, resolve_protocol_authority
 from .semantic_accessors import is_leaked_system_result
 from .terminal_answer_models import TerminalAnswerKind
@@ -124,9 +124,9 @@ class ResponsePipelineStagesMixin:
                 mismatch_reason = "compiler_invalid_prepass"
             elif legacy_has_checkpoint != compiler_has_checkpoint:
                 mismatch_reason = "checkpoint_presence_mismatch"
-            elif legacy_checkpoint_with_action != compiler_has_action:
+            elif legacy_has_checkpoint and legacy_checkpoint_with_action != compiler_has_action:
                 mismatch_reason = "checkpoint_action_mismatch"
-            elif legacy_checkpoint_with_text != (compiler_has_visible_answer or compiler_has_pre_action_text):
+            elif legacy_has_checkpoint and legacy_checkpoint_with_text != (compiler_has_visible_answer or compiler_has_pre_action_text):
                 mismatch_reason = "checkpoint_visible_text_mismatch"
             else:
                 aligned = True
@@ -237,6 +237,31 @@ class ResponsePipelineStagesMixin:
             pre_action_text_source=pre_action_text_source,
         )
 
+    def _log_board_checkpoint_authority_resolution(self, diagnostic) -> None:
+        stage_logger = getattr(self, "stage_logger", None)
+        if not stage_logger or diagnostic is None:
+            return
+        try:
+            stage_logger.log(
+                "protocol_shadow",
+                "board_checkpoint_authority_resolution",
+                branch=diagnostic.branch,
+                switch_value=diagnostic.switch_value,
+                authority_source=diagnostic.authority_source,
+                legacy_active=diagnostic.legacy_active,
+                typed_kind=diagnostic.typed_kind,
+                legacy_kind=diagnostic.legacy_kind,
+                agreement=diagnostic.agreement,
+                fallback_used=diagnostic.fallback_used,
+                behavior_changed=diagnostic.behavior_changed,
+                branch_active=diagnostic.branch_active,
+                compiler_eligible=diagnostic.compiler_eligible,
+                effective_value=diagnostic.effective_value,
+                shadow_only=True,
+            )
+        except Exception:
+            return
+
     async def _run_initial_stages(self, ctx, step):
         raw_response = str(step.response or "")
         normalized = self._normalize_response_stage(
@@ -331,12 +356,15 @@ class ResponsePipelineStagesMixin:
             memory_checkpoint_and_text=False,
             memory_checkpoint_and_action=False,
         )
-        # Step 22: First compiler-authority switch for plan-checkpoint-only
-        effective_plan_checkpoint_only = resolve_plan_checkpoint_only_with_compiler_switch(
+        switch_value = get_switch("board_checkpoint.plan_checkpoint_only")
+        plan_checkpoint_only_authority = resolve_plan_checkpoint_only_authority(
             plan_semantic_result,
             legacy_plan_checkpoint_only=plan_checkpoint_only,
-            switch_enabled=(get_switch("board_checkpoint.plan_checkpoint_only") == "compiler"),
+            switch_value=switch_value,
         )
+        self._log_board_checkpoint_authority_resolution(plan_checkpoint_only_authority)
+        # Step 22: First compiler-authority switch for plan-checkpoint-only
+        effective_plan_checkpoint_only = plan_checkpoint_only_authority.effective_value
         if effective_plan_checkpoint_only and not plan_board_decision.handled:
             plan_board_decision.handled = True
             plan_board_decision.reason = "plan_checkpoint_only"
@@ -401,12 +429,14 @@ class ResponsePipelineStagesMixin:
             memory_checkpoint_and_text=memory_checkpoint_and_text,
             memory_checkpoint_and_action=memory_checkpoint_and_action,
         )
-        # Step 22: First compiler-authority switch for plan-checkpoint-only
-        effective_plan_checkpoint_only = resolve_plan_checkpoint_only_with_compiler_switch(
+        plan_checkpoint_only_authority = resolve_plan_checkpoint_only_authority(
             board_checkpoint_semantic_result,
             legacy_plan_checkpoint_only=plan_checkpoint_only,
-            switch_enabled=(get_switch("board_checkpoint.plan_checkpoint_only") == "compiler"),
+            switch_value=switch_value,
         )
+        self._log_board_checkpoint_authority_resolution(plan_checkpoint_only_authority)
+        # Step 22: First compiler-authority switch for plan-checkpoint-only
+        effective_plan_checkpoint_only = plan_checkpoint_only_authority.effective_value
         if effective_plan_checkpoint_only and not plan_board_decision.handled and not memory_board_decision.handled:
             plan_board_decision.handled = True
             plan_board_decision.reason = "plan_checkpoint_only"

@@ -28,6 +28,10 @@ PROTOCOL_SPEC = ProtocolSpec(
         "subgoal": BlockSpec(name="subgoal", kind="closed", payload=PayloadSpec(type="text")),
     },
     shapes={
+        "CHECKPOINT_ONLY": ShapeSpec(
+            name="CHECKPOINT_ONLY",
+            sequence=("think?", "board*", "memory_update_done?"),
+        ),
         "PURE_PLAINTEXT": ShapeSpec(name="PURE_PLAINTEXT", sequence=("think?", "visible_text*")),
         "SUBGOAL_WITH_TEXT": ShapeSpec(
             name="SUBGOAL_WITH_TEXT",

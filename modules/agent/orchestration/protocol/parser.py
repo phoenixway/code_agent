@@ -95,6 +95,8 @@ class ProtocolParser:
                     nodes.append(MarkerNode(span=token.span))
                 elif token.name == "memory_review":
                     nodes.append(MemoryNode(tag=token.name, attrs=token.attrs, content=None, span=token.span))
+                elif token.name == "subgoal":
+                    nodes.append(SubgoalNode(attrs=token.attrs, content=None, span=token.span))
                 elif token.name == "intent":
                     nodes.append(IntentNode(attrs=token.attrs, raw_payload="", json_payload=None, json_error=None, span=token.span))
                 else:

@@ -65,3 +65,19 @@ class EffectiveCheckpointFlags:
     memory_checkpoint_only: bool = False
     memory_checkpoint_and_text: bool = False
     memory_checkpoint_and_action: bool = False
+
+
+@dataclass(frozen=True)
+class BoardCheckpointAuthorityDiagnostic:
+    branch: str = ""
+    switch_value: str = "legacy"
+    authority_source: str = "legacy"
+    legacy_active: bool = False
+    typed_kind: str = "UNKNOWN"
+    legacy_kind: str = "NONE"
+    agreement: bool = False
+    fallback_used: bool = False
+    behavior_changed: bool = False
+    branch_active: bool = False
+    compiler_eligible: bool = False
+    effective_value: bool = False

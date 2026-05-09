@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from .board_checkpoint_models import (
+    BoardCheckpointAuthorityDiagnostic,
     BoardCheckpointKind,
     EffectiveCheckpointFlags,
     BoardCheckpointSemanticResult,
@@ -247,28 +248,106 @@ def resolve_plan_checkpoint_only_with_compiler_switch(
     switch_enabled: bool,
 ) -> bool:
     """Resolve plan-checkpoint-only with compiler authority switch."""
-    if not switch_enabled:
-        return legacy_plan_checkpoint_only
-    if result is None:
-        return legacy_plan_checkpoint_only
-    if result.compiler_error_code:
-        return legacy_plan_checkpoint_only
+    switch_value = "compiler" if switch_enabled else "legacy"
+    return resolve_plan_checkpoint_only_authority(result, legacy_plan_checkpoint_only=legacy_plan_checkpoint_only, switch_value=switch_value).effective_value
+
+
+def resolve_plan_checkpoint_only_authority(
+    result: BoardCheckpointSemanticResult | None,
+    *,
+    legacy_plan_checkpoint_only: bool,
+    switch_value: str,
+) -> BoardCheckpointAuthorityDiagnostic:
+    """Resolve plan-checkpoint-only and return diagnostic metadata for authority selection."""
+    normalized_switch = str(switch_value or "legacy").strip().lower()
+    if normalized_switch not in {"legacy", "compiler", "shadow"}:
+        normalized_switch = "legacy"
+
+    legacy_kind = "PLAN_CHECKPOINT_ONLY" if legacy_plan_checkpoint_only else "NONE"
+    typed_kind = "UNKNOWN"
+    compiler_eligible = False
+
+    if result is not None:
+        has_clean_compiler_pco_facts = (
+            result.compiler_has_checkpoint
+            and result.compiler_has_subgoal_tags
+            and not result.compiler_has_memory_tags
+            and not result.compiler_has_action
+            and not result.compiler_has_visible_text
+            and not result.compiler_error_code
+        )
+        if has_clean_compiler_pco_facts:
+            typed_kind = "PLAN_CHECKPOINT_ONLY"
+            compiler_eligible = result.source in {
+                BoardCheckpointSource.COMPILER_PREPASS_FACT,
+                BoardCheckpointSource.COMBINED_SHADOW,
+            }
+
+    agreement = legacy_plan_checkpoint_only == compiler_eligible
+    branch_active = bool(legacy_plan_checkpoint_only or compiler_eligible)
+
+    if normalized_switch != "compiler":
+        return BoardCheckpointAuthorityDiagnostic(
+            branch="board_checkpoint.plan_checkpoint_only",
+            switch_value=normalized_switch,
+            authority_source="legacy",
+            legacy_active=legacy_plan_checkpoint_only,
+            typed_kind=typed_kind,
+            legacy_kind=legacy_kind,
+            agreement=agreement,
+            fallback_used=False,
+            behavior_changed=False,
+            branch_active=branch_active,
+            compiler_eligible=compiler_eligible,
+            effective_value=legacy_plan_checkpoint_only,
+        )
 
     if legacy_plan_checkpoint_only:
-        return True
+        return BoardCheckpointAuthorityDiagnostic(
+            branch="board_checkpoint.plan_checkpoint_only",
+            switch_value=normalized_switch,
+            authority_source="legacy",
+            legacy_active=True,
+            typed_kind=typed_kind,
+            legacy_kind=legacy_kind,
+            agreement=agreement,
+            fallback_used=False,
+            behavior_changed=False,
+            branch_active=branch_active,
+            compiler_eligible=compiler_eligible,
+            effective_value=True,
+        )
 
-    is_clean_compiler_pco = (
-        result.source == BoardCheckpointSource.COMPILER_PREPASS_FACT
-        and result.compiler_has_checkpoint
-        and result.compiler_has_subgoal_tags
-        and not result.compiler_has_memory_tags
-        and not result.compiler_has_action
-        and not result.compiler_has_visible_text
+    if compiler_eligible:
+        return BoardCheckpointAuthorityDiagnostic(
+            branch="board_checkpoint.plan_checkpoint_only",
+            switch_value=normalized_switch,
+            authority_source="compiler",
+            legacy_active=False,
+            typed_kind=typed_kind,
+            legacy_kind=legacy_kind,
+            agreement=agreement,
+            fallback_used=False,
+            behavior_changed=True,
+            branch_active=True,
+            compiler_eligible=True,
+            effective_value=True,
+        )
+
+    return BoardCheckpointAuthorityDiagnostic(
+        branch="board_checkpoint.plan_checkpoint_only",
+        switch_value=normalized_switch,
+        authority_source="legacy_fallback",
+        legacy_active=legacy_plan_checkpoint_only,
+        typed_kind=typed_kind,
+        legacy_kind=legacy_kind,
+        agreement=agreement,
+        fallback_used=True,
+        behavior_changed=False,
+        branch_active=branch_active,
+        compiler_eligible=compiler_eligible,
+        effective_value=legacy_plan_checkpoint_only,
     )
-    if is_clean_compiler_pco:
-        return True
-
-    return legacy_plan_checkpoint_only
 
 
 def resolve_legacy_derived_checkpoint_effective_flags(

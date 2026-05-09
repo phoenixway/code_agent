@@ -617,6 +617,114 @@ The board/checkpoint consumer migration slice is now complete. The key outcomes 
   - The default `refactor_switches.toml` remains unchanged, with all switches set to `legacy`.
   - No new authority branches were added, and no runtime behavior was changed unless the smoke override is used.
 
+### 3.26. Step 26B: Synthetic Smoke Harness + Compiler Support for Self-Closing Subgoal Checkpoints
+
+- **Live smoke finding**:
+  - A targeted Angelica smoke run produced checkpoint-only plan-board responses like:
+    - `<subgoal action="mark_in_progress" id="sg_1"/>`
+    - `<subgoal action="mark_in_progress" id="sg_1" />`
+  - Legacy `PlanBoardStageHandler` correctly treated both as `plan_checkpoint_only`.
+  - The compiler/prepass incorrectly treated both as plaintext, producing checkpoint-presence parity mismatches and blocking compiler authority for `PLAN_CHECKPOINT_ONLY`.
+- **Root cause**:
+  - The protocol parser treated self-closing `subgoal` tags as literal/plaintext-like nodes instead of structural `SubgoalNode`s.
+  - Safe board-only checkpoint protocol tails also fell through to ambiguous invalid classification instead of a valid checkpoint-only structural shape.
+- **Implementation outcome**:
+  - The parser/compiler now recognizes self-closing `<subgoal .../>` and `<subgoal ... />` as structural subgoal checkpoints.
+  - Safe board-only checkpoint protocol now compiles as `CHECKPOINT_ONLY`.
+  - A deterministic pytest-based synthetic smoke harness was added to validate the `PLAN_CHECKPOINT_ONLY` compiler-authority branch without relying on live LLM output.
+  - Synthetic smoke now covers:
+    - self-closing `PLAN_CHECKPOINT_ONLY` with and without a space before `/>`
+    - checkpoint-with-text negative control
+    - checkpoint-with-action negative control
+    - action-only negative control
+- **What did not change**:
+  - The default switch registry remains `legacy`.
+  - No board handler parsing/commit behavior changed.
+  - No dispatch, final-answer, stop-gate, `ActionPolicy`, `history.py`, or classification-stage authority changed.
+- **Validation rule**:
+  - Synthetic smoke coverage is now required before relying on live Angelica smoke for board/checkpoint authority-switch validation.
+
+### 3.26D. Step 26D: BoardCheckpoint Authority-Source Logging
+
+- **Goal**:
+  - Make it explicit whether a board/checkpoint branch is merely shadow-aligned or is actually routing via compiler authority.
+- **Completed Outcome**:
+  - A new diagnostic event now logs authority resolution for `board_checkpoint.plan_checkpoint_only`.
+  - The logged fields distinguish:
+    - branch key
+    - switch value
+    - selected authority source (`legacy`, `compiler`, `legacy_fallback`)
+    - compiler-side typed branch kind
+    - legacy branch kind
+    - agreement
+    - fallback usage
+    - whether behavior changed from legacy
+  - Synthetic smoke and stage tests now prove the distinction between:
+    - real compiler-authority takeover in an eligible compiler-only path
+    - legacy-authoritative handling of the same structurally valid checkpoint when the legacy handler already claims the branch
+    - compiler-switch fallback when compiler facts are incompatible with the branch
+- **What did not change**:
+  - No routing, commit, dispatch, or policy behavior changed.
+  - Legacy board handlers remain authoritative unless the branch-specific switch and structural conditions explicitly allow compiler authority.
+  - The default switch registry remains `legacy`.
+
+### 4. Phase 27: Synthetic Smoke Matrix Expansion Plan
+
+- **Purpose**:
+  - Make synthetic smoke a required gate for all branch-authority switches, not just `PLAN_CHECKPOINT_ONLY`.
+- **Rule**:
+  - Synthetic smoke is mandatory before enabling compiler authority for any branch.
+  - Live Angelica smoke is still required, but it cannot replace deterministic branch coverage.
+- **Matrix categories**:
+  - **Board/checkpoint branches**
+    - `PLAN_CHECKPOINT_ONLY`
+    - `PLAN_CHECKPOINT_WITH_TEXT`
+    - `PLAN_CHECKPOINT_WITH_ACTION`
+    - `MEMORY_CHECKPOINT_ONLY`
+    - `MEMORY_CHECKPOINT_WITH_TEXT`
+    - `MEMORY_CHECKPOINT_WITH_ACTION`
+    - mixed plan+memory checkpoint
+    - invalid checkpoint tag variants
+    - non-checkpoint action-only
+    - plaintext-only
+  - **Terminal answer / final-answer branches**
+    - pure plaintext terminal answer
+    - checkpoint-only
+    - checkpoint-with-visible-text
+    - pre-action text + action
+    - no-visible-text invalid/recovery cases
+    - malformed/incomplete think
+  - **Dispatch / action branches**
+    - action-only
+    - pre-action-text-and-action
+    - intent-action bundle
+    - multiple-actions invalid/recovery
+    - action with file payload / write payload
+    - action-policy denied vs allowed
+  - **Recovery / invalid-output branches**
+    - unclosed think
+    - intent inside think
+    - action inside think where applicable
+    - malformed action payload
+    - missing action or answer
+    - repeated repair loop guard
+  - **Intent / protocol branches**
+    - valid intent activation
+    - intent reuse
+    - intent inside think invalid
+    - intent + action atomic bundle
+    - active-intent unchanged/changed observations
+- **Per-row requirements**:
+  - synthetic raw output
+  - expected compiler shape
+  - expected typed semantic result
+  - expected legacy behavior
+  - authority switch if any
+  - expected effective decision
+  - negative controls
+  - smoke profile switch needed
+  - whether live Angelica smoke is also required
+
 ## 4. Refactor Governance: Typed Accessors + Branch Authority Switches
 
 As of Phase 10, the semantic runtime refactor adopts a new guiding principle for managing the transition from legacy to compiler-driven authority.

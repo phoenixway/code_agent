@@ -131,4 +131,6 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 127. Governance update: new strategy is branch-level authority switches, documented in `board-checkpoint-consumer-slice-design.md`.
 128. Phase 10 Step 24: done. Central TOML registry for refactor switches introduced.
 129. Phase 10 Step 25: done. Added smoke profile support for refactor switch registry via env var.
-130. Next: Phase 10 Step 26: Run Angelica smoke with PLAN_CHECKPOINT_ONLY compiler-authority profile.
+130. Phase 10 Step 26B: done. Fixed compiler recognition for self-closing `<subgoal ... />` checkpoints and added deterministic synthetic smoke coverage for the PLAN_CHECKPOINT_ONLY smoke-authority branch.
+131. Phase 10 Step 26D: done. Added explicit board/checkpoint authority-source diagnostics so smoke logs distinguish shadow parity from real compiler-authority selection.
+132. Next: Phase 27 Step 1: Board/Checkpoint Synthetic Smoke Matrix Expansion.

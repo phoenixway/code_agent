@@ -275,6 +275,14 @@ class ProtocolCompiler:
                     return ResponseShape.MEMORY_TEXT, None
             return ResponseShape.PURE_PLAINTEXT, None
 
+        if not action_nodes and not intent_nodes and not file_nodes and not visible_nodes:
+            has_only_checkpoint_protocol = all(
+                isinstance(node, (ThinkNode, MemoryNode, SubgoalNode, MarkerNode)) for node in nodes
+            )
+            has_checkpoint_protocol = any(isinstance(node, (MemoryNode, SubgoalNode, MarkerNode)) for node in nodes)
+            if has_only_checkpoint_protocol and has_checkpoint_protocol:
+                return ResponseShape.CHECKPOINT_ONLY, None
+
         if not action_nodes and not intent_nodes and not file_nodes:
             literal_only = all(isinstance(node, (LiteralProtocolTagNode, VisibleTextNode)) for node in nodes)
             if literal_only:

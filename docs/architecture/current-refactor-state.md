@@ -4,9 +4,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 10 Step 25: Refactor Switch Registry Smoke Profile
+- **Phase**: Phase 10 Step 26D: BoardCheckpoint Authority-Source Logging
 - **Status**: Complete.
-- **Next Step**: Phase 10 Step 26: Run Angelica smoke with PLAN_CHECKPOINT_ONLY compiler-authority profile.
+- **Next Step**: Phase 27 Step 1: Board/Checkpoint Synthetic Smoke Matrix Expansion.
 - **Boundary**: The checkpoint parity bridge remains diagnostic-only. Legacy board handlers still own commit behavior, the prepass compiler analysis remains observational, and `_apply_compiler_diagnosis` remains the effectful classification-stage path that recomputes on normalized response.
 
 ## Step 4I Parity Matrix
@@ -1010,6 +1010,21 @@ This document is the single source of truth for the current state of the Semanti
   - A smoke-test profile, `refactor_switches.smoke.toml`, was added to enable the `PLAN_CHECKPOINT_ONLY` compiler-authority switch for validation runs.
   - The default `refactor_switches.toml` remains unchanged, with all switches set to `legacy`.
   - No new authority branches were added, and no runtime behavior was changed unless the smoke override is used.
+- **Phase 10 Step 26B: Synthetic Smoke Harness + Self-Closing Subgoal Compiler Fix (Complete)**
+  - A targeted Angelica smoke run exposed a real compiler coverage gap: self-closing `<subgoal ... />` tags were treated as plaintext by the compiler/prepass while the legacy `PlanBoardStageHandler` correctly handled them as `plan_checkpoint_only`.
+  - The compiler/parser path now recognizes both `<subgoal .../>` and `<subgoal ... />` as structural subgoal checkpoints instead of `PURE_PLAINTEXT`.
+  - Safe board-only checkpoint protocol now compiles to a valid `CHECKPOINT_ONLY` shape instead of falling back to ambiguous invalid classification.
+  - Deterministic synthetic smoke coverage was added for the smoke-authority `PLAN_CHECKPOINT_ONLY` branch, including negative controls for checkpoint-with-text, checkpoint-with-action, and action-only responses.
+  - No default authority expansion occurred. The default switch registry remains `legacy`; compiler authority is still exercised only under the smoke-profile override.
+- **Phase 10 Step 26D: BoardCheckpoint Authority-Source Logging (Complete)**
+  - Explicit authority-resolution diagnostics were added for `board_checkpoint.plan_checkpoint_only`.
+  - The new diagnostics distinguish:
+    - shadow parity only
+    - legacy-selected routing
+    - compiler-selected routing
+    - legacy fallback under compiler switch mode
+  - No routing or behavior changed.
+  - The default switch registry remains `legacy`.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 
