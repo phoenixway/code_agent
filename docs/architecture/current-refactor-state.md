@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 9 Step 5F: Metadata Bridge Parity Review / Candidate Adapter Decision
-- **Status**: Complete.
-- **Next Step**: Phase 9 Step 6: Plan-First Producer Narrowing / ExecutionPlan Enrichment Review.
-- **Boundary**: The Phase 9 Step 5A-5F bridge sub-slice is complete. The parity probe, IR-derived candidate, and candidate metadata bridge are implemented, but actual dispatch remains segment-driven. Compiler/IR still owns structure, `ActionPolicy` still owns permission, the execution layer still owns side effects, and `ResponsePipeline` still orchestrates. Segment fallback remains in place and no observable dispatch behavior changed.
+- **Phase**: Phase 9 Step 6A: ExecutionPlan Observational Enrichment Implementation
+- **Status**: Pending explicit approval.
+- **Next Step**: Implement observational-only `ExecutionPlan` enrichment.
+- **Boundary**: The Phase 9 Step 5A-5F bridge sub-slice is complete. The Step 6 review concluded that `ExecutionPlan` requires enrichment before further consumer migration. Actual dispatch remains segment-driven. Compiler/IR still owns structure, `ActionPolicy` still owns permission, the execution layer still owns side effects, and `ResponsePipeline` still orchestrates. Segment fallback remains in place and no observable dispatch behavior changed.
 
 ## Step 4I Parity Matrix
 
@@ -295,10 +295,12 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- **Phase 9 Step 6: Plan-First Producer Narrowing / ExecutionPlan Enrichment Review**
-  - Review the next safe plan-first slice after the Step 5 bridge work.
-  - Keep actual dispatch segment-driven.
-  - Keep `segments` fallback where parity is not yet proven.
+- **Phase 9 Step 6A: ExecutionPlan Observational Enrichment Implementation**
+  - Add non-authoritative metadata fields to `ExecutionPlan` (e.g., `action_payload_snapshot`, `action_op_count`, `plan_source`).
+  - Populate them in `ResponsePipelineStagesMixin._build_execution_plan(...)`.
+  - Add characterization tests for new field population.
+  - No consumer logic changes or dispatch behavior changes.
+  - Keep actual dispatch segment-driven and `segments` fallback where parity is not yet proven.
   - Keep `PLAINTEXT_TERMINAL_ANSWER` / final-answer-path migration deferred.
   - Keep board/checkpoint consumers deferred to their separate slice.
 
@@ -595,7 +597,17 @@ This document is the single source of truth for the current state of the Semanti
   - Phase 9 Step 5A-5F bridge sub-slice is complete.
 
 - **Recommended next step**
-  - `Phase 9 Step 6: Plan-First Producer Narrowing / ExecutionPlan Enrichment Review`
+  - `Phase 9 Step 6A: ExecutionPlan Observational Enrichment Implementation`
+
+## Phase 9 Step 6 Outcome
+
+- **Conclusion**
+  - The producer-side `ExecutionPlan` creation path in `ResponsePipelineStagesMixin._build_execution_plan` was reviewed.
+  - The review concluded that the current `ExecutionPlan` is not rich enough to be the sole source for a plan-first dispatch consumer.
+  - The consumer (`DispatchPipeline`) currently has to re-access `compiler_ir` and `segments` to build its internal `PlanDispatchCandidate` because `ExecutionPlan` only contains action summaries (`action_effects`), not the full payloads needed for dispatch.
+  - The safest next step is to enrich `ExecutionPlan` with new observational-only metadata fields (e.g., `action_payload_snapshot`, `action_op_count`, `plan_source`).
+  - This enrichment must not authorize dispatch, replace segments, bypass `ActionPolicy`, or change side effects.
+  - A new Step 6A was proposed for this enrichment.
 
 ## Step 4M Batch Plan
 

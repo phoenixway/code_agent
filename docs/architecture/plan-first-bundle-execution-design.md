@@ -680,6 +680,31 @@ Pending explicit approval.
 - Recommended next step:
   `Phase 9 Step 6: Plan-First Producer Narrowing / ExecutionPlan Enrichment Review`
 
+## Step 6: Producer Narrowing / Enrichment Review Outcome
+
+- **Conclusion**: The review of the producer-side `ExecutionPlan` creation path is complete.
+- **Is `ExecutionPlan` rich enough?**
+  - No. The consumer (`DispatchPipeline`) currently has to re-access `compiler_ir` and `segments` to build its internal `PlanDispatchCandidate`.
+  - `ExecutionPlan` only contains action summaries (`action_effects`), not the full payloads or other metadata required for dispatch.
+- **Missing fields blocking migration?**
+  - `action_payloads` (or an equivalent snapshot) are the primary blocker.
+  - Observational metadata like `action_op_count`, `plan_source`, and `candidate_eligibility_status` would make the plan a more complete and debuggable record.
+- **Should `ExecutionPlan` be enriched?**
+  - Yes. The safest path forward is to enrich `ExecutionPlan` with new observational-only metadata.
+  - This makes the plan a better data carrier without changing authority.
+- **Fields that must remain non-authoritative**:
+  - All new fields must be non-authoritative.
+  - `action_payload_snapshot` must not be used for dispatch yet.
+  - `action_dispatched` remains observational.
+  - The plan describes the dispatch decision; it does not make it.
+- **Safest next implementation step (Step 6A)**:
+  - Add non-authoritative metadata fields to `ExecutionPlan` on the producer side (`_build_execution_plan`).
+  - This step must not change any consumer logic.
+- **Tests required for Step 6A**:
+  - Characterization tests to lock down the new fields in `ExecutionPlan`.
+  - Tests must verify correct population for the migrated slice and absence for non-migrated paths.
+  - No consumer tests should change.
+
 ## Safety Gate
 
 Phase 9 implementation must remain behavior-preserving:

@@ -1264,7 +1264,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 9 Step 6: Plan-First Producer Narrowing / ExecutionPlan Enrichment Review
 
-- **Status**: Pending explicit approval.
+- **Status**: Done.
 - **Goal**: Review the next safe producer-side plan-first slice after the bridge
   sub-slice, including whether `ExecutionPlan` needs enrichment before any further
   dispatch narrowing.
@@ -1278,10 +1278,38 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Candidate-driven dispatcher input
   - Fallback removal
   - `ActionPolicy` authority changes
+- **Completed Outcome**:
+  - The producer-side `ExecutionPlan` creation path was reviewed.
+  - The review concluded that `ExecutionPlan` is not yet rich enough to be the sole source for a plan-first dispatch consumer, as it lacks action payloads and other metadata.
+  - The safest next step is to enrich `ExecutionPlan` with new observational-only metadata fields.
+  - This enrichment must not authorize dispatch, replace segments, bypass `ActionPolicy`, or change side effects.
+  - A new Step 6A was proposed to design this enrichment.
 - **Done When**:
-  - The next producer-side target is explicit.
-  - Any needed `ExecutionPlan` enrichment is documented.
-  - A narrow next implementation shape is concrete enough for approval.
+  - The review was completed and documented.
+  - The next implementation shape (Step 6A) was proposed.
+
+---
+
+#### Phase 9 Step 6A: ExecutionPlan Observational Enrichment Implementation
+
+- **Status**: Pending explicit approval.
+- **Goal**: Enrich `ExecutionPlan` with new observational-only metadata fields.
+- **Allowed**:
+  - Add non-authoritative metadata fields to `ExecutionPlan`.
+  - Populate them in `ResponsePipelineStagesMixin._build_execution_plan(...)`.
+  - Add characterization tests for new field population.
+- **Forbidden**:
+  - Consumer logic changes.
+  - Dispatch behavior changes.
+  - Candidate-driven dispatch or synthetic segment adapter.
+  - Fallback removal.
+  - `ActionPolicy` authority changes.
+  - Parser, `history.py`, final-answer, or board/checkpoint changes.
+- **Done When**:
+  - The new fields are added to `ExecutionPlan` as observational-only metadata.
+  - The producer populates them for the eligible plan-first slice.
+  - Characterization tests pass.
+  - No dispatch behavior has changed.
 
 ---
 
