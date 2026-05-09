@@ -56,13 +56,14 @@ class TestResponsePipelineStages(unittest.TestCase):
         )
 
         step = SimpleNamespace(intent_payload={"mode": "activate", "intent_id": "intent_payload"})
+        action_payload = {"path": "README.md"}
         parsed_output = SimpleNamespace(
             compiler_shape="INTENT_ACTION_BUNDLE",
             compiler_ir=SimpleNamespace(
                 has_pre_action_text=False,
                 pre_action_text="",
                 action_ops=[
-                    SimpleNamespace(action_type="read_file", payload={"path": "README.md"}),
+                    SimpleNamespace(action_type="read_file", payload=action_payload),
                 ],
             ),
         )
@@ -81,6 +82,14 @@ class TestResponsePipelineStages(unittest.TestCase):
         self.assertFalse(plan.active_intent_unchanged)
         self.assertEqual("intent_before", plan.before_active_intent_id)
         self.assertEqual("intent_after", plan.after_active_intent_id)
+
+        # Phase 9 Step 6A observational enrichment
+        self.assertEqual("compiler_ir", plan.plan_source)
+        self.assertEqual(1, plan.action_op_count)
+        self.assertEqual([action_payload], plan.action_payload_snapshot)
+        self.assertIsNot(action_payload, plan.action_payload_snapshot[0])
+        self.assertEqual("single_action_candidate_possible", plan.candidate_eligibility_status)
+        self.assertEqual("", plan.pre_action_text_source)
 
     def test_build_execution_plan_returns_none_without_compiler_ir(self):
         self.harness.semantics.has_any_action_proposal.return_value = True

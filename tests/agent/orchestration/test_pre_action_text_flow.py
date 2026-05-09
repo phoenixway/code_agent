@@ -47,7 +47,7 @@ def test_build_execution_plan_for_pre_action_text(response_pipeline_stages_mixin
     mock_ir = SimpleNamespace(
         has_pre_action_text=True,
         pre_action_text="Hello, I will now perform the action.",
-        action_ops=[SimpleNamespace(action_type="test_action")],
+        action_ops=[SimpleNamespace(action_type="test_action", payload={"type": "test_action"})],
     )
     mock_parsed_output = SimpleNamespace(compiler_shape="PRE_ACTION_TEXT_AND_ACTION", compiler_ir=mock_ir)
 
@@ -60,6 +60,9 @@ def test_build_execution_plan_for_pre_action_text(response_pipeline_stages_mixin
     assert len(plan.output_effects) == 1
     assert plan.output_effects[0] == "pre_action_text:Hello, I will now perform the action."
     assert not plan.action_dispatched
+    assert plan.pre_action_text_source == "compiler_ir"
+    assert plan.action_op_count == 1
+    assert plan.candidate_eligibility_status == "single_action_candidate_possible"
 
 
 def test_build_execution_plan_for_action_only(response_pipeline_stages_mixin: ResponsePipelineStagesMixin):
@@ -70,7 +73,7 @@ def test_build_execution_plan_for_action_only(response_pipeline_stages_mixin: Re
     mock_ir = SimpleNamespace(
         has_pre_action_text=False,
         pre_action_text="",
-        action_ops=[SimpleNamespace(action_type="test_action")],
+        action_ops=[SimpleNamespace(action_type="test_action", payload={"type": "test_action"})],
     )
     mock_parsed_output = SimpleNamespace(compiler_shape="ACTION_ONLY", compiler_ir=mock_ir)
 
@@ -81,6 +84,7 @@ def test_build_execution_plan_for_action_only(response_pipeline_stages_mixin: Re
     assert isinstance(plan, ExecutionPlan)
     assert len(plan.action_effects) == 1
     assert len(plan.output_effects) == 0
+    assert plan.pre_action_text_source == ""
 
 
 def test_build_execution_plan_sets_action_dispatched_false_for_generic_dispatch(
@@ -94,7 +98,7 @@ def test_build_execution_plan_sets_action_dispatched_false_for_generic_dispatch(
     mock_ir = SimpleNamespace(
         has_pre_action_text=False,
         pre_action_text="",
-        action_ops=[SimpleNamespace(action_type="test_action")],
+        action_ops=[SimpleNamespace(action_type="test_action", payload={"type": "test_action"})],
     )
     mock_parsed_output = SimpleNamespace(compiler_shape="ACTION_ONLY", compiler_ir=mock_ir)
 
@@ -116,7 +120,7 @@ def test_build_execution_plan_for_atomic_bundle_is_still_false(
     mock_ir = SimpleNamespace(
         has_pre_action_text=False,
         pre_action_text="",
-        action_ops=[SimpleNamespace(action_type="test_action")],
+        action_ops=[SimpleNamespace(action_type="test_action", payload={"type": "test_action"})],
     )
     mock_parsed_output = SimpleNamespace(compiler_shape="INTENT_ACTION_BUNDLE", compiler_ir=mock_ir)
 

@@ -700,6 +700,11 @@ Pending explicit approval.
 - **Safest next implementation step (Step 6A)**:
   - Add non-authoritative metadata fields to `ExecutionPlan` on the producer side (`_build_execution_plan`).
   - This step must not change any consumer logic.
+- **Step 6A Outcome**:
+  - `ExecutionPlan` was enriched with `action_payload_snapshot`, `action_op_count`, `plan_source`, `candidate_eligibility_status`, and `pre_action_text_source`.
+  - The producer (`_build_execution_plan`) now populates these fields.
+  - Characterization tests were added to verify population.
+  - No consumer logic was changed.
 - **Tests required for Step 6A**:
   - Characterization tests to lock down the new fields in `ExecutionPlan`.
   - Tests must verify correct population for the migrated slice and absence for non-migrated paths.

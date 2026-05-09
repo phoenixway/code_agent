@@ -295,12 +295,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- **Phase 9 Step 6A: ExecutionPlan Observational Enrichment Implementation**
-  - Add non-authoritative metadata fields to `ExecutionPlan` (e.g., `action_payload_snapshot`, `action_op_count`, `plan_source`).
-  - Populate them in `ResponsePipelineStagesMixin._build_execution_plan(...)`.
-  - Add characterization tests for new field population.
-  - No consumer logic changes or dispatch behavior changes.
-  - Keep actual dispatch segment-driven and `segments` fallback where parity is not yet proven.
+- **Phase 9 Step 6B: ExecutionPlan Enrichment Parity Review / Consumer Narrowing Decision**
+  - Review the enriched `ExecutionPlan` and decide if a narrow consumer migration is safe.
+  - Keep actual dispatch segment-driven.
+  - Keep `segments` fallback where parity is not yet proven.
   - Keep `PLAINTEXT_TERMINAL_ANSWER` / final-answer-path migration deferred.
   - Keep board/checkpoint consumers deferred to their separate slice.
 
@@ -597,7 +595,16 @@ This document is the single source of truth for the current state of the Semanti
   - Phase 9 Step 5A-5F bridge sub-slice is complete.
 
 - **Recommended next step**
-  - `Phase 9 Step 6A: ExecutionPlan Observational Enrichment Implementation`
+  - `Phase 9 Step 6B: ExecutionPlan Enrichment Parity Review / Consumer Narrowing Decision`
+
+## Phase 9 Step 6A Outcome
+
+- **Conclusion**
+  - `ExecutionPlan` was enriched with non-authoritative observational metadata fields (`action_payload_snapshot`, `action_op_count`, `plan_source`, `candidate_eligibility_status`, `pre_action_text_source`).
+  - The producer (`ResponsePipelineStagesMixin._build_execution_plan`) now populates these fields from `compiler_ir`.
+  - Characterization tests were added to lock down the new field population.
+  - No consumer logic was changed, and no dispatch behavior was changed.
+  - Actual dispatch remains segment-driven.
 
 ## Phase 9 Step 6 Outcome
 
@@ -607,7 +614,7 @@ This document is the single source of truth for the current state of the Semanti
   - The consumer (`DispatchPipeline`) currently has to re-access `compiler_ir` and `segments` to build its internal `PlanDispatchCandidate` because `ExecutionPlan` only contains action summaries (`action_effects`), not the full payloads needed for dispatch.
   - The safest next step is to enrich `ExecutionPlan` with new observational-only metadata fields (e.g., `action_payload_snapshot`, `action_op_count`, `plan_source`).
   - This enrichment must not authorize dispatch, replace segments, bypass `ActionPolicy`, or change side effects.
-  - A new Step 6A was proposed for this enrichment.
+  - A new Step 6A was proposed to implement this enrichment.
 
 ## Step 4M Batch Plan
 

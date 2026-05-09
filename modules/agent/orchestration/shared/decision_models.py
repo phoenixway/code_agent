@@ -61,6 +61,12 @@ class ExecutionPlan:
     active_intent_unchanged: bool = True
     before_active_intent_id: str = ""
     after_active_intent_id: str = ""
+    # Phase 9 Step 6A observational enrichment
+    plan_source: str = ""
+    action_op_count: int = 0
+    action_payload_snapshot: list[dict] | None = None
+    candidate_eligibility_status: str = ""
+    pre_action_text_source: str = ""
 
 
 @dataclass

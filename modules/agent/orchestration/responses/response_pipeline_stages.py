@@ -56,11 +56,28 @@ class ResponsePipelineStagesMixin:
             return None
         ir = getattr(parsed_output, "compiler_ir", None)
         if ir is None:
+            # This path is not plan-first eligible without compiler IR.
+            # The plan builder could be enriched to handle this, but for now
+            # it's an explicit non-goal.
             return None
 
+        action_ops = list(getattr(ir, "action_ops", ()) or ())
+        action_op_count = len(action_ops)
+        action_payload_snapshot = [dict(op.payload) for op in action_ops if isinstance(getattr(op, "payload", None), dict)]
+
+        candidate_eligibility_status = "unknown"
+        if action_op_count == 0:
+            candidate_eligibility_status = "no_action_ops"
+        elif action_op_count == 1:
+            candidate_eligibility_status = "single_action_candidate_possible"
+        else:
+            candidate_eligibility_status = "multi_action_not_migrated"
+
         output_effects: list[str] = []
+        pre_action_text_source = ""
         if compiler_shape == "PRE_ACTION_TEXT_AND_ACTION" and ir.has_pre_action_text and ir.pre_action_text:
             output_effects.append(f"pre_action_text:{ir.pre_action_text}")
+            pre_action_text_source = "compiler_ir"
 
         active_intent = getattr(self.state, "active_intent", None)
         after_intent_id = str(getattr(active_intent, "intent_id", "") or "").strip()
@@ -71,7 +88,7 @@ class ResponsePipelineStagesMixin:
             or after_intent_id
         ).strip()
         action_effects: list[str] = []
-        for action in list(getattr(ir, "action_ops", ()) or ()):
+        for action in action_ops:
             action_type = str(getattr(action, "action_type", "") or "").strip()
             payload_obj = getattr(action, "payload", None)
             target = ""
@@ -94,6 +111,11 @@ class ResponsePipelineStagesMixin:
             active_intent_unchanged=bool(before_intent_id and after_intent_id and before_intent_id == after_intent_id),
             before_active_intent_id=before_intent_id,
             after_active_intent_id=after_intent_id,
+            plan_source="compiler_ir",
+            action_op_count=action_op_count,
+            action_payload_snapshot=action_payload_snapshot,
+            candidate_eligibility_status=candidate_eligibility_status,
+            pre_action_text_source=pre_action_text_source,
         )
 
     async def _run_initial_stages(self, ctx, step):

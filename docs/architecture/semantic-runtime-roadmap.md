@@ -1292,7 +1292,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 9 Step 6A: ExecutionPlan Observational Enrichment Implementation
 
-- **Status**: Pending explicit approval.
+- **Status**: Done.
 - **Goal**: Enrich `ExecutionPlan` with new observational-only metadata fields.
 - **Allowed**:
   - Add non-authoritative metadata fields to `ExecutionPlan`.
@@ -1305,11 +1305,33 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Fallback removal.
   - `ActionPolicy` authority changes.
   - Parser, `history.py`, final-answer, or board/checkpoint changes.
+- **Completed Outcome**:
+  - `ExecutionPlan` was enriched with non-authoritative observational metadata fields.
+  - The producer now populates these fields from `compiler_ir`.
+  - Characterization tests were added to lock down the new field population.
+  - No consumer logic was changed, and no dispatch behavior was changed.
 - **Done When**:
-  - The new fields are added to `ExecutionPlan` as observational-only metadata.
+  - The new fields were added to `ExecutionPlan` as observational-only metadata.
   - The producer populates them for the eligible plan-first slice.
   - Characterization tests pass.
   - No dispatch behavior has changed.
+
+---
+
+#### Phase 9 Step 6B: ExecutionPlan Enrichment Parity Review / Consumer Narrowing Decision
+
+- **Status**: Pending explicit approval.
+- **Goal**: Review the enriched `ExecutionPlan` and decide if a narrow consumer migration is safe.
+- **Allowed**:
+  - Read-only code inspection.
+  - Design-only documentation updates.
+- **Forbidden**:
+  - Implementation before design approval.
+  - Any production code or test changes.
+  - Any consumer migration.
+  - Any dispatch behavior changes.
+- **Done When**:
+  - The review is complete and a decision on the next consumer migration is documented.
 
 ---
 

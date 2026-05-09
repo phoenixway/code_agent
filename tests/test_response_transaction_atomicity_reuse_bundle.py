@@ -384,6 +384,9 @@ async def test_valid_reuse_plus_allowed_action_bundle_is_dispatch_ready():
     assert outcome.execution_plan.before_active_intent_id == "current_intent"
     assert outcome.execution_plan.after_active_intent_id == "current_intent"
     assert outcome.execution_plan.action_effects == ["read_chunk:x.py"]
+    assert outcome.execution_plan.action_op_count == 1
+    assert outcome.execution_plan.candidate_eligibility_status == "single_action_candidate_possible"
+    assert outcome.execution_plan.plan_source == "compiler_ir"
     assert outcome.segments
     assert any(getattr(seg, "type", "") == "action" for seg in outcome.segments)
     action_seg = next(seg for seg in outcome.segments if getattr(seg, "type", "") == "action")
@@ -440,6 +443,9 @@ async def test_valid_activate_write_bundle_is_dispatch_ready():
     assert outcome.execution_plan.before_active_intent_id == "save_requested_document"
     assert outcome.execution_plan.after_active_intent_id == "save_requested_document"
     assert outcome.execution_plan.action_effects == ["write_file_block:docs/x.md"]
+    assert outcome.execution_plan.action_op_count == 1
+    assert outcome.execution_plan.candidate_eligibility_status == "single_action_candidate_possible"
+    assert outcome.execution_plan.plan_source == "compiler_ir"
     action_seg = next(seg for seg in outcome.segments if getattr(seg, "type", "") == "action")
     assert action_seg.content["type"] == "write_file_block"
     assert action_seg.content["path"] == "docs/x.md"
