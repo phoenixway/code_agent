@@ -4,23 +4,23 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 8 Step 4N.2: `INTERNAL_SUMMARY_LIKE_TEXT` consumer migration implementation
+- **Phase**: Phase 9 Step 2: ExecutionPlan Producer/Consumer Contract Design
 - **Status**: Complete.
-- **Next Step**: Phase 8 Step 4O: Terminal Answer Remaining Consumer Review / Final-Answer Path Preflight.
-- **Boundary**: `TerminalAnswerClassifier` is not policy authority or stop-gate authority. Future migrations must remain narrow and behavior-preserving. Legacy fallback is required unless exact semantic parity is proven.
+- **Next Step**: Phase 9 Step 3: ExecutionPlan Contract Characterization Tests.
+- **Boundary**: This slice remains design-only. Compiler/IR owns structure, `ActionPolicy` owns permission, the execution layer owns side effects, and `ResponsePipeline` remains the orchestrator. No dispatch behavior change is authorized yet.
 
 ## Step 4I Parity Matrix
 
 | `TerminalAnswerKind` | Implemented in classifier? | Source type | Legacy parity logging available? | Consumer migration status | Remaining risk / deferred notes |
 |---|---|---|---|---|---|
-| `LEAKED_SYSTEM_RESULT` | Yes | `legacy_compatible_rule` | Yes | Blocked | Regex-compatible rule only; classifier remains shadow-only. |
+| `LEAKED_SYSTEM_RESULT` | Yes | `legacy_compatible_rule` | Yes | Narrow consumer migrated | Typed primary signal with legacy fallback remains in place. |
 | `INVALID_OR_TRUNCATED_TERMINAL_TEXT` | Yes | `legacy_compatible_rule` | Yes | First narrow consumer migrated | Legacy fallback remains required because the classifier uses `candidate_text` / `PURE_PLAINTEXT`, while the legacy guard uses `raw_response`. |
 | `INTERNAL_SUMMARY_LIKE_TEXT` | Yes | `runtime_policy` | Yes | Narrow consumer migrated | Typed result is a primary hint only; legacy runtime-policy helper remains the confirmation/fallback path. |
 | `PRE_ACTION_VISIBLE_TEXT_WITH_ACTION` | Yes | `compiler_fact` | No dedicated legacy parity kind | Blocked | Compiler-fact classification exists, but no consumer migration is approved. |
 | `INTENT_COMPLETE_WITH_VISIBLE_TEXT` | Yes | `compiler_fact` | No dedicated legacy parity kind | Blocked | Structural fact only; runtime final-answer policy remains separate. |
 | `CHECKPOINT_WITH_VISIBLE_TEXT` | Yes | `compiler_fact` | No dedicated legacy parity kind | Blocked | Board/checkpoint consumers are not migrated. |
 | `CHECKPOINT_ONLY` | Yes | `compiler_fact` | No dedicated legacy parity kind | Blocked | Shadow signal only; no board consumer migration. |
-| `PLAINTEXT_TERMINAL_ANSWER` | Yes | `compiler_fact` | Yes | Blocked | Classifier output is not dispatch or stop authority. |
+| `PLAINTEXT_TERMINAL_ANSWER` | Yes | `compiler_fact` | Yes | No-go for current migration | Remaining consumers sit on final-answer, intent-completion, visible-text, and stop-gate authority boundaries. |
 | `NO_VISIBLE_TEXT` | Yes | `compiler_fact` | Indirectly | Blocked | Fallback structural case only; no consumer authority changes. |
 | `UNKNOWN` | Yes | `fallback` | Indirectly | Blocked | Safe shadow fallback for non-matching cases. |
 
@@ -295,17 +295,90 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- **Phase 8 Step 4O: Terminal Answer Remaining Consumer Review / Final-Answer Path Preflight**
-  - Review the remaining terminal-answer consumers after Steps 4L, 4M.2, and 4N.2.
-  - Re-evaluate final-answer-path candidates before any migration touching final-answer or stop-gate authority.
+- **Phase 9 Step 3: ExecutionPlan Contract Characterization Tests**
+  - Lock down the current `ExecutionPlan` producer behavior for the first migrated slice.
+  - Add plan-vs-segment parity coverage before any dispatch consumer migration.
+  - Keep `segments` fallback where parity is not yet proven.
+  - Keep `PLAINTEXT_TERMINAL_ANSWER` / final-answer-path migration deferred.
   - Keep board/checkpoint consumers deferred to their separate slice.
+
+## Phase 9 Step 1 Outcome
+
+- **Conclusion**
+  - The next safe refactor slice is bundle/action execution, not final-answer semantics.
+  - The current runtime is already partially plan-shaped, but not truly plan-first end to end.
+  - The design gate is complete and the current inventory is documented in `docs/architecture/plan-first-bundle-execution-design.md`.
+
+- **Current execution path**
+  - `ResponsePipelinePrevalidationMixin._apply_compiler_diagnosis(...)` populates compiler metadata and IR on `ParsedModelOutput`.
+  - `ResponsePipelineStagesMixin._run_post_classification_stage(...)` still owns orchestration, policy handoff, and late `ExecutionPlan` creation.
+  - `DispatchPipeline.run_iteration(...)` consumes `execution_plan` only for metadata and pre-action text, but still dispatches raw `segments`.
+
+- **Authority split to preserve**
+  - Compiler / IR owns structure.
+  - `ActionPolicyHandler` owns permission and runtime-policy validation.
+  - `DispatchPipeline` owns side effects.
+  - `ResponsePipeline` orchestrates, but should not remain the long-term source of dispatch semantics.
+
+- **Existing Phase 6 / 7 decisions to preserve**
+  - Only validated execution plans may authorize runtime mutation or dispatch.
+  - Compiler-owned bundle structure must stay separate from runtime-owned permission checks.
+  - Legacy compatibility shims remain acceptable where parity is not yet proven.
+
+- **Remaining legacy execution dependencies**
+  - `DispatchPipeline` still executes raw `segments`.
+  - `ActionPolicyHandler` still retains `segments` fallback when IR action ops are absent.
+  - `ResponsePipelineOutcome.dispatch_ready(...)` still carries both `segments` and `execution_plan`.
+  - `DispatchOutcomeHandler` still infers committed actions from processed segments rather than from a fully authoritative plan/commit contract.
+
+## Phase 9 Step 2 Outcome
+
+- **Current producer / consumer flow**
+  - `ResponsePipelineStagesMixin._build_execution_plan(...)` is the current producer.
+  - It is invoked late, only on `dispatch_ready`, after recovery and `ActionPolicy`.
+  - `ParsedModelOutput.compiler_ir` is already available earlier from
+    `ResponsePipelinePrevalidationMixin._apply_compiler_diagnosis(...)`.
+  - `DispatchPipeline.run_iteration(...)` consumes the plan only for pre-action text
+    and trace metadata; raw `segments` still drive actual dispatch side effects.
+
+- **Minimal contract**
+  - Required `ExecutionPlan` fields for the first migrated slice:
+    `shape`, `transaction_kind`, `action_effects`, `output_effects`,
+    `bundle_validated`, `transition_applied`,
+    `before_active_intent_id`, `after_active_intent_id`.
+  - Compatibility-only / observational fields remain allowed:
+    `state_effects`, `active_intent_unchanged`, `action_dispatched`.
+  - Compiler IR is the source of action payload summaries and pre-action text.
+  - Runtime state remains the source of before/after intent ids.
+
+- **First migration candidate**
+  - One narrow single-action dispatch-ready slice:
+    atomic intent+action bundle and equivalent single-action dispatch-ready flow
+    where compiler IR already provides exactly one authoritative `ActionOpIR`.
+  - This is the lowest-risk path because:
+    - IR already carries the action payload
+    - `ActionPolicy` already consumes IR first
+    - current `ExecutionPlan` already models this path
+    - multi-action readonly batches remain out of scope
+
+- **Fallback strategy**
+  - `ExecutionPlan` becomes the primary producer-side contract only for the migrated
+    slice.
+  - `segments` fallback remains required whenever IR action ops are absent, the path
+    is outside the migrated slice, or parity is not yet proven.
+  - No path may dispatch different actions just because a plan exists.
+
+- **Tests required before implementation**
+  - characterization tests for current `ExecutionPlan` fields
+  - plan-vs-segment parity tests for the first migrated slice
+  - fallback coverage for non-migrated paths
+  - no-dispatch-on-invalid coverage
+  - pre-action-text parity coverage
 
 ## Step 4M Batch Plan
 
 - **Conclusion**
-  - The Terminal Answers slice should not be closed yet.
-  - Legacy terminal-answer consumers remain a recurring bug source.
-  - Continue consumer migration in controlled small steps only.
+  - The Terminal Answers slice was kept open through Steps 4M.1, 4M.2, 4N.1, and 4N.2 to address the remaining low-risk legacy consumers first.
 
 - **Remaining TerminalAnswer-related legacy consumers**
   - `INVALID_OR_TRUNCATED_TERMINAL_TEXT` consumer:
@@ -515,6 +588,89 @@ This document is the single source of truth for the current state of the Semanti
   - No stop-gate, final-answer, policy, dispatch, UI, parser, or history behavior was changed.
   - No other consumers were migrated.
   - Tests passed.
+
+## Step 4O Review
+
+- **Remaining consumers**
+  - `ResponseSemantics.is_plaintext_answer_path(...)`
+    in `modules/agent/orchestration/responses/response_semantics.py`
+    - helper/surface:
+      `parsed_output.visible_text`, `_strip_non_plaintext_control_blocks(raw_response)`,
+      `has_any_action_proposal(...)`, `invalid_kind`
+    - role:
+      plaintext/final-answer path detection
+  - `IntentTransitionRoutingMixin.handle_model_step(...)`
+    in `modules/agent/orchestration/transitions/intent_transition_routing.py`
+    - helpers/surfaces:
+      `_remaining_has_plaintext_answer_only(response_text)`,
+      `_mark_terminal_plaintext_completion(response_text)`,
+      `_finalize_completed_intent()`
+    - role:
+      intent-completion finalization and transition handling
+  - `ResponsePipelineStagesMixin._run_post_classification_stage(...)`
+    in `modules/agent/orchestration/responses/response_pipeline_stages.py`
+    - helpers/state:
+      `terminal_plaintext_completion_pending`,
+      `output_recovery.decide(...)`,
+      `action_policy.decide(...)`
+    - role:
+      stop/continue behavior after recovery/policy decisions
+  - `OutputRecoveryRoutingMixin.decide(...)`
+    in `modules/agent/orchestration/responses/output_recovery_routing.py`
+    - helper:
+      `missing_action_or_answer` routing / `build_missing_action_or_answer_prompt()`
+    - role:
+      recovery for missing action or missing final answer
+
+- **Classifier readiness**
+  - `TerminalAnswerClassifier` produces `PLAINTEXT_TERMINAL_ANSWER` from the structural fact
+    `runtime_semantics.visible_text_source == "PURE_PLAINTEXT"`.
+  - The typed result is attached to `ParsedModelOutput` early enough for later consumers.
+  - However, the classifier provides structural classification only. It does not
+    decide final-answer correctness, sufficiency, transition completion, or stop behavior.
+
+- **Risk analysis**
+  - Final-answer authority risk:
+    remaining consumers decide whether a response is an acceptable final answer,
+    not just whether plaintext is structurally present.
+  - Stop-gate risk:
+    `terminal_plaintext_completion_pending` influences later stop vs continue
+    behavior in `ResponsePipelineStagesMixin`.
+  - Intent completion risk:
+    `handle_model_step(...)` finalizes intents and marks terminal completion state.
+  - Visible-text mismatch risk:
+    legacy consumers use a mix of `visible_text`, sanitized raw response text,
+    `_remaining_has_plaintext_answer_only(...)`, and `_strip_non_plaintext_control_blocks(...)`,
+    while the classifier uses `PURE_PLAINTEXT` structural facts.
+  - Policy vs structure boundary:
+    `PLAINTEXT_TERMINAL_ANSWER` is structural. The remaining consumers are policy
+    and authority decisions.
+
+- **Recommendation**
+  - **NO-GO** for a `PLAINTEXT_TERMINAL_ANSWER` migration in the current slice.
+  - No remaining narrow consumer was identified that avoids final-answer authority,
+    stop-gate authority, and intent-completion policy.
+  - Recommendation:
+    defer `PLAINTEXT_TERMINAL_ANSWER` migration and close the Terminal Answers
+    consumer-migration slice for now.
+
+## Step 4P Closure
+
+- **Terminal Answers consumer-migration slice**
+  - Complete for now.
+  - Completed migrations:
+    - `LEAKED_SYSTEM_RESULT`
+    - `INVALID_OR_TRUNCATED_TERMINAL_TEXT`
+    - `INTERNAL_SUMMARY_LIKE_TEXT`
+- **Deferred**
+  - `PLAINTEXT_TERMINAL_ANSWER` / final-answer-path migration
+  - checkpoint/board consumers to a separate board/checkpoint slice
+- **Deferred rationale**
+  - final-answer authority risk
+  - stop-gate risk
+  - intent-completion risk
+  - visible-text extraction/sanitization mismatch risk
+  - remaining consumers are policy/authority decisions, not structural reads
 
 ## Test Status
 

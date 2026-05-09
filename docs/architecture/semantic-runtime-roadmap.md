@@ -1009,7 +1009,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 8 Step 4O: Terminal Answer Remaining Consumer Review / Final-Answer Path Preflight
 
-- **Status**: Not Started.
+- **Status**: Done.
 - **Goal**: Review the remaining terminal-answer consumers and decide whether any final-answer-path migration can be proposed safely.
 - **Allowed**: Design-only review and documentation updates.
 - **Forbidden**:
@@ -1017,15 +1017,109 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Stop-gate authority changes
   - Consumer migration
   - Production behavior changes
+- **Conclusion**:
+  - **NO-GO** for a `PLAINTEXT_TERMINAL_ANSWER` migration in the current slice.
+  - Remaining consumers sit on final-answer authority, intent-completion finalization,
+    visible-text extraction semantics, and stop-gate behavior.
+  - No very narrow behavior-preserving migration target was identified.
+  - Recommendation:
+    defer `PLAINTEXT_TERMINAL_ANSWER` migration and close the Terminal Answers
+    slice for now.
+
+---
+
+#### Phase 8 Step 4P: Terminal Answers Slice Closure / Deferred Final-Answer Migration
+
+- **Status**: Done.
+- **Goal**: Close the current Terminal Answers consumer-migration slice and record final-answer-path migration as deferred.
+- **Allowed**: Documentation updates and closure review only.
+- **Forbidden**:
+  - Final-answer authority changes
+  - Stop-gate authority changes
+  - Consumer migration
+  - Production behavior changes
+- **Completed Outcome**:
+  - The Terminal Answers consumer-migration slice is complete for now.
+  - Completed migrations:
+    - `LEAKED_SYSTEM_RESULT`
+    - `INVALID_OR_TRUNCATED_TERMINAL_TEXT`
+    - `INTERNAL_SUMMARY_LIKE_TEXT`
+  - `PLAINTEXT_TERMINAL_ANSWER` / final-answer-path migration is deferred.
+  - Checkpoint/board consumers are deferred to a separate board/checkpoint slice.
+  - `TerminalAnswerClassifier` remains outside policy, stop-gate, and sole final-answer authority.
+  - Legacy fallback/confirmation remains in place where exact parity is not proven.
+
+---
+
+#### Phase 9 Step 1: Plan-First Bundle Execution Design Gate
+
+- **Status**: Done.
+- **Goal**: Re-open the Plan-First Bundle Execution thread with a design gate before any implementation.
+- **Allowed**: Design-only review and documentation updates.
+- **Forbidden**: Dispatch behavior changes before the design gate is complete.
+- **Completed Outcome**:
+  - The current action / bundle execution path was inventoried.
+  - The current compiler IR usage, `ActionPolicy` boundary, `ResponsePipeline` orchestration role, and post-dispatch side-effect boundary were documented.
+  - The design gate concluded that the slice is safe to continue only as a narrow plan-first bundle/action execution refactor.
+  - Final-answer, stop-gate, and board/checkpoint migrations remain out of scope.
+  - The current design baseline is documented in `docs/architecture/plan-first-bundle-execution-design.md`.
+
+#### Phase 9 Step 2: ExecutionPlan Producer/Consumer Contract Design
+
+- **Status**: Done.
+- **Goal**: Define the smallest behavior-preserving producer/consumer contract that can move bundle/action dispatch closer to true plan-first execution.
+- **Allowed**:
+  - Design-only review
+  - ExecutionPlan contract inventory
+  - Characterization-test planning
+- **Forbidden**:
+  - Dispatch side-effect changes
+  - `ActionPolicy` authority changes
+  - Final-answer or stop-gate changes
+  - Parser rewrite
+- **Completed Outcome**:
+  - The current producer/consumer flow is documented:
+    `ResponsePipelineStagesMixin._build_execution_plan(...)` produces the plan,
+    `ActionPolicy` validates before `dispatch_ready`, and `DispatchPipeline`
+    still executes raw `segments`.
+  - The minimal `ExecutionPlan` contract for the first migrated slice is documented.
+  - The first migration candidate is narrowed to the single-action dispatch-ready
+    path where compiler IR already provides exactly one authoritative `ActionOpIR`.
+  - `segments` fallback remains explicitly required whenever IR parity is not proven
+    or the path is outside the migrated slice.
+
+#### Phase 9 Step 3: ExecutionPlan Contract Characterization Tests
+
+- **Status**: Pending explicit approval.
+- **Goal**: Lock down the current `ExecutionPlan` producer behavior and add
+  plan-vs-segment parity coverage before any dispatch consumer migration.
+- **Allowed**:
+  - Test-only additions
+  - Characterization coverage for `ExecutionPlan`
+  - Parity coverage for the first migrated slice
+- **Forbidden**:
+  - Dispatch behavior changes
+  - `ActionPolicy` authority changes
+  - Execution-path migration in this step
+- **Done When**:
+  - Current `ExecutionPlan` field population is characterized.
+  - Parity tests exist for plan-derived versus segment-derived action inputs.
+  - Fallback behavior is locked down for non-migrated paths.
 
 ---
 
 ### Phase 9: Plan-First Bundle Execution
 
-- **Goal**: Refactor `DispatchPipeline` to execute from a plan derived from semantic accessors, not from reparsed segments.
-- **Allowed**: Modify `ResponsePipeline` to build an `ExecutionPlan` using semantic accessors. Modify `DispatchPipeline` to execute this plan.
-- **Forbidden**: Changing dispatch side effects.
-- **Done When**: `DispatchPipeline` no longer receives raw segments.
+- **Goal**: Refactor bundle/action execution toward a plan-first model where compiler/IR owns structure, `ActionPolicy` owns permission, and the execution layer owns side effects.
+- **Allowed**: Narrow producer/consumer migrations that preserve behavior and keep legacy fallback where parity is not yet proven.
+- **Forbidden**:
+  - Final-answer authority changes
+  - Stop-gate changes
+  - Board/checkpoint migration in this slice
+  - Dispatch side-effect changes
+- **Done When**:
+  - The first migrated slice executes from an authoritative `ExecutionPlan` contract.
+  - Legacy segment-based dispatch fallback is reduced to explicitly documented compatibility paths only.
 
 ---
 

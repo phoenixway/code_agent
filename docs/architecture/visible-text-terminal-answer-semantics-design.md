@@ -810,7 +810,51 @@ Step 4K is complete, and the Step 4L implementation has now been completed.
   - No other consumers were migrated.
   - Tests passed.
 
-## 19. Explicitly Deferred
+## 19. Phase 8 Step 4O: Terminal Answer Remaining Consumer Review / Final-Answer Path Preflight
+
+- **Status**: Complete.
+- **Remaining consumers reviewed**:
+  - `ResponseSemantics.is_plaintext_answer_path(...)`
+  - intent-transition completion/finalization paths in `IntentTransitionRoutingMixin`
+  - output-recovery `missing_action_or_answer` routing
+  - post-classification stop/continue behavior tied to `terminal_plaintext_completion_pending`
+- **Classifier readiness**:
+  - `PLAINTEXT_TERMINAL_ANSWER` is structurally available from `visible_text_source == "PURE_PLAINTEXT"`.
+  - The typed result is attached early enough on `ParsedModelOutput`.
+- **Risk conclusion**:
+  - Final-answer authority risk is high.
+  - Stop-gate risk is high.
+  - Intent-completion risk is high.
+  - Visible-text extraction/sanitization mismatch risk is high.
+  - The remaining consumers are policy/authority decisions, not structural reads.
+- **Recommendation**:
+  - **NO-GO** for a `PLAINTEXT_TERMINAL_ANSWER` migration in the current slice.
+  - Defer final-answer-path migration.
+  - Close the Terminal Answers consumer-migration slice for now.
+
+## 20. Phase 8 Step 4P: Terminal Answers Slice Closure / Deferred Final-Answer Migration
+
+- **Status**: Complete.
+- **Completed migrations in this slice**:
+  - `LEAKED_SYSTEM_RESULT`
+  - `INVALID_OR_TRUNCATED_TERMINAL_TEXT`
+  - `INTERNAL_SUMMARY_LIKE_TEXT`
+- **Authority boundary remains**:
+  - `TerminalAnswerClassifier` is not policy authority.
+  - `TerminalAnswerClassifier` is not stop-gate authority.
+  - `TerminalAnswerClassifier` is not sole dispatch/final-answer authority.
+  - Legacy fallback/confirmation remains where exact parity is not proven.
+- **Deferred**:
+  - `PLAINTEXT_TERMINAL_ANSWER` / final-answer-path migration
+  - checkpoint/board consumers to a separate board/checkpoint slice
+- **Deferred rationale**:
+  - final-answer authority risk
+  - stop-gate risk
+  - intent-completion risk
+  - visible-text extraction/sanitization mismatch risk
+  - remaining consumers are policy/authority decisions, not structural reads
+
+## 21. Explicitly Deferred
 
 - A full refactor of `ResponsePipeline` or `DispatchPipeline`.
 - Changes to `ActionPolicy`.

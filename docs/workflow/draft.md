@@ -86,4 +86,9 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 82. Phase 8 Step 4M.2 `INVALID_OR_TRUNCATED_TERMINAL_TEXT` consumer migration implementation: done.
 83. Phase 8 Step 4N.1 `INTERNAL_SUMMARY_LIKE_TEXT` consumer migration design: done.
 84. Phase 8 Step 4N.2 `INTERNAL_SUMMARY_LIKE_TEXT` consumer migration implementation: done.
-85. Next: Phase 8 Step 4O Terminal Answer Remaining Consumer Review / Final-Answer Path Preflight.
+85. Phase 8 Step 4O Terminal Answer Remaining Consumer Review / Final-Answer Path Preflight: done.
+86. Step 4O conclusion: NO-GO for `PLAINTEXT_TERMINAL_ANSWER` migration in the current slice; defer final-answer-path migration.
+87. Phase 8 Step 4P Terminal Answers slice closure / deferred final-answer migration: done.
+88. Phase 9 Step 1 Plan-First Bundle Execution Design Gate: done.
+89. Phase 9 Step 2 ExecutionPlan Producer/Consumer Contract Design: done.
+90. Next: Phase 9 Step 3 ExecutionPlan Contract Characterization Tests.
