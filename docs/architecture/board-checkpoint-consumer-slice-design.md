@@ -787,3 +787,51 @@ As of Phase 10, the semantic runtime refactor adopts a new guiding principle for
   - No action-bearing or memory checkpoint branch was enabled.
 - **Next**:
   - Phase 27 Step 3: rerun targeted live Angelica smoke for `board_checkpoint.plan_checkpoint_with_text` under the smoke profile.
+
+### 4.4. Step 27.3: `PLAN_CHECKPOINT_WITH_TEXT` Live Angelica Smoke
+
+- **Goal**:
+  - Confirm that the smoke-profile compiler-authority branch works in a real Angelica run, not only in synthetic smoke.
+- **Completed Outcome**:
+  - Targeted live Angelica smoke passed for `PLAN_CHECKPOINT_WITH_TEXT`.
+  - Observed authority diagnostics:
+    - `branch = board_checkpoint.plan_checkpoint_with_text`
+    - `switch_value = compiler`
+    - `authority_source = compiler`
+    - `agreement = True`
+    - `fallback_used = False`
+    - `behavior_changed = False`
+  - Structural parity remained aligned.
+  - The runtime did not crash.
+- **What did not change**:
+  - The default registry remains `legacy`.
+  - No board handler, dispatch, final-answer, stop-gate, `ActionPolicy`, parser, `history.py`, or classification-stage behavior changed.
+- **Next**:
+  - Phase 27 Step 4: enable/validate compiler authority for `board_checkpoint.plan_checkpoint_with_action` via smoke profile.
+
+### 4.5. Step 27.4: `PLAN_CHECKPOINT_WITH_ACTION` Smoke-Profile Compiler Authority
+
+- **Goal**:
+  - Enable the next plan-domain sibling branch under the smoke profile only, while keeping the action-bearing path behavior-preserving.
+- **Completed Outcome**:
+  - Added branch-specific authority resolution for `board_checkpoint.plan_checkpoint_with_action`.
+  - Added explicit authority-source diagnostics for that branch:
+    - `legacy`
+    - `compiler`
+    - `legacy_fallback`
+  - Expanded synthetic smoke validation to prove:
+    - default-registry legacy behavior for clean `PLAN_CHECKPOINT_WITH_ACTION`
+    - smoke-profile compiler authority selection for clean `PLAN_CHECKPOINT_WITH_ACTION`
+    - no unsafe authority selection for:
+      - `PLAN_CHECKPOINT_ONLY`
+      - `PLAN_CHECKPOINT_WITH_TEXT`
+      - `MEMORY_CHECKPOINT_WITH_ACTION`
+      - action-only
+      - mixed plan+memory+action
+      - invalid open-`<think>` checkpoint action
+- **What did not change**:
+  - The default registry remains `legacy`.
+  - No dispatch/action behavior changed.
+  - No board handler, memory-board, final-answer, stop-gate, `ActionPolicy`, parser, `history.py`, or classification-stage behavior changed.
+- **Next**:
+  - Phase 27 Step 5: live Angelica smoke for `board_checkpoint.plan_checkpoint_with_action` under the smoke profile.

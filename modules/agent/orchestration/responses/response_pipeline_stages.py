@@ -14,7 +14,7 @@ from .board_checkpoint_semantics import resolve_memory_checkpoint_and_action_typ
 from .board_checkpoint_semantics import resolve_memory_checkpoint_and_text_typed_primary
 from .board_checkpoint_semantics import resolve_memory_checkpoint_only_typed_primary
 from ..config.switch_registry import get_switch
-from .board_checkpoint_semantics import resolve_plan_checkpoint_and_action_typed_primary
+from .board_checkpoint_semantics import resolve_plan_checkpoint_and_action_authority
 from .board_checkpoint_semantics import resolve_plan_checkpoint_and_text_authority
 from .board_checkpoint_semantics import resolve_plan_checkpoint_only_authority
 from .board_checkpoint_semantics import resolve_plan_checkpoint_only_typed_primary
@@ -379,12 +379,14 @@ class ResponsePipelineStagesMixin:
         )
         self._log_board_checkpoint_authority_resolution(plan_checkpoint_and_text_authority)
         effective_plan_checkpoint_and_text = plan_checkpoint_and_text_authority.effective_value
-        effective_plan_checkpoint_and_action = resolve_plan_checkpoint_and_action_typed_primary(
+        plan_checkpoint_with_action_switch = get_switch("board_checkpoint.plan_checkpoint_with_action")
+        plan_checkpoint_and_action_authority = resolve_plan_checkpoint_and_action_authority(
             plan_semantic_result,
-            legacy_plan_checkpoint_only=plan_checkpoint_only,
-            legacy_plan_checkpoint_and_text=plan_checkpoint_and_text,
             legacy_plan_checkpoint_and_action=plan_checkpoint_and_action,
+            switch_value=plan_checkpoint_with_action_switch,
         )
+        self._log_board_checkpoint_authority_resolution(plan_checkpoint_and_action_authority)
+        effective_plan_checkpoint_and_action = plan_checkpoint_and_action_authority.effective_value
         if plan_board_decision.handled:
             self._log_board_checkpoint_structural_parity(
                 compiler_analysis,
@@ -452,12 +454,13 @@ class ResponsePipelineStagesMixin:
         )
         self._log_board_checkpoint_authority_resolution(plan_checkpoint_and_text_authority)
         effective_plan_checkpoint_and_text = plan_checkpoint_and_text_authority.effective_value
-        effective_plan_checkpoint_and_action = resolve_plan_checkpoint_and_action_typed_primary(
+        plan_checkpoint_and_action_authority = resolve_plan_checkpoint_and_action_authority(
             board_checkpoint_semantic_result,
-            legacy_plan_checkpoint_only=plan_checkpoint_only,
-            legacy_plan_checkpoint_and_text=plan_checkpoint_and_text,
             legacy_plan_checkpoint_and_action=plan_checkpoint_and_action,
+            switch_value=plan_checkpoint_with_action_switch,
         )
+        self._log_board_checkpoint_authority_resolution(plan_checkpoint_and_action_authority)
+        effective_plan_checkpoint_and_action = plan_checkpoint_and_action_authority.effective_value
 
         # Step 18: First true authority candidate for memory-checkpoint-only
         effective_memory_checkpoint_only = resolve_memory_checkpoint_only_typed_primary(

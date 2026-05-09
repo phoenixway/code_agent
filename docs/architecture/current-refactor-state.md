@@ -4,9 +4,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 27 Step 2: Enable/validate compiler authority for `board_checkpoint.plan_checkpoint_with_text` via smoke profile
+- **Phase**: Phase 27 Step 4: Enable/validate compiler authority for `board_checkpoint.plan_checkpoint_with_action` via smoke profile
 - **Status**: Complete.
-- **Next Step**: Phase 27 Step 3: Rerun live Angelica smoke for `board_checkpoint.plan_checkpoint_with_text` under the smoke profile.
+- **Next Step**: Phase 27 Step 5: Live Angelica smoke for `board_checkpoint.plan_checkpoint_with_action` under the smoke profile.
 - **Boundary**: The checkpoint parity bridge remains diagnostic-only. Legacy board handlers still own commit behavior, the prepass compiler analysis remains observational, and `_apply_compiler_diagnosis` remains the effectful classification-stage path that recomputes on normalized response.
 
 ## Step 4I Parity Matrix
@@ -1049,6 +1049,38 @@ This document is the single source of truth for the current state of the Semanti
     - default-registry legacy behavior for `PLAN_CHECKPOINT_WITH_TEXT`
     - smoke-profile compiler authority for clean `PLAN_CHECKPOINT_WITH_TEXT`
     - negative controls for checkpoint-only, checkpoint-with-action, memory-checkpoint-with-text, and invalid open-`<think>` cases
+  - No runtime behavior changed under the default registry.
+- **Phase 27 Step 3: `PLAN_CHECKPOINT_WITH_TEXT` Live Angelica Smoke (Complete)**
+  - Targeted live Angelica smoke passed under the smoke profile.
+  - Observed raw output:
+    - `<subgoal action="mark_in_progress" id="sg_1" />`
+    - `Plan board updated.`
+  - Authority diagnostics showed:
+    - `branch = board_checkpoint.plan_checkpoint_with_text`
+    - `switch_value = compiler`
+    - `authority_source = compiler`
+    - `agreement = True`
+    - `fallback_used = False`
+    - `behavior_changed = False`
+  - Structural parity remained aligned and the runtime did not crash.
+  - Default registry remains `legacy`.
+- **Phase 27 Step 4: `PLAN_CHECKPOINT_WITH_ACTION` Smoke-Profile Compiler Authority (Complete)**
+  - Added branch-specific authority resolution and diagnostics for `board_checkpoint.plan_checkpoint_with_action`.
+  - Smoke profile now enables:
+    - `board_checkpoint.plan_checkpoint_only = "compiler"`
+    - `board_checkpoint.plan_checkpoint_with_text = "compiler"`
+    - `board_checkpoint.plan_checkpoint_with_action = "compiler"`
+  - Synthetic smoke now validates:
+    - default-registry legacy behavior for clean `PLAN_CHECKPOINT_WITH_ACTION`
+    - smoke-profile compiler authority selection for clean `PLAN_CHECKPOINT_WITH_ACTION`
+    - negative controls for:
+      - `PLAN_CHECKPOINT_ONLY`
+      - `PLAN_CHECKPOINT_WITH_TEXT`
+      - `MEMORY_CHECKPOINT_WITH_ACTION`
+      - action-only
+      - mixed plan+memory+action
+      - invalid open-`<think>` checkpoint action
+  - No dispatch/action behavior changed.
   - No runtime behavior changed under the default registry.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches

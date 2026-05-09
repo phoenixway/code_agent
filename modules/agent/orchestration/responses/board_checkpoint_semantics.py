@@ -323,6 +323,91 @@ def resolve_plan_checkpoint_and_action_typed_primary(
     )
 
 
+def resolve_plan_checkpoint_and_action_authority(
+    result: BoardCheckpointSemanticResult | None,
+    *,
+    legacy_plan_checkpoint_and_action: bool,
+    switch_value: str,
+) -> BoardCheckpointAuthorityDiagnostic:
+    """Resolve plan-checkpoint-and-action and return diagnostic metadata for authority selection."""
+    normalized_switch = str(switch_value or "legacy").strip().lower()
+    if normalized_switch not in {"legacy", "compiler", "shadow"}:
+        normalized_switch = "legacy"
+
+    legacy_kind = "PLAN_CHECKPOINT_WITH_ACTION" if legacy_plan_checkpoint_and_action else "NONE"
+    typed_kind = "UNKNOWN"
+    compiler_eligible = False
+
+    if result is not None:
+        has_clean_compiler_pca_facts = (
+            result.compiler_has_checkpoint
+            and result.compiler_has_subgoal_tags
+            and not result.compiler_has_memory_tags
+            and result.compiler_has_action
+            and result.compiler_action_count == 1
+            and not result.compiler_has_visible_text
+            and not result.compiler_error_code
+            and result.kind != BoardCheckpointKind.MIXED_BOARD_CHECKPOINT
+            and result.legacy_memory_outcome == "none"
+        )
+        if has_clean_compiler_pca_facts:
+            typed_kind = "PLAN_CHECKPOINT_WITH_ACTION"
+            compiler_eligible = result.source in {
+                BoardCheckpointSource.COMPILER_PREPASS_FACT,
+                BoardCheckpointSource.COMBINED_SHADOW,
+            }
+
+    agreement = legacy_plan_checkpoint_and_action == compiler_eligible
+    branch_active = bool(legacy_plan_checkpoint_and_action or compiler_eligible)
+
+    if normalized_switch != "compiler":
+        return BoardCheckpointAuthorityDiagnostic(
+            branch="board_checkpoint.plan_checkpoint_with_action",
+            switch_value=normalized_switch,
+            authority_source="legacy",
+            legacy_active=legacy_plan_checkpoint_and_action,
+            typed_kind=typed_kind,
+            legacy_kind=legacy_kind,
+            agreement=agreement,
+            fallback_used=False,
+            behavior_changed=False,
+            branch_active=branch_active,
+            compiler_eligible=compiler_eligible,
+            effective_value=legacy_plan_checkpoint_and_action,
+        )
+
+    if compiler_eligible:
+        return BoardCheckpointAuthorityDiagnostic(
+            branch="board_checkpoint.plan_checkpoint_with_action",
+            switch_value=normalized_switch,
+            authority_source="compiler",
+            legacy_active=legacy_plan_checkpoint_and_action,
+            typed_kind=typed_kind,
+            legacy_kind=legacy_kind,
+            agreement=agreement,
+            fallback_used=False,
+            behavior_changed=not legacy_plan_checkpoint_and_action,
+            branch_active=True,
+            compiler_eligible=True,
+            effective_value=True,
+        )
+
+    return BoardCheckpointAuthorityDiagnostic(
+        branch="board_checkpoint.plan_checkpoint_with_action",
+        switch_value=normalized_switch,
+        authority_source="legacy_fallback",
+        legacy_active=legacy_plan_checkpoint_and_action,
+        typed_kind=typed_kind,
+        legacy_kind=legacy_kind,
+        agreement=agreement,
+        fallback_used=True,
+        behavior_changed=False,
+        branch_active=branch_active,
+        compiler_eligible=compiler_eligible,
+        effective_value=legacy_plan_checkpoint_and_action,
+    )
+
+
 def resolve_plan_checkpoint_only_with_compiler_switch(
     result: BoardCheckpointSemanticResult | None,
     *,
@@ -496,6 +581,7 @@ def build_board_checkpoint_semantic_result(
     compiler_has_memory_tags = bool(getattr(ir, "has_memory_tags", False))
     compiler_has_subgoal_tags = bool(getattr(ir, "has_subgoal_tags", False))
     compiler_has_memory_checkpoint = bool(getattr(ir, "has_memory_checkpoint", False))
+    compiler_action_count = int(getattr(ir, "action_count", 0) or 0)
     compiler_visible_text_source = str(getattr(ir, "visible_text_source", "") or "")
     compiler_has_visible_answer = bool(getattr(ir, "has_visible_answer", False))
     compiler_has_pre_action_text = bool(getattr(ir, "has_pre_action_text", False))
@@ -614,6 +700,7 @@ def build_board_checkpoint_semantic_result(
         compiler_has_memory_tags=compiler_has_memory_tags,
         compiler_has_subgoal_tags=compiler_has_subgoal_tags,
         compiler_has_memory_checkpoint=compiler_has_memory_checkpoint,
+        compiler_action_count=compiler_action_count,
         compiler_visible_text_source=compiler_visible_text_source,
         legacy_has_checkpoint=legacy_has_checkpoint,
         compiler_has_checkpoint_like=compiler_has_checkpoint_like,

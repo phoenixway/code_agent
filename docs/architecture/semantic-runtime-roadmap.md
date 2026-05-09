@@ -2030,6 +2030,46 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 27 Step 3: rerun live Angelica smoke for `board_checkpoint.plan_checkpoint_with_text` under the smoke profile.
 
+#### Phase 27 Step 3: `PLAN_CHECKPOINT_WITH_TEXT` Live Angelica Smoke
+
+- **Status**: Done.
+- **Goal**: Confirm that the smoke-profile compiler-authority branch works in a real Angelica run, not only in deterministic synthetic coverage.
+- **Completed Outcome**:
+  - Targeted live Angelica smoke passed.
+  - Compiler authority was selected for `board_checkpoint.plan_checkpoint_with_text`.
+  - Structural parity remained aligned.
+  - No fallback was used.
+  - No runtime crash occurred.
+  - The default registry remains `legacy`.
+- **Next**:
+  - Phase 27 Step 4: enable/validate compiler authority for `board_checkpoint.plan_checkpoint_with_action` via smoke profile.
+
+#### Phase 27 Step 4: `PLAN_CHECKPOINT_WITH_ACTION` Smoke-Profile Compiler Authority
+
+- **Status**: Done.
+- **Goal**: Enable the next plan-domain sibling branch under the smoke profile only, while preserving action availability and preventing any checkpoint-only/text-only swallowing of the dispatch path.
+- **Completed Outcome**:
+  - Added branch-specific authority resolution and authority-source diagnostics for `board_checkpoint.plan_checkpoint_with_action`.
+  - The smoke registry now enables:
+    - `board_checkpoint.plan_checkpoint_only = "compiler"`
+    - `board_checkpoint.plan_checkpoint_with_text = "compiler"`
+    - `board_checkpoint.plan_checkpoint_with_action = "compiler"`
+  - Synthetic smoke validates:
+    - default-registry legacy behavior for clean `PLAN_CHECKPOINT_WITH_ACTION`
+    - smoke-profile compiler authority selection for clean `PLAN_CHECKPOINT_WITH_ACTION`
+    - negative controls for:
+      - `PLAN_CHECKPOINT_ONLY`
+      - `PLAN_CHECKPOINT_WITH_TEXT`
+      - `MEMORY_CHECKPOINT_WITH_ACTION`
+      - action-only
+      - mixed plan+memory+action
+      - invalid open-`<think>` checkpoint action
+  - No dispatch/action behavior changed.
+  - The default registry remains `legacy`.
+  - No runtime behavior changed under the default registry.
+- **Next**:
+  - Phase 27 Step 5: live Angelica smoke for `board_checkpoint.plan_checkpoint_with_action` under the smoke profile.
+
 ---
 
 ### Phase 11: RecoveryStrategy Registry Expansion

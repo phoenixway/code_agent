@@ -135,4 +135,6 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 131. Phase 10 Step 26D: done. Added explicit board/checkpoint authority-source diagnostics so smoke logs distinguish shadow parity from real compiler-authority selection.
 132. Phase 27 Step 1: done. Expanded deterministic board/checkpoint synthetic smoke coverage across plan, memory, mixed, action-only, plaintext-only, and invalid checkpoint controls.
 133. Phase 27 Step 2: done. Enabled and validated smoke-profile compiler authority for `board_checkpoint.plan_checkpoint_with_text` with positive and negative synthetic controls, while keeping the default registry legacy.
-134. Next: Phase 27 Step 3: Rerun live Angelica smoke for `board_checkpoint.plan_checkpoint_with_text` under the smoke profile.
+134. Phase 27 Step 3: done. Targeted live Angelica smoke for `board_checkpoint.plan_checkpoint_with_text` passed under the smoke profile with compiler authority selected, no fallback, and no runtime crash.
+135. Phase 27 Step 4: done. Enabled and validated smoke-profile compiler authority for `board_checkpoint.plan_checkpoint_with_action` with positive and negative synthetic controls, while keeping the default registry legacy and leaving dispatch behavior unchanged.
+136. Next: Phase 27 Step 5: Live Angelica smoke for `board_checkpoint.plan_checkpoint_with_action` under the smoke profile.

@@ -14,6 +14,7 @@ from modules.agent.orchestration.responses.board_checkpoint_models import (
 )
 from modules.agent.orchestration.responses.board_checkpoint_semantics import (
     build_board_checkpoint_semantic_result,
+    resolve_plan_checkpoint_and_action_authority,
     resolve_plan_checkpoint_and_text_authority,
     resolve_plan_checkpoint_only_authority,
     resolve_legacy_derived_checkpoint_effective_flags,
@@ -2597,6 +2598,89 @@ class TestBoardCheckpointAuthorityDiagnostics(unittest.TestCase):
         diagnostic = resolve_plan_checkpoint_and_text_authority(
             result,
             legacy_plan_checkpoint_and_text=False,
+            switch_value="compiler",
+        )
+
+        self.assertEqual("compiler", diagnostic.switch_value)
+        self.assertEqual("legacy_fallback", diagnostic.authority_source)
+        self.assertEqual("UNKNOWN", diagnostic.typed_kind)
+        self.assertTrue(diagnostic.fallback_used)
+        self.assertFalse(diagnostic.behavior_changed)
+        self.assertFalse(diagnostic.branch_active)
+        self.assertFalse(diagnostic.effective_value)
+
+    def test_resolve_plan_checkpoint_with_action_authority_legacy_mode(self):
+        result = BoardCheckpointSemanticResult(
+            source=BoardCheckpointSource.COMPILER_PREPASS_FACT,
+            compiler_has_checkpoint=True,
+            compiler_has_subgoal_tags=True,
+            compiler_has_memory_tags=False,
+            compiler_has_action=True,
+            compiler_action_count=1,
+            compiler_has_visible_text=False,
+            compiler_error_code="",
+            legacy_memory_outcome="none",
+        )
+
+        diagnostic = resolve_plan_checkpoint_and_action_authority(
+            result,
+            legacy_plan_checkpoint_and_action=False,
+            switch_value="legacy",
+        )
+
+        self.assertEqual("board_checkpoint.plan_checkpoint_with_action", diagnostic.branch)
+        self.assertEqual("legacy", diagnostic.switch_value)
+        self.assertEqual("legacy", diagnostic.authority_source)
+        self.assertEqual("PLAN_CHECKPOINT_WITH_ACTION", diagnostic.typed_kind)
+        self.assertEqual("NONE", diagnostic.legacy_kind)
+        self.assertFalse(diagnostic.fallback_used)
+        self.assertFalse(diagnostic.behavior_changed)
+        self.assertTrue(diagnostic.branch_active)
+        self.assertFalse(diagnostic.effective_value)
+
+    def test_resolve_plan_checkpoint_with_action_authority_compiler_mode(self):
+        result = BoardCheckpointSemanticResult(
+            source=BoardCheckpointSource.COMPILER_PREPASS_FACT,
+            compiler_has_checkpoint=True,
+            compiler_has_subgoal_tags=True,
+            compiler_has_memory_tags=False,
+            compiler_has_action=True,
+            compiler_action_count=1,
+            compiler_has_visible_text=False,
+            compiler_error_code="",
+            legacy_memory_outcome="none",
+        )
+
+        diagnostic = resolve_plan_checkpoint_and_action_authority(
+            result,
+            legacy_plan_checkpoint_and_action=False,
+            switch_value="compiler",
+        )
+
+        self.assertEqual("compiler", diagnostic.switch_value)
+        self.assertEqual("compiler", diagnostic.authority_source)
+        self.assertEqual("PLAN_CHECKPOINT_WITH_ACTION", diagnostic.typed_kind)
+        self.assertFalse(diagnostic.fallback_used)
+        self.assertTrue(diagnostic.behavior_changed)
+        self.assertTrue(diagnostic.branch_active)
+        self.assertTrue(diagnostic.effective_value)
+
+    def test_resolve_plan_checkpoint_with_action_authority_compiler_fallback(self):
+        result = BoardCheckpointSemanticResult(
+            source=BoardCheckpointSource.COMPILER_PREPASS_FACT,
+            compiler_has_checkpoint=True,
+            compiler_has_subgoal_tags=True,
+            compiler_has_memory_tags=False,
+            compiler_has_action=True,
+            compiler_action_count=1,
+            compiler_has_visible_text=True,
+            compiler_error_code="",
+            legacy_memory_outcome="none",
+        )
+
+        diagnostic = resolve_plan_checkpoint_and_action_authority(
+            result,
+            legacy_plan_checkpoint_and_action=False,
             switch_value="compiler",
         )
 

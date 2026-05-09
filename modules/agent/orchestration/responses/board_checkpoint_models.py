@@ -44,6 +44,7 @@ class BoardCheckpointSemanticResult:
     compiler_has_memory_tags: bool = False
     compiler_has_subgoal_tags: bool = False
     compiler_has_memory_checkpoint: bool = False
+    compiler_action_count: int = 0
     compiler_visible_text_source: str = ""
     legacy_has_checkpoint: bool = False
     compiler_has_checkpoint_like: bool = False

@@ -285,6 +285,7 @@ def test_plan_checkpoint_with_action_is_not_treated_as_checkpoint_only(smoke_reg
     assert state.compiler_analysis.shape.name == "ACTION_ONLY"
     assert state.compiler_analysis.ir.has_subgoal_tags is True
     assert state.compiler_analysis.ir.has_action is True
+    assert state.compiler_analysis.ir.action_count == 1
     assert state.plan_checkpoint_only is False
     assert state.plan_checkpoint_and_action is True
     assert outcome is None
@@ -298,6 +299,16 @@ def test_plan_checkpoint_with_action_is_not_treated_as_checkpoint_only(smoke_reg
     assert len(parity_calls) == 1
     assert parity_calls[0].kwargs["legacy_checkpoint_with_action"] is True
     assert parity_calls[0].kwargs["compiler_has_action"] is True
+    action_authority_calls = _authority_calls_for_branch(harness, "board_checkpoint.plan_checkpoint_with_action")
+    assert len(action_authority_calls) >= 1
+    final_action_authority = action_authority_calls[-1]
+    assert final_action_authority.kwargs["switch_value"] == "compiler"
+    assert final_action_authority.kwargs["authority_source"] == "compiler"
+    assert final_action_authority.kwargs["typed_kind"] == "PLAN_CHECKPOINT_WITH_ACTION"
+    assert final_action_authority.kwargs["legacy_kind"] == "PLAN_CHECKPOINT_WITH_ACTION"
+    assert final_action_authority.kwargs["agreement"] is True
+    assert final_action_authority.kwargs["fallback_used"] is False
+    assert final_action_authority.kwargs["behavior_changed"] is False
     authority_calls = _authority_calls_for_branch(harness, "board_checkpoint.plan_checkpoint_with_text")
     assert len(authority_calls) >= 1
     final_authority = authority_calls[-1]
@@ -305,6 +316,31 @@ def test_plan_checkpoint_with_action_is_not_treated_as_checkpoint_only(smoke_reg
     assert final_authority.kwargs["authority_source"] == "legacy_fallback"
     assert final_authority.kwargs["typed_kind"] == "UNKNOWN"
     assert final_authority.kwargs["fallback_used"] is True
+    assert final_authority.kwargs["behavior_changed"] is False
+
+
+def test_plan_checkpoint_with_action_default_registry_stays_legacy():
+    response = (
+        '<subgoal action="mark_in_progress" id="sg_1" />\n'
+        '<action>{"type":"read_file","path":"README.md"}</action>'
+    )
+
+    harness, state, outcome = _run_checkpoint_stage(response)
+
+    assert state.compiler_analysis is not None
+    assert state.compiler_analysis.error is None
+    assert state.compiler_analysis.shape.name == "ACTION_ONLY"
+    assert state.plan_checkpoint_and_action is True
+    assert outcome is None
+    authority_calls = _authority_calls_for_branch(harness, "board_checkpoint.plan_checkpoint_with_action")
+    assert len(authority_calls) >= 1
+    final_authority = authority_calls[-1]
+    assert final_authority.kwargs["switch_value"] == "legacy"
+    assert final_authority.kwargs["authority_source"] == "legacy"
+    assert final_authority.kwargs["typed_kind"] == "PLAN_CHECKPOINT_WITH_ACTION"
+    assert final_authority.kwargs["legacy_kind"] == "PLAN_CHECKPOINT_WITH_ACTION"
+    assert final_authority.kwargs["agreement"] is True
+    assert final_authority.kwargs["fallback_used"] is False
     assert final_authority.kwargs["behavior_changed"] is False
 
 
@@ -511,6 +547,10 @@ def test_action_only_negative_control_has_no_checkpoint_mismatch(smoke_registry_
     assert len(pct_calls) >= 1
     assert pct_calls[-1].kwargs["branch_active"] is False
     assert pct_calls[-1].kwargs["authority_source"] == "legacy_fallback"
+    pca_calls = _authority_calls_for_branch(harness, "board_checkpoint.plan_checkpoint_with_action")
+    assert len(pca_calls) >= 1
+    assert pca_calls[-1].kwargs["branch_active"] is False
+    assert pca_calls[-1].kwargs["authority_source"] == "legacy_fallback"
 
 
 def test_plaintext_only_negative_control_has_no_board_checkpoint_routing(smoke_registry_override):
@@ -553,6 +593,10 @@ def test_invalid_unclosed_think_checkpoint_negative_control_has_no_unsafe_author
     assert authority_calls[-1].kwargs["authority_source"] == "legacy_fallback"
     assert authority_calls[-1].kwargs["fallback_used"] is True
     assert authority_calls[-1].kwargs["behavior_changed"] is False
+    action_authority_calls = _authority_calls_for_branch(harness, "board_checkpoint.plan_checkpoint_with_action")
+    assert len(action_authority_calls) >= 1
+    assert action_authority_calls[-1].kwargs["authority_source"] == "legacy_fallback"
+    assert action_authority_calls[-1].kwargs["fallback_used"] is True
 
 
 def test_memory_checkpoint_with_text_is_not_treated_as_plan_checkpoint_with_text(smoke_registry_override):
@@ -603,3 +647,123 @@ def test_plan_checkpoint_only_is_not_treated_as_plan_checkpoint_with_text(smoke_
     assert final_authority.kwargs["authority_source"] == "legacy_fallback"
     assert final_authority.kwargs["typed_kind"] == "UNKNOWN"
     assert final_authority.kwargs["fallback_used"] is True
+
+
+def test_plan_checkpoint_only_is_not_treated_as_plan_checkpoint_with_action(smoke_registry_override):
+    response = '<subgoal action="mark_in_progress" id="sg_1" />'
+
+    harness, state, outcome = _run_checkpoint_stage(response)
+
+    assert outcome is not None
+    assert state.plan_checkpoint_only is True
+    assert state.plan_checkpoint_and_action is False
+    authority_calls = _authority_calls_for_branch(harness, "board_checkpoint.plan_checkpoint_with_action")
+    assert len(authority_calls) >= 1
+    final_authority = authority_calls[-1]
+    assert final_authority.kwargs["switch_value"] == "compiler"
+    assert final_authority.kwargs["authority_source"] == "legacy_fallback"
+    assert final_authority.kwargs["typed_kind"] == "UNKNOWN"
+    assert final_authority.kwargs["fallback_used"] is True
+
+
+def test_plan_checkpoint_with_text_is_not_treated_as_plan_checkpoint_with_action(smoke_registry_override):
+    response = '<subgoal action="mark_in_progress" id="sg_1" />\nPlan board updated.'
+
+    harness, state, outcome = _run_checkpoint_stage(response)
+
+    assert outcome is None
+    assert state.plan_checkpoint_and_text is True
+    assert state.plan_checkpoint_and_action is False
+    authority_calls = _authority_calls_for_branch(harness, "board_checkpoint.plan_checkpoint_with_action")
+    assert len(authority_calls) >= 1
+    final_authority = authority_calls[-1]
+    assert final_authority.kwargs["switch_value"] == "compiler"
+    assert final_authority.kwargs["authority_source"] == "legacy_fallback"
+    assert final_authority.kwargs["typed_kind"] == "UNKNOWN"
+    assert final_authority.kwargs["fallback_used"] is True
+
+
+def test_memory_checkpoint_with_action_is_not_treated_as_plan_checkpoint_with_action(smoke_registry_override):
+    response = '<memory_update_done />\n<action>{"type":"read_file","path":"README.md"}</action>'
+    memory_stage = _StaticMemoryStage(
+        SimpleNamespace(
+            handled=True,
+            response_text=response,
+            next_query="memory_followup",
+            reason="memory_checkpoint_and_action",
+            source="memory_board",
+            memory_checkpoint_only=False,
+            memory_checkpoint_and_text=False,
+            memory_checkpoint_and_action=True,
+        )
+    )
+
+    harness, state, outcome = _run_checkpoint_stage(
+        response,
+        plan_board_stage=_PlanPassThroughStage(),
+        memory_board_stage=memory_stage,
+    )
+
+    assert outcome is None
+    assert state.memory_checkpoint_and_action is True
+    assert state.plan_checkpoint_and_action is False
+    authority_calls = _authority_calls_for_branch(harness, "board_checkpoint.plan_checkpoint_with_action")
+    assert len(authority_calls) >= 1
+    final_authority = authority_calls[-1]
+    assert final_authority.kwargs["switch_value"] == "compiler"
+    assert final_authority.kwargs["authority_source"] == "legacy_fallback"
+    assert final_authority.kwargs["typed_kind"] == "UNKNOWN"
+    assert final_authority.kwargs["fallback_used"] is True
+
+
+def test_mixed_plan_memory_action_does_not_select_plan_checkpoint_with_action(smoke_registry_override):
+    response = (
+        '<subgoal action="mark_in_progress" id="sg_1" />\n'
+        '<memory_update_done />\n'
+        '<action>{"type":"read_file","path":"README.md"}</action>'
+    )
+    memory_stage = _StaticMemoryStage(
+        SimpleNamespace(
+            handled=False,
+            response_text='<memory_update_done />\n<action>{"type":"read_file","path":"README.md"}</action>',
+            next_query=None,
+            reason="",
+            source="memory_board",
+            memory_checkpoint_only=False,
+            memory_checkpoint_and_text=False,
+            memory_checkpoint_and_action=True,
+        )
+    )
+
+    harness, state, outcome = _run_checkpoint_stage(response, memory_board_stage=memory_stage)
+
+    assert outcome is None
+    assert state.plan_checkpoint_and_action is True
+    assert state.memory_checkpoint_and_action is True
+    authority_calls = _authority_calls_for_branch(harness, "board_checkpoint.plan_checkpoint_with_action")
+    assert len(authority_calls) >= 1
+    final_authority = authority_calls[-1]
+    assert final_authority.kwargs["switch_value"] == "compiler"
+    assert final_authority.kwargs["authority_source"] == "legacy_fallback"
+    assert final_authority.kwargs["fallback_used"] is True
+    assert final_authority.kwargs["behavior_changed"] is False
+
+
+def test_invalid_open_think_plan_checkpoint_action_has_no_unsafe_authority(smoke_registry_override):
+    response = (
+        '<think>\n'
+        '<subgoal action="mark_in_progress" id="sg_1" />\n'
+        '<action>{"type":"read_file","path":"README.md"}</action>'
+    )
+
+    harness, state, outcome = _run_checkpoint_stage(response)
+
+    assert outcome is None
+    assert state.compiler_analysis is not None
+    assert state.compiler_analysis.error is not None
+    authority_calls = _authority_calls_for_branch(harness, "board_checkpoint.plan_checkpoint_with_action")
+    assert len(authority_calls) >= 1
+    final_authority = authority_calls[-1]
+    assert final_authority.kwargs["authority_source"] == "legacy_fallback"
+    assert final_authority.kwargs["fallback_used"] is True
+    assert final_authority.kwargs["behavior_changed"] is False
