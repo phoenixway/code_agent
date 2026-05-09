@@ -4,9 +4,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 10 Step 21: Consolidate BoardCheckpoint Typed-Primary Candidate Helpers / Reduce Boilerplate
+- **Phase**: Phase 10 Step 22: First Compiler-Authority Switch for BoardCheckpoint Routing
 - **Status**: Complete.
-- **Next Step**: Phase 10 Step 22: BoardCheckpoint Authority Readiness Review / Decide Whether to Attempt Real Authority Transfer or Close Slice.
+- **Next Step**: Phase 10 Step 23: Run Angelica smoke tests with PLAN_CHECKPOINT_ONLY compiler-authority switch enabled, then decide whether to keep/fix/expand.
 - **Boundary**: The checkpoint parity bridge remains diagnostic-only. Legacy board handlers still own commit behavior, the prepass compiler analysis remains observational, and `_apply_compiler_diagnosis` remains the effectful classification-stage path that recomputes on normalized response.
 
 ## Step 4I Parity Matrix
@@ -990,6 +990,10 @@ This document is the single source of truth for the current state of the Semanti
 - **Phase 10 Step 21: Consolidate BoardCheckpoint Typed-Primary Candidate Helpers / Reduce Boilerplate (Complete)**
   - The typed-primary candidate helpers were consolidated to reduce boilerplate.
   - No authority was expanded, and no observable routing or commit behavior changed.
+- **Phase 10 Step 22: First Compiler-Authority Switch for BoardCheckpoint Routing (Complete)**
+  - The first default-off compiler-authority switch was introduced for the `PLAN_CHECKPOINT_ONLY` branch.
+  - When enabled, a clean compiler-only signal can now trigger the plan checkpoint continuation path.
+  - Default behavior remains unchanged. Legacy fallback is preserved. No other branches were migrated.
 
 ## Phase 9 Step 6D Outcome
 

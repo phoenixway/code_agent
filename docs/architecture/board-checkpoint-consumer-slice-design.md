@@ -581,6 +581,17 @@ This design-only step is complete. It analyzed whether it is safe for the classi
   - No observable routing or commit behavior changed.
   - Legacy fallback and disagreement guards remain fully in place.
 
-### 3.22. Next Intended Step
+### 3.22. Step 22: First Compiler-Authority Switch for BoardCheckpoint Routing
 
-The next step is **Phase 10 Step 22: BoardCheckpoint Authority Readiness Review / Decide Whether to Attempt Real Authority Transfer or Close Slice**.
+- **Outcome**:
+  - The first real compiler-authority switch was introduced for `PLAN_CHECKPOINT_ONLY`.
+  - A new pure helper, `resolve_plan_checkpoint_only_with_compiler_switch`, now allows a clean, compiler-only `PLAN_CHECKPOINT_ONLY` signal to trigger the plan checkpoint continuation path.
+- **What did not change**:
+  - The authority switch is **default-off**. Default behavior is unchanged.
+  - Legacy fallback remains fully in place when the switch is off or when compiler facts are ambiguous or unsafe (e.g., on compiler error, or with mixed text/action signals).
+  - No other branches (`PLAN_CHECKPOINT_WITH_TEXT`, `PLAN_CHECKPOINT_WITH_ACTION`, or any memory branches) were migrated.
+  - Board commit behavior, handler internals, and other pipeline stages remain unchanged.
+
+### 3.23. Next Intended Step
+
+The next step is **Phase 10 Step 23: Run Angelica smoke tests with PLAN_CHECKPOINT_ONLY compiler-authority switch enabled, then decide whether to keep/fix/expand**.

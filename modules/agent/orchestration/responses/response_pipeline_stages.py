@@ -13,9 +13,11 @@ from .board_checkpoint_semantics import resolve_legacy_derived_checkpoint_effect
 from .board_checkpoint_semantics import resolve_memory_checkpoint_and_action_typed_primary
 from .board_checkpoint_semantics import resolve_memory_checkpoint_and_text_typed_primary
 from .board_checkpoint_semantics import resolve_memory_checkpoint_only_typed_primary
+from .board_checkpoint_semantics import BOARD_CHECKPOINT_COMPILER_AUTHORITY_ENABLED
 from .board_checkpoint_semantics import resolve_plan_checkpoint_and_action_typed_primary
 from .board_checkpoint_semantics import resolve_plan_checkpoint_and_text_typed_primary
 from .board_checkpoint_semantics import resolve_plan_checkpoint_only_typed_primary
+from .board_checkpoint_semantics import resolve_plan_checkpoint_only_with_compiler_switch
 from .protocol_decision_bridge import compiler_invalid_kind_for_output, resolve_protocol_authority
 from .semantic_accessors import is_leaked_system_result
 from .terminal_answer_models import TerminalAnswerKind
@@ -329,13 +331,18 @@ class ResponsePipelineStagesMixin:
             memory_checkpoint_and_text=False,
             memory_checkpoint_and_action=False,
         )
-        # Step 20: Typed-primary candidate for plan branches
-        effective_plan_checkpoint_only = resolve_plan_checkpoint_only_typed_primary(
+        # Step 22: First compiler-authority switch for plan-checkpoint-only
+        effective_plan_checkpoint_only = resolve_plan_checkpoint_only_with_compiler_switch(
             plan_semantic_result,
             legacy_plan_checkpoint_only=plan_checkpoint_only,
-            legacy_plan_checkpoint_and_text=plan_checkpoint_and_text,
-            legacy_plan_checkpoint_and_action=plan_checkpoint_and_action,
+            switch_enabled=BOARD_CHECKPOINT_COMPILER_AUTHORITY_ENABLED.get("PLAN_CHECKPOINT_ONLY", False),
         )
+        if effective_plan_checkpoint_only and not plan_board_decision.handled:
+            plan_board_decision.handled = True
+            plan_board_decision.reason = "plan_checkpoint_only"
+            plan_board_decision.source = "compiler_authority"
+            plan_board_decision.next_query = None
+
         effective_plan_checkpoint_and_text = resolve_plan_checkpoint_and_text_typed_primary(
             plan_semantic_result,
             legacy_plan_checkpoint_only=plan_checkpoint_only,
@@ -394,13 +401,18 @@ class ResponsePipelineStagesMixin:
             memory_checkpoint_and_text=memory_checkpoint_and_text,
             memory_checkpoint_and_action=memory_checkpoint_and_action,
         )
-        # Step 20: Typed-primary candidate for plan branches
-        effective_plan_checkpoint_only = resolve_plan_checkpoint_only_typed_primary(
+        # Step 22: First compiler-authority switch for plan-checkpoint-only
+        effective_plan_checkpoint_only = resolve_plan_checkpoint_only_with_compiler_switch(
             board_checkpoint_semantic_result,
             legacy_plan_checkpoint_only=plan_checkpoint_only,
-            legacy_plan_checkpoint_and_text=plan_checkpoint_and_text,
-            legacy_plan_checkpoint_and_action=plan_checkpoint_and_action,
+            switch_enabled=BOARD_CHECKPOINT_COMPILER_AUTHORITY_ENABLED.get("PLAN_CHECKPOINT_ONLY", False),
         )
+        if effective_plan_checkpoint_only and not plan_board_decision.handled and not memory_board_decision.handled:
+            plan_board_decision.handled = True
+            plan_board_decision.reason = "plan_checkpoint_only"
+            plan_board_decision.source = "compiler_authority"
+            plan_board_decision.next_query = None
+
         effective_plan_checkpoint_and_text = resolve_plan_checkpoint_and_text_typed_primary(
             board_checkpoint_semantic_result,
             legacy_plan_checkpoint_only=plan_checkpoint_only,

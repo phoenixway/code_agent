@@ -1845,10 +1845,27 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - The helpers are consolidated.
   - No authority was expanded, and no observable routing or commit behavior changed.
 
-#### Phase 10 Step 22: BoardCheckpoint Authority Readiness Review / Decide Whether to Attempt Real Authority Transfer or Close Slice
+#### Phase 10 Step 22: First Compiler-Authority Switch for BoardCheckpoint Routing
+
+- **Status**: Done.
+- **Goal**: Implement the first real, default-off compiler-authority switch for `PLAN_CHECKPOINT_ONLY`.
+- **Allowed**:
+  - Add a feature flag for `PLAN_CHECKPOINT_ONLY` compiler authority, default-off.
+  - Add a pure helper to resolve the flag based on the switch and clean compiler facts.
+  - Update `_run_checkpoint_stage` to use the helper and trigger the plan checkpoint outcome on a compiler-only signal when the switch is on.
+- **Forbidden**:
+  - Enabling the switch by default.
+  - Migrating any other branch.
+  - Changing board commit behavior or handler internals.
+- **Done When**:
+  - The default-off switch is implemented for `PLAN_CHECKPOINT_ONLY`.
+  - A stage-level test proves the routing change when the switch is on and proves no change when off.
+  - Default behavior is unchanged.
+
+#### Phase 10 Step 23: Run Angelica smoke tests with PLAN_CHECKPOINT_ONLY compiler-authority switch enabled, then decide whether to keep/fix/expand
 
 - **Status**: Pending explicit approval.
-- **Goal**: Review the state of the board/checkpoint slice and decide whether a true authority transfer is safe or if the slice should be closed.
+- **Goal**: Manually enable the `PLAN_CHECKPOINT_ONLY` compiler-authority switch and run smoke tests to evaluate real-world behavior.
 
 ---
 

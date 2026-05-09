@@ -13,6 +13,7 @@ from modules.agent.orchestration.responses.board_checkpoint_models import (
     BoardCheckpointSource,
 )
 from modules.agent.orchestration.responses.board_checkpoint_semantics import (
+    BOARD_CHECKPOINT_COMPILER_AUTHORITY_ENABLED,
     build_board_checkpoint_semantic_result,
     resolve_legacy_derived_checkpoint_effective_flags,
     resolve_memory_checkpoint_and_action_typed_primary,
@@ -21,6 +22,7 @@ from modules.agent.orchestration.responses.board_checkpoint_semantics import (
     resolve_plan_checkpoint_and_action_typed_primary,
     resolve_plan_checkpoint_and_text_typed_primary,
     resolve_plan_checkpoint_only_typed_primary,
+    resolve_plan_checkpoint_only_with_compiler_switch,
 )
 from modules.agent.orchestration.responses.response_pipeline_stages import CheckpointStageState, ResponsePipelineStagesMixin
 from modules.agent.orchestration.responses.terminal_answer_models import TerminalAnswerKind, TerminalAnswerSemanticResult
@@ -1063,6 +1065,64 @@ class TestBoardCheckpointSemanticBuilder(unittest.TestCase):
             )
         )
 
+    def test_resolve_plan_checkpoint_only_with_compiler_switch(self):
+        legacy_true = True
+        legacy_false = False
+        result_compiler_pco = BoardCheckpointSemanticResult(
+            source=BoardCheckpointSource.COMPILER_PREPASS_FACT,
+            compiler_has_subgoal_tags=True,
+            compiler_has_visible_text=False,
+            compiler_has_action=False,
+            compiler_has_memory_tags=False,
+        )
+        result_compiler_error = BoardCheckpointSemanticResult(compiler_error_code="E_SOME_ERROR")
+        result_compiler_with_text = BoardCheckpointSemanticResult(
+            source=BoardCheckpointSource.COMPILER_PREPASS_FACT,
+            compiler_has_subgoal_tags=True,
+            compiler_has_visible_text=True,
+        )
+
+        # Switch OFF
+        self.assertTrue(
+            resolve_plan_checkpoint_only_with_compiler_switch(
+                result_compiler_pco, legacy_plan_checkpoint_only=legacy_true, switch_enabled=False
+            )
+        )
+        self.assertFalse(
+            resolve_plan_checkpoint_only_with_compiler_switch(
+                result_compiler_pco, legacy_plan_checkpoint_only=legacy_false, switch_enabled=False
+            )
+        )
+
+        # Switch ON
+        self.assertTrue(
+            resolve_plan_checkpoint_only_with_compiler_switch(
+                result_compiler_pco, legacy_plan_checkpoint_only=legacy_false, switch_enabled=True
+            )
+        )
+        self.assertTrue(
+            resolve_plan_checkpoint_only_with_compiler_switch(
+                result_compiler_pco, legacy_plan_checkpoint_only=legacy_true, switch_enabled=True
+            )
+        )
+
+        # Fallback cases with switch ON
+        self.assertFalse(
+            resolve_plan_checkpoint_only_with_compiler_switch(
+                None, legacy_plan_checkpoint_only=legacy_false, switch_enabled=True
+            )
+        )
+        self.assertFalse(
+            resolve_plan_checkpoint_only_with_compiler_switch(
+                result_compiler_error, legacy_plan_checkpoint_only=legacy_false, switch_enabled=True
+            )
+        )
+        self.assertFalse(
+            resolve_plan_checkpoint_only_with_compiler_switch(
+                result_compiler_with_text, legacy_plan_checkpoint_only=legacy_false, switch_enabled=True
+            )
+        )
+
 
 class TestResponsePipelineCheckpointStageCharacterization(unittest.TestCase):
     def setUp(self):
@@ -2042,6 +2102,94 @@ class TestResponsePipelineCheckpointStageCharacterization(unittest.TestCase):
         self.assertTrue(state.memory_checkpoint_only)
         self.assertTrue(state.memory_checkpoint_and_text)
         self.assertTrue(state.memory_checkpoint_and_action)
+
+    @patch.dict(
+        "modules.agent.orchestration.responses.board_checkpoint_semantics.BOARD_CHECKPOINT_COMPILER_AUTHORITY_ENABLED",
+        {"PLAN_CHECKPOINT_ONLY": True},
+    )
+    def test_plan_checkpoint_only_routes_with_compiler_authority_switch_on(self):
+        """With switch ON, a clean compiler-only PCO signal should trigger routing."""
+        self.harness.protocol_compiler.analyze.return_value = SimpleNamespace(
+            shape=SimpleNamespace(name="CHECKPOINT_ONLY"),
+            error=None,
+            ir=SimpleNamespace(
+                has_action=False,
+                has_checkpoint=True,
+                has_subgoal_tags=True,
+                has_memory_tags=False,
+                has_visible_answer=False,
+                has_pre_action_text=False,
+                visible_text_source="NONE",
+            ),
+        )
+        # Legacy handlers see nothing
+        self.harness.plan_board_stage.apply.return_value = SimpleNamespace(
+            handled=False,
+            response_text="response",
+            plan_checkpoint_only=False,
+            plan_checkpoint_and_text=False,
+            plan_checkpoint_and_action=False,
+        )
+        self.harness.memory_board_stage.apply.return_value = SimpleNamespace(
+            handled=False,
+            response_text="response",
+            memory_checkpoint_only=False,
+            memory_checkpoint_and_text=False,
+            memory_checkpoint_and_action=False,
+        )
+
+        state, outcome = asyncio.run(
+            self.harness._run_checkpoint_stage(
+                self.ctx, "response", reflection_repair_pending=False, reflection_repair_kind=""
+            )
+        )
+
+        self.assertIsInstance(outcome, ResponsePipelineOutcome)
+        self.assertTrue(outcome.continue_loop)
+        self.assertIsNone(outcome.next_query)
+        self.assertEqual("plan_checkpoint_only", outcome.reason)
+        self.assertEqual("compiler_authority", outcome.source)
+        self.assertTrue(state.plan_checkpoint_only)
+
+    def test_plan_checkpoint_only_does_not_route_with_compiler_authority_switch_off(self):
+        """With switch OFF, a clean compiler-only PCO signal must not trigger routing."""
+        self.harness.protocol_compiler.analyze.return_value = SimpleNamespace(
+            shape=SimpleNamespace(name="CHECKPOINT_ONLY"),
+            error=None,
+            ir=SimpleNamespace(
+                has_action=False,
+                has_checkpoint=True,
+                has_subgoal_tags=True,
+                has_memory_tags=False,
+                has_visible_answer=False,
+                has_pre_action_text=False,
+                visible_text_source="NONE",
+            ),
+        )
+        # Legacy handlers see nothing
+        self.harness.plan_board_stage.apply.return_value = SimpleNamespace(
+            handled=False,
+            response_text="response",
+            plan_checkpoint_only=False,
+            plan_checkpoint_and_text=False,
+            plan_checkpoint_and_action=False,
+        )
+        self.harness.memory_board_stage.apply.return_value = SimpleNamespace(
+            handled=False,
+            response_text="response",
+            memory_checkpoint_only=False,
+            memory_checkpoint_and_text=False,
+            memory_checkpoint_and_action=False,
+        )
+
+        state, outcome = asyncio.run(
+            self.harness._run_checkpoint_stage(
+                self.ctx, "response", reflection_repair_pending=False, reflection_repair_kind=""
+            )
+        )
+
+        self.assertIsNone(outcome)
+        self.assertFalse(state.plan_checkpoint_only)
 
 
 class TestResponsePipelineClassificationStage(unittest.TestCase):

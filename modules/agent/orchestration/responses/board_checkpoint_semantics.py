@@ -10,6 +10,11 @@ from .board_checkpoint_models import (
 )
 
 
+BOARD_CHECKPOINT_COMPILER_AUTHORITY_ENABLED = {
+    "PLAN_CHECKPOINT_ONLY": False,
+}
+
+
 def checkpoint_outcome_category(*, checkpoint_only: bool, checkpoint_and_text: bool, checkpoint_and_action: bool) -> str:
     if checkpoint_and_action:
         return "checkpoint_and_action"
@@ -236,6 +241,36 @@ def resolve_plan_checkpoint_and_action_typed_primary(
             legacy_plan_checkpoint_and_text,
         ],
     )
+
+
+def resolve_plan_checkpoint_only_with_compiler_switch(
+    result: BoardCheckpointSemanticResult | None,
+    *,
+    legacy_plan_checkpoint_only: bool,
+    switch_enabled: bool,
+) -> bool:
+    """Resolve plan-checkpoint-only with compiler authority switch."""
+    if not switch_enabled:
+        return legacy_plan_checkpoint_only
+    if result is None:
+        return legacy_plan_checkpoint_only
+    if result.compiler_error_code:
+        return legacy_plan_checkpoint_only
+
+    if legacy_plan_checkpoint_only:
+        return True
+
+    is_clean_compiler_pco = (
+        result.source == BoardCheckpointSource.COMPILER_PREPASS_FACT
+        and result.compiler_has_subgoal_tags
+        and not result.compiler_has_memory_tags
+        and not result.compiler_has_action
+        and not result.compiler_has_visible_text
+    )
+    if is_clean_compiler_pco:
+        return True
+
+    return legacy_plan_checkpoint_only
 
 
 def resolve_legacy_derived_checkpoint_effective_flags(
