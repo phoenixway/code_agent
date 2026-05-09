@@ -137,6 +137,14 @@ class ResponsePipelinePrevalidationMixin:
         except TypeError:
             return classifier(response, segments)
 
+    def _merge_normalization_metadata(self, parsed_output, normalized: NormalizedModelResponse) -> None:
+        if parsed_output is None or normalized is None:
+            return
+        if bool(getattr(normalized, "think_repair_applied", False)):
+            parsed_output.auto_closed_think = True
+            parsed_output.auto_closed_think_reason = str(getattr(normalized, "think_repair_reason", "") or "")
+            parsed_output.auto_closed_think_tag = str(getattr(normalized, "think_repair_tag", "") or "")
+
     def _compiler_invalid_kind(self, compiler_analysis) -> str:
         error = getattr(compiler_analysis, "error", None)
         if error is None:
@@ -416,6 +424,7 @@ class ResponsePipelinePrevalidationMixin:
             segments,
             allow_think_autorepair=allow_think_autorepair,
         )
+        self._merge_normalization_metadata(parsed_output, normalized)
         self._apply_compiler_diagnosis(parsed_output, response)
         checkpoint_has_think = self.semantics.has_complete_think_before_action(response)
         checkpoint_has_marker = self.semantics.has_memory_update_done_before_action(response)
