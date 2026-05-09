@@ -543,6 +543,152 @@ class TestBoardCheckpointSemanticBuilder(unittest.TestCase):
         self.assertFalse(result.parity_aligned)
         self.assertEqual("checkpoint_presence_mismatch", result.parity_mismatch_reason)
 
+    def test_builder_action_only_no_checkpoint_is_aligned(self):
+        compiler_analysis = SimpleNamespace(
+            shape=SimpleNamespace(name="ACTION_ONLY"),
+            error=None,
+            ir=SimpleNamespace(
+                has_action=True,
+                has_checkpoint=False,
+                has_memory_tags=False,
+                has_subgoal_tags=False,
+                has_memory_checkpoint=False,
+                has_visible_answer=False,
+                has_pre_action_text=False,
+                visible_text_source="NONE",
+            ),
+        )
+
+        result = build_board_checkpoint_semantic_result(
+            compiler_analysis,
+            raw_response="raw",
+            response_text="clean",
+            plan_checkpoint_only=False,
+            plan_checkpoint_and_text=False,
+            plan_checkpoint_and_action=False,
+            memory_checkpoint_only=False,
+            memory_checkpoint_and_text=False,
+            memory_checkpoint_and_action=False,
+        )
+
+        self.assertEqual(BoardCheckpointKind.NONE, result.kind)
+        self.assertFalse(result.legacy_has_checkpoint)
+        self.assertFalse(result.compiler_has_checkpoint_like)
+        self.assertTrue(result.compiler_has_action)
+        self.assertFalse(result.legacy_has_action)
+        self.assertTrue(result.parity_aligned)
+        self.assertEqual("", result.parity_mismatch_reason)
+
+    def test_builder_action_and_text_no_checkpoint_is_aligned(self):
+        compiler_analysis = SimpleNamespace(
+            shape=SimpleNamespace(name="PRE_ACTION_TEXT_AND_ACTION"),
+            error=None,
+            ir=SimpleNamespace(
+                has_action=True,
+                has_checkpoint=False,
+                has_memory_tags=False,
+                has_subgoal_tags=False,
+                has_memory_checkpoint=False,
+                has_visible_answer=False,
+                has_pre_action_text=True,
+                visible_text_source="PRE_ACTION_TEXT",
+            ),
+        )
+
+        result = build_board_checkpoint_semantic_result(
+            compiler_analysis,
+            raw_response="raw",
+            response_text="clean",
+            plan_checkpoint_only=False,
+            plan_checkpoint_and_text=False,
+            plan_checkpoint_and_action=False,
+            memory_checkpoint_only=False,
+            memory_checkpoint_and_text=False,
+            memory_checkpoint_and_action=False,
+        )
+
+        self.assertEqual(BoardCheckpointKind.NONE, result.kind)
+        self.assertFalse(result.legacy_has_checkpoint)
+        self.assertFalse(result.compiler_has_checkpoint_like)
+        self.assertTrue(result.compiler_has_action)
+        self.assertFalse(result.legacy_has_action)
+        self.assertTrue(result.compiler_has_visible_text)
+        self.assertFalse(result.legacy_has_visible_text)
+        self.assertTrue(result.parity_aligned)
+        self.assertEqual("", result.parity_mismatch_reason)
+
+    def test_builder_checkpoint_action_mismatch_is_not_aligned(self):
+        # Legacy sees checkpoint_only, compiler sees checkpoint_with_action
+        compiler_analysis = SimpleNamespace(
+            shape=SimpleNamespace(name="CHECKPOINT_ONLY"),  # Shape can be misleading
+            error=None,
+            ir=SimpleNamespace(
+                has_action=True,
+                has_checkpoint=True,
+                has_memory_tags=True,
+                has_subgoal_tags=False,
+                has_memory_checkpoint=True,
+                has_visible_answer=False,
+                has_pre_action_text=False,
+                visible_text_source="NONE",
+            ),
+        )
+
+        result = build_board_checkpoint_semantic_result(
+            compiler_analysis,
+            raw_response="raw",
+            response_text="clean",
+            plan_checkpoint_only=False,
+            plan_checkpoint_and_text=False,
+            plan_checkpoint_and_action=False,
+            memory_checkpoint_only=True,  # Legacy sees checkpoint only
+            memory_checkpoint_and_text=False,
+            memory_checkpoint_and_action=False,
+        )
+
+        self.assertTrue(result.legacy_has_checkpoint)
+        self.assertTrue(result.compiler_has_checkpoint_like)
+        self.assertFalse(result.legacy_has_action)
+        self.assertTrue(result.compiler_has_action)
+        self.assertFalse(result.parity_aligned)
+        self.assertEqual("checkpoint_action_mismatch", result.parity_mismatch_reason)
+
+    def test_builder_checkpoint_text_mismatch_is_not_aligned(self):
+        # Legacy sees checkpoint_only, compiler sees checkpoint_with_text
+        compiler_analysis = SimpleNamespace(
+            shape=SimpleNamespace(name="CHECKPOINT_WITH_VISIBLE_TEXT"),
+            error=None,
+            ir=SimpleNamespace(
+                has_action=False,
+                has_checkpoint=True,
+                has_memory_tags=True,
+                has_subgoal_tags=False,
+                has_memory_checkpoint=True,
+                has_visible_answer=True,
+                has_pre_action_text=False,
+                visible_text_source="CHECKPOINT_ACCOMPANYING_TEXT",
+            ),
+        )
+
+        result = build_board_checkpoint_semantic_result(
+            compiler_analysis,
+            raw_response="raw",
+            response_text="clean",
+            plan_checkpoint_only=False,
+            plan_checkpoint_and_text=False,
+            plan_checkpoint_and_action=False,
+            memory_checkpoint_only=True,  # Legacy sees checkpoint only
+            memory_checkpoint_and_text=False,
+            memory_checkpoint_and_action=False,
+        )
+
+        self.assertTrue(result.legacy_has_checkpoint)
+        self.assertTrue(result.compiler_has_checkpoint_like)
+        self.assertFalse(result.legacy_has_visible_text)
+        self.assertTrue(result.compiler_has_visible_text)
+        self.assertFalse(result.parity_aligned)
+        self.assertEqual("checkpoint_text_mismatch", result.parity_mismatch_reason)
+
     def test_effective_flags_fall_back_to_all_false_for_compiler_only_semantic_result(self):
         result = BoardCheckpointSemanticResult(
             kind=BoardCheckpointKind.PLAN_CHECKPOINT_ONLY,

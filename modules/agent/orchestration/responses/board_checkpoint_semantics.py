@@ -404,11 +404,6 @@ def build_board_checkpoint_semantic_result(
         or compiler_has_subgoal_tags
         or compiler_has_memory_checkpoint
     )
-    parity_aligned = bool(
-        parity_available
-        and not compiler_error_code
-        and legacy_has_checkpoint == compiler_has_checkpoint_like
-    )
     parity_mismatch_reason = ""
     if not parity_available:
         parity_mismatch_reason = "compiler_analysis_unavailable"
@@ -416,6 +411,13 @@ def build_board_checkpoint_semantic_result(
         parity_mismatch_reason = "compiler_invalid_prepass"
     elif legacy_has_checkpoint != compiler_has_checkpoint_like:
         parity_mismatch_reason = "checkpoint_presence_mismatch"
+    elif legacy_has_checkpoint:  # Both sides see a checkpoint, check deeper
+        if legacy_has_action != compiler_has_action:
+            parity_mismatch_reason = "checkpoint_action_mismatch"
+        elif legacy_has_visible_text != compiler_has_visible_text:
+            parity_mismatch_reason = "checkpoint_text_mismatch"
+
+    parity_aligned = bool(parity_available and not parity_mismatch_reason)
 
     evidence: list[str] = []
     if plan_outcome != "none":
