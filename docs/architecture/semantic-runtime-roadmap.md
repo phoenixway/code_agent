@@ -1465,14 +1465,90 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 10 Step 3: Pipeline Reordering Design
 
-- **Status**: Pending explicit approval.
+- **Status**: Done.
 - **Goal**: Design a risk-mitigated plan to reorder the `ResponsePipeline` to run classification before the checkpoint stage.
 - **Allowed**:
   - Design-only documentation updates.
 - **Forbidden**:
   - Implementation before design approval.
+- **Completed Outcome**:
+  - The design is complete. A full reordering was rejected as too high-risk.
+  - The chosen design is a low-risk "Early Structural Diagnosis Prepass" using a new, side-effect-minimal helper to make compiler facts available to the checkpoint stage without changing behavior.
+  - The prepass must not include side effects like terminal-answer classification or `invalid_kind` mutation.
+  - No production code was changed.
+  - The next step is to implement this prepass.
+
+---
+
+#### Phase 10 Step 4: Pure Structural Diagnosis Extraction + Early Prepass
+
+- **Status**: Done.
+- **Goal**: Add a pure structural diagnosis prepass before the checkpoint stage without changing classification-stage authority.
+- **Allowed**:
+  - Create a new, side-effect-free helper for pure structural analysis.
+  - Add a new prepass before `_run_checkpoint_stage` that calls the pure helper.
+- **Forbidden**:
+  - Any change to user-visible behavior, dispatch, or policy.
+  - The new pure helper having any side effects (`invalid_kind` mutation, shadow logging, etc.).
+  - The early prepass calling anything other than the pure helper.
+  - Migrating the board handlers to use the new data.
+- **Completed Outcome**:
+  - A pure `_run_structural_diagnosis_prepass` helper was implemented.
+  - It runs before the checkpoint stage, and its result is attached to `CheckpointStageState` for observation.
+  - `_apply_compiler_diagnosis` remains the existing effectful classification-stage path and continues to recompute its own analysis on normalized response.
+  - No production behavior was changed.
+
+---
+
+#### Phase 10 Step 4B: Structural Prepass Parity / Reuse Decision
+
+- **Status**: Done.
+- **Goal**: Analyze parity between the prepass analysis (on raw response) and classification-stage analysis (on normalized response) and decide if reuse is safe.
+- **Allowed**:
+  - Design-only documentation updates.
+  - Parity analysis via logging or temporary test changes.
+- **Forbidden**:
+  - Any production code changes.
+- **Completed Outcome**:
+  - The review concluded that reusing the prepass analysis is not safe due to potential mismatches between raw and normalized responses.
+  - **Decision**: **NO-GO** for reuse. The prepass analysis remains observational, and the classification stage will continue to recompute its own diagnosis.
+  - The next step is to design the first consumer migration.
+
+---
+
+#### Phase 10 Step 5: First Board/Checkpoint Consumer Migration (Design)
+
+- **Status**: Done.
+- **Goal**: Design the first narrow, behavior-preserving migration of a board/checkpoint consumer using the newly available prepass compiler facts.
+- **Allowed**:
+  - Design-only documentation updates.
+- **Forbidden**:
+  - Any production code or test changes.
+- **Completed Outcome**:
+  - The first safe migration target is a **board/checkpoint structural parity logging bridge** in or near `_run_checkpoint_stage`.
+  - `MemoryBoardStageHandler` and `PlanBoardStageHandler` remain authoritative for parsing, commits, and checkpoint outcome flags.
+  - Prepass compiler facts remain structural and observational only.
+  - A dedicated board/checkpoint semantic model is deferred until parity evidence exists.
+  - Direct board handler commit migration is a no-go for the next step.
+  - The next step is `Phase 10 Step 6: Board/Checkpoint Structural Parity Logging Implementation`.
+
+---
+
+#### Phase 10 Step 6: Board/Checkpoint Structural Parity Logging Implementation
+
+- **Status**: Pending explicit approval.
+- **Goal**: Implement diagnostic-only parity logging between prepass compiler facts and legacy board/checkpoint handler outcomes.
+- **Allowed**:
+  - Narrow logging / checkpoint-state observation updates only.
+  - Characterization tests for the new diagnostic bridge if needed.
+- **Forbidden**:
+  - Any authority transfer to board handlers.
+  - Any board commit logic changes.
+  - Any mutation of checkpoint outcome flags from prepass facts.
+  - Any reuse of prepass analysis inside `_run_classification_stage`.
+  - Any dispatch, final-answer, stop-gate, `ActionPolicy`, parser, or `history.py` changes.
 - **Done When**:
-  - A detailed, approved design for pipeline reordering exists.
+  - Prepass-vs-legacy checkpoint parity is observable without changing runtime behavior.
 
 ---
 

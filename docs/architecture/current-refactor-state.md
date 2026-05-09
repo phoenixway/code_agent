@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 9 Step 7: Plan-First Dispatch Boundary Closure / Next Slice Selection
+- **Phase**: Phase 10 Step 5: First Board/Checkpoint Consumer Migration (Design)
 - **Status**: Complete.
-- **Next Step**: Phase 10 Step 1: Board/Checkpoint Consumer Slice Preflight.
-- **Boundary**: The Phase 9 plan-first dispatch boundary slice is closed for now. Actual dispatch remains segment-driven, and `PlanDispatchCandidate` is diagnostic-only. The next slice of work will be the deferred board/checkpoint consumer migration.
+- **Next Step**: Phase 10 Step 6: Board/Checkpoint Structural Parity Logging Implementation.
+- **Boundary**: The first board/checkpoint migration remains diagnostic-only. Legacy board handlers still own commit behavior, the prepass compiler analysis remains observational, and `_apply_compiler_diagnosis` remains the effectful classification-stage path that recomputes on normalized response.
 
 ## Step 4I Parity Matrix
 
@@ -295,9 +295,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- **Phase 10 Step 3: Pipeline Reordering Design**
-  - Design a risk-mitigated plan to reorder the `ResponsePipeline` to run classification before the checkpoint stage.
-  - This is a design-only step. No production code changes are authorized.
+- **Phase 10 Step 5: First Board/Checkpoint Consumer Migration (Design)**
+  - Design the first narrow, behavior-preserving migration of a board/checkpoint consumer to use the newly available compiler facts.
+  - This is a design-only step.
 
 ## Phase 9 Step 1 Outcome
 
@@ -621,6 +621,65 @@ This document is the single source of truth for the current state of the Semanti
   - The tests cover how the pipeline behaves for `memory_checkpoint_only`, `memory_checkpoint_and_text`, and `plan_checkpoint_only` outcomes from mocked board handlers.
   - This was a test-only step. No production code was changed.
   - Characterization of the internal parsing and commit logic of the board handlers themselves is deferred until after the pipeline is reordered, as their migration is blocked.
+
+## Phase 10 Step 3: Pipeline Reordering Design (Complete)
+
+- **Conclusion**
+  - The design for unblocking the board/checkpoint consumer migration is complete.
+  - A full pipeline reordering was rejected as too high-risk.
+  - The chosen design is a lower-risk **Early Structural Diagnosis Prepass**. This involves extracting a pure, side-effect-free helper for structural analysis and then using it in a new prepass before the checkpoint stage.
+  - The prepass is strictly structural and must not include side effects like terminal-answer classification or `invalid_kind` mutation.
+  - This makes `RuntimeProtocolSemantics` available to the checkpoint stage for future migration, without changing the behavior of any existing stage.
+  - This was a design-only step. No production code was changed.
+
+## Phase 10 Step 4: Pure Structural Diagnosis Extraction + Early Prepass (Complete)
+
+- **Conclusion**
+  - The Early Structural Diagnosis Prepass has been implemented as a behavior-preserving refactor.
+  - A pure `_run_structural_diagnosis_prepass` helper now runs before `_run_checkpoint_stage`.
+  - The resulting `compiler_analysis` is attached to `CheckpointStageState` for observation and future migration only.
+  - `_apply_compiler_diagnosis` was not refactored into a wrapper around the pure helper. It remains the existing effectful classification-stage path and recomputes its own diagnosis on the normalized response.
+  - For safety, `_run_classification_stage` does *not* reuse the prepass analysis. Reuse is deferred to a future parity/reuse step.
+  - Compiler-derived structural facts are now available to the checkpoint stage for future migration.
+  - No board handlers were migrated, and no production behavior was changed.
+
+## Phase 10 Step 4B: Structural Prepass Parity / Reuse Decision (Complete)
+
+- **Conclusion**
+  - A design-only review was conducted to assess the safety of reusing the prepass analysis (from the raw response) in the classification stage (which uses a normalized response).
+  - **NO-GO** for reuse at this time. The potential mismatch between raw and normalized responses creates a risk of behavior drift.
+  - The prepass analysis remains observational only.
+  - `_run_classification_stage` will continue to recompute its own diagnosis on the normalized response.
+  - The next step is to design the first consumer migration.
+
+## Phase 10 Step 5: First Board/Checkpoint Consumer Migration (Design) (Complete)
+
+- **Conclusion**
+  - The safest first consumer migration is a **structural parity / diagnostic bridge** in the checkpoint stage, not a board commit migration.
+  - The chosen first target is prepass-vs-legacy checkpoint parity logging attached to `_run_checkpoint_stage` / `CheckpointStageState` observations.
+  - This keeps `MemoryBoardStageHandler` and `PlanBoardStageHandler` fully authoritative for commit behavior, continuation prompts, and checkpoint-only vs checkpoint-and-text/action outcomes.
+  - A dedicated board/checkpoint semantic model is **not** required before this first step because the initial implementation should remain observational only.
+- **Chosen first implementation shape**
+  - Use prepass compiler facts as a secondary signal for checkpoint structure only.
+  - Compare compiler/prepass facts against legacy checkpoint observations such as:
+    - checkpoint tags present
+    - checkpoint marker present
+    - checkpoint with visible text
+    - checkpoint with action
+  - Log parity/mismatch information without changing board commit logic, routing, dispatch, or stop behavior.
+  - Keep `_apply_compiler_diagnosis` unchanged and keep classification-stage recomputation on normalized response.
+- **No-go items**
+  - No authority transfer to `MemoryBoardStageHandler` or `PlanBoardStageHandler`.
+  - No board commit parsing replacement.
+  - No direct use of prepass analysis to change `memory_checkpoint_only`, `memory_checkpoint_and_text`, `plan_checkpoint_only`, or related flags.
+  - No reuse of prepass analysis inside `_run_classification_stage`.
+  - No dispatch, final-answer, stop-gate, `ActionPolicy`, parser, or `history.py` changes.
+- **Required characterization before later authority transfer**
+  - Direct characterization of board handler parsing and commit behavior.
+  - Parity tests for checkpoint-only / checkpoint-with-text / checkpoint-with-action observations.
+  - Evidence that compiler/prepass facts and handler-visible cleaned response semantics stay aligned across normalization boundaries.
+- **Next step**
+  - Phase 10 Step 6 should implement **Board/Checkpoint Structural Parity Logging** only.
 
 ## Phase 9 Step 6D Outcome
 

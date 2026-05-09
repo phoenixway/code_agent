@@ -157,6 +157,13 @@ class ResponsePipelinePrevalidationMixin:
             return "multiple_actions"
         return COMPILER_INVALID_KIND_BY_CODE.get(code, "")
 
+    def _run_structural_diagnosis_prepass(self, response: str):
+        """
+        Runs a side-effect-free compiler analysis prepass.
+        This is for observation only in the checkpoint stage.
+        """
+        return self.protocol_compiler.analyze(response)
+
     def _apply_compiler_diagnosis(self, parsed_output, response: str):
         compiler_analysis = self.protocol_compiler.analyze(response)
         parsed_output.compiler_shape = compiler_analysis.shape.name

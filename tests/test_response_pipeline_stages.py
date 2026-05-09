@@ -5,7 +5,8 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from modules.agent.orchestration.responses.response_pipeline_stages import ResponsePipelineStagesMixin
+from modules.agent.orchestration.responses.response_pipeline_prevalidation import ResponsePipelinePrevalidationMixin
+from modules.agent.orchestration.responses.response_pipeline_stages import CheckpointStageState, ResponsePipelineStagesMixin
 from modules.agent.orchestration.responses.terminal_answer_models import TerminalAnswerKind, TerminalAnswerSemanticResult
 from modules.agent.orchestration.shared.decision_models import ParsedModelOutput, ResponsePipelineOutcome
 
@@ -308,7 +309,7 @@ class TestResponsePipelineStages(unittest.TestCase):
 
 class TestResponsePipelineCheckpointStageCharacterization(unittest.TestCase):
     def setUp(self):
-        class Harness(ResponsePipelineStagesMixin):
+        class Harness(ResponsePipelinePrevalidationMixin, ResponsePipelineStagesMixin):
             def __init__(self):
                 self.state = SimpleNamespace(active_intent=None, last_memory_update_done=False)
                 self.plan_board_stage = AsyncMock()
@@ -330,6 +331,8 @@ class TestResponsePipelineCheckpointStageCharacterization(unittest.TestCase):
                     build_durable_state_repair_prompt=MagicMock(return_value="durable_state_repair_prompt"),
                     build_repeated_thinking_without_valid_output_prompt=MagicMock(return_value="repeated_thinking_prompt"),
                 )
+                # Mocks for prevalidation mixin
+                self.protocol_compiler = SimpleNamespace(analyze=MagicMock())
 
         self.harness = Harness()
         self.ctx = SimpleNamespace()
@@ -442,6 +445,83 @@ class TestResponsePipelineCheckpointStageCharacterization(unittest.TestCase):
         self.assertFalse(state.memory_checkpoint_only)
         self.assertFalse(state.memory_checkpoint_and_text)
         self.assertFalse(state.plan_checkpoint_only)
+
+    @patch("modules.agent.orchestration.responses.response_pipeline_prevalidation.ResponsePipelinePrevalidationMixin._run_structural_diagnosis_prepass")
+    def test_checkpoint_stage_runs_prepass_and_passes_analysis_in_state(self, mock_prepass):
+        """Characterizes that the checkpoint stage runs the structural diagnosis prepass."""
+        mock_analysis = SimpleNamespace(name="prepass_analysis")
+        mock_prepass.return_value = mock_analysis
+
+        self.harness.plan_board_stage.apply.return_value = SimpleNamespace(
+            handled=False, response_text="response"
+        )
+        self.harness.memory_board_stage.apply.return_value = SimpleNamespace(
+            handled=False,
+            response_text="response",
+            memory_checkpoint_only=False,
+            memory_checkpoint_and_text=False,
+            memory_checkpoint_and_action=False,
+        )
+
+        state, _ = asyncio.run(
+            self.harness._run_checkpoint_stage(
+                self.ctx, "raw_response_text", reflection_repair_pending=False, reflection_repair_kind=""
+            )
+        )
+
+        mock_prepass.assert_called_once_with("raw_response_text")
+        self.assertIsNotNone(state)
+        self.assertIs(state.compiler_analysis, mock_analysis)
+
+
+class TestResponsePipelineClassificationStage(unittest.TestCase):
+    def setUp(self):
+        class Harness(ResponsePipelinePrevalidationMixin, ResponsePipelineStagesMixin):
+            def __init__(self):
+                self.parser = SimpleNamespace(parse=MagicMock(return_value=[]))
+                self._classify_intent_output = MagicMock(return_value=ParsedModelOutput(response=""))
+                self._merge_normalization_metadata = MagicMock()
+                self._normalize_response_stage = MagicMock(return_value=SimpleNamespace(normalized_response="normalized_response"))
+                self.stage_logger = SimpleNamespace(log=MagicMock())
+                self.semantics = SimpleNamespace(
+                    has_complete_think_before_action=MagicMock(return_value=False),
+                    has_memory_update_done_before_action=MagicMock(return_value=False),
+                    has_checkpoint_before_action=MagicMock(return_value=False),
+                )
+                self.state = SimpleNamespace(last_memory_update_done=False)
+                self._log_semantic_shadow_disagreements = MagicMock()
+                # Mocks for prevalidation mixin
+                self.protocol_compiler = SimpleNamespace(analyze=MagicMock())
+
+        self.harness = Harness()
+
+    def test_classification_stage_recomputes_diagnosis_on_normalized_response(self):
+        """_run_classification_stage recomputes diagnosis on the normalized response."""
+        self.harness.protocol_compiler.analyze.return_value = SimpleNamespace(error=None, shape=SimpleNamespace(name="shape"))
+
+        step = SimpleNamespace(model_stop_reason="stop")
+        # This checkpoint state has a precomputed analysis from the *raw* response,
+        # which should be ignored by the classification stage.
+        precomputed_analysis = SimpleNamespace(name="precomputed_analysis_from_raw")
+        checkpoint_state = CheckpointStageState(
+            response="raw_response",
+            reflection_repair_pending=False,
+            reflection_repair_kind="",
+            plan_checkpoint_only=False,
+            plan_checkpoint_and_text=False,
+            plan_checkpoint_and_action=False,
+            memory_checkpoint_only=False,
+            memory_checkpoint_and_text=False,
+            memory_checkpoint_and_action=False,
+            memory_board_decision=None,
+            compiler_analysis=precomputed_analysis,
+        )
+
+        self.harness._run_classification_stage(step, "raw_response", checkpoint_state)
+
+        # Assert that analyze was called with the *normalized* response, not the raw one,
+        # and that the precomputed analysis was ignored.
+        self.harness.protocol_compiler.analyze.assert_called_once_with("normalized_response")
 
 
 if __name__ == "__main__":

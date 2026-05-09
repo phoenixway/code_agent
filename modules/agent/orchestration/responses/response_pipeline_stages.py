@@ -24,6 +24,7 @@ class CheckpointStageState:
     memory_checkpoint_and_text: bool
     memory_checkpoint_and_action: bool
     memory_board_decision: object
+    compiler_analysis: object | None = None
 
 
 @dataclass
@@ -194,6 +195,8 @@ class ResponsePipelineStagesMixin:
         return raw_response, (reflection_repair_pending, reflection_repair_kind), None
 
     async def _run_checkpoint_stage(self, ctx, raw_response: str, *, reflection_repair_pending: bool, reflection_repair_kind: str):
+        compiler_analysis = self._run_structural_diagnosis_prepass(raw_response)
+
         plan_board_decision = await self.plan_board_stage.apply(ctx, raw_response)
         response_after_plan = plan_board_decision.response_text
         plan_checkpoint_only = bool(getattr(plan_board_decision, "plan_checkpoint_only", False))
@@ -342,6 +345,7 @@ class ResponsePipelineStagesMixin:
             memory_checkpoint_and_text=memory_checkpoint_and_text,
             memory_checkpoint_and_action=memory_checkpoint_and_action,
             memory_board_decision=memory_board_decision,
+            compiler_analysis=compiler_analysis,
         ), None
 
     def _log_semantic_shadow_disagreements(
