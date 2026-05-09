@@ -732,6 +732,20 @@ Pending explicit approval.
   - No dispatch behavior was changed.
   - The candidate builder remains authoritative via direct `compiler_ir` and `segments` inspection.
 
+## Step 6D: Metadata Alignment Review Outcome
+
+- **Conclusion**: The review of the diagnostic parity evidence from Step 6C is complete.
+- **Is metadata alignment sufficient?**
+  - Yes, for observability. The producer-side `ExecutionPlan` metadata and consumer-side `DispatchPipeline` diagnostics are aligned enough for diagnostic purposes.
+- **Can consumer checks be simplified?**
+  - No. The metadata is not yet strong enough to replace the consumer's direct `compiler_ir` and `segments` checks.
+- **Is candidate-driven dispatch safe?**
+  - No. Candidate-driven dispatch and synthetic segment adapters remain deferred.
+- **Slice Closure**:
+  - The Phase 9 Step 6A-6D producer/metadata alignment mini-slice is complete.
+  - `ExecutionPlan` metadata is confirmed as diagnostic-only.
+  - Actual dispatch remains segment-driven.
+
 ## Safety Gate
 
 Phase 9 implementation must remain behavior-preserving:

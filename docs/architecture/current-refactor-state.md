@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 9 Step 6C: Candidate Eligibility Metadata Alignment
+- **Phase**: Phase 9 Step 6D: Metadata Alignment Review / Producer-Consumer Contract Closure
 - **Status**: Complete.
-- **Next Step**: Phase 9 Step 6D: Metadata Alignment Review / Producer-Consumer Contract Closure.
-- **Boundary**: The Phase 9 Step 6B review is complete. The `ExecutionPlan` contains observational metadata. Actual dispatch remains segment-driven. Compiler/IR still owns structure, `ActionPolicy` still owns permission, the execution layer still owns side effects, and `ResponsePipeline` still orchestrates. Segment fallback remains in place and no observable dispatch behavior changed.
+- **Next Step**: Phase 9 Step 7: Plan-First Dispatch Boundary Closure / Next Slice Selection.
+- **Boundary**: The Phase 9 Step 6A-6D metadata alignment mini-slice is complete. `ExecutionPlan` metadata is used for diagnostics only. Actual dispatch remains segment-driven. Compiler/IR still owns structure, `ActionPolicy` still owns permission, the execution layer still owns side effects, and `ResponsePipeline` still orchestrates. Segment fallback remains in place and no observable dispatch behavior changed.
 
 ## Step 4I Parity Matrix
 
@@ -295,9 +295,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- **Phase 9 Step 6D: Metadata Alignment Review / Producer-Consumer Contract Closure**
-  - Review the diagnostic parity evidence from Step 6C.
-  - Decide if the producer (`_build_execution_plan`) and consumer (`_build_single_action_plan_dispatch_candidate`) contracts are aligned enough to proceed with a consumer-side simplification.
+- **Phase 9 Step 7: Plan-First Dispatch Boundary Closure / Next Slice Selection**
+  - Review the completed Step 5/6 bridge and metadata work.
+  - Decide on the next safe plan-first migration slice.
   - Keep actual dispatch segment-driven.
   - Keep `PLAINTEXT_TERMINAL_ANSWER` / final-answer-path migration deferred.
   - Keep board/checkpoint consumers deferred to their separate slice.
@@ -595,7 +595,16 @@ This document is the single source of truth for the current state of the Semanti
   - Phase 9 Step 5A-5F bridge sub-slice is complete.
 
 - **Recommended next step**
-  - `Phase 9 Step 6D: Metadata Alignment Review / Producer-Consumer Contract Closure`
+  - `Phase 9 Step 7: Plan-First Dispatch Boundary Closure / Next Slice Selection`
+
+## Phase 9 Step 6D Outcome
+
+- **Conclusion**
+  - The review of the diagnostic parity evidence from Step 6C is complete.
+  - The producer-side `ExecutionPlan` metadata and consumer-side `DispatchPipeline` diagnostics are sufficiently aligned for observability.
+  - The metadata is not yet strong enough to simplify candidate construction or remove `compiler_ir`/`segments` checks.
+  - Candidate-driven dispatch and synthetic segment adapters remain deferred.
+  - The Phase 9 Step 6A-6D producer/metadata alignment mini-slice is now complete.
 
 ## Phase 9 Step 6C Outcome
 

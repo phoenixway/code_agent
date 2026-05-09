@@ -103,4 +103,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 99. Phase 9 Step 6A ExecutionPlan Observational Enrichment Implementation: done.
 100. Phase 9 Step 6B ExecutionPlan Enrichment Parity Review / Consumer Narrowing Decision: done.
 101. Phase 9 Step 6C Candidate Eligibility Metadata Alignment: done.
-102. Next: Phase 9 Step 6D Metadata Alignment Review / Producer-Consumer Contract Closure.
+102. Phase 9 Step 6D Metadata Alignment Review / Producer-Consumer Contract Closure: done.
+103. Next: Phase 9 Step 7 Plan-First Dispatch Boundary Closure / Next Slice Selection.

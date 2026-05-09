@@ -1366,7 +1366,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 9 Step 6D: Metadata Alignment Review / Producer-Consumer Contract Closure
 
-- **Status**: Pending explicit approval.
+- **Status**: Done.
 - **Goal**: Review the diagnostic parity evidence from Step 6C and decide if the producer/consumer contracts are aligned enough to simplify the consumer.
 - **Allowed**:
   - Read-only code inspection.
@@ -1376,8 +1376,30 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Any production code or test changes.
   - Any consumer migration or simplification.
   - Any dispatch behavior changes.
+- **Completed Outcome**:
+  - The review of diagnostic parity evidence is complete.
+  - The producer-side `ExecutionPlan` metadata is useful for diagnostics but not yet sufficient to replace the consumer's direct `compiler_ir` and `segments` checks.
+  - No consumer simplification is approved.
+  - Candidate-driven dispatch and synthetic segment adapters remain deferred.
+  - The Phase 9 Step 6A-6D producer/metadata alignment mini-slice is complete.
 - **Done When**:
-  - The review is complete and a decision on the next consumer-side step is documented.
+  - The review was complete and a decision on the next consumer-side step was documented.
+
+---
+
+#### Phase 9 Step 7: Plan-First Dispatch Boundary Closure / Next Slice Selection
+
+- **Status**: Pending explicit approval.
+- **Goal**: Review the completed Step 5/6 bridge and metadata work and decide on the next safe plan-first migration slice.
+- **Allowed**:
+  - Read-only code inspection.
+  - Design-only documentation updates.
+- **Forbidden**:
+  - Implementation before design approval.
+  - Any production code or test changes.
+  - Any dispatch behavior changes.
+- **Done When**:
+  - The review is complete and a decision on the next plan-first step is documented.
 
 ---
 
