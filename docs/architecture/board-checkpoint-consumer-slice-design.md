@@ -538,6 +538,16 @@ This design-only step is complete. It analyzed whether it is safe for the classi
   - Legacy board handlers remain authoritative.
   - Legacy flags still win on disagreement.
 
-### 3.18. Next Intended Step
+### 3.18. Step 18: First True Authority Candidate — Legacy-Derived Typed Result Primary With Legacy Fallback
 
-The next step is **Phase 10 Step 18: First True Authority Candidate — Legacy-Derived Typed Result Primary With Legacy Fallback**.
+- **Outcome**:
+  - The first true authority narrowing was attempted for the `memory_checkpoint_only` branch.
+  - A new pure helper, `resolve_memory_checkpoint_only_typed_primary`, was introduced as a typed-primary candidate for this branch. It remains behavior-preserving with a legacy disagreement guard; the typed result cannot change the memory branch category.
+- **What did not change**:
+  - Legacy fallback remains fully in place. If the typed result is absent, non-legacy-derived, or disagrees with another active legacy branch, the legacy boolean flag remains authoritative.
+  - No compiler/prepass authority was introduced.
+  - No observable routing or commit behavior changed.
+
+### 3.19. Next Intended Step
+
+The next step is **Phase 10 Step 19: Extend Typed Primary to Remaining Legacy-Derived Memory Branches**.

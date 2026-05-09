@@ -1782,8 +1782,25 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 10 Step 18: First True Authority Candidate — Legacy-Derived Typed Result Primary With Legacy Fallback
 
+- **Status**: Done.
+- **Goal**: Make `BoardCheckpointSemanticResult.kind == MEMORY_CHECKPOINT_ONLY` the primary local signal for the memory checkpoint-only branch, but only when the semantic result is legacy-derived. Keep legacy bool fallback.
+- **Allowed**:
+  - Add a pure helper for typed-primary resolution for memory checkpoint-only.
+  - Use this helper only for the memory checkpoint-only routing decision in `_run_checkpoint_stage(...)`.
+- **Forbidden**:
+  - Any observable checkpoint routing behavior change.
+  - Any board commit behavior change.
+  - Any compiler/prepass authority transfer.
+  - Any change to `PlanBoardStageHandler` or `MemoryBoardStageHandler` behavior.
+- **Done When**:
+  - The first true authority narrowing was attempted for the `memory_checkpoint_only` branch.
+  - The typed-primary candidate is implemented with a legacy disagreement guard, preserving existing behavior. The typed result cannot change the memory branch category.
+  - No compiler/prepass authority was introduced, and no observable routing or commit behavior changed.
+
+#### Phase 10 Step 19: Extend Typed Primary to Remaining Legacy-Derived Memory Branches
+
 - **Status**: Pending explicit approval.
-- **Goal**: Evaluate whether any bounded board/checkpoint consumer can move from legacy-derived typed read-through to a true narrowed authority transfer, where the typed result is the primary signal and the legacy bool is the fallback.
+- **Goal**: Extend the typed-primary-with-legacy-fallback pattern to the remaining memory checkpoint branches (`MEMORY_CHECKPOINT_WITH_TEXT`, `MEMORY_CHECKPOINT_WITH_ACTION`).
 
 ---
 

@@ -15,6 +15,7 @@ from modules.agent.orchestration.responses.board_checkpoint_models import (
 from modules.agent.orchestration.responses.board_checkpoint_semantics import (
     build_board_checkpoint_semantic_result,
     resolve_legacy_derived_checkpoint_effective_flags,
+    resolve_memory_checkpoint_only_typed_primary,
 )
 from modules.agent.orchestration.responses.response_pipeline_stages import CheckpointStageState, ResponsePipelineStagesMixin
 from modules.agent.orchestration.responses.terminal_answer_models import TerminalAnswerKind, TerminalAnswerSemanticResult
@@ -739,6 +740,77 @@ class TestBoardCheckpointSemanticBuilder(unittest.TestCase):
 
         self.assertEqual(EffectiveCheckpointFlags(), effective)
 
+    def test_resolve_memory_checkpoint_only_typed_primary(self):
+        result_mco = BoardCheckpointSemanticResult(
+            kind=BoardCheckpointKind.MEMORY_CHECKPOINT_ONLY, source=BoardCheckpointSource.COMBINED_SHADOW
+        )
+        result_mixed = BoardCheckpointSemanticResult(
+            kind=BoardCheckpointKind.MIXED_BOARD_CHECKPOINT, source=BoardCheckpointSource.COMBINED_SHADOW
+        )
+        result_compiler = BoardCheckpointSemanticResult(
+            kind=BoardCheckpointKind.MEMORY_CHECKPOINT_ONLY, source=BoardCheckpointSource.COMPILER_PREPASS_FACT
+        )
+
+        # Typed result cannot create a new True if legacy is False
+        self.assertFalse(
+            resolve_memory_checkpoint_only_typed_primary(
+                result_mco, legacy_memory_checkpoint_only=False
+            )
+        )
+
+        # Typed result can confirm an existing True
+        self.assertTrue(
+            resolve_memory_checkpoint_only_typed_primary(
+                result_mco, legacy_memory_checkpoint_only=True
+            )
+        )
+
+        # Typed result is ignored if another legacy memory branch is active; legacy bool wins
+        self.assertFalse(
+            resolve_memory_checkpoint_only_typed_primary(
+                result_mco, legacy_memory_checkpoint_only=False, legacy_memory_checkpoint_and_text=True
+            )
+        )
+        self.assertTrue(
+            resolve_memory_checkpoint_only_typed_primary(
+                result_mco, legacy_memory_checkpoint_only=True, legacy_memory_checkpoint_and_text=True
+            )
+        )
+        self.assertFalse(
+            resolve_memory_checkpoint_only_typed_primary(
+                result_mco, legacy_memory_checkpoint_only=False, legacy_memory_checkpoint_and_action=True
+            )
+        )
+        self.assertTrue(
+            resolve_memory_checkpoint_only_typed_primary(
+                result_mco, legacy_memory_checkpoint_only=True, legacy_memory_checkpoint_and_action=True
+            )
+        )
+
+        # Legacy bool wins if typed result is conflicting
+        self.assertTrue(
+            resolve_memory_checkpoint_only_typed_primary(
+                result_mixed, legacy_memory_checkpoint_only=True
+            )
+        )
+        self.assertFalse(
+            resolve_memory_checkpoint_only_typed_primary(
+                result_mixed, legacy_memory_checkpoint_only=False
+            )
+        )
+
+        # Legacy bool wins if result is None
+        self.assertTrue(resolve_memory_checkpoint_only_typed_primary(None, legacy_memory_checkpoint_only=True))
+        self.assertFalse(resolve_memory_checkpoint_only_typed_primary(None, legacy_memory_checkpoint_only=False))
+
+        # Legacy bool wins if source is not legacy-derived
+        self.assertFalse(
+            resolve_memory_checkpoint_only_typed_primary(result_compiler, legacy_memory_checkpoint_only=False)
+        )
+        self.assertTrue(
+            resolve_memory_checkpoint_only_typed_primary(result_compiler, legacy_memory_checkpoint_only=True)
+        )
+
 
 class TestResponsePipelineCheckpointStageCharacterization(unittest.TestCase):
     def setUp(self):
@@ -921,6 +993,50 @@ class TestResponsePipelineCheckpointStageCharacterization(unittest.TestCase):
         self.assertFalse(state.memory_checkpoint_and_text)
         self.assertTrue(state.memory_checkpoint_and_action)
         self.assertFalse(state.memory_board_decision.handled)
+
+    def test_checkpoint_stage_memory_checkpoint_only_route_with_typed_primary_fallback(self):
+        """
+        Characterizes that memory_checkpoint_only routing is unchanged by typed-primary
+        logic, because legacy fallback is preserved.
+        """
+        self.harness.protocol_compiler.analyze.return_value = SimpleNamespace(
+            shape=SimpleNamespace(name="CHECKPOINT_ONLY"), error=None, ir=SimpleNamespace()
+        )
+        self.harness.plan_board_stage.apply.return_value = SimpleNamespace(handled=False, response_text="response")
+        # Legacy handler says it's memory_checkpoint_only
+        self.harness.memory_board_stage.apply.return_value = SimpleNamespace(
+            handled=True,
+            response_text="response",
+            next_query="next_query_from_memory_board",
+            reason="memory_checkpoint_only",
+            source="memory_board",
+            memory_checkpoint_only=True,
+            memory_checkpoint_and_text=False,
+            memory_checkpoint_and_action=False,
+        )
+
+        # Mock the builder to return a conflicting typed result
+        with patch(
+            "modules.agent.orchestration.responses.response_pipeline_stages.build_board_checkpoint_semantic_result"
+        ) as mock_build:
+            mock_build.return_value = BoardCheckpointSemanticResult(
+                kind=BoardCheckpointKind.MIXED_BOARD_CHECKPOINT,
+                source=BoardCheckpointSource.COMBINED_SHADOW,
+            )
+
+            state, outcome = asyncio.run(
+                self.harness._run_checkpoint_stage(
+                    self.ctx, "response", reflection_repair_pending=False, reflection_repair_kind=""
+                )
+            )
+
+        # Assert that the outcome is still the same as the legacy path
+        self.assertIsNotNone(state)
+        self.assertIsInstance(outcome, ResponsePipelineOutcome)
+        self.assertTrue(outcome.continue_loop)
+        self.assertEqual("next_query_from_memory_board", outcome.next_query)
+        self.assertEqual("memory_checkpoint_only", outcome.reason)
+        self.assertTrue(outcome.memory_checkpoint_only)
 
     @patch("modules.agent.orchestration.responses.response_pipeline_stages.ResponsePipelineStagesMixin._log_board_checkpoint_structural_parity")
     def test_checkpoint_stage_with_plan_checkpoint_only_continues(self, mock_parity):

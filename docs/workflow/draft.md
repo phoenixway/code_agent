@@ -122,4 +122,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 118. Phase 10 Step 14: Complete Legacy-Derived Typed Read-Through for Board Checkpoint Routing: done.
 119. Phase 10 Step 16: done. Effective checkpoint-flag resolution is now centralized in a pure helper, with no routing or commit behavior change.
 120. Phase 10 Step 17: done. `_run_checkpoint_stage(...)` now uses `EffectiveCheckpointFlags` as the single local checkpoint routing/state surface after resolution. No compiler/prepass authority was introduced, and no observable routing or commit behavior changed.
-121. Next: Phase 10 Step 18: First True Authority Candidate — Legacy-Derived Typed Result Primary With Legacy Fallback.
+121. Phase 10 Step 18: done. First true authority candidate for memory-checkpoint-only branch implemented with legacy disagreement guard. Typed result cannot change memory branch category. No behavior change.
+122. Next: Phase 10 Step 19: Extend Typed Primary to Remaining Legacy-Derived Memory Branches.

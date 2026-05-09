@@ -10,6 +10,7 @@ from ..shared.trace import compact_compiler_replay
 from .board_checkpoint_semantics import build_board_checkpoint_semantic_result
 from .board_checkpoint_semantics import checkpoint_outcome_category
 from .board_checkpoint_semantics import resolve_legacy_derived_checkpoint_effective_flags
+from .board_checkpoint_semantics import resolve_memory_checkpoint_only_typed_primary
 from .protocol_decision_bridge import compiler_invalid_kind_for_output, resolve_protocol_authority
 from .semantic_accessors import is_leaked_system_result
 from .terminal_answer_models import TerminalAnswerKind
@@ -393,9 +394,16 @@ class ResponsePipelineStagesMixin:
         effective_plan_checkpoint_only = effective_flags.plan_checkpoint_only
         effective_plan_checkpoint_and_text = effective_flags.plan_checkpoint_and_text
         effective_plan_checkpoint_and_action = effective_flags.plan_checkpoint_and_action
-        effective_memory_checkpoint_only = effective_flags.memory_checkpoint_only
         effective_memory_checkpoint_and_text = effective_flags.memory_checkpoint_and_text
         effective_memory_checkpoint_and_action = effective_flags.memory_checkpoint_and_action
+
+        # Step 18: First true authority candidate for memory-checkpoint-only
+        effective_memory_checkpoint_only = resolve_memory_checkpoint_only_typed_primary(
+            board_checkpoint_semantic_result,
+            legacy_memory_checkpoint_only=memory_checkpoint_only,
+            legacy_memory_checkpoint_and_text=memory_checkpoint_and_text,
+            legacy_memory_checkpoint_and_action=memory_checkpoint_and_action,
+        )
 
         self._log_board_checkpoint_structural_parity(
             compiler_analysis,

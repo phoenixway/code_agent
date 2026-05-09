@@ -4,9 +4,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 10 Step 17: Use EffectiveCheckpointFlags as the Single Local Checkpoint Routing Surface
+- **Phase**: Phase 10 Step 18: First True Authority Candidate — Legacy-Derived Typed Result Primary With Legacy Fallback
 - **Status**: Complete.
-- **Next Step**: Phase 10 Step 18: First True Authority Candidate — Legacy-Derived Typed Result Primary With Legacy Fallback.
+- **Next Step**: Phase 10 Step 19: Extend Typed Primary to Remaining Legacy-Derived Memory Branches.
 - **Boundary**: The checkpoint parity bridge remains diagnostic-only. Legacy board handlers still own commit behavior, the prepass compiler analysis remains observational, and `_apply_compiler_diagnosis` remains the effectful classification-stage path that recomputes on normalized response.
 
 ## Step 4I Parity Matrix
@@ -974,6 +974,11 @@ This document is the single source of truth for the current state of the Semanti
   - No compiler/prepass authority was introduced.
   - No observable routing or commit behavior changed.
   - Legacy board handlers remain authoritative.
+- **Phase 10 Step 18: First True Authority Candidate — Legacy-Derived Typed Result Primary With Legacy Fallback (Complete)**
+  - The first true authority narrowing was attempted for the `memory_checkpoint_only` branch.
+  - A new pure helper was introduced as a typed-primary candidate, but it remains behavior-preserving with a legacy disagreement guard; the typed result cannot change the memory branch category.
+  - Legacy fallback remains fully in place, and no observable routing or commit behavior changed.
+  - No compiler/prepass authority was introduced.
 
 ## Phase 9 Step 6D Outcome
 

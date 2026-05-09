@@ -97,6 +97,38 @@ def is_legacy_derived_plan_checkpoint_and_action(
     )
 
 
+def resolve_memory_checkpoint_only_typed_primary(
+    result: BoardCheckpointSemanticResult | None,
+    *,
+    legacy_memory_checkpoint_only: bool,
+    legacy_memory_checkpoint_and_text: bool = False,
+    legacy_memory_checkpoint_and_action: bool = False,
+) -> bool:
+    """Resolve memory-checkpoint-only with typed-primary logic."""
+    kind = legacy_derived_checkpoint_kind(result)
+    if kind is None:
+        # No legacy-derived typed result, fall back to the raw legacy bool.
+        return legacy_memory_checkpoint_only
+
+    # If another legacy memory branch is active, the category is not memory-checkpoint-only.
+    # The legacy bool for this branch must win.
+    if legacy_memory_checkpoint_and_text or legacy_memory_checkpoint_and_action:
+        return legacy_memory_checkpoint_only
+
+    if kind == BoardCheckpointKind.MEMORY_CHECKPOINT_ONLY:
+        # The typed result suggests it's memory-checkpoint-only.
+        # For this step, we are only introducing the pattern. To avoid behavior
+        # drift, we do not create a new `True` from the typed result alone.
+        # The typed result can only confirm an existing legacy `True`.
+        return legacy_memory_checkpoint_only
+
+    # If the kind is something else (e.g., MIXED_BOARD_CHECKPOINT, or
+    # MEMORY_CHECKPOINT_WITH_TEXT), we fall back to the specific legacy
+    # bool for this branch. This preserves behavior in mixed cases
+    # where the simple kind is not sufficient.
+    return legacy_memory_checkpoint_only
+
+
 def resolve_legacy_derived_checkpoint_effective_flags(
     result: BoardCheckpointSemanticResult | None,
     *,
