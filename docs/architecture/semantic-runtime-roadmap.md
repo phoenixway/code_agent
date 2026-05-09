@@ -1762,10 +1762,28 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - `CheckpointStageState(...)` consistently uses effective flags once available.
   - Tests prove legacy fallback still wins and compiler/prepass-only facts still cannot trigger routing.
 
-#### Phase 10 Step 17: First True BoardCheckpoint Authority Narrowing
+#### Phase 10 Step 17: Use EffectiveCheckpointFlags as the Single Local Checkpoint Routing Surface
+
+- **Status**: Done.
+- **Goal**: Make `_run_checkpoint_stage(...)` consistently use `EffectiveCheckpointFlags` as the single local routing/state surface once the resolver has run.
+- **Allowed**:
+  - Local refactoring inside `_run_checkpoint_stage(...)` to use `EffectiveCheckpointFlags` fields instead of raw legacy bools after resolution.
+  - Update tests to confirm no behavior change.
+- **Forbidden**:
+  - Any observable checkpoint routing behavior change.
+  - Any board commit behavior change.
+  - Any mutation of checkpoint flags from compiler/prepass facts.
+  - Any compiler/prepass-only facts triggering routing.
+  - Any change to `PlanBoardStageHandler` or `MemoryBoardStageHandler` behavior.
+- **Done When**:
+  - `_run_checkpoint_stage(...)` uses `EffectiveCheckpointFlags` as the single local checkpoint routing/state surface after resolution.
+  - No compiler/prepass authority was introduced, and no observable routing or commit behavior changed.
+  - Legacy board handlers remain authoritative.
+
+#### Phase 10 Step 18: First True Authority Candidate — Legacy-Derived Typed Result Primary With Legacy Fallback
 
 - **Status**: Pending explicit approval.
-- **Goal**: Evaluate whether any bounded board/checkpoint consumer can move from legacy-derived typed read-through to a true narrowed authority transfer.
+- **Goal**: Evaluate whether any bounded board/checkpoint consumer can move from legacy-derived typed read-through to a true narrowed authority transfer, where the typed result is the primary signal and the legacy bool is the fallback.
 
 ---
 

@@ -527,6 +527,17 @@ This design-only step is complete. It analyzed whether it is safe for the classi
   - direct resolver tests for legacy fallback, matching typed confirmation, conflicting typed kinds, and non-legacy compiler/prepass-only sources
   - a stage-level regression test that would fail if an early `CheckpointStageState(...)` return path mixed raw memory flags with helper-resolved effective flags
 
-### 3.17. Next Intended Step
+### 3.17. Step 17: Use EffectiveCheckpointFlags as the Single Local Checkpoint Routing Surface
 
-The next step is **Phase 10 Step 17: First True BoardCheckpoint Authority Narrowing**.
+- **Outcome**:
+  - `_run_checkpoint_stage(...)` now uses `EffectiveCheckpointFlags` as the single local checkpoint routing/state surface after resolution.
+  - This is a local cleanup / authority narrowing from scattered legacy bools to resolver-owned effective flags.
+- **What did not change**:
+  - No compiler/prepass authority was introduced.
+  - No observable routing or commit behavior changed.
+  - Legacy board handlers remain authoritative.
+  - Legacy flags still win on disagreement.
+
+### 3.18. Next Intended Step
+
+The next step is **Phase 10 Step 18: First True Authority Candidate — Legacy-Derived Typed Result Primary With Legacy Fallback**.

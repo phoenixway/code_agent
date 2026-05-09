@@ -4,9 +4,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 10 Step 16: BoardCheckpoint Legacy-Derived Authority Candidate Implementation
+- **Phase**: Phase 10 Step 17: Use EffectiveCheckpointFlags as the Single Local Checkpoint Routing Surface
 - **Status**: Complete.
-- **Next Step**: Phase 10 Step 17: First True BoardCheckpoint Authority Narrowing.
+- **Next Step**: Phase 10 Step 18: First True Authority Candidate — Legacy-Derived Typed Result Primary With Legacy Fallback.
 - **Boundary**: The checkpoint parity bridge remains diagnostic-only. Legacy board handlers still own commit behavior, the prepass compiler analysis remains observational, and `_apply_compiler_diagnosis` remains the effectful classification-stage path that recomputes on normalized response.
 
 ## Step 4I Parity Matrix
@@ -967,9 +967,13 @@ This document is the single source of truth for the current state of the Semanti
 - **Deferred branches**
   - No additional safe legacy-bool-backed checkpoint-routing branches remain in this micro-slice.
   - Any next migration requires a new authority/design step rather than more typed mirroring.
-- **Next step**
-  - Phase 10 Step 16: effective checkpoint-flag resolution is now centralized in a pure helper, `_run_checkpoint_stage(...)` uses it instead of scattered inline bool resolution, and `CheckpointStageState(...)` construction consistently carries effective checkpoint flags. No compiler/prepass authority was introduced, and no observable routing or commit behavior changed.
-  - Phase 10 Step 17: First True BoardCheckpoint Authority Narrowing.
+- **Phase 10 Step 16: BoardCheckpoint Legacy-Derived Authority Candidate Implementation (Complete)**
+  - effective checkpoint-flag resolution is now centralized in a pure helper, `_run_checkpoint_stage(...)` uses it instead of scattered inline bool resolution, and `CheckpointStageState(...)` construction consistently carries effective checkpoint flags. No compiler/prepass authority was introduced, and no observable routing or commit behavior changed.
+- **Phase 10 Step 17: Use EffectiveCheckpointFlags as the Single Local Checkpoint Routing Surface (Complete)**
+  - `_run_checkpoint_stage(...)` now uses `EffectiveCheckpointFlags` as the single local checkpoint routing/state surface after resolution.
+  - No compiler/prepass authority was introduced.
+  - No observable routing or commit behavior changed.
+  - Legacy board handlers remain authoritative.
 
 ## Phase 9 Step 6D Outcome
 

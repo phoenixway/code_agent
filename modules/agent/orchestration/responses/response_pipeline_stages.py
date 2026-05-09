@@ -483,9 +483,9 @@ class ResponsePipelineStagesMixin:
                 response_text=response,
                 reason=reflection_repair_kind or "missing_think_reflection",
                 source="think_reflection_guard",
-                memory_checkpoint_only=True,
-                memory_checkpoint_and_text=False,
-                memory_checkpoint_and_action=False,
+                memory_checkpoint_only=effective_memory_checkpoint_only,
+                memory_checkpoint_and_text=effective_memory_checkpoint_and_text,
+                memory_checkpoint_and_action=effective_memory_checkpoint_and_action,
             )
 
         if memory_board_decision.handled and (effective_memory_checkpoint_and_text or effective_memory_checkpoint_and_action):
@@ -531,9 +531,9 @@ class ResponsePipelineStagesMixin:
                         source="memory_board",
                         malformed_action_retries=0,
                         audit_marker_retries=0,
-                        memory_checkpoint_only=True,
-                        memory_checkpoint_and_text=False,
-                        memory_checkpoint_and_action=False,
+                        memory_checkpoint_only=effective_memory_checkpoint_only,
+                        memory_checkpoint_and_text=effective_memory_checkpoint_and_text,
+                        memory_checkpoint_and_action=effective_memory_checkpoint_and_action,
                     )
                 if self.semantics.has_substantial_think(raw_response):
                     nonproductive_streak = self.guards.set_nonproductive_thinking_state(
@@ -567,9 +567,9 @@ class ResponsePipelineStagesMixin:
                             response_text=response,
                             reason="repeated_thinking_without_valid_output",
                             source="thinking_guard",
-                            memory_checkpoint_only=memory_checkpoint_only,
-                            memory_checkpoint_and_text=memory_checkpoint_and_text,
-                            memory_checkpoint_and_action=memory_checkpoint_and_action,
+                            memory_checkpoint_only=effective_memory_checkpoint_only,
+                            memory_checkpoint_and_text=effective_memory_checkpoint_and_text,
+                            memory_checkpoint_and_action=effective_memory_checkpoint_and_action,
                         )
             return CheckpointStageState(
                 response=response,
