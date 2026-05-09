@@ -4,9 +4,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 10 Step 14: Plan Checkpoint Typed Read-Through
+- **Phase**: Phase 10 Step 14: Complete Legacy-Derived Typed Read-Through for Board Checkpoint Routing
 - **Status**: Complete.
-- **Next Step**: Phase 10 Step 15: Checkpoint Typed Read-Through Closure / Remaining Branch Decision.
+- **Next Step**: Phase 10 Step 16: BoardCheckpoint Authority Migration Candidate Design.
 - **Boundary**: The checkpoint parity bridge remains diagnostic-only. Legacy board handlers still own commit behavior, the prepass compiler analysis remains observational, and `_apply_compiler_diagnosis` remains the effectful classification-stage path that recomputes on normalized response.
 
 ## Step 4I Parity Matrix
@@ -937,10 +937,17 @@ This document is the single source of truth for the current state of the Semanti
 - **Next step**
   - Phase 10 Step 14: Plan Checkpoint Typed Read-Through or Memory Branch Fallback Tightening.
 
-## Phase 10 Step 14: Plan Checkpoint Typed Read-Through (Complete)
+## Phase 10 Step 14: Complete Legacy-Derived Typed Read-Through for Board Checkpoint Routing (Complete)
 
 - **Implementation outcome**
-  - `_run_checkpoint_stage(...)` now performs legacy-derived typed read-through for the `PLAN_CHECKPOINT_ONLY` branch.
+  - `_run_checkpoint_stage(...)` now completes the safe legacy-derived typed read-through micro-slice for checkpoint-routing branches backed by legacy handler bools.
+  - Migrated branches:
+    - `MEMORY_CHECKPOINT_ONLY`
+    - `MEMORY_CHECKPOINT_WITH_TEXT`
+    - `MEMORY_CHECKPOINT_WITH_ACTION`
+    - `PLAN_CHECKPOINT_ONLY`
+    - `PLAN_CHECKPOINT_WITH_TEXT`
+    - `PLAN_CHECKPOINT_WITH_ACTION`
   - The typed result is only used when it is legacy-derived and confirms the same legacy bool.
 - **Authority boundary**
   - This is not compiler/prepass authority.
@@ -954,11 +961,14 @@ This document is the single source of truth for the current state of the Semanti
   - No checkpoint flags are mutated from compiler/prepass facts.
   - No dispatch, final-answer, stop-gate, `ActionPolicy`, parser, or `history.py` behavior changed.
 - **Test coverage**
-  - typed read-through path for `plan_checkpoint_only`
-  - disagreement test proving legacy plan flag wins
-  - continued coverage that compiler/prepass-only plan checkpoint facts do not trigger routing
+  - typed read-through paths for all migrated branches above
+  - disagreement tests proving legacy flags win
+  - continued coverage that compiler/prepass-only plan and memory checkpoint facts do not trigger routing
+- **Deferred branches**
+  - No additional safe legacy-bool-backed checkpoint-routing branches remain in this micro-slice.
+  - Any next migration requires a new authority/design step rather than more typed mirroring.
 - **Next step**
-  - Phase 10 Step 15: Checkpoint Typed Read-Through Closure / Remaining Branch Decision.
+  - Phase 10 Step 16: BoardCheckpoint Authority Migration Candidate Design.
 
 ## Phase 9 Step 6D Outcome
 

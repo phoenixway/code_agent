@@ -1715,10 +1715,10 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
-#### Phase 10 Step 14: Plan Checkpoint Typed Read-Through
+#### Phase 10 Step 14: Complete Legacy-Derived Typed Read-Through for Board Checkpoint Routing
 
 - **Status**: Done.
-- **Goal**: Extend the same legacy-derived typed read-through pattern to the plan checkpoint-only branch.
+- **Goal**: Complete the safe legacy-derived typed read-through micro-slice for checkpoint-routing branches backed by legacy handler bools.
 - **Allowed**:
   - Legacy-derived typed read-through only.
   - Explicit legacy fallback.
@@ -1729,29 +1729,36 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Any mutation of checkpoint flags from compiler/prepass facts.
   - Any reuse of prepass analysis inside `_run_classification_stage`.
 - **Done When**:
-  - `PLAN_CHECKPOINT_ONLY` uses legacy-derived typed read-through without changing runtime behavior.
+  - All safe legacy-bool-backed checkpoint-routing branches use legacy-derived typed read-through without changing runtime behavior.
 - **Completed Outcome**:
-  - `_run_checkpoint_stage(...)` now reads a legacy-derived typed result for `PLAN_CHECKPOINT_ONLY`.
+  - `_run_checkpoint_stage(...)` now reads legacy-derived typed results for:
+    - `MEMORY_CHECKPOINT_ONLY`
+    - `MEMORY_CHECKPOINT_WITH_TEXT`
+    - `MEMORY_CHECKPOINT_WITH_ACTION`
+    - `PLAN_CHECKPOINT_ONLY`
+    - `PLAN_CHECKPOINT_WITH_TEXT`
+    - `PLAN_CHECKPOINT_WITH_ACTION`
   - Legacy flags remain the final fallback and win on disagreement.
-  - Compiler/prepass-only plan checkpoint facts still cannot trigger routing.
+  - Compiler/prepass-only plan and memory checkpoint facts still cannot trigger routing.
   - No board commit or routing behavior changed.
 
 ---
 
-#### Phase 10 Step 15: Checkpoint Typed Read-Through Closure / Remaining Branch Decision
+#### Phase 10 Step 16: BoardCheckpoint Authority Migration Candidate Design
 
 - **Status**: Pending explicit approval.
-- **Goal**: Review the current typed read-through slice and decide whether any remaining checkpoint branches should migrate or remain on legacy fallback.
+- **Goal**: Design the first true authority-migration candidate after the safe legacy-derived typed read-through micro-slice is complete.
 - **Allowed**:
-  - Read-only review or docs-only closure work.
-  - Narrow migration-candidate analysis.
+  - Read-only review.
+  - Docs-only design work.
+  - Narrow authority-candidate analysis.
 - **Forbidden**:
-  - Any compiler/prepass authority transfer.
+  - Any compiler/prepass authority transfer without a new approved design.
   - Any board commit logic changes.
   - Any mutation of checkpoint flags from compiler/prepass facts.
   - Any reuse of prepass analysis inside `_run_classification_stage`.
 - **Done When**:
-  - The typed read-through slice is either closed or a clearly bounded next branch is selected.
+  - A bounded first authority-migration candidate is selected, or a NO-GO is documented.
 
 ---
 

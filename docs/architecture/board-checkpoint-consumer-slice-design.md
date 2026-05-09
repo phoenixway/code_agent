@@ -487,9 +487,14 @@ This design-only step is complete. It analyzed whether it is safe for the classi
 ### 3.15. Step 14: Plan Checkpoint Typed Read-Through
 
 - **Implementation Outcome**:
-  - `_run_checkpoint_stage(...)` now extends legacy-derived typed read-through to the plan checkpoint-only branch.
-  - The migrated read-through is limited to:
+  - `_run_checkpoint_stage(...)` now completes the safe legacy-derived typed read-through micro-slice for checkpoint routing branches that are already backed by legacy handler bools.
+  - Migrated branches:
+    - `MEMORY_CHECKPOINT_ONLY`
+    - `MEMORY_CHECKPOINT_WITH_TEXT`
+    - `MEMORY_CHECKPOINT_WITH_ACTION`
     - `PLAN_CHECKPOINT_ONLY`
+    - `PLAN_CHECKPOINT_WITH_TEXT`
+    - `PLAN_CHECKPOINT_WITH_ACTION`
   - The typed result is used only when it is legacy-derived and confirms the same legacy bool.
   - Legacy flags still win on disagreement.
 - **What did not change**:
@@ -499,10 +504,14 @@ This design-only step is complete. It analyzed whether it is safe for the classi
   - Checkpoint flags are not mutated from compiler/prepass facts.
   - This remains a legacy-derived typed mirror, not an authority transfer.
 - **Coverage added**:
-  - typed read-through for `plan_checkpoint_only`
+  - typed read-through for all safe legacy-bool-backed branches listed above
   - disagreement test proving legacy `plan_checkpoint_only` still wins
-  - confirmation that compiler/prepass-only plan checkpoint facts do not trigger routing
+  - disagreement coverage for memory branches remains in place
+  - confirmation that compiler/prepass-only plan and memory checkpoint facts do not trigger routing
+- **Deferred branches**
+  - No additional safe legacy-bool-backed checkpoint routing branches remain in this micro-slice.
+  - Any next migration would be a different class of work and requires a new authority/design step.
 
 ### 3.16. Next Intended Step
 
-The next step is **Phase 10 Step 15: Checkpoint Typed Read-Through Closure / Remaining Branch Decision**.
+The next step is **Phase 10 Step 16: BoardCheckpoint Authority Migration Candidate Design**.

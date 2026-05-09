@@ -8,8 +8,11 @@ from ..shared.decision_models import ExecutionPlan
 from ..shared.decision_models import ResponsePipelineOutcome
 from ..shared.trace import compact_compiler_replay
 from .board_checkpoint_semantics import build_board_checkpoint_semantic_result
+from .board_checkpoint_semantics import is_legacy_derived_memory_checkpoint_and_action
 from .board_checkpoint_semantics import is_legacy_derived_memory_checkpoint_and_text
 from .board_checkpoint_semantics import is_legacy_derived_memory_checkpoint_only
+from .board_checkpoint_semantics import is_legacy_derived_plan_checkpoint_and_action
+from .board_checkpoint_semantics import is_legacy_derived_plan_checkpoint_and_text
 from .board_checkpoint_semantics import is_legacy_derived_plan_checkpoint_only
 from .board_checkpoint_semantics import checkpoint_outcome_category
 from .protocol_decision_bridge import compiler_invalid_kind_for_output, resolve_protocol_authority
@@ -329,13 +332,23 @@ class ResponsePipelineStagesMixin:
             plan_semantic_result,
             legacy_plan_checkpoint_only=plan_checkpoint_only,
         )
+        typed_plan_checkpoint_and_text = is_legacy_derived_plan_checkpoint_and_text(
+            plan_semantic_result,
+            legacy_plan_checkpoint_and_text=plan_checkpoint_and_text,
+        )
+        typed_plan_checkpoint_and_action = is_legacy_derived_plan_checkpoint_and_action(
+            plan_semantic_result,
+            legacy_plan_checkpoint_and_action=plan_checkpoint_and_action,
+        )
         effective_plan_checkpoint_only = bool(typed_plan_checkpoint_only or plan_checkpoint_only)
+        effective_plan_checkpoint_and_text = bool(typed_plan_checkpoint_and_text or plan_checkpoint_and_text)
+        effective_plan_checkpoint_and_action = bool(typed_plan_checkpoint_and_action or plan_checkpoint_and_action)
         if plan_board_decision.handled:
             self._log_board_checkpoint_structural_parity(
                 compiler_analysis,
                 plan_checkpoint_only=effective_plan_checkpoint_only,
-                plan_checkpoint_and_text=plan_checkpoint_and_text,
-                plan_checkpoint_and_action=plan_checkpoint_and_action,
+                plan_checkpoint_and_text=effective_plan_checkpoint_and_text,
+                plan_checkpoint_and_action=effective_plan_checkpoint_and_action,
                 memory_checkpoint_only=False,
                 memory_checkpoint_and_text=False,
                 memory_checkpoint_and_action=False,
@@ -345,8 +358,8 @@ class ResponsePipelineStagesMixin:
                 reflection_repair_pending=reflection_repair_pending,
                 reflection_repair_kind=reflection_repair_kind,
                 plan_checkpoint_only=effective_plan_checkpoint_only,
-                plan_checkpoint_and_text=plan_checkpoint_and_text,
-                plan_checkpoint_and_action=plan_checkpoint_and_action,
+                plan_checkpoint_and_text=effective_plan_checkpoint_and_text,
+                plan_checkpoint_and_action=effective_plan_checkpoint_and_action,
                 memory_checkpoint_only=False,
                 memory_checkpoint_and_text=False,
                 memory_checkpoint_and_action=False,
@@ -384,17 +397,22 @@ class ResponsePipelineStagesMixin:
             board_checkpoint_semantic_result,
             legacy_memory_checkpoint_and_text=memory_checkpoint_and_text,
         )
+        typed_memory_checkpoint_and_action = is_legacy_derived_memory_checkpoint_and_action(
+            board_checkpoint_semantic_result,
+            legacy_memory_checkpoint_and_action=memory_checkpoint_and_action,
+        )
         effective_memory_checkpoint_only = bool(typed_memory_checkpoint_only or memory_checkpoint_only)
         effective_memory_checkpoint_and_text = bool(typed_memory_checkpoint_and_text or memory_checkpoint_and_text)
+        effective_memory_checkpoint_and_action = bool(typed_memory_checkpoint_and_action or memory_checkpoint_and_action)
 
         self._log_board_checkpoint_structural_parity(
             compiler_analysis,
-            plan_checkpoint_only=plan_checkpoint_only,
-            plan_checkpoint_and_text=plan_checkpoint_and_text,
-            plan_checkpoint_and_action=plan_checkpoint_and_action,
+            plan_checkpoint_only=effective_plan_checkpoint_only,
+            plan_checkpoint_and_text=effective_plan_checkpoint_and_text,
+            plan_checkpoint_and_action=effective_plan_checkpoint_and_action,
             memory_checkpoint_only=effective_memory_checkpoint_only,
             memory_checkpoint_and_text=effective_memory_checkpoint_and_text,
-            memory_checkpoint_and_action=memory_checkpoint_and_action,
+            memory_checkpoint_and_action=effective_memory_checkpoint_and_action,
         )
 
         def _repair_checkpoint_completed() -> bool:
@@ -403,7 +421,11 @@ class ResponsePipelineStagesMixin:
             if reflection_repair_kind == "missing_memory_update_done":
                 return True
             memory_committed = int(getattr(self.state, "last_memory_board_accepted_count", 0) or 0) > 0
-            plan_committed = plan_checkpoint_only or plan_checkpoint_and_text or plan_checkpoint_and_action
+            plan_committed = (
+                effective_plan_checkpoint_only
+                or effective_plan_checkpoint_and_text
+                or effective_plan_checkpoint_and_action
+            )
             return memory_committed or plan_committed
 
         if reflection_repair_pending and effective_memory_checkpoint_only:
@@ -425,12 +447,12 @@ class ResponsePipelineStagesMixin:
                     response=response,
                     reflection_repair_pending=reflection_repair_pending,
                     reflection_repair_kind=reflection_repair_kind,
-                    plan_checkpoint_only=plan_checkpoint_only,
-                    plan_checkpoint_and_text=plan_checkpoint_and_text,
-                    plan_checkpoint_and_action=plan_checkpoint_and_action,
+                    plan_checkpoint_only=effective_plan_checkpoint_only,
+                    plan_checkpoint_and_text=effective_plan_checkpoint_and_text,
+                    plan_checkpoint_and_action=effective_plan_checkpoint_and_action,
                     memory_checkpoint_only=effective_memory_checkpoint_only,
                     memory_checkpoint_and_text=effective_memory_checkpoint_and_text,
-                    memory_checkpoint_and_action=memory_checkpoint_and_action,
+                    memory_checkpoint_and_action=effective_memory_checkpoint_and_action,
                     memory_board_decision=memory_board_decision,
                     compiler_analysis=compiler_analysis,
                     board_checkpoint_semantic_result=board_checkpoint_semantic_result,
@@ -455,9 +477,9 @@ class ResponsePipelineStagesMixin:
                 response=response,
                 reflection_repair_pending=reflection_repair_pending,
                 reflection_repair_kind=reflection_repair_kind,
-                plan_checkpoint_only=plan_checkpoint_only,
-                plan_checkpoint_and_text=plan_checkpoint_and_text,
-                plan_checkpoint_and_action=plan_checkpoint_and_action,
+                plan_checkpoint_only=effective_plan_checkpoint_only,
+                plan_checkpoint_and_text=effective_plan_checkpoint_and_text,
+                plan_checkpoint_and_action=effective_plan_checkpoint_and_action,
                 memory_checkpoint_only=memory_checkpoint_only,
                 memory_checkpoint_and_text=memory_checkpoint_and_text,
                 memory_checkpoint_and_action=memory_checkpoint_and_action,
@@ -474,7 +496,7 @@ class ResponsePipelineStagesMixin:
                 memory_checkpoint_and_action=False,
             )
 
-        if memory_board_decision.handled and (effective_memory_checkpoint_and_text or memory_checkpoint_and_action):
+        if memory_board_decision.handled and (effective_memory_checkpoint_and_text or effective_memory_checkpoint_and_action):
             self.guards.set_nonproductive_thinking_state(False)
             memory_board_decision.handled = False
 
@@ -502,12 +524,12 @@ class ResponsePipelineStagesMixin:
                         response=response,
                         reflection_repair_pending=reflection_repair_pending,
                         reflection_repair_kind=reflection_repair_kind,
-                        plan_checkpoint_only=plan_checkpoint_only,
-                        plan_checkpoint_and_text=plan_checkpoint_and_text,
-                        plan_checkpoint_and_action=plan_checkpoint_and_action,
+                        plan_checkpoint_only=effective_plan_checkpoint_only,
+                        plan_checkpoint_and_text=effective_plan_checkpoint_and_text,
+                        plan_checkpoint_and_action=effective_plan_checkpoint_and_action,
                         memory_checkpoint_only=effective_memory_checkpoint_only,
                         memory_checkpoint_and_text=effective_memory_checkpoint_and_text,
-                        memory_checkpoint_and_action=memory_checkpoint_and_action,
+                        memory_checkpoint_and_action=effective_memory_checkpoint_and_action,
                         memory_board_decision=memory_board_decision,
                         compiler_analysis=compiler_analysis,
                         board_checkpoint_semantic_result=board_checkpoint_semantic_result,
@@ -537,12 +559,12 @@ class ResponsePipelineStagesMixin:
                             response=response,
                             reflection_repair_pending=reflection_repair_pending,
                             reflection_repair_kind=reflection_repair_kind,
-                            plan_checkpoint_only=plan_checkpoint_only,
-                            plan_checkpoint_and_text=plan_checkpoint_and_text,
-                            plan_checkpoint_and_action=plan_checkpoint_and_action,
+                            plan_checkpoint_only=effective_plan_checkpoint_only,
+                            plan_checkpoint_and_text=effective_plan_checkpoint_and_text,
+                            plan_checkpoint_and_action=effective_plan_checkpoint_and_action,
                             memory_checkpoint_only=effective_memory_checkpoint_only,
                             memory_checkpoint_and_text=effective_memory_checkpoint_and_text,
-                            memory_checkpoint_and_action=memory_checkpoint_and_action,
+                            memory_checkpoint_and_action=effective_memory_checkpoint_and_action,
                             memory_board_decision=memory_board_decision,
                             compiler_analysis=compiler_analysis,
                             board_checkpoint_semantic_result=board_checkpoint_semantic_result,
@@ -561,9 +583,9 @@ class ResponsePipelineStagesMixin:
                 response=response,
                 reflection_repair_pending=reflection_repair_pending,
                 reflection_repair_kind=reflection_repair_kind,
-                plan_checkpoint_only=plan_checkpoint_only,
-                plan_checkpoint_and_text=plan_checkpoint_and_text,
-                plan_checkpoint_and_action=plan_checkpoint_and_action,
+                plan_checkpoint_only=effective_plan_checkpoint_only,
+                plan_checkpoint_and_text=effective_plan_checkpoint_and_text,
+                plan_checkpoint_and_action=effective_plan_checkpoint_and_action,
                 memory_checkpoint_only=memory_checkpoint_only,
                 memory_checkpoint_and_text=memory_checkpoint_and_text,
                 memory_checkpoint_and_action=memory_checkpoint_and_action,
@@ -577,19 +599,19 @@ class ResponsePipelineStagesMixin:
                 source=memory_board_decision.source,
                 memory_checkpoint_only=effective_memory_checkpoint_only,
                 memory_checkpoint_and_text=effective_memory_checkpoint_and_text,
-                memory_checkpoint_and_action=memory_checkpoint_and_action,
+                memory_checkpoint_and_action=effective_memory_checkpoint_and_action,
             )
 
         return CheckpointStageState(
             response=response,
             reflection_repair_pending=reflection_repair_pending,
             reflection_repair_kind=reflection_repair_kind,
-            plan_checkpoint_only=plan_checkpoint_only,
-            plan_checkpoint_and_text=plan_checkpoint_and_text,
-            plan_checkpoint_and_action=plan_checkpoint_and_action,
+            plan_checkpoint_only=effective_plan_checkpoint_only,
+            plan_checkpoint_and_text=effective_plan_checkpoint_and_text,
+            plan_checkpoint_and_action=effective_plan_checkpoint_and_action,
             memory_checkpoint_only=effective_memory_checkpoint_only,
             memory_checkpoint_and_text=effective_memory_checkpoint_and_text,
-            memory_checkpoint_and_action=memory_checkpoint_and_action,
+            memory_checkpoint_and_action=effective_memory_checkpoint_and_action,
             memory_board_decision=memory_board_decision,
             compiler_analysis=compiler_analysis,
             board_checkpoint_semantic_result=board_checkpoint_semantic_result,

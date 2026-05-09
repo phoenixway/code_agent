@@ -63,6 +63,39 @@ def is_legacy_derived_plan_checkpoint_only(
     )
 
 
+def is_legacy_derived_memory_checkpoint_and_action(
+    result: BoardCheckpointSemanticResult | None,
+    *,
+    legacy_memory_checkpoint_and_action: bool,
+) -> bool:
+    return bool(
+        legacy_memory_checkpoint_and_action
+        and legacy_derived_checkpoint_kind(result) == BoardCheckpointKind.MEMORY_CHECKPOINT_WITH_ACTION
+    )
+
+
+def is_legacy_derived_plan_checkpoint_and_text(
+    result: BoardCheckpointSemanticResult | None,
+    *,
+    legacy_plan_checkpoint_and_text: bool,
+) -> bool:
+    return bool(
+        legacy_plan_checkpoint_and_text
+        and legacy_derived_checkpoint_kind(result) == BoardCheckpointKind.PLAN_CHECKPOINT_WITH_TEXT
+    )
+
+
+def is_legacy_derived_plan_checkpoint_and_action(
+    result: BoardCheckpointSemanticResult | None,
+    *,
+    legacy_plan_checkpoint_and_action: bool,
+) -> bool:
+    return bool(
+        legacy_plan_checkpoint_and_action
+        and legacy_derived_checkpoint_kind(result) == BoardCheckpointKind.PLAN_CHECKPOINT_WITH_ACTION
+    )
+
+
 def build_board_checkpoint_semantic_result(
     compiler_analysis,
     *,
