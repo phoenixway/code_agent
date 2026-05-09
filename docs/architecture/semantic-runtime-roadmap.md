@@ -1831,8 +1831,24 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 10 Step 21: Consolidate BoardCheckpoint Typed-Primary Candidate Helpers / Reduce Boilerplate
 
-- **Status**: Pending explicit approval.
+- **Status**: Done.
 - **Goal**: Refactor the board/checkpoint typed-primary candidate helpers to reduce boilerplate and improve maintainability.
+- **Allowed**:
+  - Consolidate the six typed-primary candidate helpers into a generic private helper.
+  - Keep public helper signatures and call sites unchanged.
+  - Add test coverage for plan helpers to match memory helper coverage.
+- **Forbidden**:
+  - Any observable checkpoint routing behavior change.
+  - Any authority expansion.
+  - Any compiler/prepass authority transfer.
+- **Done When**:
+  - The helpers are consolidated.
+  - No authority was expanded, and no observable routing or commit behavior changed.
+
+#### Phase 10 Step 22: BoardCheckpoint Authority Readiness Review / Decide Whether to Attempt Real Authority Transfer or Close Slice
+
+- **Status**: Pending explicit approval.
+- **Goal**: Review the state of the board/checkpoint slice and decide whether a true authority transfer is safe or if the slice should be closed.
 
 ---
 

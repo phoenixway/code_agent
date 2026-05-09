@@ -915,6 +915,42 @@ class TestBoardCheckpointSemanticBuilder(unittest.TestCase):
             )
         )
 
+        # Legacy bool wins if result is None
+        self.assertTrue(
+            resolve_plan_checkpoint_only_typed_primary(
+                None,
+                legacy_plan_checkpoint_only=True,
+                legacy_plan_checkpoint_and_text=False,
+                legacy_plan_checkpoint_and_action=False,
+            )
+        )
+
+        # Legacy bool wins if source is not legacy-derived
+        result_compiler = BoardCheckpointSemanticResult(
+            kind=BoardCheckpointKind.PLAN_CHECKPOINT_ONLY, source=BoardCheckpointSource.COMPILER_PREPASS_FACT
+        )
+        self.assertFalse(
+            resolve_plan_checkpoint_only_typed_primary(
+                result_compiler,
+                legacy_plan_checkpoint_only=False,
+                legacy_plan_checkpoint_and_text=False,
+                legacy_plan_checkpoint_and_action=False,
+            )
+        )
+
+        # Legacy bool wins if typed kind conflicts
+        result_conflicting = BoardCheckpointSemanticResult(
+            kind=BoardCheckpointKind.PLAN_CHECKPOINT_WITH_TEXT, source=BoardCheckpointSource.COMBINED_SHADOW
+        )
+        self.assertTrue(
+            resolve_plan_checkpoint_only_typed_primary(
+                result_conflicting,
+                legacy_plan_checkpoint_only=True,
+                legacy_plan_checkpoint_and_text=False,
+                legacy_plan_checkpoint_and_action=False,
+            )
+        )
+
     def test_resolve_plan_checkpoint_and_text_typed_primary(self):
         result_pct = BoardCheckpointSemanticResult(
             kind=BoardCheckpointKind.PLAN_CHECKPOINT_WITH_TEXT,
@@ -948,6 +984,29 @@ class TestBoardCheckpointSemanticBuilder(unittest.TestCase):
             )
         )
 
+        # Legacy bool wins if result is None
+        self.assertTrue(
+            resolve_plan_checkpoint_and_text_typed_primary(
+                None,
+                legacy_plan_checkpoint_only=False,
+                legacy_plan_checkpoint_and_text=True,
+                legacy_plan_checkpoint_and_action=False,
+            )
+        )
+
+        # Legacy bool wins if typed kind conflicts
+        result_conflicting = BoardCheckpointSemanticResult(
+            kind=BoardCheckpointKind.PLAN_CHECKPOINT_ONLY, source=BoardCheckpointSource.COMBINED_SHADOW
+        )
+        self.assertTrue(
+            resolve_plan_checkpoint_and_text_typed_primary(
+                result_conflicting,
+                legacy_plan_checkpoint_only=False,
+                legacy_plan_checkpoint_and_text=True,
+                legacy_plan_checkpoint_and_action=False,
+            )
+        )
+
     def test_resolve_plan_checkpoint_and_action_typed_primary(self):
         result_pca = BoardCheckpointSemanticResult(
             kind=BoardCheckpointKind.PLAN_CHECKPOINT_WITH_ACTION,
@@ -976,6 +1035,29 @@ class TestBoardCheckpointSemanticBuilder(unittest.TestCase):
             resolve_plan_checkpoint_and_action_typed_primary(
                 result_pca,
                 legacy_plan_checkpoint_only=True,
+                legacy_plan_checkpoint_and_text=False,
+                legacy_plan_checkpoint_and_action=True,
+            )
+        )
+
+        # Legacy bool wins if result is None
+        self.assertTrue(
+            resolve_plan_checkpoint_and_action_typed_primary(
+                None,
+                legacy_plan_checkpoint_only=False,
+                legacy_plan_checkpoint_and_text=False,
+                legacy_plan_checkpoint_and_action=True,
+            )
+        )
+
+        # Legacy bool wins if typed kind conflicts
+        result_conflicting = BoardCheckpointSemanticResult(
+            kind=BoardCheckpointKind.PLAN_CHECKPOINT_ONLY, source=BoardCheckpointSource.COMBINED_SHADOW
+        )
+        self.assertTrue(
+            resolve_plan_checkpoint_and_action_typed_primary(
+                result_conflicting,
+                legacy_plan_checkpoint_only=False,
                 legacy_plan_checkpoint_and_text=False,
                 legacy_plan_checkpoint_and_action=True,
             )

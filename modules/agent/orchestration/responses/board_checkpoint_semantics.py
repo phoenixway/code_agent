@@ -97,6 +97,33 @@ def is_legacy_derived_plan_checkpoint_and_action(
     )
 
 
+def _resolve_checkpoint_typed_primary_candidate(
+    result: BoardCheckpointSemanticResult | None,
+    *,
+    expected_kind: BoardCheckpointKind,
+    legacy_flag: bool,
+    other_legacy_flags: list[bool],
+) -> bool:
+    """
+    Generic, behavior-preserving resolver for typed-primary candidates.
+
+    For now, this is a structural placeholder that always returns the legacy
+    flag, ensuring no behavior change. The structure allows for future
+    strengthening of the typed-primary logic.
+    """
+    kind = legacy_derived_checkpoint_kind(result)
+    if kind is None:
+        return legacy_flag
+
+    if any(other_legacy_flags):
+        return legacy_flag
+
+    if kind == expected_kind:
+        return legacy_flag
+
+    return legacy_flag
+
+
 def resolve_memory_checkpoint_only_typed_primary(
     result: BoardCheckpointSemanticResult | None,
     *,
@@ -105,28 +132,15 @@ def resolve_memory_checkpoint_only_typed_primary(
     legacy_memory_checkpoint_and_action: bool = False,
 ) -> bool:
     """Resolve memory-checkpoint-only with typed-primary logic."""
-    kind = legacy_derived_checkpoint_kind(result)
-    if kind is None:
-        # No legacy-derived typed result, fall back to the raw legacy bool.
-        return legacy_memory_checkpoint_only
-
-    # If another legacy memory branch is active, the category is not memory-checkpoint-only.
-    # The legacy bool for this branch must win.
-    if legacy_memory_checkpoint_and_text or legacy_memory_checkpoint_and_action:
-        return legacy_memory_checkpoint_only
-
-    if kind == BoardCheckpointKind.MEMORY_CHECKPOINT_ONLY:
-        # The typed result suggests it's memory-checkpoint-only.
-        # For this step, we are only introducing the pattern. To avoid behavior
-        # drift, we do not create a new `True` from the typed result alone.
-        # The typed result can only confirm an existing legacy `True`.
-        return legacy_memory_checkpoint_only
-
-    # If the kind is something else (e.g., MIXED_BOARD_CHECKPOINT, or
-    # MEMORY_CHECKPOINT_WITH_TEXT), we fall back to the specific legacy
-    # bool for this branch. This preserves behavior in mixed cases
-    # where the simple kind is not sufficient.
-    return legacy_memory_checkpoint_only
+    return _resolve_checkpoint_typed_primary_candidate(
+        result,
+        expected_kind=BoardCheckpointKind.MEMORY_CHECKPOINT_ONLY,
+        legacy_flag=legacy_memory_checkpoint_only,
+        other_legacy_flags=[
+            legacy_memory_checkpoint_and_text,
+            legacy_memory_checkpoint_and_action,
+        ],
+    )
 
 
 def resolve_memory_checkpoint_and_text_typed_primary(
@@ -137,17 +151,15 @@ def resolve_memory_checkpoint_and_text_typed_primary(
     legacy_memory_checkpoint_and_action: bool,
 ) -> bool:
     """Resolve memory-checkpoint-and-text with typed-primary logic."""
-    kind = legacy_derived_checkpoint_kind(result)
-    if kind is None:
-        return legacy_memory_checkpoint_and_text
-
-    if legacy_memory_checkpoint_only or legacy_memory_checkpoint_and_action:
-        return legacy_memory_checkpoint_and_text
-
-    if kind == BoardCheckpointKind.MEMORY_CHECKPOINT_WITH_TEXT:
-        return legacy_memory_checkpoint_and_text
-
-    return legacy_memory_checkpoint_and_text
+    return _resolve_checkpoint_typed_primary_candidate(
+        result,
+        expected_kind=BoardCheckpointKind.MEMORY_CHECKPOINT_WITH_TEXT,
+        legacy_flag=legacy_memory_checkpoint_and_text,
+        other_legacy_flags=[
+            legacy_memory_checkpoint_only,
+            legacy_memory_checkpoint_and_action,
+        ],
+    )
 
 
 def resolve_memory_checkpoint_and_action_typed_primary(
@@ -158,17 +170,15 @@ def resolve_memory_checkpoint_and_action_typed_primary(
     legacy_memory_checkpoint_and_action: bool,
 ) -> bool:
     """Resolve memory-checkpoint-and-action with typed-primary logic."""
-    kind = legacy_derived_checkpoint_kind(result)
-    if kind is None:
-        return legacy_memory_checkpoint_and_action
-
-    if legacy_memory_checkpoint_only or legacy_memory_checkpoint_and_text:
-        return legacy_memory_checkpoint_and_action
-
-    if kind == BoardCheckpointKind.MEMORY_CHECKPOINT_WITH_ACTION:
-        return legacy_memory_checkpoint_and_action
-
-    return legacy_memory_checkpoint_and_action
+    return _resolve_checkpoint_typed_primary_candidate(
+        result,
+        expected_kind=BoardCheckpointKind.MEMORY_CHECKPOINT_WITH_ACTION,
+        legacy_flag=legacy_memory_checkpoint_and_action,
+        other_legacy_flags=[
+            legacy_memory_checkpoint_only,
+            legacy_memory_checkpoint_and_text,
+        ],
+    )
 
 
 def resolve_plan_checkpoint_only_typed_primary(
@@ -179,17 +189,15 @@ def resolve_plan_checkpoint_only_typed_primary(
     legacy_plan_checkpoint_and_action: bool,
 ) -> bool:
     """Resolve plan-checkpoint-only with typed-primary logic."""
-    kind = legacy_derived_checkpoint_kind(result)
-    if kind is None:
-        return legacy_plan_checkpoint_only
-
-    if legacy_plan_checkpoint_and_text or legacy_plan_checkpoint_and_action:
-        return legacy_plan_checkpoint_only
-
-    if kind == BoardCheckpointKind.PLAN_CHECKPOINT_ONLY:
-        return legacy_plan_checkpoint_only
-
-    return legacy_plan_checkpoint_only
+    return _resolve_checkpoint_typed_primary_candidate(
+        result,
+        expected_kind=BoardCheckpointKind.PLAN_CHECKPOINT_ONLY,
+        legacy_flag=legacy_plan_checkpoint_only,
+        other_legacy_flags=[
+            legacy_plan_checkpoint_and_text,
+            legacy_plan_checkpoint_and_action,
+        ],
+    )
 
 
 def resolve_plan_checkpoint_and_text_typed_primary(
@@ -200,17 +208,15 @@ def resolve_plan_checkpoint_and_text_typed_primary(
     legacy_plan_checkpoint_and_action: bool,
 ) -> bool:
     """Resolve plan-checkpoint-and-text with typed-primary logic."""
-    kind = legacy_derived_checkpoint_kind(result)
-    if kind is None:
-        return legacy_plan_checkpoint_and_text
-
-    if legacy_plan_checkpoint_only or legacy_plan_checkpoint_and_action:
-        return legacy_plan_checkpoint_and_text
-
-    if kind == BoardCheckpointKind.PLAN_CHECKPOINT_WITH_TEXT:
-        return legacy_plan_checkpoint_and_text
-
-    return legacy_plan_checkpoint_and_text
+    return _resolve_checkpoint_typed_primary_candidate(
+        result,
+        expected_kind=BoardCheckpointKind.PLAN_CHECKPOINT_WITH_TEXT,
+        legacy_flag=legacy_plan_checkpoint_and_text,
+        other_legacy_flags=[
+            legacy_plan_checkpoint_only,
+            legacy_plan_checkpoint_and_action,
+        ],
+    )
 
 
 def resolve_plan_checkpoint_and_action_typed_primary(
@@ -221,17 +227,15 @@ def resolve_plan_checkpoint_and_action_typed_primary(
     legacy_plan_checkpoint_and_action: bool,
 ) -> bool:
     """Resolve plan-checkpoint-and-action with typed-primary logic."""
-    kind = legacy_derived_checkpoint_kind(result)
-    if kind is None:
-        return legacy_plan_checkpoint_and_action
-
-    if legacy_plan_checkpoint_only or legacy_plan_checkpoint_and_text:
-        return legacy_plan_checkpoint_and_action
-
-    if kind == BoardCheckpointKind.PLAN_CHECKPOINT_WITH_ACTION:
-        return legacy_plan_checkpoint_and_action
-
-    return legacy_plan_checkpoint_and_action
+    return _resolve_checkpoint_typed_primary_candidate(
+        result,
+        expected_kind=BoardCheckpointKind.PLAN_CHECKPOINT_WITH_ACTION,
+        legacy_flag=legacy_plan_checkpoint_and_action,
+        other_legacy_flags=[
+            legacy_plan_checkpoint_only,
+            legacy_plan_checkpoint_and_text,
+        ],
+    )
 
 
 def resolve_legacy_derived_checkpoint_effective_flags(

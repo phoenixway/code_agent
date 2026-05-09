@@ -570,6 +570,17 @@ This design-only step is complete. It analyzed whether it is safe for the classi
   - No compiler/prepass authority was introduced.
   - No observable routing or commit behavior changed.
 
-### 3.21. Next Intended Step
+### 3.21. Step 21: Consolidate BoardCheckpoint Typed-Primary Candidate Helpers / Reduce Boilerplate
 
-The next step is **Phase 10 Step 21: Consolidate BoardCheckpoint Typed-Primary Candidate Helpers / Reduce Boilerplate**.
+- **Outcome**:
+  - The six behavior-preserving typed-primary candidate helpers for board/checkpoint routing were consolidated into a single generic private helper.
+  - This reduces boilerplate while keeping the public-facing helper signatures and call sites unchanged.
+- **What did not change**:
+  - No authority was expanded.
+  - No compiler/prepass authority was introduced.
+  - No observable routing or commit behavior changed.
+  - Legacy fallback and disagreement guards remain fully in place.
+
+### 3.22. Next Intended Step
+
+The next step is **Phase 10 Step 22: BoardCheckpoint Authority Readiness Review / Decide Whether to Attempt Real Authority Transfer or Close Slice**.

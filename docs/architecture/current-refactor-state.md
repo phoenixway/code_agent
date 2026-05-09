@@ -4,9 +4,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 10 Step 20: Typed-Primary Candidate for Legacy-Derived Plan Branches
+- **Phase**: Phase 10 Step 21: Consolidate BoardCheckpoint Typed-Primary Candidate Helpers / Reduce Boilerplate
 - **Status**: Complete.
-- **Next Step**: Phase 10 Step 21: Consolidate BoardCheckpoint Typed-Primary Candidate Helpers / Reduce Boilerplate.
+- **Next Step**: Phase 10 Step 22: BoardCheckpoint Authority Readiness Review / Decide Whether to Attempt Real Authority Transfer or Close Slice.
 - **Boundary**: The checkpoint parity bridge remains diagnostic-only. Legacy board handlers still own commit behavior, the prepass compiler analysis remains observational, and `_apply_compiler_diagnosis` remains the effectful classification-stage path that recomputes on normalized response.
 
 ## Step 4I Parity Matrix
@@ -987,6 +987,9 @@ This document is the single source of truth for the current state of the Semanti
   - The typed-primary candidate pattern was extended to all legacy-derived plan checkpoint branches.
   - The new pure helpers remain behavior-preserving with legacy disagreement guards.
   - The typed result cannot change the plan branch category, and no observable routing or commit behavior changed.
+- **Phase 10 Step 21: Consolidate BoardCheckpoint Typed-Primary Candidate Helpers / Reduce Boilerplate (Complete)**
+  - The typed-primary candidate helpers were consolidated to reduce boilerplate.
+  - No authority was expanded, and no observable routing or commit behavior changed.
 
 ## Phase 9 Step 6D Outcome
 
