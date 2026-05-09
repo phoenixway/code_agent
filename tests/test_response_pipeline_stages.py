@@ -306,5 +306,143 @@ class TestResponsePipelineStages(unittest.TestCase):
         self.assertEqual([action_segment], outcome.segments)
 
 
+class TestResponsePipelineCheckpointStageCharacterization(unittest.TestCase):
+    def setUp(self):
+        class Harness(ResponsePipelineStagesMixin):
+            def __init__(self):
+                self.state = SimpleNamespace(active_intent=None, last_memory_update_done=False)
+                self.plan_board_stage = AsyncMock()
+                self.memory_board_stage = AsyncMock()
+                self.ui = AsyncMock()
+                self.stage_logger = SimpleNamespace(log=MagicMock(), log_architecture_defect=MagicMock())
+                self.guards = SimpleNamespace(
+                    reflection_repair_pending=MagicMock(return_value=False),
+                    reflection_repair_kind=MagicMock(return_value=""),
+                    memory_checkpoint_streak=MagicMock(return_value=1),
+                    set_reflection_repair_pending=MagicMock(),
+                    set_nonproductive_thinking_state=MagicMock(),
+                )
+                self.semantics = SimpleNamespace(has_substantial_think=MagicMock(return_value=False))
+                self.memory_checkpoint_hard_stop_streak = 3
+                self.nonproductive_thinking_hard_stop_streak = 3
+                self.prompt_builder = SimpleNamespace(
+                    build_reflection_repair_accepted_prompt=MagicMock(return_value="repair_accepted_prompt"),
+                    build_durable_state_repair_prompt=MagicMock(return_value="durable_state_repair_prompt"),
+                    build_repeated_thinking_without_valid_output_prompt=MagicMock(return_value="repeated_thinking_prompt"),
+                )
+
+        self.harness = Harness()
+        self.ctx = SimpleNamespace()
+
+    def test_checkpoint_stage_with_memory_checkpoint_only_continues(self):
+        """Characterizes the behavior when the memory board handler detects a checkpoint-only response."""
+        self.harness.plan_board_stage.apply.return_value = SimpleNamespace(
+            handled=False, response_text="response"
+        )
+        self.harness.memory_board_stage.apply.return_value = SimpleNamespace(
+            handled=True,
+            response_text="response",
+            next_query="next_query_from_memory_board",
+            reason="memory_checkpoint_only",
+            source="memory_board",
+            memory_checkpoint_only=True,
+            memory_checkpoint_and_text=False,
+            memory_checkpoint_and_action=False,
+        )
+
+        _, outcome = asyncio.run(
+            self.harness._run_checkpoint_stage(
+                self.ctx, "response", reflection_repair_pending=False, reflection_repair_kind=""
+            )
+        )
+
+        self.assertIsInstance(outcome, ResponsePipelineOutcome)
+        self.assertTrue(outcome.continue_loop)
+        self.assertEqual("next_query_from_memory_board", outcome.next_query)
+        self.assertEqual("memory_checkpoint_only", outcome.reason)
+        self.assertTrue(outcome.memory_checkpoint_only)
+        self.assertFalse(outcome.memory_checkpoint_and_text)
+
+    def test_checkpoint_stage_with_memory_checkpoint_and_text_passes_through(self):
+        """Characterizes that memory_checkpoint_and_text does not result in a handled outcome from the checkpoint stage itself, but passes state to the next stage."""
+        self.harness.plan_board_stage.apply.return_value = SimpleNamespace(
+            handled=False, response_text="response"
+        )
+        self.harness.memory_board_stage.apply.return_value = SimpleNamespace(
+            handled=True,  # Note: handler considers it handled
+            response_text="response",
+            next_query="next_query",
+            reason="memory_checkpoint_and_text",
+            source="memory_board",
+            memory_checkpoint_only=False,
+            memory_checkpoint_and_text=True,
+            memory_checkpoint_and_action=False,
+        )
+
+        state, outcome = asyncio.run(
+            self.harness._run_checkpoint_stage(
+                self.ctx, "response", reflection_repair_pending=False, reflection_repair_kind=""
+            )
+        )
+
+        self.assertIsNone(outcome)
+        self.assertIsNotNone(state)
+        self.assertTrue(state.memory_checkpoint_and_text)
+        self.assertFalse(state.memory_checkpoint_only)
+        # The logic inside _run_checkpoint_stage specifically un-handles this case
+        # to let it flow to post-classification.
+        self.assertFalse(state.memory_board_decision.handled)
+
+    def test_checkpoint_stage_with_plan_checkpoint_only_continues(self):
+        """Characterizes the behavior when the plan board handler handles the response."""
+        self.harness.plan_board_stage.apply.return_value = SimpleNamespace(
+            handled=True,
+            response_text="response",
+            next_query="next_query_from_plan_board",
+            reason="plan_checkpoint_only",
+            source="plan_board",
+            plan_checkpoint_only=True,
+            plan_checkpoint_and_text=False,
+            plan_checkpoint_and_action=False,
+        )
+
+        _, outcome = asyncio.run(
+            self.harness._run_checkpoint_stage(
+                self.ctx, "response", reflection_repair_pending=False, reflection_repair_kind=""
+            )
+        )
+
+        self.assertIsInstance(outcome, ResponsePipelineOutcome)
+        self.assertTrue(outcome.continue_loop)
+        self.assertEqual("next_query_from_plan_board", outcome.next_query)
+        self.assertEqual("plan_checkpoint_only", outcome.reason)
+        self.harness.memory_board_stage.apply.assert_not_called()
+
+    def test_checkpoint_stage_with_no_checkpoints_passes_through(self):
+        """Characterizes the passthrough case where no checkpoints are detected."""
+        self.harness.plan_board_stage.apply.return_value = SimpleNamespace(
+            handled=False, response_text="response"
+        )
+        self.harness.memory_board_stage.apply.return_value = SimpleNamespace(
+            handled=False,
+            response_text="response",
+            memory_checkpoint_only=False,
+            memory_checkpoint_and_text=False,
+            memory_checkpoint_and_action=False,
+        )
+
+        state, outcome = asyncio.run(
+            self.harness._run_checkpoint_stage(
+                self.ctx, "response", reflection_repair_pending=False, reflection_repair_kind=""
+            )
+        )
+
+        self.assertIsNone(outcome)
+        self.assertIsNotNone(state)
+        self.assertFalse(state.memory_checkpoint_only)
+        self.assertFalse(state.memory_checkpoint_and_text)
+        self.assertFalse(state.plan_checkpoint_only)
+
+
 if __name__ == "__main__":
     unittest.main()

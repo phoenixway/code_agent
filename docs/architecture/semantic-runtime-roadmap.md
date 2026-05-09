@@ -1426,7 +1426,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 10 Step 1: Board/Checkpoint Consumer Slice Preflight
 
-- **Status**: Pending explicit approval.
+- **Status**: Done.
 - **Goal**: Re-open the deferred board/checkpoint consumer migration slice with a design-only preflight.
 - **Allowed**:
   - Read-only code inspection of `PlanBoardStageHandler` and `MemoryBoardStageHandler`.
@@ -1436,8 +1436,43 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Implementation before design approval.
   - Any production code or test changes.
   - Any dispatch, final-answer, or `ActionPolicy` changes.
+- **Completed Outcome**:
+  - The preflight review is complete and documented in `docs/architecture/board-checkpoint-consumer-slice-design.md`.
+  - The review identified a major architectural blocker: the board/checkpoint stage runs *before* the classification stage, preventing consumers from accessing typed semantic results.
+  - **Conclusion**: **NO-GO** for immediate consumer migration.
+  - The next step is `Phase 10 Step 2: Board/Checkpoint Characterization Tests`.
+
+---
+
+#### Phase 10 Step 2: Board/Checkpoint Characterization Tests
+
+- **Status**: Done.
+- **Goal**: Add orchestration characterization tests to lock down the behavior of `_run_checkpoint_stage` and its interaction with mocked board handlers.
+- **Allowed**:
+  - Test-only additions to lock down existing behavior.
+- **Forbidden**:
+  - Any production code changes.
+  - Any consumer migration.
+  - Any pipeline reordering.
+- **Completed Outcome**:
+  - Orchestration characterization tests were added to `tests/test_response_pipeline_stages.py` to lock down the orchestration logic of `_run_checkpoint_stage`.
+  - The tests cover outcomes from mocked board handlers, such as `memory_checkpoint_only` and `memory_checkpoint_and_text`.
+  - The internal parsing and commit logic of the board handlers themselves remains deferred.
+  - No production code was changed.
+  - The next step is to design the pipeline reordering.
+
+---
+
+#### Phase 10 Step 3: Pipeline Reordering Design
+
+- **Status**: Pending explicit approval.
+- **Goal**: Design a risk-mitigated plan to reorder the `ResponsePipeline` to run classification before the checkpoint stage.
+- **Allowed**:
+  - Design-only documentation updates.
+- **Forbidden**:
+  - Implementation before design approval.
 - **Done When**:
-  - The preflight review is complete and a decision on the next implementation step is documented.
+  - A detailed, approved design for pipeline reordering exists.
 
 ---
 

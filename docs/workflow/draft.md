@@ -105,4 +105,6 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 101. Phase 9 Step 6C Candidate Eligibility Metadata Alignment: done.
 102. Phase 9 Step 6D Metadata Alignment Review / Producer-Consumer Contract Closure: done.
 103. Phase 9 Step 7 Plan-First Dispatch Boundary Closure / Next Slice Selection: done.
-104. Next: Phase 10 Step 1: Board/Checkpoint Consumer Slice Preflight.
+104. Phase 10 Step 1: Board/Checkpoint Consumer Slice Preflight: done.
+105. Phase 10 Step 2: Board/Checkpoint Characterization Tests: done.
+106. Next: Phase 10 Step 3: Pipeline Reordering Design.

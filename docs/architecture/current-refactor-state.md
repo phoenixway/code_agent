@@ -295,10 +295,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- **Phase 10 Step 1: Board/Checkpoint Consumer Slice Preflight**
-  - Re-open the deferred board/checkpoint consumer migration slice.
-  - Inventory and characterize current board/checkpoint consumer behavior.
-  - Design a narrow, behavior-preserving migration path.
+- **Phase 10 Step 3: Pipeline Reordering Design**
+  - Design a risk-mitigated plan to reorder the `ResponsePipeline` to run classification before the checkpoint stage.
+  - This is a design-only step. No production code changes are authorized.
 
 ## Phase 9 Step 1 Outcome
 
@@ -603,6 +602,25 @@ This document is the single source of truth for the current state of the Semanti
   - However, the evidence is not sufficient to safely proceed with candidate-driven dispatch or a synthetic segment adapter. The side-effect boundary remains high-risk.
   - The plan-first dispatch boundary slice is now closed for now. Actual dispatch remains segment-driven.
   - The next safest slice is to address the deferred board/checkpoint consumers, which is a narrower and lower-risk area than dispatch side effects or final-answer authority.
+
+## Phase 10 Step 1: Board/Checkpoint Consumer Slice Preflight (Complete)
+
+- **Conclusion**
+  - The preflight review of board/checkpoint consumers is complete and documented in `docs/architecture/board-checkpoint-consumer-slice-design.md`.
+  - The review identified a major architectural blocker: the `ResponsePipeline` executes the board/checkpoint stage (`_run_checkpoint_stage`) *before* the main classification stage (`_run_classification_stage`).
+  - This pipeline ordering prevents the primary consumers (`MemoryBoardStageHandler`, `PlanBoardStageHandler`) from accessing typed semantic results (e.g., from the `TerminalAnswerClassifier`) and other post-classification runtime facts, as they have not been computed yet.
+  - **NO-GO** for immediate consumer migration. Any migration is blocked until the pipeline is safely reordered.
+- **Recommendation**
+  - The next step is `Phase 10 Step 2: Board/Checkpoint Characterization Tests`. This is a test-only step to lock down the behavior of the board handlers and their pipeline interaction before any reordering is designed.
+  - After characterization, a new `Phase 10 Step 3: Pipeline Reordering Design` will be required.
+
+## Phase 10 Step 2: Board/Checkpoint Characterization Tests (Complete)
+
+- **Conclusion**
+  - Added orchestration characterization tests to `tests/test_response_pipeline_stages.py` to lock down the orchestration behavior of `_run_checkpoint_stage`.
+  - The tests cover how the pipeline behaves for `memory_checkpoint_only`, `memory_checkpoint_and_text`, and `plan_checkpoint_only` outcomes from mocked board handlers.
+  - This was a test-only step. No production code was changed.
+  - Characterization of the internal parsing and commit logic of the board handlers themselves is deferred until after the pipeline is reordered, as their migration is blocked.
 
 ## Phase 9 Step 6D Outcome
 
