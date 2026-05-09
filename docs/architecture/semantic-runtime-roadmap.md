@@ -1202,7 +1202,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 9 Step 5D: Candidate-to-Dispatcher Bridge Preflight
 
-- **Status**: Pending explicit approval.
+- **Status**: Done.
 - **Goal**: Review the implemented candidate surface and decide whether a
   candidate-to-dispatcher bridge can be introduced without behavior drift.
 - **Allowed**:
@@ -1214,10 +1214,31 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Fallback removal
   - Multi-action migration
   - `ActionPolicy` authority changes
+- **Completed Outcome**:
+  - Direct candidate-driven dispatcher input is not approved.
+  - Synthetic candidate-derived segment adaptation is deferred.
+  - The safest next step is metadata-only bridging while dispatch remains
+    segment-driven.
+
+#### Phase 9 Step 5E: Candidate Metadata Bridge Implementation
+
+- **Status**: Pending explicit approval.
+- **Goal**: Surface `PlanDispatchCandidate` as metadata/bridge evidence only,
+  while keeping actual dispatch segment-driven.
+- **Allowed**:
+  - Narrow metadata plumbing at the dispatch boundary
+  - Test coverage for eligible candidate metadata
+  - Compatibility/fallback preservation
+- **Forbidden**:
+  - Dispatch side-effect changes
+  - Candidate-driven dispatcher input
+  - Synthetic segment replacement
+  - Multi-action migration
+  - `ActionPolicy` authority changes
 - **Done When**:
-  - The bridge eligibility surface is re-validated.
-  - Required fallback points are confirmed.
-  - A narrow next implementation shape is concrete enough for approval.
+  - Eligible paths surface candidate metadata without changing dispatcher input.
+  - `processed_segs` / dispatch outcome behavior remains unchanged.
+  - Fallback remains explicit on all non-eligible paths.
 
 ---
 

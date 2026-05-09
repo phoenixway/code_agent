@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 9 Step 5C: IR-Derived Dispatch Candidate Implementation
+- **Phase**: Phase 9 Step 5D: Candidate-to-Dispatcher Bridge Preflight
 - **Status**: Complete.
-- **Next Step**: Phase 9 Step 5D: Candidate-to-Dispatcher Bridge Preflight.
-- **Boundary**: The parity probe is implemented and the IR-derived candidate surface now exists, but actual dispatch remains segment-driven. Compiler/IR still owns structure, `ActionPolicy` still owns permission, the execution layer still owns side effects, and `ResponsePipeline` still orchestrates. Segment fallback remains in place and no observable dispatch behavior changed.
+- **Next Step**: Phase 9 Step 5E: Candidate Metadata Bridge Implementation.
+- **Boundary**: The parity probe is implemented and the IR-derived candidate surface exists, but actual dispatch remains segment-driven. Compiler/IR still owns structure, `ActionPolicy` still owns permission, the execution layer still owns side effects, and `ResponsePipeline` still orchestrates. Segment fallback remains in place and no observable dispatch behavior changed.
 
 ## Step 4I Parity Matrix
 
@@ -295,8 +295,8 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- **Phase 9 Step 5D: Candidate-to-Dispatcher Bridge Preflight**
-  - Review the implemented candidate surface before any bridge narrowing.
+- **Phase 9 Step 5E: Candidate Metadata Bridge Implementation**
+  - Surface the candidate as metadata/bridge evidence only.
   - Keep actual dispatch segment-driven.
   - Keep `segments` fallback where parity is not yet proven.
   - Keep `PLAINTEXT_TERMINAL_ANSWER` / final-answer-path migration deferred.
@@ -530,6 +530,31 @@ This document is the single source of truth for the current state of the Semanti
   - No `ActionPolicy` authority changed.
   - No pre-action text behavior changed.
   - No post-dispatch outcome handling changed.
+
+## Phase 9 Step 5D Outcome
+
+- **Decision**
+  - It is not yet safe to pass `PlanDispatchCandidate` directly into the
+    dispatcher path.
+
+- **Why**
+  - `ActionDispatcher.dispatch_segments(...)` still expects concrete segment objects.
+  - `DispatchOutcomeHandler` still reconstructs and interprets `processed_segs`.
+  - `ExecutionCommit` still derives committed action counts from processed action segments.
+  - A direct candidate-driven dispatch path would widen the migration beyond the
+    current narrow slice.
+
+- **Option review**
+  - Option A: candidate as metadata/diagnostic only while dispatch stays
+    segment-driven: recommended.
+  - Option B: candidate-derived synthetic segment adapter: deferred.
+  - Option C: direct dispatcher candidate input: no-go for now.
+
+- **Recommended next step**
+  - `Phase 9 Step 5E: Candidate Metadata Bridge Implementation`
+  - Keep actual dispatch segment-driven.
+  - Preserve `processed_segs` / dispatch-outcome expectations.
+  - Preserve all existing fallback points.
 
 ## Step 4M Batch Plan
 

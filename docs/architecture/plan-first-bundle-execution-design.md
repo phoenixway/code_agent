@@ -1,6 +1,6 @@
 # Phase 9 Design: Plan-First Bundle Execution
 
-- **Phase 9 Status**: Step 5C Candidate Implementation Complete
+- **Phase 9 Status**: Step 5D Preflight Complete
 - **Scope**: Action / bundle execution path only
 - **Non-Goals**:
   - No parser rewrite
@@ -557,6 +557,89 @@ Pending explicit approval.
 - review the implemented candidate surface
 - decide whether a candidate-to-dispatcher bridge can be introduced without behavior drift
 - keep actual dispatch segment-driven until that preflight is complete
+
+### 1. Is it safe to pass `PlanDispatchCandidate` to the dispatcher path yet?
+
+Not yet.
+
+Current dispatcher and post-dispatch behavior is still explicitly segment-shaped:
+
+- `DispatchPipeline._dispatch_segments(...)` still calls
+  `dispatcher.dispatch_segments(segments, state)`.
+- `ActionDispatcher.dispatch_segments(...)` iterates concrete segment objects and
+  handles:
+  - `thought` segments
+  - `text` segments
+  - `action` segments
+- `DispatchOutcomeHandler` still reconstructs and interprets `processed_segs`.
+- `ExecutionCommit` still counts committed action segments from `processed_segs`.
+
+Because of those downstream assumptions, direct candidate dispatch would couple one
+small migration to multiple side-effect and post-dispatch surfaces at once.
+
+### 2. Option analysis
+
+- **Option A: pass candidate as metadata/diagnostic only, dispatch still uses segments**
+  - Lowest risk
+  - Preserves current dispatcher contract
+  - Preserves `processed_segs` expectations
+  - Preserves all side effects
+- **Option B: build a candidate-derived synthetic single action segment and prove it equals the original segment**
+  - Potentially feasible later
+  - Still touches dispatcher input shape directly
+  - Needs stronger proof that synthetic segment identity/content cannot affect
+    downstream behavior
+- **Option C: direct dispatcher candidate input**
+  - Too risky now
+  - Would require widening dispatcher and post-dispatch contracts prematurely
+
+### 3. Recommended option
+
+Recommend **Option A**.
+
+This slice is not ready for direct candidate-driven dispatch yet. The safest next
+step is to attach or surface candidate metadata while keeping actual dispatch
+segment-driven.
+
+### 4. Fallback points that must remain
+
+All current fallback points from Step 5A / 5C remain mandatory:
+
+- no `execution_plan`
+- no `compiler_ir`
+- zero or multiple IR action ops
+- zero or multiple segment actions
+- payload mismatch
+- summary mismatch
+- file-content-backed action
+- unsupported action shape
+- any uncertainty
+
+Additionally, even on eligible candidate paths:
+
+- actual dispatcher input must remain the original `segments`
+- `processed_segs` / `DispatchOutcomeHandler` behavior must remain unchanged
+
+### 5. Tests required before any candidate-to-dispatcher implementation
+
+If a future implementation goes beyond metadata-only, it will need:
+
+- candidate metadata attached/logged for eligible path without changing dispatched
+  segment objects
+- explicit proof that dispatcher still receives the original segment list/object
+  identity on eligible paths
+- explicit proof that `processed_segs` and `ExecutionCommit` behavior remain unchanged
+- fallback coverage for every non-eligible case
+- no side-effect drift coverage for the eligible slice
+
+### 6. Step 5D conclusion
+
+- **No-go** for direct candidate side-effect dispatch in the next step.
+- **Not recommended yet**: synthetic candidate-derived segment adapter.
+- **Recommended next step**:
+  `Phase 9 Step 5E: Candidate Metadata Bridge Implementation`
+  - keep actual dispatch segment-driven
+  - surface candidate only as metadata/diagnostic/bridge evidence
 
 ## Safety Gate
 
