@@ -1090,7 +1090,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 9 Step 3: ExecutionPlan Contract Characterization Tests
 
-- **Status**: Pending explicit approval.
+- **Status**: Done.
 - **Goal**: Lock down the current `ExecutionPlan` producer behavior and add
   plan-vs-segment parity coverage before any dispatch consumer migration.
 - **Allowed**:
@@ -1101,10 +1101,31 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Dispatch behavior changes
   - `ActionPolicy` authority changes
   - Execution-path migration in this step
-- **Done When**:
+- **Completed Outcome**:
   - Current `ExecutionPlan` field population is characterized.
-  - Parity tests exist for plan-derived versus segment-derived action inputs.
+  - Compiler IR plan-first candidate fields are characterized.
+  - Parity coverage exists for plan-derived versus segment-derived action
+    summaries on the first migrated single-action bundle path.
   - Fallback behavior is locked down for non-migrated paths.
+  - No production behavior changed.
+
+#### Phase 9 Step 4: ExecutionPlan First Producer Migration / Dispatch Consumer Preflight
+
+- **Status**: Pending explicit approval.
+- **Goal**: Review the characterized contract and decide whether the first
+  narrow producer or dispatch-consumer migration is safe.
+- **Allowed**:
+  - Read-only code inspection
+  - Design-only review
+  - Risk analysis for the first migrated slice
+- **Forbidden**:
+  - Dispatch behavior changes
+  - `ActionPolicy` authority changes
+  - Execution-path migration in this step
+- **Done When**:
+  - The first migration target is explicitly chosen.
+  - Required compatibility fallback points are confirmed.
+  - Implementation can be authorized narrowly without behavior drift.
 
 ---
 

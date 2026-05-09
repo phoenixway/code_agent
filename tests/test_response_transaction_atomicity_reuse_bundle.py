@@ -386,6 +386,10 @@ async def test_valid_reuse_plus_allowed_action_bundle_is_dispatch_ready():
     assert outcome.execution_plan.action_effects == ["read_chunk:x.py"]
     assert outcome.segments
     assert any(getattr(seg, "type", "") == "action" for seg in outcome.segments)
+    action_seg = next(seg for seg in outcome.segments if getattr(seg, "type", "") == "action")
+    assert action_seg.content["type"] == "read_chunk"
+    assert action_seg.content["path"] == "x.py"
+    assert outcome.execution_plan.action_effects[0] == f'{action_seg.content["type"]}:{action_seg.content["path"]}'
 
 
 @pytest.mark.asyncio
@@ -436,7 +440,10 @@ async def test_valid_activate_write_bundle_is_dispatch_ready():
     assert outcome.execution_plan.before_active_intent_id == "save_requested_document"
     assert outcome.execution_plan.after_active_intent_id == "save_requested_document"
     assert outcome.execution_plan.action_effects == ["write_file_block:docs/x.md"]
-    assert any(getattr(seg, "type", "") == "action" for seg in outcome.segments)
+    action_seg = next(seg for seg in outcome.segments if getattr(seg, "type", "") == "action")
+    assert action_seg.content["type"] == "write_file_block"
+    assert action_seg.content["path"] == "docs/x.md"
+    assert outcome.execution_plan.action_effects[0] == f'{action_seg.content["type"]}:{action_seg.content["path"]}'
 
 
 @pytest.mark.asyncio

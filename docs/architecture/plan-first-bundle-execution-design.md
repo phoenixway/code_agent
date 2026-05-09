@@ -1,6 +1,6 @@
 # Phase 9 Design: Plan-First Bundle Execution
 
-- **Phase 9 Status**: Step 2 Producer/Consumer Contract Design Complete
+- **Phase 9 Status**: Step 3 Characterization Complete
 - **Scope**: Action / bundle execution path only
 - **Non-Goals**:
   - No parser rewrite
@@ -270,7 +270,7 @@ The first migrated slice should keep `ExecutionPlan` small and descriptive.
 
 ### Step 3: ExecutionPlan Contract Characterization Tests
 
-Design complete; implementation pending explicit approval.
+Complete.
 
 - lock down current `ExecutionPlan` production for the first migrated slice
 - add parity coverage between plan-derived and segment-derived action inputs

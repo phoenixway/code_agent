@@ -16,16 +16,19 @@ class TestResponsePipelineStages(unittest.TestCase):
         class Harness(ResponsePipelineStagesMixin):
             def __init__(self):
                 self.state = SimpleNamespace(active_intent=None)
+                self.STRUCTURAL_INVALID_KINDS = set()
                 self.semantics = SimpleNamespace(
                     has_any_action_proposal=MagicMock(return_value=False),
                     is_plaintext_answer_path=MagicMock(return_value=False),
                     is_reflection_only_repair_turn=MagicMock(return_value=False),
                     is_durable_state_repair_turn=MagicMock(return_value=False),
                 )
+                self._has_any_action_proposal = self.semantics.has_any_action_proposal
                 self.guards = SimpleNamespace(
                     set_reflection_repair_pending=MagicMock(),
                     set_nonproductive_thinking_state=MagicMock(),
                     is_nonproductive_thinking_turn=MagicMock(return_value=False),
+                    clear_terminal_plaintext_completion=MagicMock(),
                 )
                 self.stage_logger = SimpleNamespace(log=MagicMock())
                 self.prompt_builder = SimpleNamespace(
@@ -44,6 +47,68 @@ class TestResponsePipelineStages(unittest.TestCase):
                 )
 
         self.harness = Harness()
+
+    def test_build_execution_plan_characterizes_current_field_population(self):
+        self.harness.semantics.has_any_action_proposal.return_value = True
+        self.harness.state.active_intent = SimpleNamespace(intent_id="intent_after")
+        self.harness.state.intent_runtime = SimpleNamespace(
+            last_transition_info={"before_active_intent_id": "intent_before"}
+        )
+
+        step = SimpleNamespace(intent_payload={"mode": "activate", "intent_id": "intent_payload"})
+        parsed_output = SimpleNamespace(
+            compiler_shape="INTENT_ACTION_BUNDLE",
+            compiler_ir=SimpleNamespace(
+                has_pre_action_text=False,
+                pre_action_text="",
+                action_ops=[
+                    SimpleNamespace(action_type="read_file", payload={"path": "README.md"}),
+                ],
+            ),
+        )
+
+        plan = self.harness._build_execution_plan(step, parsed_output, parsed_action_count=1)
+
+        self.assertIsNotNone(plan)
+        self.assertEqual("INTENT_ACTION_BUNDLE", plan.shape)
+        self.assertEqual("atomic_intent_action_bundle", plan.transaction_kind)
+        self.assertEqual(["activate_intent:intent_after"], plan.state_effects)
+        self.assertEqual(["read_file:README.md"], plan.action_effects)
+        self.assertEqual([], plan.output_effects)
+        self.assertTrue(plan.bundle_validated)
+        self.assertTrue(plan.transition_applied)
+        self.assertFalse(plan.action_dispatched)
+        self.assertFalse(plan.active_intent_unchanged)
+        self.assertEqual("intent_before", plan.before_active_intent_id)
+        self.assertEqual("intent_after", plan.after_active_intent_id)
+
+    def test_build_execution_plan_returns_none_without_compiler_ir(self):
+        self.harness.semantics.has_any_action_proposal.return_value = True
+        step = SimpleNamespace(intent_payload={"mode": "reuse", "intent_id": "intent_1"})
+        parsed_output = SimpleNamespace(
+            compiler_shape="ACTION_ONLY",
+            compiler_ir=None,
+        )
+
+        plan = self.harness._build_execution_plan(step, parsed_output, parsed_action_count=1)
+
+        self.assertIsNone(plan)
+
+    def test_build_execution_plan_returns_none_when_action_proposal_absent(self):
+        self.harness.semantics.has_any_action_proposal.return_value = False
+        step = SimpleNamespace(intent_payload={"mode": "reuse", "intent_id": "intent_1"})
+        parsed_output = SimpleNamespace(
+            compiler_shape="ACTION_ONLY",
+            compiler_ir=SimpleNamespace(
+                has_pre_action_text=False,
+                pre_action_text="",
+                action_ops=[SimpleNamespace(action_type="read_file", payload={"path": "README.md"})],
+            ),
+        )
+
+        plan = self.harness._build_execution_plan(step, parsed_output, parsed_action_count=1)
+
+        self.assertIsNone(plan)
 
     @patch("modules.agent.orchestration.responses.response_pipeline_stages.is_leaked_system_result")
     def test_typed_leaked_system_result_triggers_recovery(self, mock_is_leaked):
@@ -179,6 +244,57 @@ class TestResponsePipelineStages(unittest.TestCase):
         mock_is_leaked.assert_not_called()
         self.assertIsInstance(outcome, ResponsePipelineOutcome)
         self.assertEqual(outcome.next_query, "other_recovery_prompt")
+
+    def test_non_migrated_dispatch_ready_path_still_carries_segments_without_plan(self):
+        """Current fallback remains segment-driven when no authoritative compiler IR plan exists."""
+        self.harness.semantics.has_any_action_proposal.return_value = True
+        self.harness.output_recovery.decide = AsyncMock(
+            return_value=SimpleNamespace(
+                handled=False,
+                next_query=None,
+                reason="",
+                malformed_action_retries=0,
+                audit_marker_retries=0,
+            )
+        )
+        self.harness.action_policy = SimpleNamespace(
+            decide=AsyncMock(
+                return_value=SimpleNamespace(
+                    handled=False,
+                    next_query=None,
+                    reason="actions_allowed_to_proceed",
+                    source="action_policy",
+                    parsed_action_count=1,
+                )
+            )
+        )
+
+        ctx = SimpleNamespace(malformed_action_retries=0, audit_marker_retries=0)
+        step = SimpleNamespace(response='<action>{"type":"read_file","path":"README.md"}</action>', intent_payload=None)
+        checkpoint_state = SimpleNamespace(
+            reflection_repair_pending=False,
+            reflection_repair_kind="",
+            memory_checkpoint_and_text=False,
+            memory_checkpoint_and_action=False,
+            memory_board_decision=SimpleNamespace(memory_checkpoint_and_text=False),
+        )
+        action_segment = SimpleNamespace(type="action", content={"type": "read_file", "path": "README.md"})
+        parsed_output = ParsedModelOutput(response="", compiler_shape="ACTION_ONLY", compiler_ir=None)
+        classified = SimpleNamespace(
+            response=step.response,
+            parsed_output=parsed_output,
+            segments=[action_segment],
+            parsed_action_count=1,
+        )
+
+        outcome = asyncio.run(self.harness._run_post_classification_stage(ctx, step, checkpoint_state, classified))
+
+        self.assertIsInstance(outcome, ResponsePipelineOutcome)
+        self.assertFalse(outcome.continue_loop)
+        self.assertFalse(outcome.stop_loop)
+        self.assertEqual("dispatch_ready", outcome.reason)
+        self.assertIsNone(outcome.execution_plan)
+        self.assertEqual([action_segment], outcome.segments)
 
 
 if __name__ == "__main__":

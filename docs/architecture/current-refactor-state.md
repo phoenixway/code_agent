@@ -4,9 +4,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 9 Step 2: ExecutionPlan Producer/Consumer Contract Design
+- **Phase**: Phase 9 Step 3: ExecutionPlan Contract Characterization Tests
 - **Status**: Complete.
-- **Next Step**: Phase 9 Step 3: ExecutionPlan Contract Characterization Tests.
+- **Next Step**: Phase 9 Step 4: ExecutionPlan First Producer Migration / Dispatch Consumer Preflight.
 - **Boundary**: This slice remains design-only. Compiler/IR owns structure, `ActionPolicy` owns permission, the execution layer owns side effects, and `ResponsePipeline` remains the orchestrator. No dispatch behavior change is authorized yet.
 
 ## Step 4I Parity Matrix
@@ -295,9 +295,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- **Phase 9 Step 3: ExecutionPlan Contract Characterization Tests**
-  - Lock down the current `ExecutionPlan` producer behavior for the first migrated slice.
-  - Add plan-vs-segment parity coverage before any dispatch consumer migration.
+- **Phase 9 Step 4: ExecutionPlan First Producer Migration / Dispatch Consumer Preflight**
+  - Review the new characterization/parity coverage before any execution-path migration.
+  - Decide whether a first narrow producer or dispatch-consumer migration is safe.
   - Keep `segments` fallback where parity is not yet proven.
   - Keep `PLAINTEXT_TERMINAL_ANSWER` / final-answer-path migration deferred.
   - Keep board/checkpoint consumers deferred to their separate slice.
@@ -374,6 +374,20 @@ This document is the single source of truth for the current state of the Semanti
   - fallback coverage for non-migrated paths
   - no-dispatch-on-invalid coverage
   - pre-action-text parity coverage
+
+## Phase 9 Step 3 Outcome
+
+- **Characterization coverage added**
+  - current `ExecutionPlan` field population is now locked down in tests
+  - compiler IR plan-first candidate fields are characterized
+  - plan-vs-segment action-summary parity is covered for the first migrated single-action bundle path
+  - segment-based fallback behavior is covered when no authoritative plan exists
+  - no-dispatch-plan expansion on invalid paths remains covered
+
+- **Boundary**
+  - No production behavior changed.
+  - No dispatch behavior changed.
+  - No `ActionPolicy` authority changed.
 
 ## Step 4M Batch Plan
 

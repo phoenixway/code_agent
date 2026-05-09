@@ -91,4 +91,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 87. Phase 8 Step 4P Terminal Answers slice closure / deferred final-answer migration: done.
 88. Phase 9 Step 1 Plan-First Bundle Execution Design Gate: done.
 89. Phase 9 Step 2 ExecutionPlan Producer/Consumer Contract Design: done.
-90. Next: Phase 9 Step 3 ExecutionPlan Contract Characterization Tests.
+90. Phase 9 Step 3 ExecutionPlan Contract Characterization Tests: done.
+91. Next: Phase 9 Step 4 ExecutionPlan First Producer Migration / Dispatch Consumer Preflight.

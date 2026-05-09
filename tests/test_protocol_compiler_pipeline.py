@@ -80,3 +80,35 @@ def test_file_content_preserves_raw_body():
     assert len(file_nodes) == 1
     assert "<action>literal</action>" in file_nodes[0].content
     assert analysis.ir.action_ops[0].file_content is not None
+
+
+def test_single_action_ir_exposes_plan_first_candidate_fields():
+    compiler = ProtocolCompiler()
+    analysis = compiler.analyze('<action>{"type":"read_file","path":"README.md"}</action>')
+
+    assert analysis.error is None
+    assert analysis.ir is not None
+    assert analysis.shape == ResponseShape.ACTION_ONLY
+    assert analysis.ir.action_count == 1
+    assert analysis.ir.has_action is True
+    assert analysis.ir.has_pre_action_text is False
+    assert analysis.ir.visible_text_source == "NONE"
+    assert analysis.ir.action_ops[0].action_type == "read_file"
+    assert analysis.ir.action_ops[0].payload == {"type": "read_file", "path": "README.md"}
+
+
+def test_pre_action_text_ir_exposes_plan_first_fields():
+    compiler = ProtocolCompiler()
+    analysis = compiler.analyze(
+        'I will inspect the file first.<action>{"type":"read_file","path":"README.md"}</action>'
+    )
+
+    assert analysis.error is None
+    assert analysis.ir is not None
+    assert analysis.shape == ResponseShape.PRE_ACTION_TEXT_AND_ACTION
+    assert analysis.ir.has_pre_action_text is True
+    assert analysis.ir.pre_action_text == "I will inspect the file first."
+    assert analysis.ir.visible_text_source == "PRE_ACTION_TEXT"
+    assert analysis.ir.action_count == 1
+    assert analysis.ir.action_ops[0].action_type == "read_file"
+    assert analysis.ir.action_ops[0].payload == {"type": "read_file", "path": "README.md"}
