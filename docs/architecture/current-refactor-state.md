@@ -4,9 +4,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 10 Step 9: Board/Checkpoint Semantic Model Design
+- **Phase**: Phase 10 Step 10: Board/Checkpoint Semantic Model Skeleton + Shadow Population
 - **Status**: Complete.
-- **Next Step**: Phase 10 Step 10: Board/Checkpoint Semantic Model Skeleton + Shadow Population.
+- **Next Step**: Phase 10 Step 11: Board/Checkpoint Semantic Model Parity Review / First Consumer Migration Decision.
 - **Boundary**: The checkpoint parity bridge remains diagnostic-only. Legacy board handlers still own commit behavior, the prepass compiler analysis remains observational, and `_apply_compiler_diagnosis` remains the effectful classification-stage path that recomputes on normalized response.
 
 ## Step 4I Parity Matrix
@@ -803,6 +803,49 @@ This document is the single source of truth for the current state of the Semanti
   - It must not replace commit results, mutate checkpoint flags, or drive routing in its first implementation.
 - **Next step**
   - Phase 10 Step 10: Board/Checkpoint Semantic Model Skeleton + Shadow Population.
+
+## Phase 10 Step 10: Board/Checkpoint Semantic Model Skeleton + Shadow Population (Complete)
+
+- **Implementation outcome**
+  - Added a new observational model file:
+    - `modules/agent/orchestration/responses/board_checkpoint_models.py`
+  - Added typed model components:
+    - `BoardCheckpointKind`
+    - `BoardCheckpointSource`
+    - `BoardCheckpointSemanticResult`
+  - `CheckpointStageState` now carries `board_checkpoint_semantic_result`.
+  - `_run_checkpoint_stage(...)` now populates the semantic result after legacy handler outcomes are known.
+  - Population combines:
+    - legacy plan-board outcome category
+    - legacy memory-board outcome category
+    - prepass compiler analysis / IR structural facts when available
+- **Observed result shape**
+  - The model records:
+    - typed checkpoint kind
+    - source / reason / evidence
+    - visible-text and action presence
+    - clean-vs-raw text presence
+    - legacy plan and memory outcomes
+    - compiler shape / error / recovery metadata
+    - checkpoint-related compiler facts
+    - parity availability / alignment / mismatch reason
+- **Behavior boundary**
+  - No routing behavior changed.
+  - No board commit behavior changed.
+  - No checkpoint flags are driven by the new model.
+  - No authority transfer happened.
+  - Legacy board handlers remain authoritative.
+  - `_run_classification_stage` still recomputes diagnosis on normalized response.
+- **Test coverage**
+  - Semantic result attachment is now characterized for:
+    - `memory_checkpoint_only`
+    - `memory_checkpoint_and_text`
+    - `plan_checkpoint_only`
+    - mixed plan + memory outcomes
+  - Missing compiler/prepass analysis yields safe fallback semantics.
+  - Existing checkpoint routing behavior remains unchanged.
+- **Next step**
+  - Phase 10 Step 11: Board/Checkpoint Semantic Model Parity Review / First Consumer Migration Decision.
 
 ## Phase 9 Step 6D Outcome
 

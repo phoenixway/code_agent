@@ -7,6 +7,11 @@ from dataclasses import dataclass
 from ..shared.decision_models import ExecutionPlan
 from ..shared.decision_models import ResponsePipelineOutcome
 from ..shared.trace import compact_compiler_replay
+from .board_checkpoint_models import (
+    BoardCheckpointKind,
+    BoardCheckpointSemanticResult,
+    BoardCheckpointSource,
+)
 from .protocol_decision_bridge import compiler_invalid_kind_for_output, resolve_protocol_authority
 from .semantic_accessors import is_leaked_system_result
 from .terminal_answer_models import TerminalAnswerKind
@@ -25,6 +30,7 @@ class CheckpointStageState:
     memory_checkpoint_and_action: bool
     memory_board_decision: object
     compiler_analysis: object | None = None
+    board_checkpoint_semantic_result: object | None = None
 
 
 @dataclass
@@ -148,6 +154,155 @@ class ResponsePipelineStagesMixin:
             )
         except Exception:
             return
+
+    def _build_board_checkpoint_semantic_result(
+        self,
+        compiler_analysis,
+        *,
+        raw_response: str,
+        response_text: str,
+        plan_checkpoint_only: bool,
+        plan_checkpoint_and_text: bool,
+        plan_checkpoint_and_action: bool,
+        memory_checkpoint_only: bool,
+        memory_checkpoint_and_text: bool,
+        memory_checkpoint_and_action: bool,
+    ) -> BoardCheckpointSemanticResult:
+        ir = getattr(compiler_analysis, "ir", None) if compiler_analysis is not None else None
+        compiler_shape = str(getattr(getattr(compiler_analysis, "shape", None), "name", "") or "")
+        compiler_error_code = str(getattr(getattr(compiler_analysis, "error", None), "code", "") or "")
+        compiler_recovery_id = str(getattr(getattr(compiler_analysis, "error", None), "recovery_id", "") or "")
+        compiler_has_checkpoint = bool(getattr(ir, "has_checkpoint", False))
+        compiler_has_memory_tags = bool(getattr(ir, "has_memory_tags", False))
+        compiler_has_subgoal_tags = bool(getattr(ir, "has_subgoal_tags", False))
+        compiler_has_memory_checkpoint = bool(getattr(ir, "has_memory_checkpoint", False))
+        compiler_visible_text_source = str(getattr(ir, "visible_text_source", "") or "")
+        compiler_has_visible_answer = bool(getattr(ir, "has_visible_answer", False))
+        compiler_has_pre_action_text = bool(getattr(ir, "has_pre_action_text", False))
+        compiler_has_action = bool(getattr(ir, "has_action", False))
+
+        plan_outcome = self._checkpoint_outcome_category(
+            checkpoint_only=plan_checkpoint_only,
+            checkpoint_and_text=plan_checkpoint_and_text,
+            checkpoint_and_action=plan_checkpoint_and_action,
+        )
+        memory_outcome = self._checkpoint_outcome_category(
+            checkpoint_only=memory_checkpoint_only,
+            checkpoint_and_text=memory_checkpoint_and_text,
+            checkpoint_and_action=memory_checkpoint_and_action,
+        )
+
+        non_none_outcomes = [value for value in (plan_outcome, memory_outcome) if value != "none"]
+        if len(non_none_outcomes) > 1:
+            kind = BoardCheckpointKind.MIXED_BOARD_CHECKPOINT
+            reason_code = "mixed_plan_and_memory_checkpoint_outcomes"
+        elif memory_outcome == "checkpoint_only":
+            kind = BoardCheckpointKind.MEMORY_CHECKPOINT_ONLY
+            reason_code = "legacy_memory_checkpoint_only"
+        elif memory_outcome == "checkpoint_and_text":
+            kind = BoardCheckpointKind.MEMORY_CHECKPOINT_WITH_TEXT
+            reason_code = "legacy_memory_checkpoint_and_text"
+        elif memory_outcome == "checkpoint_and_action":
+            kind = BoardCheckpointKind.MEMORY_CHECKPOINT_WITH_ACTION
+            reason_code = "legacy_memory_checkpoint_and_action"
+        elif plan_outcome == "checkpoint_only":
+            kind = BoardCheckpointKind.PLAN_CHECKPOINT_ONLY
+            reason_code = "legacy_plan_checkpoint_only"
+        elif plan_outcome == "checkpoint_and_text":
+            kind = BoardCheckpointKind.PLAN_CHECKPOINT_WITH_TEXT
+            reason_code = "legacy_plan_checkpoint_and_text"
+        elif plan_outcome == "checkpoint_and_action":
+            kind = BoardCheckpointKind.PLAN_CHECKPOINT_WITH_ACTION
+            reason_code = "legacy_plan_checkpoint_and_action"
+        elif compiler_analysis is None:
+            kind = BoardCheckpointKind.UNKNOWN
+            reason_code = "compiler_analysis_unavailable"
+        else:
+            kind = BoardCheckpointKind.NONE
+            reason_code = "no_checkpoint_outcome"
+
+        if compiler_analysis is None and non_none_outcomes:
+            source = BoardCheckpointSource.LEGACY_HANDLER_OUTCOME
+        elif compiler_analysis is None:
+            source = BoardCheckpointSource.FALLBACK
+        elif non_none_outcomes:
+            source = BoardCheckpointSource.COMBINED_SHADOW
+        else:
+            source = BoardCheckpointSource.COMPILER_PREPASS_FACT
+
+        clean_text_present = bool(str(response_text or "").strip())
+        raw_text_present = bool(str(raw_response or "").strip())
+        has_visible_text = bool(
+            plan_checkpoint_and_text
+            or memory_checkpoint_and_text
+            or compiler_has_visible_answer
+            or compiler_has_pre_action_text
+        )
+        has_action = bool(plan_checkpoint_and_action or memory_checkpoint_and_action or compiler_has_action)
+        parity_available = compiler_analysis is not None and ir is not None
+        legacy_has_checkpoint = bool(non_none_outcomes)
+        compiler_has_checkpoint_like = bool(
+            compiler_has_checkpoint
+            or compiler_has_memory_tags
+            or compiler_has_subgoal_tags
+            or compiler_has_memory_checkpoint
+        )
+        parity_aligned = bool(
+            parity_available
+            and not compiler_error_code
+            and legacy_has_checkpoint == compiler_has_checkpoint_like
+        )
+        parity_mismatch_reason = ""
+        if not parity_available:
+            parity_mismatch_reason = "compiler_analysis_unavailable"
+        elif compiler_error_code:
+            parity_mismatch_reason = "compiler_invalid_prepass"
+        elif legacy_has_checkpoint != compiler_has_checkpoint_like:
+            parity_mismatch_reason = "checkpoint_presence_mismatch"
+
+        evidence: list[str] = []
+        if plan_outcome != "none":
+            evidence.append(f"legacy_plan_outcome:{plan_outcome}")
+        if memory_outcome != "none":
+            evidence.append(f"legacy_memory_outcome:{memory_outcome}")
+        if compiler_has_checkpoint:
+            evidence.append("compiler_has_checkpoint")
+        if compiler_has_memory_tags:
+            evidence.append("compiler_has_memory_tags")
+        if compiler_has_subgoal_tags:
+            evidence.append("compiler_has_subgoal_tags")
+        if compiler_has_memory_checkpoint:
+            evidence.append("compiler_has_memory_checkpoint")
+        if compiler_visible_text_source:
+            evidence.append(f"compiler_visible_text_source:{compiler_visible_text_source}")
+
+        return BoardCheckpointSemanticResult(
+            kind=kind,
+            source=source,
+            reason_code=reason_code,
+            evidence=tuple(evidence),
+            has_visible_text=has_visible_text,
+            has_action=has_action,
+            clean_text_present=clean_text_present,
+            raw_text_present=raw_text_present,
+            legacy_plan_outcome=plan_outcome,
+            legacy_memory_outcome=memory_outcome,
+            compiler_shape=compiler_shape,
+            compiler_error_code=compiler_error_code,
+            compiler_recovery_id=compiler_recovery_id,
+            compiler_has_checkpoint=compiler_has_checkpoint,
+            compiler_has_memory_tags=compiler_has_memory_tags,
+            compiler_has_subgoal_tags=compiler_has_subgoal_tags,
+            compiler_has_memory_checkpoint=compiler_has_memory_checkpoint,
+            compiler_visible_text_source=compiler_visible_text_source,
+            parity_available=parity_available,
+            parity_aligned=parity_aligned,
+            parity_mismatch_reason=parity_mismatch_reason,
+            details={
+                "raw_text_present": str(raw_text_present).lower(),
+                "clean_text_present": str(clean_text_present).lower(),
+            },
+        )
 
     def _build_execution_plan(self, step, parsed_output, *, parsed_action_count: int):
         if parsed_output is None:
@@ -310,6 +465,17 @@ class ResponsePipelineStagesMixin:
         plan_checkpoint_only = bool(getattr(plan_board_decision, "plan_checkpoint_only", False))
         plan_checkpoint_and_text = bool(getattr(plan_board_decision, "plan_checkpoint_and_text", False))
         plan_checkpoint_and_action = bool(getattr(plan_board_decision, "plan_checkpoint_and_action", False))
+        plan_semantic_result = self._build_board_checkpoint_semantic_result(
+            compiler_analysis,
+            raw_response=raw_response,
+            response_text=response_after_plan,
+            plan_checkpoint_only=plan_checkpoint_only,
+            plan_checkpoint_and_text=plan_checkpoint_and_text,
+            plan_checkpoint_and_action=plan_checkpoint_and_action,
+            memory_checkpoint_only=False,
+            memory_checkpoint_and_text=False,
+            memory_checkpoint_and_action=False,
+        )
         if plan_board_decision.handled:
             self._log_board_checkpoint_structural_parity(
                 compiler_analysis,
@@ -320,7 +486,20 @@ class ResponsePipelineStagesMixin:
                 memory_checkpoint_and_text=False,
                 memory_checkpoint_and_action=False,
             )
-            return None, ResponsePipelineOutcome.continue_with(
+            return CheckpointStageState(
+                response=response_after_plan,
+                reflection_repair_pending=reflection_repair_pending,
+                reflection_repair_kind=reflection_repair_kind,
+                plan_checkpoint_only=plan_checkpoint_only,
+                plan_checkpoint_and_text=plan_checkpoint_and_text,
+                plan_checkpoint_and_action=plan_checkpoint_and_action,
+                memory_checkpoint_only=False,
+                memory_checkpoint_and_text=False,
+                memory_checkpoint_and_action=False,
+                memory_board_decision=None,
+                compiler_analysis=compiler_analysis,
+                board_checkpoint_semantic_result=plan_semantic_result,
+            ), ResponsePipelineOutcome.continue_with(
                 plan_board_decision.next_query,
                 response_text=response_after_plan,
                 reason=plan_board_decision.reason,
@@ -332,6 +511,17 @@ class ResponsePipelineStagesMixin:
         memory_checkpoint_only = bool(getattr(memory_board_decision, "memory_checkpoint_only", False))
         memory_checkpoint_and_text = bool(getattr(memory_board_decision, "memory_checkpoint_and_text", False))
         memory_checkpoint_and_action = bool(getattr(memory_board_decision, "memory_checkpoint_and_action", False))
+        board_checkpoint_semantic_result = self._build_board_checkpoint_semantic_result(
+            compiler_analysis,
+            raw_response=raw_response,
+            response_text=response,
+            plan_checkpoint_only=plan_checkpoint_only,
+            plan_checkpoint_and_text=plan_checkpoint_and_text,
+            plan_checkpoint_and_action=plan_checkpoint_and_action,
+            memory_checkpoint_only=memory_checkpoint_only,
+            memory_checkpoint_and_text=memory_checkpoint_and_text,
+            memory_checkpoint_and_action=memory_checkpoint_and_action,
+        )
 
         self._log_board_checkpoint_structural_parity(
             compiler_analysis,
@@ -367,7 +557,20 @@ class ResponsePipelineStagesMixin:
                     reason="think_reflection_repair_completed",
                     source="think_reflection_guard",
                 )
-                return None, ResponsePipelineOutcome.continue_with(
+                return CheckpointStageState(
+                    response=response,
+                    reflection_repair_pending=reflection_repair_pending,
+                    reflection_repair_kind=reflection_repair_kind,
+                    plan_checkpoint_only=plan_checkpoint_only,
+                    plan_checkpoint_and_text=plan_checkpoint_and_text,
+                    plan_checkpoint_and_action=plan_checkpoint_and_action,
+                    memory_checkpoint_only=memory_checkpoint_only,
+                    memory_checkpoint_and_text=memory_checkpoint_and_text,
+                    memory_checkpoint_and_action=memory_checkpoint_and_action,
+                    memory_board_decision=memory_board_decision,
+                    compiler_analysis=compiler_analysis,
+                    board_checkpoint_semantic_result=board_checkpoint_semantic_result,
+                ), ResponsePipelineOutcome.continue_with(
                     self.prompt_builder.build_reflection_repair_accepted_prompt(),
                     response_text=response,
                     reason="think_reflection_repair_completed",
@@ -384,7 +587,20 @@ class ResponsePipelineStagesMixin:
                 reason=reflection_repair_kind or "missing_think_reflection",
                 source="think_reflection_guard",
             )
-            return None, ResponsePipelineOutcome.continue_with(
+            return CheckpointStageState(
+                response=response,
+                reflection_repair_pending=reflection_repair_pending,
+                reflection_repair_kind=reflection_repair_kind,
+                plan_checkpoint_only=plan_checkpoint_only,
+                plan_checkpoint_and_text=plan_checkpoint_and_text,
+                plan_checkpoint_and_action=plan_checkpoint_and_action,
+                memory_checkpoint_only=memory_checkpoint_only,
+                memory_checkpoint_and_text=memory_checkpoint_and_text,
+                memory_checkpoint_and_action=memory_checkpoint_and_action,
+                memory_board_decision=memory_board_decision,
+                compiler_analysis=compiler_analysis,
+                board_checkpoint_semantic_result=board_checkpoint_semantic_result,
+            ), ResponsePipelineOutcome.continue_with(
                 self.prompt_builder.build_durable_state_repair_prompt(reflection_repair_kind),
                 response_text=response,
                 reason=reflection_repair_kind or "missing_think_reflection",
@@ -418,7 +634,20 @@ class ResponsePipelineStagesMixin:
                         source="memory_board",
                         streak=streak,
                     )
-                    return None, ResponsePipelineOutcome.stop(
+                    return CheckpointStageState(
+                        response=response,
+                        reflection_repair_pending=reflection_repair_pending,
+                        reflection_repair_kind=reflection_repair_kind,
+                        plan_checkpoint_only=plan_checkpoint_only,
+                        plan_checkpoint_and_text=plan_checkpoint_and_text,
+                        plan_checkpoint_and_action=plan_checkpoint_and_action,
+                        memory_checkpoint_only=memory_checkpoint_only,
+                        memory_checkpoint_and_text=memory_checkpoint_and_text,
+                        memory_checkpoint_and_action=memory_checkpoint_and_action,
+                        memory_board_decision=memory_board_decision,
+                        compiler_analysis=compiler_analysis,
+                        board_checkpoint_semantic_result=board_checkpoint_semantic_result,
+                    ), ResponsePipelineOutcome.stop(
                         response_text=response,
                         reason="memory_checkpoint_only_hard_stop",
                         source="memory_board",
@@ -440,7 +669,20 @@ class ResponsePipelineStagesMixin:
                             source="thinking_guard",
                             streak=nonproductive_streak,
                         )
-                        return None, ResponsePipelineOutcome.continue_with(
+                        return CheckpointStageState(
+                            response=response,
+                            reflection_repair_pending=reflection_repair_pending,
+                            reflection_repair_kind=reflection_repair_kind,
+                            plan_checkpoint_only=plan_checkpoint_only,
+                            plan_checkpoint_and_text=plan_checkpoint_and_text,
+                            plan_checkpoint_and_action=plan_checkpoint_and_action,
+                            memory_checkpoint_only=memory_checkpoint_only,
+                            memory_checkpoint_and_text=memory_checkpoint_and_text,
+                            memory_checkpoint_and_action=memory_checkpoint_and_action,
+                            memory_board_decision=memory_board_decision,
+                            compiler_analysis=compiler_analysis,
+                            board_checkpoint_semantic_result=board_checkpoint_semantic_result,
+                        ), ResponsePipelineOutcome.continue_with(
                             self.prompt_builder.build_repeated_thinking_without_valid_output_prompt(
                                 {"reason": "repeated_thinking_without_valid_output"}
                             ),
@@ -451,7 +693,20 @@ class ResponsePipelineStagesMixin:
                             memory_checkpoint_and_text=memory_checkpoint_and_text,
                             memory_checkpoint_and_action=memory_checkpoint_and_action,
                         )
-            return None, ResponsePipelineOutcome.continue_with(
+            return CheckpointStageState(
+                response=response,
+                reflection_repair_pending=reflection_repair_pending,
+                reflection_repair_kind=reflection_repair_kind,
+                plan_checkpoint_only=plan_checkpoint_only,
+                plan_checkpoint_and_text=plan_checkpoint_and_text,
+                plan_checkpoint_and_action=plan_checkpoint_and_action,
+                memory_checkpoint_only=memory_checkpoint_only,
+                memory_checkpoint_and_text=memory_checkpoint_and_text,
+                memory_checkpoint_and_action=memory_checkpoint_and_action,
+                memory_board_decision=memory_board_decision,
+                compiler_analysis=compiler_analysis,
+                board_checkpoint_semantic_result=board_checkpoint_semantic_result,
+            ), ResponsePipelineOutcome.continue_with(
                 memory_board_decision.next_query,
                 response_text=response,
                 reason=memory_board_decision.reason,
@@ -473,6 +728,7 @@ class ResponsePipelineStagesMixin:
             memory_checkpoint_and_action=memory_checkpoint_and_action,
             memory_board_decision=memory_board_decision,
             compiler_analysis=compiler_analysis,
+            board_checkpoint_semantic_result=board_checkpoint_semantic_result,
         ), None
 
     def _log_semantic_shadow_disagreements(

@@ -1621,7 +1621,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 10 Step 10: Board/Checkpoint Semantic Model Skeleton + Shadow Population
 
-- **Status**: Pending explicit approval.
+- **Status**: Done.
 - **Goal**: Add the board/checkpoint semantic model types and populate them observationally from legacy handler outcomes and prepass/compiler facts.
 - **Allowed**:
   - Dataclass / enum scaffolding only.
@@ -1636,6 +1636,28 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Any reuse of prepass analysis inside `_run_classification_stage`.
 - **Done When**:
   - The semantic model exists, is populated observationally, and no runtime behavior changes.
+- **Completed Outcome**:
+  - `BoardCheckpointKind`, `BoardCheckpointSource`, and `BoardCheckpointSemanticResult` now exist.
+  - `CheckpointStageState` now carries `board_checkpoint_semantic_result`.
+  - `_run_checkpoint_stage(...)` populates the model from legacy board handler outcomes plus compiler/prepass structural facts.
+  - Missing compiler analysis falls back safely without affecting runtime behavior.
+  - Routing, commit behavior, checkpoint flags, and authority boundaries are unchanged.
+
+---
+
+#### Phase 10 Step 11: Board/Checkpoint Semantic Model Parity Review / First Consumer Migration Decision
+
+- **Status**: Pending explicit approval.
+- **Goal**: Review the new observational semantic model and decide whether any first narrow board/checkpoint consumer migration is safe.
+- **Allowed**:
+  - Read-only review of semantic-model population and parity evidence.
+  - Docs-only migration decision work.
+- **Forbidden**:
+  - Any authority transfer before parity is proven.
+  - Any board commit logic or checkpoint routing changes.
+  - Any mutation of checkpoint flags from the semantic model.
+- **Done When**:
+  - A clear GO / NO-GO decision exists for the first consumer migration candidate.
 
 ---
 

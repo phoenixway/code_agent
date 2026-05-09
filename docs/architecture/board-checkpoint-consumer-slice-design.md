@@ -1,6 +1,6 @@
 # Phase 10 Design: Board/Checkpoint Consumer Slice
 
-- **Phase 10 Status**: Step 9 Design Complete.
+- **Phase 10 Status**: Step 10 Skeleton + Shadow Population Complete.
 - **Scope**: Board and checkpoint-related response semantics.
 - **Non-Goals**:
   - No dispatch behavior changes.
@@ -363,4 +363,37 @@ This design-only step is complete. It analyzed whether it is safe for the classi
 
 ### 3.11. Next Intended Step
 
-The next step is **Phase 10 Step 10: Board/Checkpoint Semantic Model Skeleton + Shadow Population**.
+### 3.11. Step 10: Board/Checkpoint Semantic Model Skeleton + Shadow Population
+
+- **Implementation Outcome**:
+  - A new observational typed model now exists in `modules/agent/orchestration/responses/board_checkpoint_models.py`.
+  - The model includes:
+    - `BoardCheckpointKind`
+    - `BoardCheckpointSource`
+    - `BoardCheckpointSemanticResult`
+  - `ResponsePipelineStagesMixin._run_checkpoint_stage(...)` now populates a `BoardCheckpointSemanticResult` after legacy handler outcomes are known.
+  - The populated result is attached to `CheckpointStageState.board_checkpoint_semantic_result`.
+  - Population uses:
+    - legacy plan-board outcome category
+    - legacy memory-board outcome category
+    - early structural prepass compiler facts from `CheckpointStageState.compiler_analysis`
+  - Missing compiler/prepass analysis is handled defensively with safe fallback fields.
+- **Behavior boundary**:
+  - This model is observational only.
+  - It does not change checkpoint routing.
+  - It does not mutate checkpoint flags.
+  - It does not replace memory-engine or planner commit results.
+  - Legacy board handlers remain authoritative.
+  - Step 6 parity logging remains diagnostic-only.
+- **Test coverage now includes**:
+  - semantic result attachment for:
+    - `memory_checkpoint_only`
+    - `memory_checkpoint_and_text`
+    - `plan_checkpoint_only`
+  - mixed plan + memory outcomes producing `MIXED_BOARD_CHECKPOINT`
+  - safe fallback when compiler/prepass analysis is missing
+  - confirmation that routing behavior is unchanged
+
+### 3.12. Next Intended Step
+
+The next step is **Phase 10 Step 11: Board/Checkpoint Semantic Model Parity Review / First Consumer Migration Decision**.
