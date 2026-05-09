@@ -512,6 +512,21 @@ This design-only step is complete. It analyzed whether it is safe for the classi
   - No additional safe legacy-bool-backed checkpoint routing branches remain in this micro-slice.
   - Any next migration would be a different class of work and requires a new authority/design step.
 
-### 3.16. Next Intended Step
+### 3.16. Step 16: BoardCheckpoint Legacy-Derived Authority Candidate Implementation
 
-The next step is **Phase 10 Step 16: BoardCheckpoint Authority Migration Candidate Design**.
+- **Outcome**:
+  - effective checkpoint-flag resolution is now centralized in a pure helper
+  - `_run_checkpoint_stage(...)` no longer computes the typed read-through effective booleans inline
+  - `CheckpointStageState(...)` construction now consistently uses effective plan and memory checkpoint flags once they are available
+- **What did not change**:
+  - no compiler/prepass authority was introduced
+  - no observable checkpoint routing behavior changed
+  - no board commit behavior changed
+  - legacy board handlers remain authoritative
+- **Coverage added**:
+  - direct resolver tests for legacy fallback, matching typed confirmation, conflicting typed kinds, and non-legacy compiler/prepass-only sources
+  - a stage-level regression test that would fail if an early `CheckpointStageState(...)` return path mixed raw memory flags with helper-resolved effective flags
+
+### 3.17. Next Intended Step
+
+The next step is **Phase 10 Step 17: First True BoardCheckpoint Authority Narrowing**.

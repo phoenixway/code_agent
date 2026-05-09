@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from .board_checkpoint_models import (
     BoardCheckpointKind,
+    EffectiveCheckpointFlags,
     BoardCheckpointSemanticResult,
     BoardCheckpointSource,
 )
@@ -93,6 +94,50 @@ def is_legacy_derived_plan_checkpoint_and_action(
     return bool(
         legacy_plan_checkpoint_and_action
         and legacy_derived_checkpoint_kind(result) == BoardCheckpointKind.PLAN_CHECKPOINT_WITH_ACTION
+    )
+
+
+def resolve_legacy_derived_checkpoint_effective_flags(
+    result: BoardCheckpointSemanticResult | None,
+    *,
+    plan_checkpoint_only: bool,
+    plan_checkpoint_and_text: bool,
+    plan_checkpoint_and_action: bool,
+    memory_checkpoint_only: bool,
+    memory_checkpoint_and_text: bool,
+    memory_checkpoint_and_action: bool,
+) -> EffectiveCheckpointFlags:
+    typed_plan_checkpoint_only = is_legacy_derived_plan_checkpoint_only(
+        result,
+        legacy_plan_checkpoint_only=plan_checkpoint_only,
+    )
+    typed_plan_checkpoint_and_text = is_legacy_derived_plan_checkpoint_and_text(
+        result,
+        legacy_plan_checkpoint_and_text=plan_checkpoint_and_text,
+    )
+    typed_plan_checkpoint_and_action = is_legacy_derived_plan_checkpoint_and_action(
+        result,
+        legacy_plan_checkpoint_and_action=plan_checkpoint_and_action,
+    )
+    typed_memory_checkpoint_only = is_legacy_derived_memory_checkpoint_only(
+        result,
+        legacy_memory_checkpoint_only=memory_checkpoint_only,
+    )
+    typed_memory_checkpoint_and_text = is_legacy_derived_memory_checkpoint_and_text(
+        result,
+        legacy_memory_checkpoint_and_text=memory_checkpoint_and_text,
+    )
+    typed_memory_checkpoint_and_action = is_legacy_derived_memory_checkpoint_and_action(
+        result,
+        legacy_memory_checkpoint_and_action=memory_checkpoint_and_action,
+    )
+    return EffectiveCheckpointFlags(
+        plan_checkpoint_only=bool(typed_plan_checkpoint_only or plan_checkpoint_only),
+        plan_checkpoint_and_text=bool(typed_plan_checkpoint_and_text or plan_checkpoint_and_text),
+        plan_checkpoint_and_action=bool(typed_plan_checkpoint_and_action or plan_checkpoint_and_action),
+        memory_checkpoint_only=bool(typed_memory_checkpoint_only or memory_checkpoint_only),
+        memory_checkpoint_and_text=bool(typed_memory_checkpoint_and_text or memory_checkpoint_and_text),
+        memory_checkpoint_and_action=bool(typed_memory_checkpoint_and_action or memory_checkpoint_and_action),
     )
 
 

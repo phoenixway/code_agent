@@ -4,9 +4,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 10 Step 14: Complete Legacy-Derived Typed Read-Through for Board Checkpoint Routing
+- **Phase**: Phase 10 Step 16: BoardCheckpoint Legacy-Derived Authority Candidate Implementation
 - **Status**: Complete.
-- **Next Step**: Phase 10 Step 16: BoardCheckpoint Authority Migration Candidate Design.
+- **Next Step**: Phase 10 Step 17: First True BoardCheckpoint Authority Narrowing.
 - **Boundary**: The checkpoint parity bridge remains diagnostic-only. Legacy board handlers still own commit behavior, the prepass compiler analysis remains observational, and `_apply_compiler_diagnosis` remains the effectful classification-stage path that recomputes on normalized response.
 
 ## Step 4I Parity Matrix
@@ -968,7 +968,8 @@ This document is the single source of truth for the current state of the Semanti
   - No additional safe legacy-bool-backed checkpoint-routing branches remain in this micro-slice.
   - Any next migration requires a new authority/design step rather than more typed mirroring.
 - **Next step**
-  - Phase 10 Step 16: BoardCheckpoint Authority Migration Candidate Design.
+  - Phase 10 Step 16: effective checkpoint-flag resolution is now centralized in a pure helper, `_run_checkpoint_stage(...)` uses it instead of scattered inline bool resolution, and `CheckpointStageState(...)` construction consistently carries effective checkpoint flags. No compiler/prepass authority was introduced, and no observable routing or commit behavior changed.
+  - Phase 10 Step 17: First True BoardCheckpoint Authority Narrowing.
 
 ## Phase 9 Step 6D Outcome
 

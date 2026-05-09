@@ -8,10 +8,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from modules.agent.orchestration.responses.response_pipeline_prevalidation import ResponsePipelinePrevalidationMixin
 from modules.agent.orchestration.responses.board_checkpoint_models import (
     BoardCheckpointKind,
+    EffectiveCheckpointFlags,
     BoardCheckpointSemanticResult,
     BoardCheckpointSource,
 )
-from modules.agent.orchestration.responses.board_checkpoint_semantics import build_board_checkpoint_semantic_result
+from modules.agent.orchestration.responses.board_checkpoint_semantics import (
+    build_board_checkpoint_semantic_result,
+    resolve_legacy_derived_checkpoint_effective_flags,
+)
 from modules.agent.orchestration.responses.response_pipeline_stages import CheckpointStageState, ResponsePipelineStagesMixin
 from modules.agent.orchestration.responses.terminal_answer_models import TerminalAnswerKind, TerminalAnswerSemanticResult
 from modules.agent.orchestration.shared.decision_models import ParsedModelOutput, ResponsePipelineOutcome
@@ -531,6 +535,209 @@ class TestBoardCheckpointSemanticBuilder(unittest.TestCase):
         self.assertTrue(result.parity_available)
         self.assertFalse(result.parity_aligned)
         self.assertEqual("checkpoint_presence_mismatch", result.parity_mismatch_reason)
+
+    def test_effective_flags_fall_back_to_all_false_for_compiler_only_semantic_result(self):
+        result = BoardCheckpointSemanticResult(
+            kind=BoardCheckpointKind.PLAN_CHECKPOINT_ONLY,
+            source=BoardCheckpointSource.COMPILER_PREPASS_FACT,
+            reason_code="compiler_only",
+        )
+
+        effective = resolve_legacy_derived_checkpoint_effective_flags(
+            result,
+            plan_checkpoint_only=False,
+            plan_checkpoint_and_text=False,
+            plan_checkpoint_and_action=False,
+            memory_checkpoint_only=False,
+            memory_checkpoint_and_text=False,
+            memory_checkpoint_and_action=False,
+        )
+
+        self.assertEqual(EffectiveCheckpointFlags(), effective)
+
+    def test_effective_flags_none_result_falls_back_to_legacy_flags(self):
+        effective = resolve_legacy_derived_checkpoint_effective_flags(
+            None,
+            plan_checkpoint_only=True,
+            plan_checkpoint_and_text=False,
+            plan_checkpoint_and_action=True,
+            memory_checkpoint_only=False,
+            memory_checkpoint_and_text=True,
+            memory_checkpoint_and_action=False,
+        )
+
+        self.assertEqual(
+            EffectiveCheckpointFlags(
+                plan_checkpoint_only=True,
+                plan_checkpoint_and_action=True,
+                memory_checkpoint_and_text=True,
+            ),
+            effective,
+        )
+
+    def test_effective_flags_memory_checkpoint_only_matching_typed_kind(self):
+        result = BoardCheckpointSemanticResult(
+            kind=BoardCheckpointKind.MEMORY_CHECKPOINT_ONLY,
+            source=BoardCheckpointSource.COMBINED_SHADOW,
+            reason_code="legacy_memory_checkpoint_only",
+        )
+
+        effective = resolve_legacy_derived_checkpoint_effective_flags(
+            result,
+            plan_checkpoint_only=False,
+            plan_checkpoint_and_text=False,
+            plan_checkpoint_and_action=False,
+            memory_checkpoint_only=True,
+            memory_checkpoint_and_text=False,
+            memory_checkpoint_and_action=False,
+        )
+
+        self.assertTrue(effective.memory_checkpoint_only)
+        self.assertFalse(effective.memory_checkpoint_and_text)
+        self.assertFalse(effective.memory_checkpoint_and_action)
+
+    def test_effective_flags_memory_checkpoint_only_conflicting_typed_kind_still_falls_back_to_legacy(self):
+        result = BoardCheckpointSemanticResult(
+            kind=BoardCheckpointKind.MEMORY_CHECKPOINT_WITH_TEXT,
+            source=BoardCheckpointSource.COMBINED_SHADOW,
+            reason_code="forced_conflict",
+        )
+
+        effective = resolve_legacy_derived_checkpoint_effective_flags(
+            result,
+            plan_checkpoint_only=False,
+            plan_checkpoint_and_text=False,
+            plan_checkpoint_and_action=False,
+            memory_checkpoint_only=True,
+            memory_checkpoint_and_text=False,
+            memory_checkpoint_and_action=False,
+        )
+
+        self.assertTrue(effective.memory_checkpoint_only)
+        self.assertFalse(effective.memory_checkpoint_and_text)
+        self.assertFalse(effective.memory_checkpoint_and_action)
+
+    def test_effective_flags_plan_checkpoint_only_matching_typed_kind(self):
+        result = BoardCheckpointSemanticResult(
+            kind=BoardCheckpointKind.PLAN_CHECKPOINT_ONLY,
+            source=BoardCheckpointSource.COMBINED_SHADOW,
+            reason_code="legacy_plan_checkpoint_only",
+        )
+
+        effective = resolve_legacy_derived_checkpoint_effective_flags(
+            result,
+            plan_checkpoint_only=True,
+            plan_checkpoint_and_text=False,
+            plan_checkpoint_and_action=False,
+            memory_checkpoint_only=False,
+            memory_checkpoint_and_text=False,
+            memory_checkpoint_and_action=False,
+        )
+
+        self.assertTrue(effective.plan_checkpoint_only)
+        self.assertFalse(effective.plan_checkpoint_and_text)
+        self.assertFalse(effective.plan_checkpoint_and_action)
+
+    def test_effective_flags_plan_checkpoint_and_text_and_action_follow_legacy(self):
+        result = BoardCheckpointSemanticResult(
+            kind=BoardCheckpointKind.PLAN_CHECKPOINT_WITH_TEXT,
+            source=BoardCheckpointSource.LEGACY_HANDLER_OUTCOME,
+            reason_code="legacy_plan_checkpoint_and_text",
+        )
+
+        effective = resolve_legacy_derived_checkpoint_effective_flags(
+            result,
+            plan_checkpoint_only=False,
+            plan_checkpoint_and_text=True,
+            plan_checkpoint_and_action=False,
+            memory_checkpoint_only=False,
+            memory_checkpoint_and_text=False,
+            memory_checkpoint_and_action=False,
+        )
+
+        self.assertTrue(effective.plan_checkpoint_and_text)
+        self.assertFalse(effective.plan_checkpoint_only)
+        self.assertFalse(effective.plan_checkpoint_and_action)
+
+        result = BoardCheckpointSemanticResult(
+            kind=BoardCheckpointKind.PLAN_CHECKPOINT_WITH_ACTION,
+            source=BoardCheckpointSource.LEGACY_HANDLER_OUTCOME,
+            reason_code="legacy_plan_checkpoint_and_action",
+        )
+
+        effective = resolve_legacy_derived_checkpoint_effective_flags(
+            result,
+            plan_checkpoint_only=False,
+            plan_checkpoint_and_text=False,
+            plan_checkpoint_and_action=True,
+            memory_checkpoint_only=False,
+            memory_checkpoint_and_text=False,
+            memory_checkpoint_and_action=False,
+        )
+
+        self.assertTrue(effective.plan_checkpoint_and_action)
+        self.assertFalse(effective.plan_checkpoint_only)
+        self.assertFalse(effective.plan_checkpoint_and_text)
+
+    def test_effective_flags_memory_checkpoint_and_text_and_action_follow_legacy(self):
+        result = BoardCheckpointSemanticResult(
+            kind=BoardCheckpointKind.MEMORY_CHECKPOINT_WITH_TEXT,
+            source=BoardCheckpointSource.LEGACY_HANDLER_OUTCOME,
+            reason_code="legacy_memory_checkpoint_and_text",
+        )
+
+        effective = resolve_legacy_derived_checkpoint_effective_flags(
+            result,
+            plan_checkpoint_only=False,
+            plan_checkpoint_and_text=False,
+            plan_checkpoint_and_action=False,
+            memory_checkpoint_only=False,
+            memory_checkpoint_and_text=True,
+            memory_checkpoint_and_action=False,
+        )
+
+        self.assertTrue(effective.memory_checkpoint_and_text)
+        self.assertFalse(effective.memory_checkpoint_only)
+        self.assertFalse(effective.memory_checkpoint_and_action)
+
+        result = BoardCheckpointSemanticResult(
+            kind=BoardCheckpointKind.MEMORY_CHECKPOINT_WITH_ACTION,
+            source=BoardCheckpointSource.LEGACY_HANDLER_OUTCOME,
+            reason_code="legacy_memory_checkpoint_and_action",
+        )
+
+        effective = resolve_legacy_derived_checkpoint_effective_flags(
+            result,
+            plan_checkpoint_only=False,
+            plan_checkpoint_and_text=False,
+            plan_checkpoint_and_action=False,
+            memory_checkpoint_only=False,
+            memory_checkpoint_and_text=False,
+            memory_checkpoint_and_action=True,
+        )
+
+        self.assertTrue(effective.memory_checkpoint_and_action)
+        self.assertFalse(effective.memory_checkpoint_only)
+        self.assertFalse(effective.memory_checkpoint_and_text)
+
+    def test_effective_flags_non_legacy_source_cannot_create_flags(self):
+        result = BoardCheckpointSemanticResult(
+            kind=BoardCheckpointKind.MEMORY_CHECKPOINT_WITH_ACTION,
+            source=BoardCheckpointSource.COMPILER_PREPASS_FACT,
+            reason_code="compiler_only_memory_fact",
+        )
+
+        effective = resolve_legacy_derived_checkpoint_effective_flags(
+            result,
+            plan_checkpoint_only=False,
+            plan_checkpoint_and_text=False,
+            plan_checkpoint_and_action=False,
+            memory_checkpoint_only=False,
+            memory_checkpoint_and_text=False,
+            memory_checkpoint_and_action=False,
+        )
+
+        self.assertEqual(EffectiveCheckpointFlags(), effective)
 
 
 class TestResponsePipelineCheckpointStageCharacterization(unittest.TestCase):
@@ -1413,6 +1620,69 @@ class TestResponsePipelineCheckpointStageCharacterization(unittest.TestCase):
         self.assertTrue(state.memory_checkpoint_and_text)
         self.assertFalse(state.memory_checkpoint_only)
         self.assertFalse(state.memory_board_decision.handled)
+
+    @patch(
+        "modules.agent.orchestration.responses.response_pipeline_stages.resolve_legacy_derived_checkpoint_effective_flags"
+    )
+    def test_checkpoint_stage_reflection_repair_state_uses_effective_flags_consistently(self, mock_resolve):
+        self.harness.protocol_compiler.analyze.return_value = SimpleNamespace(
+            shape=SimpleNamespace(name="CHECKPOINT_ONLY"),
+            error=None,
+            ir=SimpleNamespace(
+                has_action=False,
+                action_count=0,
+                has_checkpoint=True,
+                has_memory_tags=True,
+                has_subgoal_tags=False,
+                has_memory_checkpoint=True,
+                has_visible_answer=False,
+                has_pre_action_text=False,
+                visible_text_source="NONE",
+            ),
+        )
+        self.harness.plan_board_stage.apply.return_value = SimpleNamespace(
+            handled=False,
+            response_text="response",
+            plan_checkpoint_only=False,
+            plan_checkpoint_and_text=False,
+            plan_checkpoint_and_action=False,
+        )
+        self.harness.memory_board_stage.apply.return_value = SimpleNamespace(
+            handled=True,
+            response_text="response",
+            next_query="repair_prompt",
+            reason="memory_checkpoint_only",
+            source="memory_board",
+            memory_checkpoint_only=True,
+            memory_checkpoint_and_text=False,
+            memory_checkpoint_and_action=False,
+        )
+        self.harness.state.last_memory_update_done = False
+        self.harness.state.last_memory_board_accepted_count = 0
+
+        mock_resolve.side_effect = [
+            EffectiveCheckpointFlags(),
+            EffectiveCheckpointFlags(
+                memory_checkpoint_only=True,
+                memory_checkpoint_and_text=True,
+                memory_checkpoint_and_action=True,
+            ),
+        ]
+
+        state, outcome = asyncio.run(
+            self.harness._run_checkpoint_stage(
+                self.ctx,
+                "response",
+                reflection_repair_pending=True,
+                reflection_repair_kind="missing_think_reflection",
+            )
+        )
+
+        self.assertIsInstance(outcome, ResponsePipelineOutcome)
+        self.assertEqual("missing_think_reflection", outcome.reason)
+        self.assertTrue(state.memory_checkpoint_only)
+        self.assertTrue(state.memory_checkpoint_and_text)
+        self.assertTrue(state.memory_checkpoint_and_action)
 
 
 class TestResponsePipelineClassificationStage(unittest.TestCase):

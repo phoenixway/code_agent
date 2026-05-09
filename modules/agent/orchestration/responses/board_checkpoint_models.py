@@ -55,3 +55,13 @@ class BoardCheckpointSemanticResult:
     parity_aligned: bool = False
     parity_mismatch_reason: str = ""
     details: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class EffectiveCheckpointFlags:
+    plan_checkpoint_only: bool = False
+    plan_checkpoint_and_text: bool = False
+    plan_checkpoint_and_action: bool = False
+    memory_checkpoint_only: bool = False
+    memory_checkpoint_and_text: bool = False
+    memory_checkpoint_and_action: bool = False

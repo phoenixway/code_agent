@@ -1744,21 +1744,28 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
-#### Phase 10 Step 16: BoardCheckpoint Authority Migration Candidate Design
+#### Phase 10 Step 16: BoardCheckpoint Legacy-Derived Authority Candidate Implementation
 
-- **Status**: Pending explicit approval.
-- **Goal**: Design the first true authority-migration candidate after the safe legacy-derived typed read-through micro-slice is complete.
+- **Status**: Done.
+- **Goal**: Reduce scattered checkpoint bool routing logic by centralizing legacy-derived effective-flag resolution in a pure helper without changing authority.
 - **Allowed**:
-  - Read-only review.
-  - Docs-only design work.
-  - Narrow authority-candidate analysis.
+  - Extract a pure effective-flag resolver for plan/memory checkpoint routing.
+  - Refactor `_run_checkpoint_stage(...)` to use the resolver.
+  - Add direct tests for the resolver and stage-state consistency.
 - **Forbidden**:
-  - Any compiler/prepass authority transfer without a new approved design.
+  - Any compiler/prepass authority transfer.
   - Any board commit logic changes.
   - Any mutation of checkpoint flags from compiler/prepass facts.
   - Any reuse of prepass analysis inside `_run_classification_stage`.
 - **Done When**:
-  - A bounded first authority-migration candidate is selected, or a NO-GO is documented.
+  - Effective checkpoint flag resolution is centralized.
+  - `CheckpointStageState(...)` consistently uses effective flags once available.
+  - Tests prove legacy fallback still wins and compiler/prepass-only facts still cannot trigger routing.
+
+#### Phase 10 Step 17: First True BoardCheckpoint Authority Narrowing
+
+- **Status**: Pending explicit approval.
+- **Goal**: Evaluate whether any bounded board/checkpoint consumer can move from legacy-derived typed read-through to a true narrowed authority transfer.
 
 ---
 

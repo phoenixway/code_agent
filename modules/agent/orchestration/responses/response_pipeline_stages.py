@@ -8,13 +8,8 @@ from ..shared.decision_models import ExecutionPlan
 from ..shared.decision_models import ResponsePipelineOutcome
 from ..shared.trace import compact_compiler_replay
 from .board_checkpoint_semantics import build_board_checkpoint_semantic_result
-from .board_checkpoint_semantics import is_legacy_derived_memory_checkpoint_and_action
-from .board_checkpoint_semantics import is_legacy_derived_memory_checkpoint_and_text
-from .board_checkpoint_semantics import is_legacy_derived_memory_checkpoint_only
-from .board_checkpoint_semantics import is_legacy_derived_plan_checkpoint_and_action
-from .board_checkpoint_semantics import is_legacy_derived_plan_checkpoint_and_text
-from .board_checkpoint_semantics import is_legacy_derived_plan_checkpoint_only
 from .board_checkpoint_semantics import checkpoint_outcome_category
+from .board_checkpoint_semantics import resolve_legacy_derived_checkpoint_effective_flags
 from .protocol_decision_bridge import compiler_invalid_kind_for_output, resolve_protocol_authority
 from .semantic_accessors import is_leaked_system_result
 from .terminal_answer_models import TerminalAnswerKind
@@ -328,21 +323,18 @@ class ResponsePipelineStagesMixin:
             memory_checkpoint_and_text=False,
             memory_checkpoint_and_action=False,
         )
-        typed_plan_checkpoint_only = is_legacy_derived_plan_checkpoint_only(
+        plan_effective_flags = resolve_legacy_derived_checkpoint_effective_flags(
             plan_semantic_result,
-            legacy_plan_checkpoint_only=plan_checkpoint_only,
+            plan_checkpoint_only=plan_checkpoint_only,
+            plan_checkpoint_and_text=plan_checkpoint_and_text,
+            plan_checkpoint_and_action=plan_checkpoint_and_action,
+            memory_checkpoint_only=False,
+            memory_checkpoint_and_text=False,
+            memory_checkpoint_and_action=False,
         )
-        typed_plan_checkpoint_and_text = is_legacy_derived_plan_checkpoint_and_text(
-            plan_semantic_result,
-            legacy_plan_checkpoint_and_text=plan_checkpoint_and_text,
-        )
-        typed_plan_checkpoint_and_action = is_legacy_derived_plan_checkpoint_and_action(
-            plan_semantic_result,
-            legacy_plan_checkpoint_and_action=plan_checkpoint_and_action,
-        )
-        effective_plan_checkpoint_only = bool(typed_plan_checkpoint_only or plan_checkpoint_only)
-        effective_plan_checkpoint_and_text = bool(typed_plan_checkpoint_and_text or plan_checkpoint_and_text)
-        effective_plan_checkpoint_and_action = bool(typed_plan_checkpoint_and_action or plan_checkpoint_and_action)
+        effective_plan_checkpoint_only = plan_effective_flags.plan_checkpoint_only
+        effective_plan_checkpoint_and_text = plan_effective_flags.plan_checkpoint_and_text
+        effective_plan_checkpoint_and_action = plan_effective_flags.plan_checkpoint_and_action
         if plan_board_decision.handled:
             self._log_board_checkpoint_structural_parity(
                 compiler_analysis,
@@ -389,21 +381,21 @@ class ResponsePipelineStagesMixin:
             memory_checkpoint_and_text=memory_checkpoint_and_text,
             memory_checkpoint_and_action=memory_checkpoint_and_action,
         )
-        typed_memory_checkpoint_only = is_legacy_derived_memory_checkpoint_only(
+        effective_flags = resolve_legacy_derived_checkpoint_effective_flags(
             board_checkpoint_semantic_result,
-            legacy_memory_checkpoint_only=memory_checkpoint_only,
+            plan_checkpoint_only=plan_checkpoint_only,
+            plan_checkpoint_and_text=plan_checkpoint_and_text,
+            plan_checkpoint_and_action=plan_checkpoint_and_action,
+            memory_checkpoint_only=memory_checkpoint_only,
+            memory_checkpoint_and_text=memory_checkpoint_and_text,
+            memory_checkpoint_and_action=memory_checkpoint_and_action,
         )
-        typed_memory_checkpoint_and_text = is_legacy_derived_memory_checkpoint_and_text(
-            board_checkpoint_semantic_result,
-            legacy_memory_checkpoint_and_text=memory_checkpoint_and_text,
-        )
-        typed_memory_checkpoint_and_action = is_legacy_derived_memory_checkpoint_and_action(
-            board_checkpoint_semantic_result,
-            legacy_memory_checkpoint_and_action=memory_checkpoint_and_action,
-        )
-        effective_memory_checkpoint_only = bool(typed_memory_checkpoint_only or memory_checkpoint_only)
-        effective_memory_checkpoint_and_text = bool(typed_memory_checkpoint_and_text or memory_checkpoint_and_text)
-        effective_memory_checkpoint_and_action = bool(typed_memory_checkpoint_and_action or memory_checkpoint_and_action)
+        effective_plan_checkpoint_only = effective_flags.plan_checkpoint_only
+        effective_plan_checkpoint_and_text = effective_flags.plan_checkpoint_and_text
+        effective_plan_checkpoint_and_action = effective_flags.plan_checkpoint_and_action
+        effective_memory_checkpoint_only = effective_flags.memory_checkpoint_only
+        effective_memory_checkpoint_and_text = effective_flags.memory_checkpoint_and_text
+        effective_memory_checkpoint_and_action = effective_flags.memory_checkpoint_and_action
 
         self._log_board_checkpoint_structural_parity(
             compiler_analysis,
@@ -480,9 +472,9 @@ class ResponsePipelineStagesMixin:
                 plan_checkpoint_only=effective_plan_checkpoint_only,
                 plan_checkpoint_and_text=effective_plan_checkpoint_and_text,
                 plan_checkpoint_and_action=effective_plan_checkpoint_and_action,
-                memory_checkpoint_only=memory_checkpoint_only,
-                memory_checkpoint_and_text=memory_checkpoint_and_text,
-                memory_checkpoint_and_action=memory_checkpoint_and_action,
+                memory_checkpoint_only=effective_memory_checkpoint_only,
+                memory_checkpoint_and_text=effective_memory_checkpoint_and_text,
+                memory_checkpoint_and_action=effective_memory_checkpoint_and_action,
                 memory_board_decision=memory_board_decision,
                 compiler_analysis=compiler_analysis,
                 board_checkpoint_semantic_result=board_checkpoint_semantic_result,
@@ -586,9 +578,9 @@ class ResponsePipelineStagesMixin:
                 plan_checkpoint_only=effective_plan_checkpoint_only,
                 plan_checkpoint_and_text=effective_plan_checkpoint_and_text,
                 plan_checkpoint_and_action=effective_plan_checkpoint_and_action,
-                memory_checkpoint_only=memory_checkpoint_only,
-                memory_checkpoint_and_text=memory_checkpoint_and_text,
-                memory_checkpoint_and_action=memory_checkpoint_and_action,
+                memory_checkpoint_only=effective_memory_checkpoint_only,
+                memory_checkpoint_and_text=effective_memory_checkpoint_and_text,
+                memory_checkpoint_and_action=effective_memory_checkpoint_and_action,
                 memory_board_decision=memory_board_decision,
                 compiler_analysis=compiler_analysis,
                 board_checkpoint_semantic_result=board_checkpoint_semantic_result,
