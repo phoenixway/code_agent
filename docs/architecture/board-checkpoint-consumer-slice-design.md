@@ -609,6 +609,14 @@ The board/checkpoint consumer migration slice is now complete. The key outcomes 
 - A default-off compiler authority switch for `PLAN_CHECKPOINT_ONLY` was successfully implemented and validated.
 - Legacy board handlers remain authoritative for all other branches and for all board commit logic.
 
+### 3.25. Step 25: Refactor Switch Registry Smoke Profile
+
+- **Outcome**:
+  - The switch registry loader was updated to support an `ANGELICA_REFACTOR_SWITCH_REGISTRY` environment variable override.
+  - This allows smoke tests to run with a separate `refactor_switches.smoke.toml` profile, enabling selected compiler-authority branches for validation without affecting the production default.
+  - The default `refactor_switches.toml` remains unchanged, with all switches set to `legacy`.
+  - No new authority branches were added, and no runtime behavior was changed unless the smoke override is used.
+
 ## 4. Refactor Governance: Typed Accessors + Branch Authority Switches
 
 As of Phase 10, the semantic runtime refactor adopts a new guiding principle for managing the transition from legacy to compiler-driven authority.

@@ -2,6 +2,7 @@
 Central registry for semantic runtime refactor authority switches.
 """
 import functools
+import os
 from pathlib import Path
 
 try:
@@ -13,8 +14,18 @@ except ImportError:
 
 @functools.lru_cache(maxsize=1)
 def _load_registry():
-    """Loads the switch registry from TOML, with caching."""
-    registry_path = Path(__file__).parent / "refactor_switches.toml"
+    """
+    Loads the switch registry from TOML, with caching.
+
+    An environment variable `ANGELICA_REFACTOR_SWITCH_REGISTRY` can be used
+    to override the default registry file path for smoke testing.
+    """
+    registry_path_override = os.environ.get("ANGELICA_REFACTOR_SWITCH_REGISTRY")
+    if registry_path_override:
+        registry_path = Path(registry_path_override)
+    else:
+        registry_path = Path(__file__).parent / "refactor_switches.toml"
+
     if not registry_path.exists():
         return {}
     try:

@@ -130,4 +130,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 126. Phase 10 Step 23: done. Hardened PLAN_CHECKPOINT_ONLY authority switch. Smoke tests passed. Decision: close slice, move to Phase 11.
 127. Governance update: new strategy is branch-level authority switches, documented in `board-checkpoint-consumer-slice-design.md`.
 128. Phase 10 Step 24: done. Central TOML registry for refactor switches introduced.
-129. Next: Phase 10 Step 25: Enable selected tag/checkpoint switches via registry for smoke testing.
+129. Phase 10 Step 25: done. Added smoke profile support for refactor switch registry via env var.
+130. Next: Phase 10 Step 26: Run Angelica smoke with PLAN_CHECKPOINT_ONLY compiler-authority profile.

@@ -1,0 +1,18 @@
+# Smoke/refactor profile for validating compiler-authority branches.
+# Do not use as production default without explicit approval.
+
+[board_checkpoint]
+plan_checkpoint_only = "compiler"
+plan_checkpoint_with_text = "legacy"
+plan_checkpoint_with_action = "legacy"
+memory_checkpoint_only = "legacy"
+memory_checkpoint_with_text = "legacy"
+memory_checkpoint_with_action = "legacy"
+
+[terminal_answer]
+plaintext_terminal_answer = "legacy"
+checkpoint_only = "legacy"
+checkpoint_with_visible_text = "legacy"
+
+[dispatch]
+plan_first_single_action = "legacy"

@@ -1909,17 +1909,36 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Tests prove defaults are stable.
   - No authority was expanded.
 
-#### Phase 10 Step 25: Enable selected tag/checkpoint switches via registry for smoke testing
+#### Phase 10 Step 25: Refactor Switch Registry Smoke Profile
+
+- **Status**: Done.
+- **Goal**: Add a practical way to run smoke tests with selected compiler-authority switches enabled through a separate registry profile, while keeping production/default registry safe.
+- **Allowed**:
+  - Add an environment variable override for the switch registry path.
+  - Add a smoke-test TOML profile.
+  - Update tests to cover the override mechanism.
+- **Forbidden**:
+  - Enabling compiler authority in the default `refactor_switches.toml`.
+  - Adding new authority branches.
+  - Changing runtime behavior unless the smoke override is used.
+- **Completed Outcome**:
+  - The switch registry loader now supports an `ANGELICA_REFACTOR_SWITCH_REGISTRY` environment variable.
+  - A `refactor_switches.smoke.toml` profile was added to enable `PLAN_CHECKPOINT_ONLY` compiler authority for validation.
+  - The default registry remains unchanged, with all switches set to `legacy`.
+  - No runtime behavior changed unless the smoke override is used.
+
+---
+
+#### Phase 10 Step 26: Run Angelica smoke with PLAN_CHECKPOINT_ONLY compiler-authority profile
 
 - **Status**: Pending explicit approval.
-- **Goal**: Enable selected compiler-authority switches via the new TOML registry and run smoke tests.
+- **Goal**: Run Angelica smoke tests with the `PLAN_CHECKPOINT_ONLY` compiler-authority switch enabled via the smoke profile.
 - **Allowed**:
-  - Modify `refactor_switches.toml` to enable compiler authority for selected branches.
-  - Run smoke tests (e.g., Angelica runs).
-  - Document any behavior drift.
+  - Run smoke tests using the `ANGELICA_REFACTOR_SWITCH_REGISTRY` override.
+  - Document any behavior drift or regressions.
 - **Forbidden**:
-  - Enabling switches for unvalidated branches.
   - Committing enabled switches to the main branch without approval.
+  - Fixing regressions in this step; they must be documented for a separate fix-forward step.
 
 ---
 

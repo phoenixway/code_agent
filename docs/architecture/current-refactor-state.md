@@ -4,9 +4,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 10 Step 24: Central Refactor Switch Registry TOML
+- **Phase**: Phase 10 Step 25: Refactor Switch Registry Smoke Profile
 - **Status**: Complete.
-- **Next Step**: Phase 10 Step 25: Enable selected tag/checkpoint switches via registry for smoke testing.
+- **Next Step**: Phase 10 Step 26: Run Angelica smoke with PLAN_CHECKPOINT_ONLY compiler-authority profile.
 - **Boundary**: The checkpoint parity bridge remains diagnostic-only. Legacy board handlers still own commit behavior, the prepass compiler analysis remains observational, and `_apply_compiler_diagnosis` remains the effectful classification-stage path that recomputes on normalized response.
 
 ## Step 4I Parity Matrix
@@ -1004,6 +1004,12 @@ This document is the single source of truth for the current state of the Semanti
   - A loader was added to read switch defaults from the registry.
   - The existing `PLAN_CHECKPOINT_ONLY` switch was wired to the registry.
   - No authority was expanded, and default behavior remains unchanged.
+
+- **Phase 10 Step 25: Refactor Switch Registry Smoke Profile (Complete)**
+  - The switch registry loader now supports an `ANGELICA_REFACTOR_SWITCH_REGISTRY` environment variable to override the default TOML file.
+  - A smoke-test profile, `refactor_switches.smoke.toml`, was added to enable the `PLAN_CHECKPOINT_ONLY` compiler-authority switch for validation runs.
+  - The default `refactor_switches.toml` remains unchanged, with all switches set to `legacy`.
+  - No new authority branches were added, and no runtime behavior was changed unless the smoke override is used.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 
