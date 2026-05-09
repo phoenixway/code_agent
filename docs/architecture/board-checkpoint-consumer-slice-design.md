@@ -457,6 +457,33 @@ This design-only step is complete. It analyzed whether it is safe for the classi
   - Legacy board handlers remain authoritative.
   - No routing, commit, or checkpoint-flag behavior changed.
 
-### 3.14. Next Intended Step
+### 3.14. Step 13: First Narrow BoardCheckpoint Consumer Migration
 
-The next step is **Phase 10 Step 13: BoardCheckpoint Pure Builder Parity Review / First Safe Consumer Candidate**.
+- **Implementation Outcome**:
+  - `_run_checkpoint_stage(...)` now performs a first narrow typed read-through for memory checkpoint routing.
+  - The migrated read-through is limited to legacy-derived typed results:
+    - `MEMORY_CHECKPOINT_ONLY`
+    - `MEMORY_CHECKPOINT_WITH_TEXT`
+  - Read-through only applies when:
+    - `BoardCheckpointSemanticResult.source` is legacy-derived
+    - the typed kind matches the corresponding legacy bool
+  - Legacy flags still win on any disagreement.
+- **What did not change**:
+  - Compiler/prepass facts still do not decide checkpoint routing.
+  - Board commit behavior did not change.
+  - `PlanBoardStageHandler` and `MemoryBoardStageHandler` behavior did not change.
+  - Checkpoint flags are not mutated from compiler/prepass facts.
+  - The migration is a legacy-derived typed mirror only, not an authority transfer.
+- **Why this step is safe**:
+  - The typed path is gated by the same legacy bools it mirrors.
+  - If the semantic result disagrees, the code falls back to legacy flags.
+  - Compiler/prepass-only checkpoint facts cannot trigger routing by themselves.
+- **Coverage added**:
+  - typed read-through for `memory_checkpoint_only`
+  - typed read-through for `memory_checkpoint_and_text`
+  - disagreement tests proving legacy flags win
+  - confirmation that compiler/prepass-only checkpoint facts do not trigger routing
+
+### 3.15. Next Intended Step
+
+The next step is **Phase 10 Step 14: Plan Checkpoint Typed Read-Through or Memory Branch Fallback Tightening**.

@@ -19,6 +19,39 @@ def checkpoint_outcome_category(*, checkpoint_only: bool, checkpoint_and_text: b
     return "none"
 
 
+def legacy_derived_checkpoint_kind(result: BoardCheckpointSemanticResult | None) -> BoardCheckpointKind | None:
+    if result is None:
+        return None
+    if result.source not in {
+        BoardCheckpointSource.LEGACY_HANDLER_OUTCOME,
+        BoardCheckpointSource.COMBINED_SHADOW,
+    }:
+        return None
+    return result.kind
+
+
+def is_legacy_derived_memory_checkpoint_only(
+    result: BoardCheckpointSemanticResult | None,
+    *,
+    legacy_memory_checkpoint_only: bool,
+) -> bool:
+    return bool(
+        legacy_memory_checkpoint_only
+        and legacy_derived_checkpoint_kind(result) == BoardCheckpointKind.MEMORY_CHECKPOINT_ONLY
+    )
+
+
+def is_legacy_derived_memory_checkpoint_and_text(
+    result: BoardCheckpointSemanticResult | None,
+    *,
+    legacy_memory_checkpoint_and_text: bool,
+) -> bool:
+    return bool(
+        legacy_memory_checkpoint_and_text
+        and legacy_derived_checkpoint_kind(result) == BoardCheckpointKind.MEMORY_CHECKPOINT_WITH_TEXT
+    )
+
+
 def build_board_checkpoint_semantic_result(
     compiler_analysis,
     *,

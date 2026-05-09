@@ -8,6 +8,8 @@ from ..shared.decision_models import ExecutionPlan
 from ..shared.decision_models import ResponsePipelineOutcome
 from ..shared.trace import compact_compiler_replay
 from .board_checkpoint_semantics import build_board_checkpoint_semantic_result
+from .board_checkpoint_semantics import is_legacy_derived_memory_checkpoint_and_text
+from .board_checkpoint_semantics import is_legacy_derived_memory_checkpoint_only
 from .board_checkpoint_semantics import checkpoint_outcome_category
 from .protocol_decision_bridge import compiler_invalid_kind_for_output, resolve_protocol_authority
 from .semantic_accessors import is_leaked_system_result
@@ -368,14 +370,24 @@ class ResponsePipelineStagesMixin:
             memory_checkpoint_and_text=memory_checkpoint_and_text,
             memory_checkpoint_and_action=memory_checkpoint_and_action,
         )
+        typed_memory_checkpoint_only = is_legacy_derived_memory_checkpoint_only(
+            board_checkpoint_semantic_result,
+            legacy_memory_checkpoint_only=memory_checkpoint_only,
+        )
+        typed_memory_checkpoint_and_text = is_legacy_derived_memory_checkpoint_and_text(
+            board_checkpoint_semantic_result,
+            legacy_memory_checkpoint_and_text=memory_checkpoint_and_text,
+        )
+        effective_memory_checkpoint_only = bool(typed_memory_checkpoint_only or memory_checkpoint_only)
+        effective_memory_checkpoint_and_text = bool(typed_memory_checkpoint_and_text or memory_checkpoint_and_text)
 
         self._log_board_checkpoint_structural_parity(
             compiler_analysis,
             plan_checkpoint_only=plan_checkpoint_only,
             plan_checkpoint_and_text=plan_checkpoint_and_text,
             plan_checkpoint_and_action=plan_checkpoint_and_action,
-            memory_checkpoint_only=memory_checkpoint_only,
-            memory_checkpoint_and_text=memory_checkpoint_and_text,
+            memory_checkpoint_only=effective_memory_checkpoint_only,
+            memory_checkpoint_and_text=effective_memory_checkpoint_and_text,
             memory_checkpoint_and_action=memory_checkpoint_and_action,
         )
 
@@ -388,7 +400,7 @@ class ResponsePipelineStagesMixin:
             plan_committed = plan_checkpoint_only or plan_checkpoint_and_text or plan_checkpoint_and_action
             return memory_committed or plan_committed
 
-        if reflection_repair_pending and memory_checkpoint_only:
+        if reflection_repair_pending and effective_memory_checkpoint_only:
             if _repair_checkpoint_completed():
                 self.stage_logger.log_architecture_defect(
                     reflection_repair_kind or "missing_think_reflection",
@@ -410,8 +422,8 @@ class ResponsePipelineStagesMixin:
                     plan_checkpoint_only=plan_checkpoint_only,
                     plan_checkpoint_and_text=plan_checkpoint_and_text,
                     plan_checkpoint_and_action=plan_checkpoint_and_action,
-                    memory_checkpoint_only=memory_checkpoint_only,
-                    memory_checkpoint_and_text=memory_checkpoint_and_text,
+                    memory_checkpoint_only=effective_memory_checkpoint_only,
+                    memory_checkpoint_and_text=effective_memory_checkpoint_and_text,
                     memory_checkpoint_and_action=memory_checkpoint_and_action,
                     memory_board_decision=memory_board_decision,
                     compiler_analysis=compiler_analysis,
@@ -456,12 +468,12 @@ class ResponsePipelineStagesMixin:
                 memory_checkpoint_and_action=False,
             )
 
-        if memory_board_decision.handled and (memory_checkpoint_and_text or memory_checkpoint_and_action):
+        if memory_board_decision.handled and (effective_memory_checkpoint_and_text or memory_checkpoint_and_action):
             self.guards.set_nonproductive_thinking_state(False)
             memory_board_decision.handled = False
 
         if memory_board_decision.handled:
-            if memory_checkpoint_only:
+            if effective_memory_checkpoint_only:
                 self.guards.set_reflection_repair_pending(False)
                 streak = self.guards.memory_checkpoint_streak()
                 if streak >= self.memory_checkpoint_hard_stop_streak:
@@ -487,8 +499,8 @@ class ResponsePipelineStagesMixin:
                         plan_checkpoint_only=plan_checkpoint_only,
                         plan_checkpoint_and_text=plan_checkpoint_and_text,
                         plan_checkpoint_and_action=plan_checkpoint_and_action,
-                        memory_checkpoint_only=memory_checkpoint_only,
-                        memory_checkpoint_and_text=memory_checkpoint_and_text,
+                        memory_checkpoint_only=effective_memory_checkpoint_only,
+                        memory_checkpoint_and_text=effective_memory_checkpoint_and_text,
                         memory_checkpoint_and_action=memory_checkpoint_and_action,
                         memory_board_decision=memory_board_decision,
                         compiler_analysis=compiler_analysis,
@@ -522,8 +534,8 @@ class ResponsePipelineStagesMixin:
                             plan_checkpoint_only=plan_checkpoint_only,
                             plan_checkpoint_and_text=plan_checkpoint_and_text,
                             plan_checkpoint_and_action=plan_checkpoint_and_action,
-                            memory_checkpoint_only=memory_checkpoint_only,
-                            memory_checkpoint_and_text=memory_checkpoint_and_text,
+                            memory_checkpoint_only=effective_memory_checkpoint_only,
+                            memory_checkpoint_and_text=effective_memory_checkpoint_and_text,
                             memory_checkpoint_and_action=memory_checkpoint_and_action,
                             memory_board_decision=memory_board_decision,
                             compiler_analysis=compiler_analysis,
@@ -557,8 +569,8 @@ class ResponsePipelineStagesMixin:
                 response_text=response,
                 reason=memory_board_decision.reason,
                 source=memory_board_decision.source,
-                memory_checkpoint_only=memory_checkpoint_only,
-                memory_checkpoint_and_text=memory_checkpoint_and_text,
+                memory_checkpoint_only=effective_memory_checkpoint_only,
+                memory_checkpoint_and_text=effective_memory_checkpoint_and_text,
                 memory_checkpoint_and_action=memory_checkpoint_and_action,
             )
 
@@ -569,8 +581,8 @@ class ResponsePipelineStagesMixin:
             plan_checkpoint_only=plan_checkpoint_only,
             plan_checkpoint_and_text=plan_checkpoint_and_text,
             plan_checkpoint_and_action=plan_checkpoint_and_action,
-            memory_checkpoint_only=memory_checkpoint_only,
-            memory_checkpoint_and_text=memory_checkpoint_and_text,
+            memory_checkpoint_only=effective_memory_checkpoint_only,
+            memory_checkpoint_and_text=effective_memory_checkpoint_and_text,
             memory_checkpoint_and_action=memory_checkpoint_and_action,
             memory_board_decision=memory_board_decision,
             compiler_analysis=compiler_analysis,

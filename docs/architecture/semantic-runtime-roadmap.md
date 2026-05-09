@@ -1690,20 +1690,45 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
-#### Phase 10 Step 13: BoardCheckpoint Pure Builder Parity Review / First Safe Consumer Candidate
+#### Phase 10 Step 13: First Narrow BoardCheckpoint Consumer Migration
+
+- **Status**: Done.
+- **Goal**: Introduce the first safe typed read-through consumer, limited to legacy-derived checkpoint kinds.
+- **Allowed**:
+  - Legacy-derived typed read-through only.
+  - Explicit legacy fallback.
+  - Tests proving no behavior drift.
+- **Forbidden**:
+  - Any compiler/prepass authority transfer.
+  - Any board commit logic changes.
+  - Any checkpoint routing changes beyond legacy-confirmed typed mirroring.
+  - Any mutation of checkpoint flags from compiler/prepass facts.
+- **Done When**:
+  - A first narrow consumer uses legacy-derived typed kinds without changing runtime behavior.
+- **Completed Outcome**:
+  - `_run_checkpoint_stage(...)` now reads legacy-derived typed kinds for:
+    - `MEMORY_CHECKPOINT_ONLY`
+    - `MEMORY_CHECKPOINT_WITH_TEXT`
+  - Legacy flags remain the final fallback and win on disagreement.
+  - Compiler/prepass-only checkpoint facts still cannot trigger routing.
+  - No board commit or routing behavior changed.
+
+---
+
+#### Phase 10 Step 14: Plan Checkpoint Typed Read-Through or Memory Branch Fallback Tightening
 
 - **Status**: Pending explicit approval.
-- **Goal**: Review the extracted pure builder and refined parity surface to decide whether any first narrow consumer candidate is now safe.
+- **Goal**: Decide whether the next narrow migration should be plan-checkpoint typed read-through or further tightening/cleanup of memory-branch fallback behavior.
 - **Allowed**:
-  - Read-only parity review.
-  - Docs-only migration-candidate analysis.
+  - Read-only review or narrow behavior-preserving implementation, if explicitly approved later.
+  - Legacy-derived typed read-through only.
 - **Forbidden**:
-  - Any authority transfer before parity is proven.
-  - Any board commit logic or checkpoint routing changes.
-  - Any mutation of checkpoint flags from the semantic model.
+  - Any compiler/prepass authority transfer.
+  - Any board commit logic changes.
+  - Any mutation of checkpoint flags from compiler/prepass facts.
   - Any reuse of prepass analysis inside `_run_classification_stage`.
 - **Done When**:
-  - A concrete GO / NO-GO decision exists for the first safe consumer candidate.
+  - The next narrow checkpoint-consumer step is clearly selected and bounded.
 
 ---
 

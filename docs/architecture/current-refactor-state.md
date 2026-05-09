@@ -4,9 +4,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 10 Step 12: BoardCheckpoint Semantic Model Refinement + Pure Builder Extraction
+- **Phase**: Phase 10 Step 13: First Narrow BoardCheckpoint Consumer Migration
 - **Status**: Complete.
-- **Next Step**: Phase 10 Step 13: BoardCheckpoint Pure Builder Parity Review / First Safe Consumer Candidate.
+- **Next Step**: Phase 10 Step 14: Plan Checkpoint Typed Read-Through or Memory Branch Fallback Tightening.
 - **Boundary**: The checkpoint parity bridge remains diagnostic-only. Legacy board handlers still own commit behavior, the prepass compiler analysis remains observational, and `_apply_compiler_diagnosis` remains the effectful classification-stage path that recomputes on normalized response.
 
 ## Step 4I Parity Matrix
@@ -909,6 +909,33 @@ This document is the single source of truth for the current state of the Semanti
   - Legacy board handlers remain authoritative.
 - **Next step**
   - Phase 10 Step 13: BoardCheckpoint Pure Builder Parity Review / First Safe Consumer Candidate.
+
+## Phase 10 Step 13: First Narrow BoardCheckpoint Consumer Migration (Complete)
+
+- **Implementation outcome**
+  - `_run_checkpoint_stage(...)` now performs a first narrow typed read-through for memory checkpoint routing.
+  - Migrated typed read-through cases:
+    - `MEMORY_CHECKPOINT_ONLY`
+    - `MEMORY_CHECKPOINT_WITH_TEXT`
+  - The typed result is only consulted when it is legacy-derived and confirms the same legacy bool.
+- **Authority boundary**
+  - This is not compiler/prepass authority.
+  - This is not board commit migration.
+  - Legacy board handlers remain authoritative.
+  - Legacy flags still win on disagreement.
+  - Compiler/prepass-only checkpoint facts cannot trigger routing.
+- **Behavior boundary**
+  - No board commit behavior changed.
+  - No checkpoint routing behavior changed.
+  - No checkpoint flags are mutated from compiler/prepass facts.
+  - No dispatch, final-answer, stop-gate, `ActionPolicy`, parser, or `history.py` behavior changed.
+- **Test coverage**
+  - typed read-through path for `memory_checkpoint_only`
+  - typed read-through path for `memory_checkpoint_and_text`
+  - disagreement tests proving legacy flags win
+  - continued coverage that compiler/prepass-only checkpoint facts do not trigger routing
+- **Next step**
+  - Phase 10 Step 14: Plan Checkpoint Typed Read-Through or Memory Branch Fallback Tightening.
 
 ## Phase 9 Step 6D Outcome
 
