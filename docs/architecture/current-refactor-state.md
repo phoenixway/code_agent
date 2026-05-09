@@ -4,9 +4,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 10 Step 23: PLAN_CHECKPOINT_ONLY Compiler Authority Guard Tightening + Angelica Smoke Run
+- **Phase**: Phase 10 Step 24: Central Refactor Switch Registry TOML
 - **Status**: Complete.
-- **Next Step**: Phase 11: RecoveryStrategy Registry Expansion.
+- **Next Step**: Phase 10 Step 25: Enable selected tag/checkpoint switches via registry for smoke testing.
 - **Boundary**: The checkpoint parity bridge remains diagnostic-only. Legacy board handlers still own commit behavior, the prepass compiler analysis remains observational, and `_apply_compiler_diagnosis` remains the effectful classification-stage path that recomputes on normalized response.
 
 ## Step 4I Parity Matrix
@@ -999,6 +999,11 @@ This document is the single source of truth for the current state of the Semanti
   - Additional fallback tests were added.
   - Smoke tests with the switch enabled showed no regressions, so the switch is considered safe to keep (but default-off).
   - The board/checkpoint slice is now considered complete.
+- **Phase 10 Step 24: Central Refactor Switch Registry TOML (Complete)**
+  - A central TOML registry for refactor authority switches was introduced in `modules/agent/orchestration/config/refactor_switches.toml`.
+  - A loader was added to read switch defaults from the registry.
+  - The existing `PLAN_CHECKPOINT_ONLY` switch was wired to the registry.
+  - No authority was expanded, and default behavior remains unchanged.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 

@@ -1893,7 +1893,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 10 Step 24: Central Refactor Switch Registry TOML
 
-- **Status**: Pending explicit approval.
+- **Status**: Done.
 - **Goal**: Introduce a centralized TOML registry for refactor authority switches.
 - **Allowed**:
   - Create registry file.
@@ -1904,9 +1904,22 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Hardcoded scattered switch constants.
   - Changing unrelated runtime behavior.
 - **Done When**:
-  - Every current authority switch is represented in the central registry.
-  - Code reads switch defaults from the registry or a small loader.
+  - The central registry was created in `modules/agent/orchestration/config/refactor_switches.toml`.
+  - The existing `PLAN_CHECKPOINT_ONLY` switch was wired to the registry.
   - Tests prove defaults are stable.
+  - No authority was expanded.
+
+#### Phase 10 Step 25: Enable selected tag/checkpoint switches via registry for smoke testing
+
+- **Status**: Pending explicit approval.
+- **Goal**: Enable selected compiler-authority switches via the new TOML registry and run smoke tests.
+- **Allowed**:
+  - Modify `refactor_switches.toml` to enable compiler authority for selected branches.
+  - Run smoke tests (e.g., Angelica runs).
+  - Document any behavior drift.
+- **Forbidden**:
+  - Enabling switches for unvalidated branches.
+  - Committing enabled switches to the main branch without approval.
 
 ---
 

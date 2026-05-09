@@ -1,0 +1,25 @@
+# Central registry for semantic runtime refactor authority switches.
+#
+# This file defines the authoritative source for enabling or disabling
+# new compiler-driven semantic behaviors during the refactor.
+#
+# Allowed values:
+# - "legacy":   (Default) Legacy implementation is authoritative.
+# - "compiler": New compiler/typed implementation is authoritative.
+# - "shadow":   Run both, log parity, but legacy is authoritative.
+
+[board_checkpoint]
+plan_checkpoint_only = "legacy"
+plan_checkpoint_with_text = "legacy"
+plan_checkpoint_with_action = "legacy"
+memory_checkpoint_only = "legacy"
+memory_checkpoint_with_text = "legacy"
+memory_checkpoint_with_action = "legacy"
+
+[terminal_answer]
+plaintext_terminal_answer = "legacy"
+checkpoint_only = "legacy"
+checkpoint_with_visible_text = "legacy"
+
+[dispatch]
+plan_first_single_action = "legacy"

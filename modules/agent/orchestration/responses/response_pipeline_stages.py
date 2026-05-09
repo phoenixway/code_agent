@@ -13,7 +13,7 @@ from .board_checkpoint_semantics import resolve_legacy_derived_checkpoint_effect
 from .board_checkpoint_semantics import resolve_memory_checkpoint_and_action_typed_primary
 from .board_checkpoint_semantics import resolve_memory_checkpoint_and_text_typed_primary
 from .board_checkpoint_semantics import resolve_memory_checkpoint_only_typed_primary
-from .board_checkpoint_semantics import BOARD_CHECKPOINT_COMPILER_AUTHORITY_ENABLED
+from ..config.switch_registry import get_switch
 from .board_checkpoint_semantics import resolve_plan_checkpoint_and_action_typed_primary
 from .board_checkpoint_semantics import resolve_plan_checkpoint_and_text_typed_primary
 from .board_checkpoint_semantics import resolve_plan_checkpoint_only_typed_primary
@@ -335,7 +335,7 @@ class ResponsePipelineStagesMixin:
         effective_plan_checkpoint_only = resolve_plan_checkpoint_only_with_compiler_switch(
             plan_semantic_result,
             legacy_plan_checkpoint_only=plan_checkpoint_only,
-            switch_enabled=BOARD_CHECKPOINT_COMPILER_AUTHORITY_ENABLED.get("PLAN_CHECKPOINT_ONLY", False),
+            switch_enabled=(get_switch("board_checkpoint.plan_checkpoint_only") == "compiler"),
         )
         if effective_plan_checkpoint_only and not plan_board_decision.handled:
             plan_board_decision.handled = True
@@ -405,7 +405,7 @@ class ResponsePipelineStagesMixin:
         effective_plan_checkpoint_only = resolve_plan_checkpoint_only_with_compiler_switch(
             board_checkpoint_semantic_result,
             legacy_plan_checkpoint_only=plan_checkpoint_only,
-            switch_enabled=BOARD_CHECKPOINT_COMPILER_AUTHORITY_ENABLED.get("PLAN_CHECKPOINT_ONLY", False),
+            switch_enabled=(get_switch("board_checkpoint.plan_checkpoint_only") == "compiler"),
         )
         if effective_plan_checkpoint_only and not plan_board_decision.handled and not memory_board_decision.handled:
             plan_board_decision.handled = True

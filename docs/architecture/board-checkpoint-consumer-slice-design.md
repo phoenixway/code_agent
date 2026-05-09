@@ -617,7 +617,7 @@ As of Phase 10, the semantic runtime refactor adopts a new guiding principle for
 
 - **Branch-Specific Authority Switches**: The authority for a specific semantic decision (e.g., a single checkpoint branch) is controlled by an explicit, named switch. This switch determines whether the legacy implementation or the new compiler/typed implementation is authoritative.
 
-- **Centralized Switch Registry**: All authority switches must be centrally registered and documented. They must not be scattered as loose constants. The default state for each switch must be explicit.
+- **Centralized Switch Registry**: All authority switches must be centrally registered and documented. A central TOML registry (`modules/agent/orchestration/config/refactor_switches.toml`) now exists for this purpose. They must not be scattered as loose constants. The default state for each switch must be explicit.
 
 - **Validation Through Controlled Authority Transfer**: During development and refactoring, compiler authority may be enabled for selected branches to force real-world validation via smoke tests (e.g., Angelica runs).
 

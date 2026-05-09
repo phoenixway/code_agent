@@ -13,7 +13,6 @@ from modules.agent.orchestration.responses.board_checkpoint_models import (
     BoardCheckpointSource,
 )
 from modules.agent.orchestration.responses.board_checkpoint_semantics import (
-    BOARD_CHECKPOINT_COMPILER_AUTHORITY_ENABLED,
     build_board_checkpoint_semantic_result,
     resolve_legacy_derived_checkpoint_effective_flags,
     resolve_memory_checkpoint_and_action_typed_primary,
@@ -2137,12 +2136,10 @@ class TestResponsePipelineCheckpointStageCharacterization(unittest.TestCase):
         self.assertTrue(state.memory_checkpoint_and_text)
         self.assertTrue(state.memory_checkpoint_and_action)
 
-    @patch.dict(
-        "modules.agent.orchestration.responses.board_checkpoint_semantics.BOARD_CHECKPOINT_COMPILER_AUTHORITY_ENABLED",
-        {"PLAN_CHECKPOINT_ONLY": True},
-    )
-    def test_plan_checkpoint_only_routes_with_compiler_authority_switch_on(self):
+    @patch("modules.agent.orchestration.responses.response_pipeline_stages.get_switch")
+    def test_plan_checkpoint_only_routes_with_compiler_authority_switch_on(self, mock_get_switch):
         """With switch ON, a clean compiler-only PCO signal should trigger routing."""
+        mock_get_switch.return_value = "compiler"
         self.harness.protocol_compiler.analyze.return_value = SimpleNamespace(
             shape=SimpleNamespace(name="CHECKPOINT_ONLY"),
             error=None,

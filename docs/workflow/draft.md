@@ -129,4 +129,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 125. Phase 10 Step 22: done. Introduced first default-off compiler-authority switch for `PLAN_CHECKPOINT_ONLY`. Default behavior unchanged.
 126. Phase 10 Step 23: done. Hardened PLAN_CHECKPOINT_ONLY authority switch. Smoke tests passed. Decision: close slice, move to Phase 11.
 127. Governance update: new strategy is branch-level authority switches, documented in `board-checkpoint-consumer-slice-design.md`.
-128. Next: Phase 10 Step 24: Central Refactor Switch Registry TOML.
+128. Phase 10 Step 24: done. Central TOML registry for refactor switches introduced.
+129. Next: Phase 10 Step 25: Enable selected tag/checkpoint switches via registry for smoke testing.

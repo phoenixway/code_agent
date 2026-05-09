@@ -10,9 +10,6 @@ from .board_checkpoint_models import (
 )
 
 
-BOARD_CHECKPOINT_COMPILER_AUTHORITY_ENABLED = {
-    "PLAN_CHECKPOINT_ONLY": False,
-}
 
 
 def checkpoint_outcome_category(*, checkpoint_only: bool, checkpoint_and_text: bool, checkpoint_and_action: bool) -> str:
