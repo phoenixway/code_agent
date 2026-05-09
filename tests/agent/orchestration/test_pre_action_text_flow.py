@@ -217,6 +217,45 @@ def test_single_action_plan_parity_probe_uses_existing_segments_for_eligible_sli
     assert reason == "single_action_ir_parity"
 
 
+def test_single_action_plan_dispatch_candidate_builds_for_eligible_read_file(dispatch_pipeline: DispatchPipeline):
+    segments = [SimpleNamespace(type="action", content={"type": "read_file", "path": "README.md"})]
+    iteration = SimpleNamespace(
+        execution_plan=ExecutionPlan(
+            shape="ACTION_ONLY",
+            transaction_kind="atomic_intent_action_bundle",
+            action_effects=["read_file:README.md"],
+        ),
+        parsed_output=SimpleNamespace(
+            compiler_shape="ACTION_ONLY",
+            compiler_ir=SimpleNamespace(
+                has_pre_action_text=False,
+                pre_action_text="",
+                action_ops=[
+                    SimpleNamespace(
+                        action_type="read_file",
+                        payload={"type": "read_file", "path": "README.md"},
+                        file_content=None,
+                    )
+                ],
+            ),
+        ),
+        segments=segments,
+    )
+
+    candidate, reason = dispatch_pipeline._build_single_action_plan_dispatch_candidate(iteration)
+
+    assert candidate is not None
+    assert reason == "single_action_ir_candidate"
+    assert candidate.action_type == "read_file"
+    assert candidate.payload == {"type": "read_file", "path": "README.md"}
+    assert candidate.action_summary == "read_file:README.md"
+    assert candidate.source == "compiler_ir"
+    assert candidate.matched_segment_index == 0
+    assert candidate.compiler_shape == "ACTION_ONLY"
+    assert candidate.transaction_kind == "atomic_intent_action_bundle"
+    assert candidate.pre_action_text is None
+
+
 def test_single_action_plan_parity_probe_falls_back_without_execution_plan(dispatch_pipeline: DispatchPipeline):
     segments = [SimpleNamespace(type="action", content={"type": "read_file", "path": "README.md"})]
     iteration = SimpleNamespace(
@@ -234,6 +273,11 @@ def test_single_action_plan_parity_probe_falls_back_without_execution_plan(dispa
     assert bridged_segments is segments
     assert used_bridge is False
     assert reason == "no_execution_plan"
+
+    candidate, candidate_reason = dispatch_pipeline._build_single_action_plan_dispatch_candidate(iteration)
+
+    assert candidate is None
+    assert candidate_reason == "no_execution_plan"
 
 
 def test_single_action_plan_parity_probe_falls_back_without_compiler_ir(dispatch_pipeline: DispatchPipeline):
@@ -253,6 +297,11 @@ def test_single_action_plan_parity_probe_falls_back_without_compiler_ir(dispatch
     assert bridged_segments is segments
     assert used_bridge is False
     assert reason == "no_compiler_ir"
+
+    candidate, candidate_reason = dispatch_pipeline._build_single_action_plan_dispatch_candidate(iteration)
+
+    assert candidate is None
+    assert candidate_reason == "no_compiler_ir"
 
 
 def test_single_action_plan_parity_probe_falls_back_when_ir_action_count_is_not_one(dispatch_pipeline: DispatchPipeline):
@@ -279,6 +328,11 @@ def test_single_action_plan_parity_probe_falls_back_when_ir_action_count_is_not_
     assert bridged_segments is segments
     assert used_bridge is False
     assert reason == "ir_action_count_not_one"
+
+    candidate, candidate_reason = dispatch_pipeline._build_single_action_plan_dispatch_candidate(iteration)
+
+    assert candidate is None
+    assert candidate_reason == "ir_action_count_not_one"
 
 
 def test_single_action_plan_parity_probe_falls_back_on_payload_mismatch(dispatch_pipeline: DispatchPipeline):
@@ -308,6 +362,42 @@ def test_single_action_plan_parity_probe_falls_back_on_payload_mismatch(dispatch
     assert bridged_segments is segments
     assert used_bridge is False
     assert reason == "payload_mismatch"
+
+    candidate, candidate_reason = dispatch_pipeline._build_single_action_plan_dispatch_candidate(iteration)
+
+    assert candidate is None
+    assert candidate_reason == "payload_mismatch"
+
+
+def test_single_action_plan_dispatch_candidate_falls_back_on_summary_mismatch(dispatch_pipeline: DispatchPipeline):
+    segments = [SimpleNamespace(type="action", content={"type": "read_file", "path": "README.md"})]
+    iteration = SimpleNamespace(
+        execution_plan=ExecutionPlan(
+            shape="ACTION_ONLY",
+            transaction_kind="atomic_intent_action_bundle",
+            action_effects=["read_file:OTHER.md"],
+        ),
+        parsed_output=SimpleNamespace(
+            compiler_shape="ACTION_ONLY",
+            compiler_ir=SimpleNamespace(
+                has_pre_action_text=False,
+                pre_action_text="",
+                action_ops=[
+                    SimpleNamespace(
+                        action_type="read_file",
+                        payload={"type": "read_file", "path": "README.md"},
+                        file_content=None,
+                    )
+                ],
+            ),
+        ),
+        segments=segments,
+    )
+
+    candidate, candidate_reason = dispatch_pipeline._build_single_action_plan_dispatch_candidate(iteration)
+
+    assert candidate is None
+    assert candidate_reason == "action_effect_mismatch"
 
 
 def test_single_action_plan_parity_probe_falls_back_on_unsupported_action_shape(dispatch_pipeline: DispatchPipeline):
@@ -340,6 +430,45 @@ def test_single_action_plan_parity_probe_falls_back_on_unsupported_action_shape(
     assert bridged_segments is segments
     assert used_bridge is False
     assert reason == "unsupported_action_shape"
+
+    candidate, candidate_reason = dispatch_pipeline._build_single_action_plan_dispatch_candidate(iteration)
+
+    assert candidate is None
+    assert candidate_reason == "unsupported_action_shape"
+
+
+def test_single_action_plan_dispatch_candidate_falls_back_on_multiple_segment_actions(dispatch_pipeline: DispatchPipeline):
+    segments = [
+        SimpleNamespace(type="action", content={"type": "read_file", "path": "README.md"}),
+        SimpleNamespace(type="action", content={"type": "read_chunk", "path": "x.py", "start_line": 1, "end_line": 5}),
+    ]
+    iteration = SimpleNamespace(
+        execution_plan=ExecutionPlan(
+            shape="ACTION_ONLY",
+            transaction_kind="atomic_intent_action_bundle",
+            action_effects=["read_file:README.md"],
+        ),
+        parsed_output=SimpleNamespace(
+            compiler_shape="ACTION_ONLY",
+            compiler_ir=SimpleNamespace(
+                has_pre_action_text=False,
+                pre_action_text="",
+                action_ops=[
+                    SimpleNamespace(
+                        action_type="read_file",
+                        payload={"type": "read_file", "path": "README.md"},
+                        file_content=None,
+                    )
+                ],
+            ),
+        ),
+        segments=segments,
+    )
+
+    candidate, candidate_reason = dispatch_pipeline._build_single_action_plan_dispatch_candidate(iteration)
+
+    assert candidate is None
+    assert candidate_reason == "no_matching_segment_action"
 
 
 @pytest.mark.asyncio

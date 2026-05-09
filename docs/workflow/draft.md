@@ -95,4 +95,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 91. Phase 9 Step 4 ExecutionPlan First Producer Migration / Dispatch Consumer Preflight: done.
 92. Phase 9 Step 5A Dispatch Bridge Parity Probe: done.
 93. Phase 9 Step 5B IR-Derived Dispatch Candidate Contract: done.
-94. Next: Phase 9 Step 5C IR-Derived Dispatch Candidate Implementation.
+94. Phase 9 Step 5C IR-Derived Dispatch Candidate Implementation: done.
+95. Next: Phase 9 Step 5D Candidate-to-Dispatcher Bridge Preflight.

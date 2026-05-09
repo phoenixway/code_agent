@@ -1181,7 +1181,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 9 Step 5C: IR-Derived Dispatch Candidate Implementation
 
-- **Status**: Pending explicit approval.
+- **Status**: Done.
 - **Goal**: Implement the first internal IR-derived dispatch candidate surface
   for the eligible single-action slice while keeping actual dispatch segment-driven.
 - **Allowed**:
@@ -1194,11 +1194,30 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Multi-action migration
   - File-content-backed candidate migration
   - `ActionPolicy` authority changes
-- **Done When**:
-  - A lossless `PlanDispatchCandidate` (or equivalent) is built for the eligible
-    slice.
+- **Completed Outcome**:
+  - A lossless `PlanDispatchCandidate` is built for the eligible slice.
   - Non-eligible paths still produce no candidate and fall back explicitly.
   - Actual dispatch remains segment-driven.
+  - The parity probe remains compatible and now builds on the candidate surface.
+
+#### Phase 9 Step 5D: Candidate-to-Dispatcher Bridge Preflight
+
+- **Status**: Pending explicit approval.
+- **Goal**: Review the implemented candidate surface and decide whether a
+  candidate-to-dispatcher bridge can be introduced without behavior drift.
+- **Allowed**:
+  - Read-only code inspection
+  - Design-only review
+  - Risk analysis for bridge introduction
+- **Forbidden**:
+  - Dispatch side-effect changes
+  - Fallback removal
+  - Multi-action migration
+  - `ActionPolicy` authority changes
+- **Done When**:
+  - The bridge eligibility surface is re-validated.
+  - Required fallback points are confirmed.
+  - A narrow next implementation shape is concrete enough for approval.
 
 ---
 

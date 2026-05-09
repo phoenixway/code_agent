@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 9 Step 5B: IR-Derived Dispatch Candidate Contract
+- **Phase**: Phase 9 Step 5C: IR-Derived Dispatch Candidate Implementation
 - **Status**: Complete.
-- **Next Step**: Phase 9 Step 5C: IR-Derived Dispatch Candidate Implementation.
-- **Boundary**: The parity probe is implemented and the IR-derived candidate contract is now defined, but actual dispatch remains segment-driven. Compiler/IR still owns structure, `ActionPolicy` still owns permission, the execution layer still owns side effects, and `ResponsePipeline` still orchestrates. Segment fallback remains in place and no observable dispatch behavior changed.
+- **Next Step**: Phase 9 Step 5D: Candidate-to-Dispatcher Bridge Preflight.
+- **Boundary**: The parity probe is implemented and the IR-derived candidate surface now exists, but actual dispatch remains segment-driven. Compiler/IR still owns structure, `ActionPolicy` still owns permission, the execution layer still owns side effects, and `ResponsePipeline` still orchestrates. Segment fallback remains in place and no observable dispatch behavior changed.
 
 ## Step 4I Parity Matrix
 
@@ -295,8 +295,8 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- **Phase 9 Step 5C: IR-Derived Dispatch Candidate Implementation**
-  - Implement the first lossless IR-derived dispatch candidate surface for the eligible single-action slice.
+- **Phase 9 Step 5D: Candidate-to-Dispatcher Bridge Preflight**
+  - Review the implemented candidate surface before any bridge narrowing.
   - Keep actual dispatch segment-driven.
   - Keep `segments` fallback where parity is not yet proven.
   - Keep `PLAINTEXT_TERMINAL_ANSWER` / final-answer-path migration deferred.
@@ -503,6 +503,33 @@ This document is the single source of truth for the current state of the Semanti
   - Compare it against the current segment-derived action.
   - If the match is exact, keep routing through the existing dispatcher contract.
   - Keep segment fallback explicit and intact.
+
+## Phase 9 Step 5C Outcome
+
+- **Implemented**
+  - The first internal IR-derived dispatch candidate surface is now implemented.
+  - Working internal type:
+    `PlanDispatchCandidate`
+  - Implemented candidate fields:
+    - `action_type`
+    - `payload`
+    - `action_summary`
+    - `source="compiler_ir"`
+    - `matched_segment_index`
+    - optional compatibility fields:
+      `compiler_shape`, `transaction_kind`, `pre_action_text`
+
+- **Eligibility remains narrow**
+  - Candidate builds only for the eligible single-action slice.
+  - File-content-backed and multi-action paths still produce no candidate.
+  - Payload mismatch, summary mismatch, and unsupported shapes still fall back.
+
+- **Behavior boundary**
+  - Actual dispatch remains segment-driven.
+  - No dispatch side effects changed.
+  - No `ActionPolicy` authority changed.
+  - No pre-action text behavior changed.
+  - No post-dispatch outcome handling changed.
 
 ## Step 4M Batch Plan
 

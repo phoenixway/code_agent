@@ -3,12 +3,25 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 
 from ..responses.stage_logging import OrchestrationStageLogger
 from ..shared.decision_models import ExecutionCommit
 from ..shared.trace import compact_execution_commit, compact_execution_plan
 from .dependencies import RuntimeCollaborators
 from .execution_commit_observer import ExecutionCommitObserverAdapter
+
+
+@dataclass(frozen=True)
+class PlanDispatchCandidate:
+    action_type: str
+    payload: dict
+    action_summary: str
+    source: str
+    matched_segment_index: int
+    compiler_shape: str = ""
+    transaction_kind: str = ""
+    pre_action_text: str | None = None
 
 
 class DispatchPipeline:
@@ -41,7 +54,7 @@ class DispatchPipeline:
             summary = f"{summary}:{target}"
         return summary
 
-    def _single_action_plan_parity_probe(self, iteration):
+    def _build_single_action_plan_dispatch_candidate(self, iteration):
         execution_plan = getattr(iteration, "execution_plan", None)
         if execution_plan is None:
             return None, "no_execution_plan"
@@ -64,23 +77,53 @@ class DispatchPipeline:
 
         segments = getattr(iteration, "segments", None) or []
         action_segments = [
-            seg for seg in segments if getattr(seg, "type", None) == "action" and isinstance(getattr(seg, "content", None), dict)
+            (idx, seg)
+            for idx, seg in enumerate(segments)
+            if getattr(seg, "type", None) == "action" and isinstance(getattr(seg, "content", None), dict)
         ]
         if len(action_segments) != 1:
             return None, "no_matching_segment_action"
 
-        segment_payload = dict(getattr(action_segments[0], "content", None) or {})
-        if segment_payload != dict(payload):
+        matched_segment_index, matched_segment = action_segments[0]
+        segment_payload = dict(getattr(matched_segment, "content", None) or {})
+        payload_copy = dict(payload)
+        if segment_payload != payload_copy:
             return None, "payload_mismatch"
 
+        action_type = str(getattr(action_op, "action_type", "") or payload_copy.get("type") or payload_copy.get("action") or "").strip()
+        payload_action_type = str(payload_copy.get("type") or payload_copy.get("action") or "").strip()
+        if action_type and payload_action_type and action_type != payload_action_type:
+            return None, "unsupported_action_shape"
+
         expected_summary = self._dispatch_equivalent_action_summary(
-            payload,
-            action_type=str(getattr(action_op, "action_type", "") or ""),
+            payload_copy,
+            action_type=action_type,
         )
         plan_effects = list(getattr(execution_plan, "action_effects", []) or [])
         if len(plan_effects) != 1 or plan_effects[0] != expected_summary:
             return None, "action_effect_mismatch"
 
+        pre_action_text = None
+        if bool(getattr(compiler_ir, "has_pre_action_text", False)):
+            raw_pre_action_text = str(getattr(compiler_ir, "pre_action_text", "") or "")
+            pre_action_text = raw_pre_action_text or None
+
+        return PlanDispatchCandidate(
+            action_type=action_type or payload_action_type,
+            payload=payload_copy,
+            action_summary=expected_summary,
+            source="compiler_ir",
+            matched_segment_index=matched_segment_index,
+            compiler_shape=str(getattr(parsed_output, "compiler_shape", "") or ""),
+            transaction_kind=str(getattr(execution_plan, "transaction_kind", "") or ""),
+            pre_action_text=pre_action_text,
+        ), "single_action_ir_candidate"
+
+    def _single_action_plan_parity_probe(self, iteration):
+        candidate, reason = self._build_single_action_plan_dispatch_candidate(iteration)
+        if candidate is None:
+            return None, reason
+        segments = getattr(iteration, "segments", None) or []
         return segments, "single_action_ir_parity"
 
     def _resolve_dispatch_segments(self, iteration):

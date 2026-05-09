@@ -1,6 +1,6 @@
 # Phase 9 Design: Plan-First Bundle Execution
 
-- **Phase 9 Status**: Step 5A Parity Probe Complete
+- **Phase 9 Status**: Step 5C Candidate Implementation Complete
 - **Scope**: Action / bundle execution path only
 - **Non-Goals**:
   - No parser rewrite
@@ -529,6 +529,34 @@ the IR-derived candidate surface concrete and testable.
   - no dispatch behavior change
   - no fallback removal
   - no side-effect change
+
+## Step 5C: IR-Derived Dispatch Candidate Implementation Outcome
+
+- A narrow internal candidate surface is implemented for the eligible single-action slice.
+- Working internal type:
+  - `PlanDispatchCandidate`
+- Implemented fields:
+  - `action_type`
+  - `payload`
+  - `action_summary`
+  - `source="compiler_ir"`
+  - `matched_segment_index`
+  - optional compatibility fields:
+    - `compiler_shape`
+    - `transaction_kind`
+    - `pre_action_text`
+- Candidate construction remains gated by the Step 5B losslessness rules.
+- Actual dispatch is still segment-driven.
+- The parity probe remains compatible and now builds on the candidate surface.
+- Fallback remains explicit for all non-eligible paths.
+
+## Step 5D: Candidate-to-Dispatcher Bridge Preflight
+
+Pending explicit approval.
+
+- review the implemented candidate surface
+- decide whether a candidate-to-dispatcher bridge can be introduced without behavior drift
+- keep actual dispatch segment-driven until that preflight is complete
 
 ## Safety Gate
 
