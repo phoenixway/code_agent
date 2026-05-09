@@ -124,4 +124,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 120. Phase 10 Step 17: done. `_run_checkpoint_stage(...)` now uses `EffectiveCheckpointFlags` as the single local checkpoint routing/state surface after resolution. No compiler/prepass authority was introduced, and no observable routing or commit behavior changed.
 121. Phase 10 Step 18: done. First true authority candidate for memory-checkpoint-only branch implemented with legacy disagreement guard. Typed result cannot change memory branch category. No behavior change.
 122. Phase 10 Step 19: done. Extended typed-primary candidate pattern to remaining memory branches. No behavior change.
-123. Next: Phase 10 Step 20: Typed-Primary Candidate for Legacy-Derived Plan Branches.
+123. Phase 10 Step 20: done. Extended typed-primary candidate pattern to plan branches. No behavior change.
+124. Next: Phase 10 Step 21: Consolidate BoardCheckpoint Typed-Primary Candidate Helpers / Reduce Boilerplate.

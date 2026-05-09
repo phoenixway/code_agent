@@ -4,9 +4,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 10 Step 19: Extend Typed Primary to Remaining Legacy-Derived Memory Branches
+- **Phase**: Phase 10 Step 20: Typed-Primary Candidate for Legacy-Derived Plan Branches
 - **Status**: Complete.
-- **Next Step**: Phase 10 Step 20: Typed-Primary Candidate for Legacy-Derived Plan Branches.
+- **Next Step**: Phase 10 Step 21: Consolidate BoardCheckpoint Typed-Primary Candidate Helpers / Reduce Boilerplate.
 - **Boundary**: The checkpoint parity bridge remains diagnostic-only. Legacy board handlers still own commit behavior, the prepass compiler analysis remains observational, and `_apply_compiler_diagnosis` remains the effectful classification-stage path that recomputes on normalized response.
 
 ## Step 4I Parity Matrix
@@ -983,6 +983,10 @@ This document is the single source of truth for the current state of the Semanti
   - The typed-primary candidate pattern was extended to `MEMORY_CHECKPOINT_WITH_TEXT` and `MEMORY_CHECKPOINT_WITH_ACTION`.
   - The new pure helpers remain behavior-preserving with legacy disagreement guards.
   - The typed result cannot change the memory branch category, and no observable routing or commit behavior changed.
+- **Phase 10 Step 20: Typed-Primary Candidate for Legacy-Derived Plan Branches (Complete)**
+  - The typed-primary candidate pattern was extended to all legacy-derived plan checkpoint branches.
+  - The new pure helpers remain behavior-preserving with legacy disagreement guards.
+  - The typed result cannot change the plan branch category, and no observable routing or commit behavior changed.
 
 ## Phase 9 Step 6D Outcome
 

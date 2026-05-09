@@ -1815,8 +1815,24 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 10 Step 20: Typed-Primary Candidate for Legacy-Derived Plan Branches
 
-- **Status**: Pending explicit approval.
+- **Status**: Done.
 - **Goal**: Extend the typed-primary-with-legacy-fallback pattern to the legacy-derived plan checkpoint branches.
+- **Allowed**:
+  - Add pure helpers for typed-primary resolution for all plan branches.
+  - Use these helpers in `_run_checkpoint_stage(...)`.
+- **Forbidden**:
+  - Any observable checkpoint routing behavior change.
+  - Any compiler/prepass authority transfer.
+  - Any change to `PlanBoardStageHandler` or `MemoryBoardStageHandler` behavior.
+- **Done When**:
+  - The typed-primary candidate pattern is extended to all plan branches.
+  - The implementation remains behavior-preserving with legacy disagreement guards.
+  - No observable routing or commit behavior changed.
+
+#### Phase 10 Step 21: Consolidate BoardCheckpoint Typed-Primary Candidate Helpers / Reduce Boilerplate
+
+- **Status**: Pending explicit approval.
+- **Goal**: Refactor the board/checkpoint typed-primary candidate helpers to reduce boilerplate and improve maintainability.
 
 ---
 

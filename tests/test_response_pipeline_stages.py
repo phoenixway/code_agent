@@ -18,6 +18,9 @@ from modules.agent.orchestration.responses.board_checkpoint_semantics import (
     resolve_memory_checkpoint_and_action_typed_primary,
     resolve_memory_checkpoint_and_text_typed_primary,
     resolve_memory_checkpoint_only_typed_primary,
+    resolve_plan_checkpoint_and_action_typed_primary,
+    resolve_plan_checkpoint_and_text_typed_primary,
+    resolve_plan_checkpoint_only_typed_primary,
 )
 from modules.agent.orchestration.responses.response_pipeline_stages import CheckpointStageState, ResponsePipelineStagesMixin
 from modules.agent.orchestration.responses.terminal_answer_models import TerminalAnswerKind, TerminalAnswerSemanticResult
@@ -876,6 +879,105 @@ class TestBoardCheckpointSemanticBuilder(unittest.TestCase):
                 legacy_memory_checkpoint_only=True,
                 legacy_memory_checkpoint_and_text=False,
                 legacy_memory_checkpoint_and_action=True,
+            )
+        )
+
+    def test_resolve_plan_checkpoint_only_typed_primary(self):
+        result_pco = BoardCheckpointSemanticResult(
+            kind=BoardCheckpointKind.PLAN_CHECKPOINT_ONLY,
+            source=BoardCheckpointSource.COMBINED_SHADOW,
+        )
+        # Typed result cannot create a new True if legacy is False
+        self.assertFalse(
+            resolve_plan_checkpoint_only_typed_primary(
+                result_pco,
+                legacy_plan_checkpoint_only=False,
+                legacy_plan_checkpoint_and_text=False,
+                legacy_plan_checkpoint_and_action=False,
+            )
+        )
+        # Typed result can confirm an existing True
+        self.assertTrue(
+            resolve_plan_checkpoint_only_typed_primary(
+                result_pco,
+                legacy_plan_checkpoint_only=True,
+                legacy_plan_checkpoint_and_text=False,
+                legacy_plan_checkpoint_and_action=False,
+            )
+        )
+        # Legacy bool wins if another legacy branch is active
+        self.assertTrue(
+            resolve_plan_checkpoint_only_typed_primary(
+                result_pco,
+                legacy_plan_checkpoint_only=True,
+                legacy_plan_checkpoint_and_text=True,
+                legacy_plan_checkpoint_and_action=False,
+            )
+        )
+
+    def test_resolve_plan_checkpoint_and_text_typed_primary(self):
+        result_pct = BoardCheckpointSemanticResult(
+            kind=BoardCheckpointKind.PLAN_CHECKPOINT_WITH_TEXT,
+            source=BoardCheckpointSource.COMBINED_SHADOW,
+        )
+        # Typed result cannot create a new True if legacy is False
+        self.assertFalse(
+            resolve_plan_checkpoint_and_text_typed_primary(
+                result_pct,
+                legacy_plan_checkpoint_only=False,
+                legacy_plan_checkpoint_and_text=False,
+                legacy_plan_checkpoint_and_action=False,
+            )
+        )
+        # Typed result can confirm an existing True
+        self.assertTrue(
+            resolve_plan_checkpoint_and_text_typed_primary(
+                result_pct,
+                legacy_plan_checkpoint_only=False,
+                legacy_plan_checkpoint_and_text=True,
+                legacy_plan_checkpoint_and_action=False,
+            )
+        )
+        # Legacy bool wins if another legacy branch is active
+        self.assertTrue(
+            resolve_plan_checkpoint_and_text_typed_primary(
+                result_pct,
+                legacy_plan_checkpoint_only=True,
+                legacy_plan_checkpoint_and_text=True,
+                legacy_plan_checkpoint_and_action=False,
+            )
+        )
+
+    def test_resolve_plan_checkpoint_and_action_typed_primary(self):
+        result_pca = BoardCheckpointSemanticResult(
+            kind=BoardCheckpointKind.PLAN_CHECKPOINT_WITH_ACTION,
+            source=BoardCheckpointSource.COMBINED_SHADOW,
+        )
+        # Typed result cannot create a new True if legacy is False
+        self.assertFalse(
+            resolve_plan_checkpoint_and_action_typed_primary(
+                result_pca,
+                legacy_plan_checkpoint_only=False,
+                legacy_plan_checkpoint_and_text=False,
+                legacy_plan_checkpoint_and_action=False,
+            )
+        )
+        # Typed result can confirm an existing True
+        self.assertTrue(
+            resolve_plan_checkpoint_and_action_typed_primary(
+                result_pca,
+                legacy_plan_checkpoint_only=False,
+                legacy_plan_checkpoint_and_text=False,
+                legacy_plan_checkpoint_and_action=True,
+            )
+        )
+        # Legacy bool wins if another legacy branch is active
+        self.assertTrue(
+            resolve_plan_checkpoint_and_action_typed_primary(
+                result_pca,
+                legacy_plan_checkpoint_only=True,
+                legacy_plan_checkpoint_and_text=False,
+                legacy_plan_checkpoint_and_action=True,
             )
         )
 

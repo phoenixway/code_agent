@@ -13,6 +13,9 @@ from .board_checkpoint_semantics import resolve_legacy_derived_checkpoint_effect
 from .board_checkpoint_semantics import resolve_memory_checkpoint_and_action_typed_primary
 from .board_checkpoint_semantics import resolve_memory_checkpoint_and_text_typed_primary
 from .board_checkpoint_semantics import resolve_memory_checkpoint_only_typed_primary
+from .board_checkpoint_semantics import resolve_plan_checkpoint_and_action_typed_primary
+from .board_checkpoint_semantics import resolve_plan_checkpoint_and_text_typed_primary
+from .board_checkpoint_semantics import resolve_plan_checkpoint_only_typed_primary
 from .protocol_decision_bridge import compiler_invalid_kind_for_output, resolve_protocol_authority
 from .semantic_accessors import is_leaked_system_result
 from .terminal_answer_models import TerminalAnswerKind
@@ -326,18 +329,25 @@ class ResponsePipelineStagesMixin:
             memory_checkpoint_and_text=False,
             memory_checkpoint_and_action=False,
         )
-        plan_effective_flags = resolve_legacy_derived_checkpoint_effective_flags(
+        # Step 20: Typed-primary candidate for plan branches
+        effective_plan_checkpoint_only = resolve_plan_checkpoint_only_typed_primary(
             plan_semantic_result,
-            plan_checkpoint_only=plan_checkpoint_only,
-            plan_checkpoint_and_text=plan_checkpoint_and_text,
-            plan_checkpoint_and_action=plan_checkpoint_and_action,
-            memory_checkpoint_only=False,
-            memory_checkpoint_and_text=False,
-            memory_checkpoint_and_action=False,
+            legacy_plan_checkpoint_only=plan_checkpoint_only,
+            legacy_plan_checkpoint_and_text=plan_checkpoint_and_text,
+            legacy_plan_checkpoint_and_action=plan_checkpoint_and_action,
         )
-        effective_plan_checkpoint_only = plan_effective_flags.plan_checkpoint_only
-        effective_plan_checkpoint_and_text = plan_effective_flags.plan_checkpoint_and_text
-        effective_plan_checkpoint_and_action = plan_effective_flags.plan_checkpoint_and_action
+        effective_plan_checkpoint_and_text = resolve_plan_checkpoint_and_text_typed_primary(
+            plan_semantic_result,
+            legacy_plan_checkpoint_only=plan_checkpoint_only,
+            legacy_plan_checkpoint_and_text=plan_checkpoint_and_text,
+            legacy_plan_checkpoint_and_action=plan_checkpoint_and_action,
+        )
+        effective_plan_checkpoint_and_action = resolve_plan_checkpoint_and_action_typed_primary(
+            plan_semantic_result,
+            legacy_plan_checkpoint_only=plan_checkpoint_only,
+            legacy_plan_checkpoint_and_text=plan_checkpoint_and_text,
+            legacy_plan_checkpoint_and_action=plan_checkpoint_and_action,
+        )
         if plan_board_decision.handled:
             self._log_board_checkpoint_structural_parity(
                 compiler_analysis,
@@ -384,18 +394,25 @@ class ResponsePipelineStagesMixin:
             memory_checkpoint_and_text=memory_checkpoint_and_text,
             memory_checkpoint_and_action=memory_checkpoint_and_action,
         )
-        effective_flags = resolve_legacy_derived_checkpoint_effective_flags(
+        # Step 20: Typed-primary candidate for plan branches
+        effective_plan_checkpoint_only = resolve_plan_checkpoint_only_typed_primary(
             board_checkpoint_semantic_result,
-            plan_checkpoint_only=plan_checkpoint_only,
-            plan_checkpoint_and_text=plan_checkpoint_and_text,
-            plan_checkpoint_and_action=plan_checkpoint_and_action,
-            memory_checkpoint_only=memory_checkpoint_only,
-            memory_checkpoint_and_text=memory_checkpoint_and_text,
-            memory_checkpoint_and_action=memory_checkpoint_and_action,
+            legacy_plan_checkpoint_only=plan_checkpoint_only,
+            legacy_plan_checkpoint_and_text=plan_checkpoint_and_text,
+            legacy_plan_checkpoint_and_action=plan_checkpoint_and_action,
         )
-        effective_plan_checkpoint_only = effective_flags.plan_checkpoint_only
-        effective_plan_checkpoint_and_text = effective_flags.plan_checkpoint_and_text
-        effective_plan_checkpoint_and_action = effective_flags.plan_checkpoint_and_action
+        effective_plan_checkpoint_and_text = resolve_plan_checkpoint_and_text_typed_primary(
+            board_checkpoint_semantic_result,
+            legacy_plan_checkpoint_only=plan_checkpoint_only,
+            legacy_plan_checkpoint_and_text=plan_checkpoint_and_text,
+            legacy_plan_checkpoint_and_action=plan_checkpoint_and_action,
+        )
+        effective_plan_checkpoint_and_action = resolve_plan_checkpoint_and_action_typed_primary(
+            board_checkpoint_semantic_result,
+            legacy_plan_checkpoint_only=plan_checkpoint_only,
+            legacy_plan_checkpoint_and_text=plan_checkpoint_and_text,
+            legacy_plan_checkpoint_and_action=plan_checkpoint_and_action,
+        )
 
         # Step 18: First true authority candidate for memory-checkpoint-only
         effective_memory_checkpoint_only = resolve_memory_checkpoint_only_typed_primary(

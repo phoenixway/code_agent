@@ -559,6 +559,17 @@ This design-only step is complete. It analyzed whether it is safe for the classi
   - No compiler/prepass authority was introduced.
   - No observable routing or commit behavior changed.
 
-### 3.20. Next Intended Step
+### 3.20. Step 20: Typed-Primary Candidate for Legacy-Derived Plan Branches
 
-The next step is **Phase 10 Step 20: Typed-Primary Candidate for Legacy-Derived Plan Branches**.
+- **Outcome**:
+  - The typed-primary candidate pattern was extended to the legacy-derived plan checkpoint branches: `PLAN_CHECKPOINT_ONLY`, `PLAN_CHECKPOINT_WITH_TEXT`, and `PLAN_CHECKPOINT_WITH_ACTION`.
+  - New pure helpers were added for these branches, following the same behavior-preserving pattern with legacy disagreement guards.
+- **What did not change**:
+  - The typed result still cannot change the plan branch category.
+  - Legacy fallback remains fully in place.
+  - No compiler/prepass authority was introduced.
+  - No observable routing or commit behavior changed.
+
+### 3.21. Next Intended Step
+
+The next step is **Phase 10 Step 21: Consolidate BoardCheckpoint Typed-Primary Candidate Helpers / Reduce Boilerplate**.

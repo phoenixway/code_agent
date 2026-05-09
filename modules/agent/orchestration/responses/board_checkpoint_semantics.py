@@ -171,6 +171,69 @@ def resolve_memory_checkpoint_and_action_typed_primary(
     return legacy_memory_checkpoint_and_action
 
 
+def resolve_plan_checkpoint_only_typed_primary(
+    result: BoardCheckpointSemanticResult | None,
+    *,
+    legacy_plan_checkpoint_only: bool,
+    legacy_plan_checkpoint_and_text: bool,
+    legacy_plan_checkpoint_and_action: bool,
+) -> bool:
+    """Resolve plan-checkpoint-only with typed-primary logic."""
+    kind = legacy_derived_checkpoint_kind(result)
+    if kind is None:
+        return legacy_plan_checkpoint_only
+
+    if legacy_plan_checkpoint_and_text or legacy_plan_checkpoint_and_action:
+        return legacy_plan_checkpoint_only
+
+    if kind == BoardCheckpointKind.PLAN_CHECKPOINT_ONLY:
+        return legacy_plan_checkpoint_only
+
+    return legacy_plan_checkpoint_only
+
+
+def resolve_plan_checkpoint_and_text_typed_primary(
+    result: BoardCheckpointSemanticResult | None,
+    *,
+    legacy_plan_checkpoint_only: bool,
+    legacy_plan_checkpoint_and_text: bool,
+    legacy_plan_checkpoint_and_action: bool,
+) -> bool:
+    """Resolve plan-checkpoint-and-text with typed-primary logic."""
+    kind = legacy_derived_checkpoint_kind(result)
+    if kind is None:
+        return legacy_plan_checkpoint_and_text
+
+    if legacy_plan_checkpoint_only or legacy_plan_checkpoint_and_action:
+        return legacy_plan_checkpoint_and_text
+
+    if kind == BoardCheckpointKind.PLAN_CHECKPOINT_WITH_TEXT:
+        return legacy_plan_checkpoint_and_text
+
+    return legacy_plan_checkpoint_and_text
+
+
+def resolve_plan_checkpoint_and_action_typed_primary(
+    result: BoardCheckpointSemanticResult | None,
+    *,
+    legacy_plan_checkpoint_only: bool,
+    legacy_plan_checkpoint_and_text: bool,
+    legacy_plan_checkpoint_and_action: bool,
+) -> bool:
+    """Resolve plan-checkpoint-and-action with typed-primary logic."""
+    kind = legacy_derived_checkpoint_kind(result)
+    if kind is None:
+        return legacy_plan_checkpoint_and_action
+
+    if legacy_plan_checkpoint_only or legacy_plan_checkpoint_and_text:
+        return legacy_plan_checkpoint_and_action
+
+    if kind == BoardCheckpointKind.PLAN_CHECKPOINT_WITH_ACTION:
+        return legacy_plan_checkpoint_and_action
+
+    return legacy_plan_checkpoint_and_action
+
+
 def resolve_legacy_derived_checkpoint_effective_flags(
     result: BoardCheckpointSemanticResult | None,
     *,
