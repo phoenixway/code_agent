@@ -1070,6 +1070,7 @@ class TestBoardCheckpointSemanticBuilder(unittest.TestCase):
         legacy_false = False
         result_compiler_pco = BoardCheckpointSemanticResult(
             source=BoardCheckpointSource.COMPILER_PREPASS_FACT,
+            compiler_has_checkpoint=True,
             compiler_has_subgoal_tags=True,
             compiler_has_visible_text=False,
             compiler_has_action=False,
@@ -1078,8 +1079,26 @@ class TestBoardCheckpointSemanticBuilder(unittest.TestCase):
         result_compiler_error = BoardCheckpointSemanticResult(compiler_error_code="E_SOME_ERROR")
         result_compiler_with_text = BoardCheckpointSemanticResult(
             source=BoardCheckpointSource.COMPILER_PREPASS_FACT,
+            compiler_has_checkpoint=True,
             compiler_has_subgoal_tags=True,
             compiler_has_visible_text=True,
+        )
+        result_compiler_with_action = BoardCheckpointSemanticResult(
+            source=BoardCheckpointSource.COMPILER_PREPASS_FACT,
+            compiler_has_checkpoint=True,
+            compiler_has_subgoal_tags=True,
+            compiler_has_action=True,
+        )
+        result_compiler_with_memory = BoardCheckpointSemanticResult(
+            source=BoardCheckpointSource.COMPILER_PREPASS_FACT,
+            compiler_has_checkpoint=True,
+            compiler_has_subgoal_tags=True,
+            compiler_has_memory_tags=True,
+        )
+        result_compiler_no_checkpoint = BoardCheckpointSemanticResult(
+            source=BoardCheckpointSource.COMPILER_PREPASS_FACT,
+            compiler_has_checkpoint=False,
+            compiler_has_subgoal_tags=True,
         )
 
         # Switch OFF
@@ -1120,6 +1139,21 @@ class TestBoardCheckpointSemanticBuilder(unittest.TestCase):
         self.assertFalse(
             resolve_plan_checkpoint_only_with_compiler_switch(
                 result_compiler_with_text, legacy_plan_checkpoint_only=legacy_false, switch_enabled=True
+            )
+        )
+        self.assertFalse(
+            resolve_plan_checkpoint_only_with_compiler_switch(
+                result_compiler_with_action, legacy_plan_checkpoint_only=legacy_false, switch_enabled=True
+            )
+        )
+        self.assertFalse(
+            resolve_plan_checkpoint_only_with_compiler_switch(
+                result_compiler_with_memory, legacy_plan_checkpoint_only=legacy_false, switch_enabled=True
+            )
+        )
+        self.assertFalse(
+            resolve_plan_checkpoint_only_with_compiler_switch(
+                result_compiler_no_checkpoint, legacy_plan_checkpoint_only=legacy_false, switch_enabled=True
             )
         )
 

@@ -4,9 +4,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 10 Step 22: First Compiler-Authority Switch for BoardCheckpoint Routing
+- **Phase**: Phase 10 Step 23: PLAN_CHECKPOINT_ONLY Compiler Authority Guard Tightening + Angelica Smoke Run
 - **Status**: Complete.
-- **Next Step**: Phase 10 Step 23: Run Angelica smoke tests with PLAN_CHECKPOINT_ONLY compiler-authority switch enabled, then decide whether to keep/fix/expand.
+- **Next Step**: Phase 11: RecoveryStrategy Registry Expansion.
 - **Boundary**: The checkpoint parity bridge remains diagnostic-only. Legacy board handlers still own commit behavior, the prepass compiler analysis remains observational, and `_apply_compiler_diagnosis` remains the effectful classification-stage path that recomputes on normalized response.
 
 ## Step 4I Parity Matrix
@@ -994,6 +994,11 @@ This document is the single source of truth for the current state of the Semanti
   - The first default-off compiler-authority switch was introduced for the `PLAN_CHECKPOINT_ONLY` branch.
   - When enabled, a clean compiler-only signal can now trigger the plan checkpoint continuation path.
   - Default behavior remains unchanged. Legacy fallback is preserved. No other branches were migrated.
+- **Phase 10 Step 23: PLAN_CHECKPOINT_ONLY Compiler Authority Guard Tightening + Angelica Smoke Run (Complete)**
+  - The authority-switch predicate for `PLAN_CHECKPOINT_ONLY` was hardened to require `compiler_has_checkpoint`.
+  - Additional fallback tests were added.
+  - Smoke tests with the switch enabled showed no regressions, so the switch is considered safe to keep (but default-off).
+  - The board/checkpoint slice is now considered complete.
 
 ## Phase 9 Step 6D Outcome
 

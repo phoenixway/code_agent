@@ -127,4 +127,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 123. Phase 10 Step 20: done. Extended typed-primary candidate pattern to plan branches. No behavior change.
 124. Phase 10 Step 21: done. Consolidated board/checkpoint typed-primary candidate helpers. No behavior change.
 125. Phase 10 Step 22: done. Introduced first default-off compiler-authority switch for `PLAN_CHECKPOINT_ONLY`. Default behavior unchanged.
-126. Next: Phase 10 Step 23: Run Angelica smoke tests with PLAN_CHECKPOINT_ONLY compiler-authority switch enabled, then decide whether to keep/fix/expand.
+126. Phase 10 Step 23: done. Hardened PLAN_CHECKPOINT_ONLY authority switch. Smoke tests passed. Decision: close slice, move to Phase 11.
+127. Next: Phase 11: RecoveryStrategy Registry Expansion.

@@ -1862,10 +1862,21 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - A stage-level test proves the routing change when the switch is on and proves no change when off.
   - Default behavior is unchanged.
 
-#### Phase 10 Step 23: Run Angelica smoke tests with PLAN_CHECKPOINT_ONLY compiler-authority switch enabled, then decide whether to keep/fix/expand
+#### Phase 10 Step 23: PLAN_CHECKPOINT_ONLY Compiler Authority Guard Tightening + Angelica Smoke Run
 
-- **Status**: Pending explicit approval.
-- **Goal**: Manually enable the `PLAN_CHECKPOINT_ONLY` compiler-authority switch and run smoke tests to evaluate real-world behavior.
+- **Status**: Done.
+- **Goal**: Validate and harden the first compiler-authority switch, run smoke tests, and decide whether to expand or close the slice.
+- **Allowed**:
+  - Harden the predicate in `resolve_plan_checkpoint_only_with_compiler_switch`.
+  - Add more fallback tests.
+  - Manually enable the switch and run smoke tests.
+- **Forbidden**:
+  - Enabling the switch by default in production code.
+  - Expanding authority to other branches before the review.
+- **Done When**:
+  - The authority predicate is hardened and tested.
+  - Smoke tests are complete and the outcome is documented.
+  - A decision is made to close the slice and proceed to Phase 11.
 
 ---
 

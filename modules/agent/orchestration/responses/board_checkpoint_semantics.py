@@ -262,6 +262,7 @@ def resolve_plan_checkpoint_only_with_compiler_switch(
 
     is_clean_compiler_pco = (
         result.source == BoardCheckpointSource.COMPILER_PREPASS_FACT
+        and result.compiler_has_checkpoint
         and result.compiler_has_subgoal_tags
         and not result.compiler_has_memory_tags
         and not result.compiler_has_action

@@ -592,6 +592,19 @@ This design-only step is complete. It analyzed whether it is safe for the classi
   - No other branches (`PLAN_CHECKPOINT_WITH_TEXT`, `PLAN_CHECKPOINT_WITH_ACTION`, or any memory branches) were migrated.
   - Board commit behavior, handler internals, and other pipeline stages remain unchanged.
 
-### 3.23. Next Intended Step
+### 3.23. Step 23: PLAN_CHECKPOINT_ONLY Compiler Authority Guard Tightening + Angelica Smoke Run
 
-The next step is **Phase 10 Step 23: Run Angelica smoke tests with PLAN_CHECKPOINT_ONLY compiler-authority switch enabled, then decide whether to keep/fix/expand**.
+- **Outcome**:
+  - The authority-switch predicate for `PLAN_CHECKPOINT_ONLY` was hardened to require `compiler_has_checkpoint`.
+  - Additional fallback tests were added to cover more edge cases.
+  - Smoke tests were run with the switch enabled. No regressions were found.
+  - The switch is considered safe to keep, but will remain default-off.
+  - The decision was made to close the board/checkpoint slice and not expand compiler authority to other branches at this time.
+
+### 3.24. Phase 10 Conclusion
+
+The board/checkpoint consumer migration slice is now complete. The key outcomes are:
+- A structural diagnosis prepass makes compiler facts available to the checkpoint stage.
+- A `BoardCheckpointSemanticResult` model provides observational data.
+- A default-off compiler authority switch for `PLAN_CHECKPOINT_ONLY` was successfully implemented and validated.
+- Legacy board handlers remain authoritative for all other branches and for all board commit logic.
