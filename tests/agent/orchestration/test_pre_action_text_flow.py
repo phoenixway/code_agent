@@ -489,6 +489,10 @@ async def test_dispatch_pipeline_eligible_bridge_keeps_dispatch_behavior_unchang
         shape="ACTION_ONLY",
         transaction_kind="atomic_intent_action_bundle",
         action_effects=["read_file:README.md"],
+        plan_source="compiler_ir",
+        action_op_count=1,
+        action_payload_snapshot=[{"type": "read_file", "path": "README.md"}],
+        candidate_eligibility_status="single_action_candidate_possible",
     )
     mock_iteration = SimpleNamespace(
         execution_plan=mock_plan,
@@ -512,24 +516,33 @@ async def test_dispatch_pipeline_eligible_bridge_keeps_dispatch_behavior_unchang
     dispatch_pipeline._dispatch_segments.assert_awaited_once()
     called_ctx, called_segments = dispatch_pipeline._dispatch_segments.await_args.args
     assert called_segments is segments
-    dispatch_pipeline.stage_logger.log.assert_any_call(
-        "post_dispatch_pipeline",
-        "start",
-        action_count=1,
-        pre_action_text_emitted=False,
-        pre_action_text_chars=0,
-        dispatch_bridge_used=True,
-        dispatch_bridge_reason="single_action_ir_parity",
-        dispatch_bridge_candidate={
-            "action_type": "read_file",
-            "action_summary": "read_file:README.md",
-            "source": "compiler_ir",
-            "matched_segment_index": 0,
-            "compiler_shape": "",
-            "transaction_kind": "atomic_intent_action_bundle",
-            "pre_action_text": "",
-        },
-    )
+
+    # Find the 'start' log call and assert its contents
+    start_calls = [
+        call for call in dispatch_pipeline.stage_logger.log.call_args_list
+        if call.args[:2] == ("post_dispatch_pipeline", "start")
+    ]
+    assert start_calls
+    kwargs = start_calls[-1].kwargs
+    assert kwargs["dispatch_bridge_used"] is True
+    assert kwargs["dispatch_bridge_reason"] == "single_action_ir_parity"
+    assert kwargs["dispatch_bridge_candidate"] == {
+        "action_type": "read_file",
+        "action_summary": "read_file:README.md",
+        "source": "compiler_ir",
+        "matched_segment_index": 0,
+        "compiler_shape": "",
+        "transaction_kind": "atomic_intent_action_bundle",
+        "pre_action_text": "",
+    }
+    assert kwargs["dispatch_bridge_metadata_parity"] == {
+        "plan_action_op_count": 1,
+        "actual_ir_action_op_count": 1,
+        "plan_candidate_eligibility_status": "single_action_candidate_possible",
+        "consumer_candidate_builder_reason": "single_action_ir_parity",
+        "count_parity": True,
+        "payload_parity": True,
+    }
 
 
 @pytest.mark.asyncio
@@ -539,6 +552,10 @@ async def test_dispatch_pipeline_non_eligible_path_has_no_candidate_metadata(dis
         shape="ACTION_ONLY",
         transaction_kind="atomic_intent_action_bundle",
         action_effects=["read_file:OTHER.md"],
+        plan_source="compiler_ir",
+        action_op_count=1,
+        action_payload_snapshot=[{"type": "read_file", "path": "README.md"}],
+        candidate_eligibility_status="single_action_candidate_possible",
     )
     mock_iteration = SimpleNamespace(
         execution_plan=mock_plan,
@@ -562,13 +579,73 @@ async def test_dispatch_pipeline_non_eligible_path_has_no_candidate_metadata(dis
     dispatch_pipeline._dispatch_segments.assert_awaited_once()
     called_ctx, called_segments = dispatch_pipeline._dispatch_segments.await_args.args
     assert called_segments is segments
-    dispatch_pipeline.stage_logger.log.assert_any_call(
-        "post_dispatch_pipeline",
-        "start",
-        action_count=1,
-        pre_action_text_emitted=False,
-        pre_action_text_chars=0,
-        dispatch_bridge_used=False,
-        dispatch_bridge_reason="action_effect_mismatch",
-        dispatch_bridge_candidate=None,
+
+    # Find the 'start' log call and assert its contents
+    start_calls = [
+        call for call in dispatch_pipeline.stage_logger.log.call_args_list
+        if call.args[:2] == ("post_dispatch_pipeline", "start")
+    ]
+    assert start_calls
+    kwargs = start_calls[-1].kwargs
+    assert kwargs["dispatch_bridge_used"] is False
+    assert kwargs["dispatch_bridge_reason"] == "action_effect_mismatch"
+    assert kwargs["dispatch_bridge_candidate"] is None
+    assert kwargs["dispatch_bridge_metadata_parity"] == {
+        "plan_action_op_count": 1,
+        "actual_ir_action_op_count": 1,
+        "plan_candidate_eligibility_status": "single_action_candidate_possible",
+        "consumer_candidate_builder_reason": "action_effect_mismatch",
+        "count_parity": True,
+        "payload_parity": True,
+    }
+
+
+@pytest.mark.asyncio
+async def test_dispatch_pipeline_logs_metadata_parity_mismatch(dispatch_pipeline: DispatchPipeline):
+    """Tests that metadata parity mismatches are logged but do not change dispatch behavior."""
+    segments = [SimpleNamespace(type="action", content={"type": "read_file", "path": "README.md"})]
+    mock_plan = ExecutionPlan(
+        shape="ACTION_ONLY",
+        transaction_kind="atomic_intent_action_bundle",
+        action_effects=["read_file:README.md"],
+        plan_source="compiler_ir",
+        action_op_count=0,  # Mismatch
+        action_payload_snapshot=[],  # Mismatch
+        candidate_eligibility_status="no_action_ops",  # Mismatch
     )
+    mock_iteration = SimpleNamespace(
+        execution_plan=mock_plan,
+        parsed_action_count=1,
+        parsed_output=SimpleNamespace(
+            compiler_ir=SimpleNamespace(
+                action_ops=[
+                    SimpleNamespace(
+                        action_type="read_file",
+                        payload={"type": "read_file", "path": "README.md"},
+                        file_content=None,
+                    )
+                ]
+            )
+        ),
+        segments=segments,
+    )
+
+    await dispatch_pipeline.run_iteration(MagicMock(), mock_iteration)
+
+    # Find the 'start' log call and assert its contents
+    start_calls = [
+        call for call in dispatch_pipeline.stage_logger.log.call_args_list
+        if call.args[:2] == ("post_dispatch_pipeline", "start")
+    ]
+    assert start_calls
+    kwargs = start_calls[-1].kwargs
+    assert kwargs["dispatch_bridge_used"] is True
+    assert kwargs["dispatch_bridge_reason"] == "single_action_ir_parity"
+    assert kwargs["dispatch_bridge_metadata_parity"] == {
+        "plan_action_op_count": 0,
+        "actual_ir_action_op_count": 1,
+        "plan_candidate_eligibility_status": "no_action_ops",
+        "consumer_candidate_builder_reason": "single_action_ir_parity",
+        "count_parity": False,
+        "payload_parity": False,
+    }

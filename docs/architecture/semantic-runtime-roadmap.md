@@ -1320,7 +1320,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 9 Step 6B: ExecutionPlan Enrichment Parity Review / Consumer Narrowing Decision
 
-- **Status**: Pending explicit approval.
+- **Status**: Done.
 - **Goal**: Review the enriched `ExecutionPlan` and decide if a narrow consumer migration is safe.
 - **Allowed**:
   - Read-only code inspection.
@@ -1330,8 +1330,54 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Any production code or test changes.
   - Any consumer migration.
   - Any dispatch behavior changes.
+- **Completed Outcome**:
+  - The review concluded that the enriched `ExecutionPlan` metadata is not yet sufficient to replace the `DispatchPipeline`'s direct `compiler_ir` and `segments` checks.
+  - `candidate_eligibility_status` is a coarse producer-side hint and must not be used for dispatch authority.
+  - The safest next step is to use the new metadata as diagnostic-only input to the `DispatchPipeline` candidate builder.
+  - A new Step 6C was proposed for this diagnostic alignment.
 - **Done When**:
-  - The review is complete and a decision on the next consumer migration is documented.
+  - The review was complete and a decision on the next consumer migration was documented.
+
+---
+
+#### Phase 9 Step 6C: Candidate Eligibility Metadata Alignment
+
+- **Status**: Done.
+- **Goal**: Use the new `ExecutionPlan` metadata as diagnostic input to the `DispatchPipeline` candidate builder and log parity.
+- **Allowed**:
+  - `DispatchPipeline` can read `ExecutionPlan` metadata.
+  - Add diagnostic logging to compare `ExecutionPlan` metadata with `DispatchPipeline`'s own checks.
+- **Forbidden**:
+  - Any change to dispatch behavior.
+  - Removing existing `compiler_ir` or `segments` checks in `DispatchPipeline`.
+  - Using `ExecutionPlan` metadata for dispatch authority.
+  - Any consumer migration.
+- **Completed Outcome**:
+  - The `DispatchPipeline` now reads `ExecutionPlan` metadata for diagnostic logging only.
+  - A new `dispatch_bridge_metadata_parity` log field compares producer-side metadata with consumer-side checks.
+  - No dispatch behavior was changed.
+  - The candidate builder remains authoritative via direct `compiler_ir` and `segments` inspection.
+- **Done When**:
+  - `DispatchPipeline` reads the new metadata for logging/diagnostics.
+  - Parity between producer-side metadata and consumer-side checks is logged.
+  - No dispatch behavior has changed.
+
+---
+
+#### Phase 9 Step 6D: Metadata Alignment Review / Producer-Consumer Contract Closure
+
+- **Status**: Pending explicit approval.
+- **Goal**: Review the diagnostic parity evidence from Step 6C and decide if the producer/consumer contracts are aligned enough to simplify the consumer.
+- **Allowed**:
+  - Read-only code inspection.
+  - Design-only documentation updates.
+- **Forbidden**:
+  - Implementation before design approval.
+  - Any production code or test changes.
+  - Any consumer migration or simplification.
+  - Any dispatch behavior changes.
+- **Done When**:
+  - The review is complete and a decision on the next consumer-side step is documented.
 
 ---
 

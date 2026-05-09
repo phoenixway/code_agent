@@ -710,6 +710,28 @@ Pending explicit approval.
   - Tests must verify correct population for the migrated slice and absence for non-migrated paths.
   - No consumer tests should change.
 
+## Step 6B: Enrichment Parity Review / Consumer Narrowing Decision Outcome
+
+- **Conclusion**: The review of the enriched `ExecutionPlan` from Step 6A is complete.
+- **Can `DispatchPipeline` use the new metadata?**
+  - Not for authority. The `DispatchPipeline` must still perform its own detailed parity checks against `compiler_ir` and `segments` to build a lossless `PlanDispatchCandidate`.
+  - The new metadata can be used for diagnostic logging to verify alignment between the producer's view (`ExecutionPlan`) and the consumer's view (`DispatchPipeline`).
+- **Which fields are safe to read as metadata?**
+  - All new fields from Step 6A are safe to read as metadata-only: `plan_source`, `action_op_count`, `action_payload_snapshot`, `candidate_eligibility_status`, `pre_action_text_source`.
+- **Which fields must remain non-authoritative?**
+  - All of them. `action_payload_snapshot` is an observational copy, not a dispatch-authoritative source. `candidate_eligibility_status` is a coarse producer-side hint, not a guarantee of consumer-side eligibility.
+- **Is `candidate_eligibility_status` strong enough for logic?**
+  - No. It only indicates that the producer (`_build_execution_plan`) saw one IR action op. It does not guarantee that the `DispatchPipeline` will find a losslessly matching segment action or that other eligibility criteria are met.
+- **Next implementation step (Step 6C)**:
+  - The narrowest safe step is to make the `DispatchPipeline`'s candidate builder read the new `ExecutionPlan` metadata for diagnostic purposes only.
+  - It should log parity between the plan's metadata (e.g., `action_op_count`) and its own derived facts.
+  - This step must not change dispatch behavior or remove any existing `compiler_ir`/`segments` checks.
+- **Step 6C Outcome**:
+  - The `DispatchPipeline` now reads `ExecutionPlan` metadata for diagnostic logging.
+  - A new `dispatch_bridge_metadata_parity` log field compares producer-side metadata with consumer-side checks.
+  - No dispatch behavior was changed.
+  - The candidate builder remains authoritative via direct `compiler_ir` and `segments` inspection.
+
 ## Safety Gate
 
 Phase 9 implementation must remain behavior-preserving:

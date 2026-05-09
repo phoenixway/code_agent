@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 9 Step 6A: ExecutionPlan Observational Enrichment Implementation
-- **Status**: Pending explicit approval.
-- **Next Step**: Implement observational-only `ExecutionPlan` enrichment.
-- **Boundary**: The Phase 9 Step 5A-5F bridge sub-slice is complete. The Step 6 review concluded that `ExecutionPlan` requires enrichment before further consumer migration. Actual dispatch remains segment-driven. Compiler/IR still owns structure, `ActionPolicy` still owns permission, the execution layer still owns side effects, and `ResponsePipeline` still orchestrates. Segment fallback remains in place and no observable dispatch behavior changed.
+- **Phase**: Phase 9 Step 6C: Candidate Eligibility Metadata Alignment
+- **Status**: Complete.
+- **Next Step**: Phase 9 Step 6D: Metadata Alignment Review / Producer-Consumer Contract Closure.
+- **Boundary**: The Phase 9 Step 6B review is complete. The `ExecutionPlan` contains observational metadata. Actual dispatch remains segment-driven. Compiler/IR still owns structure, `ActionPolicy` still owns permission, the execution layer still owns side effects, and `ResponsePipeline` still orchestrates. Segment fallback remains in place and no observable dispatch behavior changed.
 
 ## Step 4I Parity Matrix
 
@@ -295,10 +295,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- **Phase 9 Step 6B: ExecutionPlan Enrichment Parity Review / Consumer Narrowing Decision**
-  - Review the enriched `ExecutionPlan` and decide if a narrow consumer migration is safe.
+- **Phase 9 Step 6D: Metadata Alignment Review / Producer-Consumer Contract Closure**
+  - Review the diagnostic parity evidence from Step 6C.
+  - Decide if the producer (`_build_execution_plan`) and consumer (`_build_single_action_plan_dispatch_candidate`) contracts are aligned enough to proceed with a consumer-side simplification.
   - Keep actual dispatch segment-driven.
-  - Keep `segments` fallback where parity is not yet proven.
   - Keep `PLAINTEXT_TERMINAL_ANSWER` / final-answer-path migration deferred.
   - Keep board/checkpoint consumers deferred to their separate slice.
 
@@ -595,7 +595,24 @@ This document is the single source of truth for the current state of the Semanti
   - Phase 9 Step 5A-5F bridge sub-slice is complete.
 
 - **Recommended next step**
-  - `Phase 9 Step 6B: ExecutionPlan Enrichment Parity Review / Consumer Narrowing Decision`
+  - `Phase 9 Step 6D: Metadata Alignment Review / Producer-Consumer Contract Closure`
+
+## Phase 9 Step 6C Outcome
+
+- **Conclusion**
+  - The `DispatchPipeline` now reads the new `ExecutionPlan` observational metadata for diagnostic purposes only.
+  - A new diagnostic log field, `dispatch_bridge_metadata_parity`, records the alignment between the producer's `ExecutionPlan` metadata and the consumer's direct `compiler_ir` checks.
+  - No dispatch behavior was changed.
+  - The `DispatchPipeline` candidate builder still uses `compiler_ir` and `segments` as its source of truth.
+
+## Phase 9 Step 6B Outcome
+
+- **Conclusion**
+  - The review of the enriched `ExecutionPlan` from Step 6A is complete.
+  - The new observational metadata (`action_payload_snapshot`, `action_op_count`, etc.) is not yet sufficient to replace the `DispatchPipeline`'s direct `compiler_ir` and `segments` checks.
+  - `candidate_eligibility_status` is a coarse producer-side hint and must not be used for dispatch authority.
+  - The safest next step is to use the new metadata as diagnostic-only input to the `DispatchPipeline` candidate builder, logging any parity mismatches without changing behavior.
+  - A new Step 6C is proposed for this diagnostic alignment.
 
 ## Phase 9 Step 6A Outcome
 

@@ -54,6 +54,38 @@ class DispatchPipeline:
             summary = f"{summary}:{target}"
         return summary
 
+    def _get_plan_metadata_parity_diagnostics(self, iteration, bridge_reason: str):
+        execution_plan = getattr(iteration, "execution_plan", None)
+        if not execution_plan:
+            return None
+
+        compiler_ir = getattr(getattr(iteration, "parsed_output", None), "compiler_ir", None)
+
+        plan_action_op_count = execution_plan.action_op_count
+        plan_eligibility = execution_plan.candidate_eligibility_status
+        plan_payload_snapshot = execution_plan.action_payload_snapshot
+
+        actual_ir_action_ops = list(getattr(compiler_ir, "action_ops", ()) or ()) if compiler_ir else []
+        actual_ir_action_op_count = len(actual_ir_action_ops)
+
+        count_match = plan_action_op_count == actual_ir_action_op_count
+
+        payload_match = None
+        if plan_payload_snapshot is not None and compiler_ir is not None:
+            actual_payloads = [
+                dict(op.payload) for op in actual_ir_action_ops if isinstance(getattr(op, "payload", None), dict)
+            ]
+            payload_match = plan_payload_snapshot == actual_payloads
+
+        return {
+            "plan_action_op_count": plan_action_op_count,
+            "actual_ir_action_op_count": actual_ir_action_op_count,
+            "plan_candidate_eligibility_status": plan_eligibility,
+            "consumer_candidate_builder_reason": bridge_reason,
+            "count_parity": count_match,
+            "payload_parity": payload_match,
+        }
+
     def _build_single_action_plan_dispatch_candidate(self, iteration):
         execution_plan = getattr(iteration, "execution_plan", None)
         if execution_plan is None:
@@ -200,6 +232,21 @@ class DispatchPipeline:
                         pre_action_text_chars = len(text_to_print)
                         break
 
+        bridge_candidate_log = (
+            {
+                "action_type": bridge_candidate.action_type,
+                "action_summary": bridge_candidate.action_summary,
+                "source": bridge_candidate.source,
+                "matched_segment_index": bridge_candidate.matched_segment_index,
+                "compiler_shape": bridge_candidate.compiler_shape,
+                "transaction_kind": bridge_candidate.transaction_kind,
+                "pre_action_text": bridge_candidate.pre_action_text or "",
+            }
+            if bridge_candidate is not None
+            else None
+        )
+        metadata_parity_log = self._get_plan_metadata_parity_diagnostics(iteration, bridge_reason)
+
         self.stage_logger.log(
             "post_dispatch_pipeline",
             "start",
@@ -208,19 +255,8 @@ class DispatchPipeline:
             pre_action_text_chars=pre_action_text_chars,
             dispatch_bridge_used=bridge_used,
             dispatch_bridge_reason=bridge_reason,
-            dispatch_bridge_candidate=(
-                {
-                    "action_type": bridge_candidate.action_type,
-                    "action_summary": bridge_candidate.action_summary,
-                    "source": bridge_candidate.source,
-                    "matched_segment_index": bridge_candidate.matched_segment_index,
-                    "compiler_shape": bridge_candidate.compiler_shape,
-                    "transaction_kind": bridge_candidate.transaction_kind,
-                    "pre_action_text": bridge_candidate.pre_action_text or "",
-                }
-                if bridge_candidate is not None
-                else None
-            ),
+            dispatch_bridge_candidate=bridge_candidate_log,
+            dispatch_bridge_metadata_parity=metadata_parity_log,
         )
         processed_segs, sys_results, should_stop = await self._dispatch_segments(ctx, dispatch_segments)
         decision = await self.dispatch_outcome.handle(ctx, processed_segs, sys_results, should_stop)

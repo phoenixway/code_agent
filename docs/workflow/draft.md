@@ -101,4 +101,6 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 97. Phase 9 Step 5F Metadata Bridge Parity Review / Candidate Adapter Decision: done.
 98. Phase 9 Step 6 Plan-First Producer Narrowing / ExecutionPlan Enrichment Review: done.
 99. Phase 9 Step 6A ExecutionPlan Observational Enrichment Implementation: done.
-100. Next: Phase 9 Step 6B ExecutionPlan Enrichment Parity Review / Consumer Narrowing Decision.
+100. Phase 9 Step 6B ExecutionPlan Enrichment Parity Review / Consumer Narrowing Decision: done.
+101. Phase 9 Step 6C Candidate Eligibility Metadata Alignment: done.
+102. Next: Phase 9 Step 6D Metadata Alignment Review / Producer-Consumer Contract Closure.
