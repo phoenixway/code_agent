@@ -1389,7 +1389,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 9 Step 7: Plan-First Dispatch Boundary Closure / Next Slice Selection
 
-- **Status**: Pending explicit approval.
+- **Status**: Done.
 - **Goal**: Review the completed Step 5/6 bridge and metadata work and decide on the next safe plan-first migration slice.
 - **Allowed**:
   - Read-only code inspection.
@@ -1398,8 +1398,12 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Implementation before design approval.
   - Any production code or test changes.
   - Any dispatch behavior changes.
+- **Completed Outcome**:
+  - The review of the Phase 9 plan-first dispatch boundary work is complete.
+  - The current slice is closed for now. Candidate-driven dispatch and synthetic segment adapters remain deferred.
+  - The next safest slice is to address the deferred board/checkpoint consumers.
 - **Done When**:
-  - The review is complete and a decision on the next plan-first step is documented.
+  - The review was complete and a decision on the next slice was documented.
 
 ---
 
@@ -1418,7 +1422,26 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
-### Phase 10: RecoveryStrategy Registry Expansion
+### Phase 10: Board/Checkpoint Consumer Migration
+
+#### Phase 10 Step 1: Board/Checkpoint Consumer Slice Preflight
+
+- **Status**: Pending explicit approval.
+- **Goal**: Re-open the deferred board/checkpoint consumer migration slice with a design-only preflight.
+- **Allowed**:
+  - Read-only code inspection of `PlanBoardStageHandler` and `MemoryBoardStageHandler`.
+  - Inventory and characterization of current board/checkpoint consumer behavior.
+  - Design-only documentation updates.
+- **Forbidden**:
+  - Implementation before design approval.
+  - Any production code or test changes.
+  - Any dispatch, final-answer, or `ActionPolicy` changes.
+- **Done When**:
+  - The preflight review is complete and a decision on the next implementation step is documented.
+
+---
+
+### Phase 11: RecoveryStrategy Registry Expansion
 
 - **Goal**: Expand the `CompilerRecoveryRegistry` to cover more structural errors.
 - **Allowed**: Add new strategies for errors currently handled by legacy `invalid_kind` routing.
@@ -1427,7 +1450,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
-### Phase 11: Observability/Replay
+### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.
 - **Allowed**: Log the inputs and outputs of semantic accessors. Create a debug tool to replay a response through the semantic layer.
@@ -1436,7 +1459,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
-### Phase 12: Legacy Cleanup
+### Phase 13: Legacy Cleanup
 
 - **Goal**: Remove deprecated legacy fields and helpers.
 - **Allowed**: Remove `ResponseSemantics`, `has_action_segment`, and other legacy fields from `ParsedModelOutput`.
@@ -1445,7 +1468,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
-### Phase 13: Compatibility Cleanup (Deferred)
+### Phase 14: Compatibility Cleanup (Deferred)
 
 - **Goal**: Remove legacy compatibility fields and branching logic from refactored components.
 - **Scope**: `ActionPolicyHandler` `reason`/`details` fields, `ResponsePipelinePrevalidationMixin` fallback logic.

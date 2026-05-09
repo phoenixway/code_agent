@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 9 Step 6D: Metadata Alignment Review / Producer-Consumer Contract Closure
+- **Phase**: Phase 9 Step 7: Plan-First Dispatch Boundary Closure / Next Slice Selection
 - **Status**: Complete.
-- **Next Step**: Phase 9 Step 7: Plan-First Dispatch Boundary Closure / Next Slice Selection.
-- **Boundary**: The Phase 9 Step 6A-6D metadata alignment mini-slice is complete. `ExecutionPlan` metadata is used for diagnostics only. Actual dispatch remains segment-driven. Compiler/IR still owns structure, `ActionPolicy` still owns permission, the execution layer still owns side effects, and `ResponsePipeline` still orchestrates. Segment fallback remains in place and no observable dispatch behavior changed.
+- **Next Step**: Phase 10 Step 1: Board/Checkpoint Consumer Slice Preflight.
+- **Boundary**: The Phase 9 plan-first dispatch boundary slice is closed for now. Actual dispatch remains segment-driven, and `PlanDispatchCandidate` is diagnostic-only. The next slice of work will be the deferred board/checkpoint consumer migration.
 
 ## Step 4I Parity Matrix
 
@@ -295,12 +295,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- **Phase 9 Step 7: Plan-First Dispatch Boundary Closure / Next Slice Selection**
-  - Review the completed Step 5/6 bridge and metadata work.
-  - Decide on the next safe plan-first migration slice.
-  - Keep actual dispatch segment-driven.
-  - Keep `PLAINTEXT_TERMINAL_ANSWER` / final-answer-path migration deferred.
-  - Keep board/checkpoint consumers deferred to their separate slice.
+- **Phase 10 Step 1: Board/Checkpoint Consumer Slice Preflight**
+  - Re-open the deferred board/checkpoint consumer migration slice.
+  - Inventory and characterize current board/checkpoint consumer behavior.
+  - Design a narrow, behavior-preserving migration path.
 
 ## Phase 9 Step 1 Outcome
 
@@ -595,7 +593,16 @@ This document is the single source of truth for the current state of the Semanti
   - Phase 9 Step 5A-5F bridge sub-slice is complete.
 
 - **Recommended next step**
-  - `Phase 9 Step 7: Plan-First Dispatch Boundary Closure / Next Slice Selection`
+  - `Phase 10 Step 1: Board/Checkpoint Consumer Slice Preflight`
+
+## Phase 9 Step 7 Outcome
+
+- **Conclusion**
+  - The review of the Phase 9 plan-first dispatch boundary work is complete.
+  - The current slice (Steps 5A-6D) successfully introduced a diagnostic metadata bridge for the single-action dispatch path.
+  - However, the evidence is not sufficient to safely proceed with candidate-driven dispatch or a synthetic segment adapter. The side-effect boundary remains high-risk.
+  - The plan-first dispatch boundary slice is now closed for now. Actual dispatch remains segment-driven.
+  - The next safest slice is to address the deferred board/checkpoint consumers, which is a narrower and lower-risk area than dispatch side effects or final-answer authority.
 
 ## Phase 9 Step 6D Outcome
 

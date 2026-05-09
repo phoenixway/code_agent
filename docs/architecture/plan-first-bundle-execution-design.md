@@ -746,6 +746,18 @@ Pending explicit approval.
   - `ExecutionPlan` metadata is confirmed as diagnostic-only.
   - Actual dispatch remains segment-driven.
 
+## Step 7: Dispatch Boundary Closure / Next Slice Selection Outcome
+
+- **Conclusion**: The review of the completed Phase 9 plan-first dispatch boundary work is complete.
+- **Is candidate-driven dispatch safe?**
+  - No. The diagnostic evidence from the Step 5/6 bridge is not sufficient to safely proceed with candidate-driven dispatch or a synthetic segment adapter. The side-effect boundary remains high-risk.
+- **Slice Closure**:
+  - The Phase 9 plan-first dispatch boundary slice is closed for now.
+  - Actual dispatch remains segment-driven.
+  - `PlanDispatchCandidate` remains diagnostic metadata only.
+- **Next Slice Selection**:
+  - The next safest slice is to address the deferred board/checkpoint consumers. This work is narrower and lower-risk than dispatch side effects or final-answer authority.
+
 ## Safety Gate
 
 Phase 9 implementation must remain behavior-preserving:
