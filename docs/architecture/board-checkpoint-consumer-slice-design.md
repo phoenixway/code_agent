@@ -548,6 +548,17 @@ This design-only step is complete. It analyzed whether it is safe for the classi
   - No compiler/prepass authority was introduced.
   - No observable routing or commit behavior changed.
 
-### 3.19. Next Intended Step
+### 3.19. Step 19: Extend Typed Primary to Remaining Legacy-Derived Memory Branches
 
-The next step is **Phase 10 Step 19: Extend Typed Primary to Remaining Legacy-Derived Memory Branches**.
+- **Outcome**:
+  - The typed-primary candidate pattern from Step 18 was extended to the remaining memory branches: `MEMORY_CHECKPOINT_WITH_TEXT` and `MEMORY_CHECKPOINT_WITH_ACTION`.
+  - New pure helpers were added for these branches, following the same behavior-preserving pattern with legacy disagreement guards.
+- **What did not change**:
+  - The typed result still cannot change the memory branch category.
+  - Legacy fallback remains fully in place.
+  - No compiler/prepass authority was introduced.
+  - No observable routing or commit behavior changed.
+
+### 3.20. Next Intended Step
+
+The next step is **Phase 10 Step 20: Typed-Primary Candidate for Legacy-Derived Plan Branches**.

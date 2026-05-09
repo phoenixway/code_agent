@@ -1799,8 +1799,24 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 10 Step 19: Extend Typed Primary to Remaining Legacy-Derived Memory Branches
 
-- **Status**: Pending explicit approval.
+- **Status**: Done.
 - **Goal**: Extend the typed-primary-with-legacy-fallback pattern to the remaining memory checkpoint branches (`MEMORY_CHECKPOINT_WITH_TEXT`, `MEMORY_CHECKPOINT_WITH_ACTION`).
+- **Allowed**:
+  - Add pure helpers for typed-primary resolution for the remaining memory branches.
+  - Use these helpers in `_run_checkpoint_stage(...)`.
+- **Forbidden**:
+  - Any observable checkpoint routing behavior change.
+  - Any compiler/prepass authority transfer.
+  - Any change to `PlanBoardStageHandler` or `MemoryBoardStageHandler` behavior.
+- **Done When**:
+  - The typed-primary candidate pattern is extended to all memory branches.
+  - The implementation remains behavior-preserving with legacy disagreement guards.
+  - No observable routing or commit behavior changed.
+
+#### Phase 10 Step 20: Typed-Primary Candidate for Legacy-Derived Plan Branches
+
+- **Status**: Pending explicit approval.
+- **Goal**: Extend the typed-primary-with-legacy-fallback pattern to the legacy-derived plan checkpoint branches.
 
 ---
 

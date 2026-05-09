@@ -129,6 +129,48 @@ def resolve_memory_checkpoint_only_typed_primary(
     return legacy_memory_checkpoint_only
 
 
+def resolve_memory_checkpoint_and_text_typed_primary(
+    result: BoardCheckpointSemanticResult | None,
+    *,
+    legacy_memory_checkpoint_only: bool,
+    legacy_memory_checkpoint_and_text: bool,
+    legacy_memory_checkpoint_and_action: bool,
+) -> bool:
+    """Resolve memory-checkpoint-and-text with typed-primary logic."""
+    kind = legacy_derived_checkpoint_kind(result)
+    if kind is None:
+        return legacy_memory_checkpoint_and_text
+
+    if legacy_memory_checkpoint_only or legacy_memory_checkpoint_and_action:
+        return legacy_memory_checkpoint_and_text
+
+    if kind == BoardCheckpointKind.MEMORY_CHECKPOINT_WITH_TEXT:
+        return legacy_memory_checkpoint_and_text
+
+    return legacy_memory_checkpoint_and_text
+
+
+def resolve_memory_checkpoint_and_action_typed_primary(
+    result: BoardCheckpointSemanticResult | None,
+    *,
+    legacy_memory_checkpoint_only: bool,
+    legacy_memory_checkpoint_and_text: bool,
+    legacy_memory_checkpoint_and_action: bool,
+) -> bool:
+    """Resolve memory-checkpoint-and-action with typed-primary logic."""
+    kind = legacy_derived_checkpoint_kind(result)
+    if kind is None:
+        return legacy_memory_checkpoint_and_action
+
+    if legacy_memory_checkpoint_only or legacy_memory_checkpoint_and_text:
+        return legacy_memory_checkpoint_and_action
+
+    if kind == BoardCheckpointKind.MEMORY_CHECKPOINT_WITH_ACTION:
+        return legacy_memory_checkpoint_and_action
+
+    return legacy_memory_checkpoint_and_action
+
+
 def resolve_legacy_derived_checkpoint_effective_flags(
     result: BoardCheckpointSemanticResult | None,
     *,
