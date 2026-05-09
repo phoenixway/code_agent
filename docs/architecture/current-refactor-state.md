@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 9 Step 5E: Candidate Metadata Bridge Implementation
+- **Phase**: Phase 9 Step 5F: Metadata Bridge Parity Review / Candidate Adapter Decision
 - **Status**: Complete.
-- **Next Step**: Phase 9 Step 5F: Metadata Bridge Parity Review / Candidate Adapter Decision.
-- **Boundary**: The parity probe, IR-derived candidate, and candidate metadata bridge are implemented, but actual dispatch remains segment-driven. Compiler/IR still owns structure, `ActionPolicy` still owns permission, the execution layer still owns side effects, and `ResponsePipeline` still orchestrates. Segment fallback remains in place and no observable dispatch behavior changed.
+- **Next Step**: Phase 9 Step 6: Plan-First Producer Narrowing / ExecutionPlan Enrichment Review.
+- **Boundary**: The Phase 9 Step 5A-5F bridge sub-slice is complete. The parity probe, IR-derived candidate, and candidate metadata bridge are implemented, but actual dispatch remains segment-driven. Compiler/IR still owns structure, `ActionPolicy` still owns permission, the execution layer still owns side effects, and `ResponsePipeline` still orchestrates. Segment fallback remains in place and no observable dispatch behavior changed.
 
 ## Step 4I Parity Matrix
 
@@ -295,8 +295,8 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- **Phase 9 Step 5F: Metadata Bridge Parity Review / Candidate Adapter Decision**
-  - Review the metadata bridge evidence before any adapter narrowing.
+- **Phase 9 Step 6: Plan-First Producer Narrowing / ExecutionPlan Enrichment Review**
+  - Review the next safe plan-first slice after the Step 5 bridge work.
   - Keep actual dispatch segment-driven.
   - Keep `segments` fallback where parity is not yet proven.
   - Keep `PLAINTEXT_TERMINAL_ANSWER` / final-answer-path migration deferred.
@@ -575,6 +575,27 @@ This document is the single source of truth for the current state of the Semanti
   - No `ActionPolicy` authority changed.
   - No fallback was removed or narrowed.
   - Actual dispatch remains segment-driven.
+
+## Phase 9 Step 5F Outcome
+
+- **Conclusion**
+  - **NO-GO** for a synthetic segment adapter in the immediate next step.
+  - `PlanDispatchCandidate` metadata bridge is complete and safe.
+  - Actual dispatch should remain segment-driven for now.
+  - Candidate-driven dispatcher input is not approved.
+  - Synthetic segments are not approved.
+
+- **Rationale**
+  - Dispatcher input identity and concrete segment objects still matter.
+  - `processed_segs`, `DispatchOutcomeHandler`, and `ExecutionCommit` remain segment-shaped.
+  - The metadata bridge already provides plan-first evidence without side-effect risk.
+  - Adapter work would be a separate higher-risk migration requiring its own design/test slice.
+
+- **Slice status**
+  - Phase 9 Step 5A-5F bridge sub-slice is complete.
+
+- **Recommended next step**
+  - `Phase 9 Step 6: Plan-First Producer Narrowing / ExecutionPlan Enrichment Review`
 
 ## Step 4M Batch Plan
 

@@ -1,6 +1,6 @@
 # Phase 9 Design: Plan-First Bundle Execution
 
-- **Phase 9 Status**: Step 5E Metadata Bridge Complete
+- **Phase 9 Status**: Step 5F Bridge Review Complete
 - **Scope**: Action / bundle execution path only
 - **Non-Goals**:
   - No parser rewrite
@@ -657,6 +657,28 @@ Pending explicit approval.
 - review metadata bridge evidence from Step 5E
 - decide whether any candidate-derived adapter is justified
 - keep actual dispatch segment-driven until that review is complete
+
+### 1. Review conclusion
+
+- **NO-GO** for a synthetic segment adapter in the immediate next step.
+- **NO-GO** for direct candidate-driven dispatcher input in the immediate next step.
+- The metadata bridge is complete and safe.
+- Actual dispatch should remain segment-driven for now.
+
+### 2. Why the adapter is deferred
+
+- Dispatcher input identity and concrete segment objects still matter.
+- `ActionDispatcher.dispatch_segments(...)` still iterates concrete segment objects.
+- `processed_segs`, `DispatchOutcomeHandler`, and `ExecutionCommit` remain
+  segment-shaped.
+- The metadata bridge already surfaces plan-first evidence without side-effect risk.
+
+### 3. Step 5F conclusion
+
+- The Phase 9 Step 5A-5F bridge sub-slice is complete.
+- The next safe slice is not adapter work.
+- Recommended next step:
+  `Phase 9 Step 6: Plan-First Producer Narrowing / ExecutionPlan Enrichment Review`
 
 ## Safety Gate
 

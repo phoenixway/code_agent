@@ -1243,7 +1243,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 9 Step 5F: Metadata Bridge Parity Review / Candidate Adapter Decision
 
-- **Status**: Pending explicit approval.
+- **Status**: Done.
 - **Goal**: Review the metadata bridge evidence and decide whether any
   candidate-derived adapter is justified for the eligible single-action slice.
 - **Allowed**:
@@ -1256,9 +1256,31 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Direct candidate-driven dispatcher input
   - Fallback removal
   - Multi-action migration
+- **Completed Outcome**:
+  - Synthetic segment adapter is a no-go for the immediate next step.
+  - Direct candidate-driven dispatcher input remains a no-go.
+  - The Step 5A-5F bridge sub-slice is complete.
+  - The safest next step is to return to producer-side narrowing / ExecutionPlan enrichment review.
+
+#### Phase 9 Step 6: Plan-First Producer Narrowing / ExecutionPlan Enrichment Review
+
+- **Status**: Pending explicit approval.
+- **Goal**: Review the next safe producer-side plan-first slice after the bridge
+  sub-slice, including whether `ExecutionPlan` needs enrichment before any further
+  dispatch narrowing.
+- **Allowed**:
+  - Read-only code inspection
+  - Design-only review
+  - Producer-side contract analysis
+- **Forbidden**:
+  - Dispatch side-effect changes
+  - Synthetic segment adapter work
+  - Candidate-driven dispatcher input
+  - Fallback removal
+  - `ActionPolicy` authority changes
 - **Done When**:
-  - The next narrowing choice is explicit.
-  - Required fallback points are re-validated.
+  - The next producer-side target is explicit.
+  - Any needed `ExecutionPlan` enrichment is documented.
   - A narrow next implementation shape is concrete enough for approval.
 
 ---
