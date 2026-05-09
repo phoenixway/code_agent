@@ -1,6 +1,6 @@
 # Phase 10 Design: Board/Checkpoint Consumer Slice
 
-- **Phase 10 Status**: Step 5 Design Complete.
+- **Phase 10 Status**: Step 6 Implementation Complete.
 - **Scope**: Board and checkpoint-related response semantics.
 - **Non-Goals**:
   - No dispatch behavior changes.
@@ -183,6 +183,21 @@ This design-only step is complete. It analyzed whether it is safe for the classi
   - checkpoint-with-text pass-through
   - checkpoint-with-action pass-through
 
-### 3.7. Next Intended Step
+### 3.7. Step 6: Board/Checkpoint Structural Parity Logging Implementation
 
-The next step is **Phase 10 Step 6: Board/Checkpoint Structural Parity Logging Implementation**.
+- **Implementation Outcome**:
+  - Diagnostic-only parity logging is now attached to `_run_checkpoint_stage`.
+  - The parity bridge compares the early prepass compiler analysis in `CheckpointStageState.compiler_analysis` against legacy board/checkpoint handler outcomes.
+  - Logged fields include compiler/prepass shape, compiler/prepass error code, visible-text source when available, action presence/count, checkpoint-like structural facts, legacy plan/memory checkpoint categories, parity alignment, and mismatch reason when obvious.
+  - Logging is defensive:
+    - missing or malformed compiler analysis is tolerated
+    - logging failures are swallowed
+    - runtime behavior is unchanged
+- **Authority Boundary**:
+  - `MemoryBoardStageHandler` and `PlanBoardStageHandler` remain authoritative.
+  - The parity bridge is diagnostic-only and does not mutate checkpoint flags or board decisions.
+  - `_run_classification_stage` still recomputes compiler diagnosis on normalized response and does not reuse prepass analysis.
+
+### 3.8. Next Intended Step
+
+The next step is **Phase 10 Step 7: Board/Checkpoint Parity Review / First Authority Migration Decision**.

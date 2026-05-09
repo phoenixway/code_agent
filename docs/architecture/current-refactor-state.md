@@ -4,9 +4,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 10 Step 5: First Board/Checkpoint Consumer Migration (Design)
+- **Phase**: Phase 10 Step 6: Board/Checkpoint Structural Parity Logging Implementation
 - **Status**: Complete.
-- **Next Step**: Phase 10 Step 6: Board/Checkpoint Structural Parity Logging Implementation.
+- **Next Step**: Phase 10 Step 7: Board/Checkpoint Parity Review / First Authority Migration Decision.
 - **Boundary**: The first board/checkpoint migration remains diagnostic-only. Legacy board handlers still own commit behavior, the prepass compiler analysis remains observational, and `_apply_compiler_diagnosis` remains the effectful classification-stage path that recomputes on normalized response.
 
 ## Step 4I Parity Matrix
@@ -680,6 +680,24 @@ This document is the single source of truth for the current state of the Semanti
   - Evidence that compiler/prepass facts and handler-visible cleaned response semantics stay aligned across normalization boundaries.
 - **Next step**
   - Phase 10 Step 6 should implement **Board/Checkpoint Structural Parity Logging** only.
+
+## Phase 10 Step 6: Board/Checkpoint Structural Parity Logging Implementation (Complete)
+
+- **Conclusion**
+  - Diagnostic-only parity logging has been added in `_run_checkpoint_stage`.
+  - The new parity bridge compares prepass compiler facts from `CheckpointStageState.compiler_analysis` against legacy board/checkpoint handler outcomes.
+  - Logged information includes compiler shape/error metadata, visible-text source when available, action presence/count, checkpoint-like structural facts, legacy outcome categories, parity alignment, and mismatch reason when obvious.
+  - Missing compiler analysis is tolerated, and logging failures are swallowed.
+- **Authority / fallback**
+  - No authority transfer happened.
+  - `MemoryBoardStageHandler` and `PlanBoardStageHandler` remain authoritative for parsing, commits, and checkpoint outcome flags.
+  - `_run_classification_stage` still recomputes analysis on normalized response and does not reuse prepass analysis.
+- **Behavior boundary**
+  - No board commit behavior changed.
+  - No checkpoint routing behavior changed.
+  - No dispatch, final-answer, stop-gate, `ActionPolicy`, parser, or `history.py` behavior changed.
+- **Next step**
+  - Phase 10 Step 7: Board/Checkpoint Parity Review / First Authority Migration Decision.
 
 ## Phase 9 Step 6D Outcome
 

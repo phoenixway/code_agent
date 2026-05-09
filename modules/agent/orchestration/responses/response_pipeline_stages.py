@@ -41,6 +41,114 @@ class ClassifiedStageState:
 
 
 class ResponsePipelineStagesMixin:
+    def _checkpoint_outcome_category(self, *, checkpoint_only: bool, checkpoint_and_text: bool, checkpoint_and_action: bool) -> str:
+        if checkpoint_and_action:
+            return "checkpoint_and_action"
+        if checkpoint_and_text:
+            return "checkpoint_and_text"
+        if checkpoint_only:
+            return "checkpoint_only"
+        return "none"
+
+    def _log_board_checkpoint_structural_parity(
+        self,
+        compiler_analysis,
+        *,
+        plan_checkpoint_only: bool,
+        plan_checkpoint_and_text: bool,
+        plan_checkpoint_and_action: bool,
+        memory_checkpoint_only: bool,
+        memory_checkpoint_and_text: bool,
+        memory_checkpoint_and_action: bool,
+    ) -> None:
+        stage_logger = getattr(self, "stage_logger", None)
+        if not stage_logger:
+            return
+
+        try:
+            ir = getattr(compiler_analysis, "ir", None) if compiler_analysis is not None else None
+            compiler_shape = str(getattr(getattr(compiler_analysis, "shape", None), "name", "") or "")
+            compiler_error_code = str(getattr(getattr(compiler_analysis, "error", None), "code", "") or "")
+            compiler_recovery_id = str(getattr(getattr(compiler_analysis, "error", None), "recovery_id", "") or "")
+            compiler_visible_text_source = str(getattr(ir, "visible_text_source", "") or "")
+            compiler_has_action = bool(getattr(ir, "has_action", False))
+            compiler_action_count = int(getattr(ir, "action_count", 0) or 0)
+            compiler_has_checkpoint = bool(getattr(ir, "has_checkpoint", False))
+            compiler_has_memory_tags = bool(getattr(ir, "has_memory_tags", False))
+            compiler_has_subgoal_tags = bool(getattr(ir, "has_subgoal_tags", False))
+            compiler_has_memory_checkpoint = bool(getattr(ir, "has_memory_checkpoint", False))
+            compiler_has_visible_answer = bool(getattr(ir, "has_visible_answer", False))
+            compiler_has_pre_action_text = bool(getattr(ir, "has_pre_action_text", False))
+
+            plan_category = self._checkpoint_outcome_category(
+                checkpoint_only=plan_checkpoint_only,
+                checkpoint_and_text=plan_checkpoint_and_text,
+                checkpoint_and_action=plan_checkpoint_and_action,
+            )
+            memory_category = self._checkpoint_outcome_category(
+                checkpoint_only=memory_checkpoint_only,
+                checkpoint_and_text=memory_checkpoint_and_text,
+                checkpoint_and_action=memory_checkpoint_and_action,
+            )
+
+            legacy_has_checkpoint = any(
+                (
+                    plan_checkpoint_only,
+                    plan_checkpoint_and_text,
+                    plan_checkpoint_and_action,
+                    memory_checkpoint_only,
+                    memory_checkpoint_and_text,
+                    memory_checkpoint_and_action,
+                )
+            )
+            legacy_checkpoint_with_action = bool(plan_checkpoint_and_action or memory_checkpoint_and_action)
+            legacy_checkpoint_with_text = bool(plan_checkpoint_and_text or memory_checkpoint_and_text)
+            legacy_checkpoint_only = bool(plan_checkpoint_only or memory_checkpoint_only)
+
+            parity_available = compiler_analysis is not None and ir is not None
+            aligned = False
+            mismatch_reason = ""
+            if not parity_available:
+                mismatch_reason = "compiler_analysis_unavailable"
+            elif compiler_error_code:
+                mismatch_reason = "compiler_invalid_prepass"
+            elif legacy_has_checkpoint != compiler_has_checkpoint:
+                mismatch_reason = "checkpoint_presence_mismatch"
+            elif legacy_checkpoint_with_action != compiler_has_action:
+                mismatch_reason = "checkpoint_action_mismatch"
+            elif legacy_checkpoint_with_text != (compiler_has_visible_answer or compiler_has_pre_action_text):
+                mismatch_reason = "checkpoint_visible_text_mismatch"
+            else:
+                aligned = True
+
+            stage_logger.log(
+                "protocol_shadow",
+                "board_checkpoint_structural_parity",
+                parity_available=parity_available,
+                parity_aligned=aligned,
+                mismatch_reason=mismatch_reason,
+                compiler_shape=compiler_shape,
+                compiler_code=compiler_error_code,
+                compiler_recovery_id=compiler_recovery_id,
+                compiler_visible_text_source=compiler_visible_text_source,
+                compiler_has_action=compiler_has_action,
+                compiler_action_count=compiler_action_count,
+                compiler_has_checkpoint=compiler_has_checkpoint,
+                compiler_has_memory_tags=compiler_has_memory_tags,
+                compiler_has_subgoal_tags=compiler_has_subgoal_tags,
+                compiler_has_memory_checkpoint=compiler_has_memory_checkpoint,
+                compiler_has_visible_answer=compiler_has_visible_answer,
+                compiler_has_pre_action_text=compiler_has_pre_action_text,
+                plan_checkpoint_category=plan_category,
+                memory_checkpoint_category=memory_category,
+                legacy_checkpoint_only=legacy_checkpoint_only,
+                legacy_checkpoint_with_text=legacy_checkpoint_with_text,
+                legacy_checkpoint_with_action=legacy_checkpoint_with_action,
+                shadow_only=True,
+            )
+        except Exception:
+            return
+
     def _build_execution_plan(self, step, parsed_output, *, parsed_action_count: int):
         if parsed_output is None:
             return None
@@ -203,6 +311,15 @@ class ResponsePipelineStagesMixin:
         plan_checkpoint_and_text = bool(getattr(plan_board_decision, "plan_checkpoint_and_text", False))
         plan_checkpoint_and_action = bool(getattr(plan_board_decision, "plan_checkpoint_and_action", False))
         if plan_board_decision.handled:
+            self._log_board_checkpoint_structural_parity(
+                compiler_analysis,
+                plan_checkpoint_only=plan_checkpoint_only,
+                plan_checkpoint_and_text=plan_checkpoint_and_text,
+                plan_checkpoint_and_action=plan_checkpoint_and_action,
+                memory_checkpoint_only=False,
+                memory_checkpoint_and_text=False,
+                memory_checkpoint_and_action=False,
+            )
             return None, ResponsePipelineOutcome.continue_with(
                 plan_board_decision.next_query,
                 response_text=response_after_plan,
@@ -215,6 +332,16 @@ class ResponsePipelineStagesMixin:
         memory_checkpoint_only = bool(getattr(memory_board_decision, "memory_checkpoint_only", False))
         memory_checkpoint_and_text = bool(getattr(memory_board_decision, "memory_checkpoint_and_text", False))
         memory_checkpoint_and_action = bool(getattr(memory_board_decision, "memory_checkpoint_and_action", False))
+
+        self._log_board_checkpoint_structural_parity(
+            compiler_analysis,
+            plan_checkpoint_only=plan_checkpoint_only,
+            plan_checkpoint_and_text=plan_checkpoint_and_text,
+            plan_checkpoint_and_action=plan_checkpoint_and_action,
+            memory_checkpoint_only=memory_checkpoint_only,
+            memory_checkpoint_and_text=memory_checkpoint_and_text,
+            memory_checkpoint_and_action=memory_checkpoint_and_action,
+        )
 
         def _repair_checkpoint_completed() -> bool:
             if not bool(getattr(self.state, "last_memory_update_done", False)):

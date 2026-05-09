@@ -1536,7 +1536,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 10 Step 6: Board/Checkpoint Structural Parity Logging Implementation
 
-- **Status**: Pending explicit approval.
+- **Status**: Done.
 - **Goal**: Implement diagnostic-only parity logging between prepass compiler facts and legacy board/checkpoint handler outcomes.
 - **Allowed**:
   - Narrow logging / checkpoint-state observation updates only.
@@ -1547,8 +1547,29 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Any mutation of checkpoint outcome flags from prepass facts.
   - Any reuse of prepass analysis inside `_run_classification_stage`.
   - Any dispatch, final-answer, stop-gate, `ActionPolicy`, parser, or `history.py` changes.
+- **Completed Outcome**:
+  - Prepass-vs-legacy checkpoint parity is now observable in `_run_checkpoint_stage`.
+  - The bridge logs compiler/prepass structural facts alongside legacy plan/memory checkpoint outcome categories.
+  - Missing compiler analysis is tolerated, and logging failures do not affect runtime behavior.
+  - No authority transfer happened. Legacy board handlers remain authoritative.
+  - No board commit, checkpoint routing, dispatch, final-answer, stop-gate, `ActionPolicy`, parser, or `history.py` behavior changed.
+
+---
+
+#### Phase 10 Step 7: Board/Checkpoint Parity Review / First Authority Migration Decision
+
+- **Status**: Pending explicit approval.
+- **Goal**: Review parity evidence from Step 6 and decide whether any first authority migration is safe.
+- **Allowed**:
+  - Read-only analysis.
+  - Docs-only design updates.
+- **Forbidden**:
+  - Any authority transfer before the review is complete.
+  - Any board commit logic changes.
+  - Any checkpoint routing changes.
+  - Any reuse of prepass analysis inside `_run_classification_stage`.
 - **Done When**:
-  - Prepass-vs-legacy checkpoint parity is observable without changing runtime behavior.
+  - The next safe checkpoint/board migration target is chosen, or a no-go/defer decision is recorded.
 
 ---
 

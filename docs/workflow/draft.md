@@ -111,4 +111,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 107. Phase 10 Step 4: Pure Structural Diagnosis Extraction + Early Prepass: done.
 108. Phase 10 Step 4B: Structural Prepass Parity / Reuse Decision: done.
 109. Phase 10 Step 5: First Board/Checkpoint Consumer Migration (Design): done.
-110. Next: Phase 10 Step 6: Board/Checkpoint Structural Parity Logging Implementation.
+110. Phase 10 Step 6: Board/Checkpoint Structural Parity Logging Implementation: done.
+111. Next: Phase 10 Step 7: Board/Checkpoint Parity Review / First Authority Migration Decision.
