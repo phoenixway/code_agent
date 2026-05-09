@@ -719,6 +719,53 @@ class TestResponsePipelineCheckpointStageCharacterization(unittest.TestCase):
         self.assertEqual(True, mock_parity.call_args.kwargs["plan_checkpoint_only"])
         self.assertEqual(False, mock_parity.call_args.kwargs["memory_checkpoint_only"])
 
+    @patch("modules.agent.orchestration.responses.response_pipeline_stages.build_board_checkpoint_semantic_result")
+    def test_checkpoint_stage_plan_checkpoint_only_legacy_wins_when_typed_result_disagrees(self, mock_build):
+        self.harness.protocol_compiler.analyze.return_value = SimpleNamespace(
+            shape=SimpleNamespace(name="CHECKPOINT_ONLY"),
+            error=None,
+            ir=SimpleNamespace(
+                has_action=False,
+                action_count=0,
+                has_checkpoint=True,
+                has_memory_tags=False,
+                has_subgoal_tags=True,
+                has_memory_checkpoint=False,
+                has_visible_answer=False,
+                has_pre_action_text=False,
+                visible_text_source="NONE",
+            ),
+        )
+        self.harness.plan_board_stage.apply.return_value = SimpleNamespace(
+            handled=True,
+            response_text="response",
+            next_query="next_query_from_plan_board",
+            reason="plan_checkpoint_only",
+            source="plan_board",
+            plan_checkpoint_only=True,
+            plan_checkpoint_and_text=False,
+            plan_checkpoint_and_action=False,
+        )
+        mock_build.return_value = BoardCheckpointSemanticResult(
+            kind=BoardCheckpointKind.MEMORY_CHECKPOINT_ONLY,
+            source=BoardCheckpointSource.COMBINED_SHADOW,
+            reason_code="forced_test_disagreement",
+        )
+
+        state, outcome = asyncio.run(
+            self.harness._run_checkpoint_stage(
+                self.ctx, "response", reflection_repair_pending=False, reflection_repair_kind=""
+            )
+        )
+
+        self.assertIsNotNone(state)
+        self.assertIsInstance(outcome, ResponsePipelineOutcome)
+        self.assertTrue(outcome.continue_loop)
+        self.assertEqual("next_query_from_plan_board", outcome.next_query)
+        self.assertEqual("plan_checkpoint_only", outcome.reason)
+        self.assertTrue(state.plan_checkpoint_only)
+        self.harness.memory_board_stage.apply.assert_not_called()
+
     def test_checkpoint_stage_with_no_checkpoints_passes_through(self):
         """Characterizes the passthrough case where no checkpoints are detected."""
         self.harness.plan_board_stage.apply.return_value = SimpleNamespace(
@@ -743,6 +790,48 @@ class TestResponsePipelineCheckpointStageCharacterization(unittest.TestCase):
         self.assertFalse(state.memory_checkpoint_only)
         self.assertFalse(state.memory_checkpoint_and_text)
         self.assertFalse(state.plan_checkpoint_only)
+        self.assertEqual(BoardCheckpointKind.NONE, state.board_checkpoint_semantic_result.kind)
+
+    def test_checkpoint_stage_compiler_prepass_only_plan_facts_do_not_trigger_routing(self):
+        self.harness.protocol_compiler.analyze.return_value = SimpleNamespace(
+            shape=SimpleNamespace(name="CHECKPOINT_ONLY"),
+            error=None,
+            ir=SimpleNamespace(
+                has_action=False,
+                action_count=0,
+                has_checkpoint=True,
+                has_memory_tags=False,
+                has_subgoal_tags=True,
+                has_memory_checkpoint=False,
+                has_visible_answer=False,
+                has_pre_action_text=False,
+                visible_text_source="NONE",
+            ),
+        )
+        self.harness.plan_board_stage.apply.return_value = SimpleNamespace(
+            handled=False,
+            response_text="response",
+            plan_checkpoint_only=False,
+            plan_checkpoint_and_text=False,
+            plan_checkpoint_and_action=False,
+        )
+        self.harness.memory_board_stage.apply.return_value = SimpleNamespace(
+            handled=False,
+            response_text="response",
+            memory_checkpoint_only=False,
+            memory_checkpoint_and_text=False,
+            memory_checkpoint_and_action=False,
+        )
+
+        state, outcome = asyncio.run(
+            self.harness._run_checkpoint_stage(
+                self.ctx, "response", reflection_repair_pending=False, reflection_repair_kind=""
+            )
+        )
+
+        self.assertIsNone(outcome)
+        self.assertFalse(state.plan_checkpoint_only)
+        self.assertFalse(state.memory_checkpoint_only)
         self.assertEqual(BoardCheckpointKind.NONE, state.board_checkpoint_semantic_result.kind)
 
     @patch("modules.agent.orchestration.responses.response_pipeline_prevalidation.ResponsePipelinePrevalidationMixin._run_structural_diagnosis_prepass")

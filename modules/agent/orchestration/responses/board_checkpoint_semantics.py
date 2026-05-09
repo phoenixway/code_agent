@@ -52,6 +52,17 @@ def is_legacy_derived_memory_checkpoint_and_text(
     )
 
 
+def is_legacy_derived_plan_checkpoint_only(
+    result: BoardCheckpointSemanticResult | None,
+    *,
+    legacy_plan_checkpoint_only: bool,
+) -> bool:
+    return bool(
+        legacy_plan_checkpoint_only
+        and legacy_derived_checkpoint_kind(result) == BoardCheckpointKind.PLAN_CHECKPOINT_ONLY
+    )
+
+
 def build_board_checkpoint_semantic_result(
     compiler_analysis,
     *,

@@ -484,6 +484,25 @@ This design-only step is complete. It analyzed whether it is safe for the classi
   - disagreement tests proving legacy flags win
   - confirmation that compiler/prepass-only checkpoint facts do not trigger routing
 
-### 3.15. Next Intended Step
+### 3.15. Step 14: Plan Checkpoint Typed Read-Through
 
-The next step is **Phase 10 Step 14: Plan Checkpoint Typed Read-Through or Memory Branch Fallback Tightening**.
+- **Implementation Outcome**:
+  - `_run_checkpoint_stage(...)` now extends legacy-derived typed read-through to the plan checkpoint-only branch.
+  - The migrated read-through is limited to:
+    - `PLAN_CHECKPOINT_ONLY`
+  - The typed result is used only when it is legacy-derived and confirms the same legacy bool.
+  - Legacy flags still win on disagreement.
+- **What did not change**:
+  - Compiler/prepass facts still do not decide checkpoint routing.
+  - Board commit behavior did not change.
+  - `PlanBoardStageHandler` and `MemoryBoardStageHandler` behavior did not change.
+  - Checkpoint flags are not mutated from compiler/prepass facts.
+  - This remains a legacy-derived typed mirror, not an authority transfer.
+- **Coverage added**:
+  - typed read-through for `plan_checkpoint_only`
+  - disagreement test proving legacy `plan_checkpoint_only` still wins
+  - confirmation that compiler/prepass-only plan checkpoint facts do not trigger routing
+
+### 3.16. Next Intended Step
+
+The next step is **Phase 10 Step 15: Checkpoint Typed Read-Through Closure / Remaining Branch Decision**.

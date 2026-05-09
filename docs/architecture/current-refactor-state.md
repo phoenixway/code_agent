@@ -4,9 +4,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 10 Step 13: First Narrow BoardCheckpoint Consumer Migration
+- **Phase**: Phase 10 Step 14: Plan Checkpoint Typed Read-Through
 - **Status**: Complete.
-- **Next Step**: Phase 10 Step 14: Plan Checkpoint Typed Read-Through or Memory Branch Fallback Tightening.
+- **Next Step**: Phase 10 Step 15: Checkpoint Typed Read-Through Closure / Remaining Branch Decision.
 - **Boundary**: The checkpoint parity bridge remains diagnostic-only. Legacy board handlers still own commit behavior, the prepass compiler analysis remains observational, and `_apply_compiler_diagnosis` remains the effectful classification-stage path that recomputes on normalized response.
 
 ## Step 4I Parity Matrix
@@ -936,6 +936,29 @@ This document is the single source of truth for the current state of the Semanti
   - continued coverage that compiler/prepass-only checkpoint facts do not trigger routing
 - **Next step**
   - Phase 10 Step 14: Plan Checkpoint Typed Read-Through or Memory Branch Fallback Tightening.
+
+## Phase 10 Step 14: Plan Checkpoint Typed Read-Through (Complete)
+
+- **Implementation outcome**
+  - `_run_checkpoint_stage(...)` now performs legacy-derived typed read-through for the `PLAN_CHECKPOINT_ONLY` branch.
+  - The typed result is only used when it is legacy-derived and confirms the same legacy bool.
+- **Authority boundary**
+  - This is not compiler/prepass authority.
+  - This is not board commit migration.
+  - Legacy board handlers remain authoritative.
+  - Legacy flags still win on disagreement.
+  - Compiler/prepass-only checkpoint facts cannot trigger routing.
+- **Behavior boundary**
+  - No observable checkpoint routing behavior changed.
+  - No board commit behavior changed.
+  - No checkpoint flags are mutated from compiler/prepass facts.
+  - No dispatch, final-answer, stop-gate, `ActionPolicy`, parser, or `history.py` behavior changed.
+- **Test coverage**
+  - typed read-through path for `plan_checkpoint_only`
+  - disagreement test proving legacy plan flag wins
+  - continued coverage that compiler/prepass-only plan checkpoint facts do not trigger routing
+- **Next step**
+  - Phase 10 Step 15: Checkpoint Typed Read-Through Closure / Remaining Branch Decision.
 
 ## Phase 9 Step 6D Outcome
 

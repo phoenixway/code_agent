@@ -119,4 +119,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 115. Phase 10 Step 11: Board/Checkpoint Semantic Model Parity Review / First Consumer Migration Decision: done.
 116. Phase 10 Step 12: BoardCheckpoint Semantic Model Refinement + Pure Builder Extraction: done.
 117. Phase 10 Step 13: First Narrow BoardCheckpoint Consumer Migration: done.
-118. Next: Phase 10 Step 14: Plan Checkpoint Typed Read-Through or Memory Branch Fallback Tightening.
+118. Phase 10 Step 14: Plan Checkpoint Typed Read-Through: done.
+119. Next: Phase 10 Step 15: Checkpoint Typed Read-Through Closure / Remaining Branch Decision.

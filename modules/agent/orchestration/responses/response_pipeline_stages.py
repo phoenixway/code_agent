@@ -10,6 +10,7 @@ from ..shared.trace import compact_compiler_replay
 from .board_checkpoint_semantics import build_board_checkpoint_semantic_result
 from .board_checkpoint_semantics import is_legacy_derived_memory_checkpoint_and_text
 from .board_checkpoint_semantics import is_legacy_derived_memory_checkpoint_only
+from .board_checkpoint_semantics import is_legacy_derived_plan_checkpoint_only
 from .board_checkpoint_semantics import checkpoint_outcome_category
 from .protocol_decision_bridge import compiler_invalid_kind_for_output, resolve_protocol_authority
 from .semantic_accessors import is_leaked_system_result
@@ -324,10 +325,15 @@ class ResponsePipelineStagesMixin:
             memory_checkpoint_and_text=False,
             memory_checkpoint_and_action=False,
         )
+        typed_plan_checkpoint_only = is_legacy_derived_plan_checkpoint_only(
+            plan_semantic_result,
+            legacy_plan_checkpoint_only=plan_checkpoint_only,
+        )
+        effective_plan_checkpoint_only = bool(typed_plan_checkpoint_only or plan_checkpoint_only)
         if plan_board_decision.handled:
             self._log_board_checkpoint_structural_parity(
                 compiler_analysis,
-                plan_checkpoint_only=plan_checkpoint_only,
+                plan_checkpoint_only=effective_plan_checkpoint_only,
                 plan_checkpoint_and_text=plan_checkpoint_and_text,
                 plan_checkpoint_and_action=plan_checkpoint_and_action,
                 memory_checkpoint_only=False,
@@ -338,7 +344,7 @@ class ResponsePipelineStagesMixin:
                 response=response_after_plan,
                 reflection_repair_pending=reflection_repair_pending,
                 reflection_repair_kind=reflection_repair_kind,
-                plan_checkpoint_only=plan_checkpoint_only,
+                plan_checkpoint_only=effective_plan_checkpoint_only,
                 plan_checkpoint_and_text=plan_checkpoint_and_text,
                 plan_checkpoint_and_action=plan_checkpoint_and_action,
                 memory_checkpoint_only=False,

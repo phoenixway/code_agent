@@ -1715,20 +1715,43 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
-#### Phase 10 Step 14: Plan Checkpoint Typed Read-Through or Memory Branch Fallback Tightening
+#### Phase 10 Step 14: Plan Checkpoint Typed Read-Through
 
-- **Status**: Pending explicit approval.
-- **Goal**: Decide whether the next narrow migration should be plan-checkpoint typed read-through or further tightening/cleanup of memory-branch fallback behavior.
+- **Status**: Done.
+- **Goal**: Extend the same legacy-derived typed read-through pattern to the plan checkpoint-only branch.
 - **Allowed**:
-  - Read-only review or narrow behavior-preserving implementation, if explicitly approved later.
   - Legacy-derived typed read-through only.
+  - Explicit legacy fallback.
+  - Tests proving no behavior drift.
 - **Forbidden**:
   - Any compiler/prepass authority transfer.
   - Any board commit logic changes.
   - Any mutation of checkpoint flags from compiler/prepass facts.
   - Any reuse of prepass analysis inside `_run_classification_stage`.
 - **Done When**:
-  - The next narrow checkpoint-consumer step is clearly selected and bounded.
+  - `PLAN_CHECKPOINT_ONLY` uses legacy-derived typed read-through without changing runtime behavior.
+- **Completed Outcome**:
+  - `_run_checkpoint_stage(...)` now reads a legacy-derived typed result for `PLAN_CHECKPOINT_ONLY`.
+  - Legacy flags remain the final fallback and win on disagreement.
+  - Compiler/prepass-only plan checkpoint facts still cannot trigger routing.
+  - No board commit or routing behavior changed.
+
+---
+
+#### Phase 10 Step 15: Checkpoint Typed Read-Through Closure / Remaining Branch Decision
+
+- **Status**: Pending explicit approval.
+- **Goal**: Review the current typed read-through slice and decide whether any remaining checkpoint branches should migrate or remain on legacy fallback.
+- **Allowed**:
+  - Read-only review or docs-only closure work.
+  - Narrow migration-candidate analysis.
+- **Forbidden**:
+  - Any compiler/prepass authority transfer.
+  - Any board commit logic changes.
+  - Any mutation of checkpoint flags from compiler/prepass facts.
+  - Any reuse of prepass analysis inside `_run_classification_stage`.
+- **Done When**:
+  - The typed read-through slice is either closed or a clearly bounded next branch is selected.
 
 ---
 
