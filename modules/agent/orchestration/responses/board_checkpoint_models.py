@@ -45,6 +45,12 @@ class BoardCheckpointSemanticResult:
     compiler_has_subgoal_tags: bool = False
     compiler_has_memory_checkpoint: bool = False
     compiler_visible_text_source: str = ""
+    legacy_has_checkpoint: bool = False
+    compiler_has_checkpoint_like: bool = False
+    legacy_has_visible_text: bool = False
+    compiler_has_visible_text: bool = False
+    legacy_has_action: bool = False
+    compiler_has_action: bool = False
     parity_available: bool = False
     parity_aligned: bool = False
     parity_mismatch_reason: str = ""

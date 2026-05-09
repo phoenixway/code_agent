@@ -1,0 +1,172 @@
+"""Pure observational builder for board/checkpoint semantic results."""
+
+from __future__ import annotations
+
+from .board_checkpoint_models import (
+    BoardCheckpointKind,
+    BoardCheckpointSemanticResult,
+    BoardCheckpointSource,
+)
+
+
+def checkpoint_outcome_category(*, checkpoint_only: bool, checkpoint_and_text: bool, checkpoint_and_action: bool) -> str:
+    if checkpoint_and_action:
+        return "checkpoint_and_action"
+    if checkpoint_and_text:
+        return "checkpoint_and_text"
+    if checkpoint_only:
+        return "checkpoint_only"
+    return "none"
+
+
+def build_board_checkpoint_semantic_result(
+    compiler_analysis,
+    *,
+    raw_response: str,
+    response_text: str,
+    plan_checkpoint_only: bool,
+    plan_checkpoint_and_text: bool,
+    plan_checkpoint_and_action: bool,
+    memory_checkpoint_only: bool,
+    memory_checkpoint_and_text: bool,
+    memory_checkpoint_and_action: bool,
+) -> BoardCheckpointSemanticResult:
+    ir = getattr(compiler_analysis, "ir", None) if compiler_analysis is not None else None
+    compiler_shape = str(getattr(getattr(compiler_analysis, "shape", None), "name", "") or "")
+    compiler_error_code = str(getattr(getattr(compiler_analysis, "error", None), "code", "") or "")
+    compiler_recovery_id = str(getattr(getattr(compiler_analysis, "error", None), "recovery_id", "") or "")
+    compiler_has_checkpoint = bool(getattr(ir, "has_checkpoint", False))
+    compiler_has_memory_tags = bool(getattr(ir, "has_memory_tags", False))
+    compiler_has_subgoal_tags = bool(getattr(ir, "has_subgoal_tags", False))
+    compiler_has_memory_checkpoint = bool(getattr(ir, "has_memory_checkpoint", False))
+    compiler_visible_text_source = str(getattr(ir, "visible_text_source", "") or "")
+    compiler_has_visible_answer = bool(getattr(ir, "has_visible_answer", False))
+    compiler_has_pre_action_text = bool(getattr(ir, "has_pre_action_text", False))
+    compiler_has_action = bool(getattr(ir, "has_action", False))
+
+    plan_outcome = checkpoint_outcome_category(
+        checkpoint_only=plan_checkpoint_only,
+        checkpoint_and_text=plan_checkpoint_and_text,
+        checkpoint_and_action=plan_checkpoint_and_action,
+    )
+    memory_outcome = checkpoint_outcome_category(
+        checkpoint_only=memory_checkpoint_only,
+        checkpoint_and_text=memory_checkpoint_and_text,
+        checkpoint_and_action=memory_checkpoint_and_action,
+    )
+
+    non_none_outcomes = [value for value in (plan_outcome, memory_outcome) if value != "none"]
+    if len(non_none_outcomes) > 1:
+        kind = BoardCheckpointKind.MIXED_BOARD_CHECKPOINT
+        reason_code = "mixed_plan_and_memory_checkpoint_outcomes"
+    elif memory_outcome == "checkpoint_only":
+        kind = BoardCheckpointKind.MEMORY_CHECKPOINT_ONLY
+        reason_code = "legacy_memory_checkpoint_only"
+    elif memory_outcome == "checkpoint_and_text":
+        kind = BoardCheckpointKind.MEMORY_CHECKPOINT_WITH_TEXT
+        reason_code = "legacy_memory_checkpoint_and_text"
+    elif memory_outcome == "checkpoint_and_action":
+        kind = BoardCheckpointKind.MEMORY_CHECKPOINT_WITH_ACTION
+        reason_code = "legacy_memory_checkpoint_and_action"
+    elif plan_outcome == "checkpoint_only":
+        kind = BoardCheckpointKind.PLAN_CHECKPOINT_ONLY
+        reason_code = "legacy_plan_checkpoint_only"
+    elif plan_outcome == "checkpoint_and_text":
+        kind = BoardCheckpointKind.PLAN_CHECKPOINT_WITH_TEXT
+        reason_code = "legacy_plan_checkpoint_and_text"
+    elif plan_outcome == "checkpoint_and_action":
+        kind = BoardCheckpointKind.PLAN_CHECKPOINT_WITH_ACTION
+        reason_code = "legacy_plan_checkpoint_and_action"
+    elif compiler_analysis is None:
+        kind = BoardCheckpointKind.UNKNOWN
+        reason_code = "compiler_analysis_unavailable"
+    else:
+        kind = BoardCheckpointKind.NONE
+        reason_code = "no_checkpoint_outcome"
+
+    if compiler_analysis is None and non_none_outcomes:
+        source = BoardCheckpointSource.LEGACY_HANDLER_OUTCOME
+    elif compiler_analysis is None:
+        source = BoardCheckpointSource.FALLBACK
+    elif non_none_outcomes:
+        source = BoardCheckpointSource.COMBINED_SHADOW
+    else:
+        source = BoardCheckpointSource.COMPILER_PREPASS_FACT
+
+    clean_text_present = bool(str(response_text or "").strip())
+    raw_text_present = bool(str(raw_response or "").strip())
+    legacy_has_visible_text = bool(plan_checkpoint_and_text or memory_checkpoint_and_text)
+    compiler_has_visible_text = bool(compiler_has_visible_answer or compiler_has_pre_action_text)
+    has_visible_text = bool(legacy_has_visible_text or compiler_has_visible_text)
+    legacy_has_action = bool(plan_checkpoint_and_action or memory_checkpoint_and_action)
+    has_action = bool(legacy_has_action or compiler_has_action)
+    parity_available = compiler_analysis is not None and ir is not None
+    legacy_has_checkpoint = bool(non_none_outcomes)
+    compiler_has_checkpoint_like = bool(
+        compiler_has_checkpoint
+        or compiler_has_memory_tags
+        or compiler_has_subgoal_tags
+        or compiler_has_memory_checkpoint
+    )
+    parity_aligned = bool(
+        parity_available
+        and not compiler_error_code
+        and legacy_has_checkpoint == compiler_has_checkpoint_like
+    )
+    parity_mismatch_reason = ""
+    if not parity_available:
+        parity_mismatch_reason = "compiler_analysis_unavailable"
+    elif compiler_error_code:
+        parity_mismatch_reason = "compiler_invalid_prepass"
+    elif legacy_has_checkpoint != compiler_has_checkpoint_like:
+        parity_mismatch_reason = "checkpoint_presence_mismatch"
+
+    evidence: list[str] = []
+    if plan_outcome != "none":
+        evidence.append(f"legacy_plan_outcome:{plan_outcome}")
+    if memory_outcome != "none":
+        evidence.append(f"legacy_memory_outcome:{memory_outcome}")
+    if compiler_has_checkpoint:
+        evidence.append("compiler_has_checkpoint")
+    if compiler_has_memory_tags:
+        evidence.append("compiler_has_memory_tags")
+    if compiler_has_subgoal_tags:
+        evidence.append("compiler_has_subgoal_tags")
+    if compiler_has_memory_checkpoint:
+        evidence.append("compiler_has_memory_checkpoint")
+    if compiler_visible_text_source:
+        evidence.append(f"compiler_visible_text_source:{compiler_visible_text_source}")
+
+    return BoardCheckpointSemanticResult(
+        kind=kind,
+        source=source,
+        reason_code=reason_code,
+        evidence=tuple(evidence),
+        has_visible_text=has_visible_text,
+        has_action=has_action,
+        clean_text_present=clean_text_present,
+        raw_text_present=raw_text_present,
+        legacy_plan_outcome=plan_outcome,
+        legacy_memory_outcome=memory_outcome,
+        compiler_shape=compiler_shape,
+        compiler_error_code=compiler_error_code,
+        compiler_recovery_id=compiler_recovery_id,
+        compiler_has_checkpoint=compiler_has_checkpoint,
+        compiler_has_memory_tags=compiler_has_memory_tags,
+        compiler_has_subgoal_tags=compiler_has_subgoal_tags,
+        compiler_has_memory_checkpoint=compiler_has_memory_checkpoint,
+        compiler_visible_text_source=compiler_visible_text_source,
+        legacy_has_checkpoint=legacy_has_checkpoint,
+        compiler_has_checkpoint_like=compiler_has_checkpoint_like,
+        legacy_has_visible_text=legacy_has_visible_text,
+        compiler_has_visible_text=compiler_has_visible_text,
+        legacy_has_action=legacy_has_action,
+        compiler_has_action=compiler_has_action,
+        parity_available=parity_available,
+        parity_aligned=parity_aligned,
+        parity_mismatch_reason=parity_mismatch_reason,
+        details={
+            "raw_text_present": str(raw_text_present).lower(),
+            "clean_text_present": str(clean_text_present).lower(),
+        },
+    )

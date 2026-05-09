@@ -6,8 +6,9 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from modules.agent.orchestration.responses.response_pipeline_prevalidation import ResponsePipelinePrevalidationMixin
-from modules.agent.orchestration.responses.response_pipeline_stages import CheckpointStageState, ResponsePipelineStagesMixin
 from modules.agent.orchestration.responses.board_checkpoint_models import BoardCheckpointKind, BoardCheckpointSource
+from modules.agent.orchestration.responses.board_checkpoint_semantics import build_board_checkpoint_semantic_result
+from modules.agent.orchestration.responses.response_pipeline_stages import CheckpointStageState, ResponsePipelineStagesMixin
 from modules.agent.orchestration.responses.terminal_answer_models import TerminalAnswerKind, TerminalAnswerSemanticResult
 from modules.agent.orchestration.shared.decision_models import ParsedModelOutput, ResponsePipelineOutcome
 
@@ -306,6 +307,226 @@ class TestResponsePipelineStages(unittest.TestCase):
         self.assertEqual("dispatch_ready", outcome.reason)
         self.assertIsNone(outcome.execution_plan)
         self.assertEqual([action_segment], outcome.segments)
+
+
+class TestBoardCheckpointSemanticBuilder(unittest.TestCase):
+    def test_builder_memory_checkpoint_only(self):
+        compiler_analysis = SimpleNamespace(
+            shape=SimpleNamespace(name="CHECKPOINT_ONLY"),
+            error=None,
+            ir=SimpleNamespace(
+                has_action=False,
+                has_checkpoint=True,
+                has_memory_tags=True,
+                has_subgoal_tags=False,
+                has_memory_checkpoint=True,
+                has_visible_answer=False,
+                has_pre_action_text=False,
+                visible_text_source="NONE",
+            ),
+        )
+
+        result = build_board_checkpoint_semantic_result(
+            compiler_analysis,
+            raw_response="raw",
+            response_text="clean",
+            plan_checkpoint_only=False,
+            plan_checkpoint_and_text=False,
+            plan_checkpoint_and_action=False,
+            memory_checkpoint_only=True,
+            memory_checkpoint_and_text=False,
+            memory_checkpoint_and_action=False,
+        )
+
+        self.assertEqual(BoardCheckpointKind.MEMORY_CHECKPOINT_ONLY, result.kind)
+        self.assertEqual(BoardCheckpointSource.COMBINED_SHADOW, result.source)
+        self.assertTrue(result.legacy_has_checkpoint)
+        self.assertTrue(result.compiler_has_checkpoint_like)
+        self.assertFalse(result.legacy_has_visible_text)
+        self.assertFalse(result.compiler_has_visible_text)
+        self.assertFalse(result.legacy_has_action)
+        self.assertFalse(result.compiler_has_action)
+
+    def test_builder_memory_checkpoint_and_text(self):
+        compiler_analysis = SimpleNamespace(
+            shape=SimpleNamespace(name="CHECKPOINT_WITH_VISIBLE_TEXT"),
+            error=None,
+            ir=SimpleNamespace(
+                has_action=False,
+                has_checkpoint=True,
+                has_memory_tags=True,
+                has_subgoal_tags=False,
+                has_memory_checkpoint=True,
+                has_visible_answer=True,
+                has_pre_action_text=False,
+                visible_text_source="CHECKPOINT_ACCOMPANYING_TEXT",
+            ),
+        )
+
+        result = build_board_checkpoint_semantic_result(
+            compiler_analysis,
+            raw_response="raw",
+            response_text="clean",
+            plan_checkpoint_only=False,
+            plan_checkpoint_and_text=False,
+            plan_checkpoint_and_action=False,
+            memory_checkpoint_only=False,
+            memory_checkpoint_and_text=True,
+            memory_checkpoint_and_action=False,
+        )
+
+        self.assertEqual(BoardCheckpointKind.MEMORY_CHECKPOINT_WITH_TEXT, result.kind)
+        self.assertTrue(result.has_visible_text)
+        self.assertTrue(result.legacy_has_visible_text)
+        self.assertTrue(result.compiler_has_visible_text)
+
+    def test_builder_plan_checkpoint_only(self):
+        compiler_analysis = SimpleNamespace(
+            shape=SimpleNamespace(name="CHECKPOINT_ONLY"),
+            error=None,
+            ir=SimpleNamespace(
+                has_action=False,
+                has_checkpoint=True,
+                has_memory_tags=False,
+                has_subgoal_tags=True,
+                has_memory_checkpoint=False,
+                has_visible_answer=False,
+                has_pre_action_text=False,
+                visible_text_source="NONE",
+            ),
+        )
+
+        result = build_board_checkpoint_semantic_result(
+            compiler_analysis,
+            raw_response="raw",
+            response_text="clean",
+            plan_checkpoint_only=True,
+            plan_checkpoint_and_text=False,
+            plan_checkpoint_and_action=False,
+            memory_checkpoint_only=False,
+            memory_checkpoint_and_text=False,
+            memory_checkpoint_and_action=False,
+        )
+
+        self.assertEqual(BoardCheckpointKind.PLAN_CHECKPOINT_ONLY, result.kind)
+        self.assertEqual("checkpoint_only", result.legacy_plan_outcome)
+        self.assertEqual("none", result.legacy_memory_outcome)
+
+    def test_builder_mixed_plan_and_memory_outcomes(self):
+        compiler_analysis = SimpleNamespace(
+            shape=SimpleNamespace(name="CHECKPOINT_WITH_VISIBLE_TEXT"),
+            error=None,
+            ir=SimpleNamespace(
+                has_action=False,
+                has_checkpoint=True,
+                has_memory_tags=True,
+                has_subgoal_tags=True,
+                has_memory_checkpoint=True,
+                has_visible_answer=True,
+                has_pre_action_text=False,
+                visible_text_source="CHECKPOINT_ACCOMPANYING_TEXT",
+            ),
+        )
+
+        result = build_board_checkpoint_semantic_result(
+            compiler_analysis,
+            raw_response="raw",
+            response_text="clean",
+            plan_checkpoint_only=False,
+            plan_checkpoint_and_text=True,
+            plan_checkpoint_and_action=False,
+            memory_checkpoint_only=False,
+            memory_checkpoint_and_text=True,
+            memory_checkpoint_and_action=False,
+        )
+
+        self.assertEqual(BoardCheckpointKind.MIXED_BOARD_CHECKPOINT, result.kind)
+        self.assertEqual("checkpoint_and_text", result.legacy_plan_outcome)
+        self.assertEqual("checkpoint_and_text", result.legacy_memory_outcome)
+
+    def test_builder_no_checkpoint(self):
+        compiler_analysis = SimpleNamespace(
+            shape=SimpleNamespace(name="ACTION_ONLY"),
+            error=None,
+            ir=SimpleNamespace(
+                has_action=True,
+                has_checkpoint=False,
+                has_memory_tags=False,
+                has_subgoal_tags=False,
+                has_memory_checkpoint=False,
+                has_visible_answer=False,
+                has_pre_action_text=False,
+                visible_text_source="NONE",
+            ),
+        )
+
+        result = build_board_checkpoint_semantic_result(
+            compiler_analysis,
+            raw_response="raw",
+            response_text="clean",
+            plan_checkpoint_only=False,
+            plan_checkpoint_and_text=False,
+            plan_checkpoint_and_action=False,
+            memory_checkpoint_only=False,
+            memory_checkpoint_and_text=False,
+            memory_checkpoint_and_action=False,
+        )
+
+        self.assertEqual(BoardCheckpointKind.NONE, result.kind)
+        self.assertFalse(result.legacy_has_checkpoint)
+        self.assertFalse(result.compiler_has_checkpoint_like)
+        self.assertTrue(result.compiler_has_action)
+        self.assertTrue(result.has_action)
+
+    def test_builder_missing_compiler_analysis(self):
+        result = build_board_checkpoint_semantic_result(
+            None,
+            raw_response="raw",
+            response_text="clean",
+            plan_checkpoint_only=False,
+            plan_checkpoint_and_text=False,
+            plan_checkpoint_and_action=False,
+            memory_checkpoint_only=False,
+            memory_checkpoint_and_text=False,
+            memory_checkpoint_and_action=False,
+        )
+
+        self.assertEqual(BoardCheckpointKind.UNKNOWN, result.kind)
+        self.assertEqual(BoardCheckpointSource.FALLBACK, result.source)
+        self.assertFalse(result.parity_available)
+        self.assertEqual("compiler_analysis_unavailable", result.parity_mismatch_reason)
+
+    def test_builder_checkpoint_presence_mismatch(self):
+        compiler_analysis = SimpleNamespace(
+            shape=SimpleNamespace(name="ACTION_ONLY"),
+            error=None,
+            ir=SimpleNamespace(
+                has_action=True,
+                has_checkpoint=False,
+                has_memory_tags=False,
+                has_subgoal_tags=False,
+                has_memory_checkpoint=False,
+                has_visible_answer=False,
+                has_pre_action_text=False,
+                visible_text_source="NONE",
+            ),
+        )
+
+        result = build_board_checkpoint_semantic_result(
+            compiler_analysis,
+            raw_response="raw",
+            response_text="clean",
+            plan_checkpoint_only=False,
+            plan_checkpoint_and_text=False,
+            plan_checkpoint_and_action=False,
+            memory_checkpoint_only=True,
+            memory_checkpoint_and_text=False,
+            memory_checkpoint_and_action=False,
+        )
+
+        self.assertTrue(result.parity_available)
+        self.assertFalse(result.parity_aligned)
+        self.assertEqual("checkpoint_presence_mismatch", result.parity_mismatch_reason)
 
 
 class TestResponsePipelineCheckpointStageCharacterization(unittest.TestCase):
@@ -668,6 +889,56 @@ class TestResponsePipelineCheckpointStageCharacterization(unittest.TestCase):
         self.assertEqual(BoardCheckpointKind.MIXED_BOARD_CHECKPOINT, state.board_checkpoint_semantic_result.kind)
         self.assertEqual("checkpoint_and_text", state.board_checkpoint_semantic_result.legacy_plan_outcome)
         self.assertEqual("checkpoint_and_text", state.board_checkpoint_semantic_result.legacy_memory_outcome)
+
+    def test_checkpoint_stage_attaches_same_result_as_pure_builder(self):
+        compiler_analysis = SimpleNamespace(
+            shape=SimpleNamespace(name="CHECKPOINT_WITH_VISIBLE_TEXT"),
+            error=None,
+            ir=SimpleNamespace(
+                has_action=False,
+                action_count=0,
+                has_checkpoint=True,
+                has_memory_tags=True,
+                has_subgoal_tags=False,
+                has_memory_checkpoint=True,
+                has_visible_answer=True,
+                has_pre_action_text=False,
+                visible_text_source="CHECKPOINT_ACCOMPANYING_TEXT",
+            ),
+        )
+        self.harness.protocol_compiler.analyze.return_value = compiler_analysis
+        self.harness.plan_board_stage.apply.return_value = SimpleNamespace(handled=False, response_text="response")
+        self.harness.memory_board_stage.apply.return_value = SimpleNamespace(
+            handled=True,
+            response_text="response",
+            next_query="next_query",
+            reason="memory_checkpoint_and_text",
+            source="memory_board",
+            memory_checkpoint_only=False,
+            memory_checkpoint_and_text=True,
+            memory_checkpoint_and_action=False,
+        )
+
+        state, outcome = asyncio.run(
+            self.harness._run_checkpoint_stage(
+                self.ctx, "response", reflection_repair_pending=False, reflection_repair_kind=""
+            )
+        )
+
+        expected = build_board_checkpoint_semantic_result(
+            compiler_analysis,
+            raw_response="response",
+            response_text="response",
+            plan_checkpoint_only=False,
+            plan_checkpoint_and_text=False,
+            plan_checkpoint_and_action=False,
+            memory_checkpoint_only=False,
+            memory_checkpoint_and_text=True,
+            memory_checkpoint_and_action=False,
+        )
+
+        self.assertIsNone(outcome)
+        self.assertEqual(expected, state.board_checkpoint_semantic_result)
 
     def test_checkpoint_stage_semantic_result_parity_aligned_when_legacy_and_compiler_agree(self):
         self.harness.protocol_compiler.analyze.return_value = SimpleNamespace(

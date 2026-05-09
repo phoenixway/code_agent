@@ -4,9 +4,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 10 Step 10: Board/Checkpoint Semantic Model Skeleton + Shadow Population
+- **Phase**: Phase 10 Step 12: BoardCheckpoint Semantic Model Refinement + Pure Builder Extraction
 - **Status**: Complete.
-- **Next Step**: Phase 10 Step 11: Board/Checkpoint Semantic Model Parity Review / First Consumer Migration Decision.
+- **Next Step**: Phase 10 Step 13: BoardCheckpoint Pure Builder Parity Review / First Safe Consumer Candidate.
 - **Boundary**: The checkpoint parity bridge remains diagnostic-only. Legacy board handlers still own commit behavior, the prepass compiler analysis remains observational, and `_apply_compiler_diagnosis` remains the effectful classification-stage path that recomputes on normalized response.
 
 ## Step 4I Parity Matrix
@@ -846,6 +846,69 @@ This document is the single source of truth for the current state of the Semanti
   - Existing checkpoint routing behavior remains unchanged.
 - **Next step**
   - Phase 10 Step 11: Board/Checkpoint Semantic Model Parity Review / First Consumer Migration Decision.
+
+## Phase 10 Step 11: Board/Checkpoint Semantic Model Parity Review / First Consumer Migration Decision (Complete)
+
+- **Decision**
+  - **NO-GO** for a first authority migration.
+  - `BoardCheckpointSemanticResult` is useful, but it is not yet strong enough to drive any production board/checkpoint consumer.
+- **Why**
+  - The semantic model currently captures checkpoint presence and broad outcome categories, but parity is still too coarse to prove:
+    - commit-equivalence
+    - cleanup-equivalence
+    - routing-equivalence
+  - Remaining risk areas include:
+    - visible-text parity vs handler-local cleaned-text behavior
+    - action parity vs checkpoint-with-action handler behavior
+    - plan-vs-memory distinction in mixed outcomes
+    - compiler-invalid framing vs handler-local cleanup/continuation behavior
+  - `_build_board_checkpoint_semantic_result(...)` is still a large embedded builder in `ResponsePipelineStagesMixin`, which makes future refinement and direct characterization harder than a dedicated pure helper would.
+- **Authority boundary remains unchanged**
+  - Legacy board handlers remain authoritative.
+  - `BoardCheckpointSemanticResult` remains observational only.
+  - Compiler/prepass facts remain structural-only observations.
+  - `_run_classification_stage` still recomputes diagnosis on normalized response and does not reuse prepass analysis.
+- **Next step**
+  - Phase 10 Step 12: BoardCheckpoint Semantic Model Refinement + Pure Builder Extraction.
+
+## Phase 10 Step 12: BoardCheckpoint Semantic Model Refinement + Pure Builder Extraction (Complete)
+
+- **Implementation outcome**
+  - Extracted the board/checkpoint semantic-result construction into a new pure helper module:
+    - `modules/agent/orchestration/responses/board_checkpoint_semantics.py`
+  - `ResponsePipelineStagesMixin._run_checkpoint_stage(...)` now delegates semantic-result construction to the extracted pure helper.
+  - The helper is side-effect-free:
+    - no logging
+    - no state mutation
+    - no handler calls
+    - no pipeline calls
+- **Observational refinement**
+  - Added low-risk observational parity fields:
+    - `legacy_has_checkpoint`
+    - `compiler_has_checkpoint_like`
+    - `legacy_has_visible_text`
+    - `compiler_has_visible_text`
+    - `legacy_has_action`
+    - `compiler_has_action`
+  - These remain diagnostic-only and do not drive routing.
+- **Characterization**
+  - Direct unit tests now cover the pure helper across:
+    - memory checkpoint only
+    - memory checkpoint with text
+    - plan checkpoint only
+    - mixed outcomes
+    - no checkpoint
+    - missing compiler/prepass analysis
+    - checkpoint-presence mismatch
+  - `_run_checkpoint_stage(...)` is also characterized to attach the same result as the pure helper.
+- **Boundary remains unchanged**
+  - No board commit behavior changed.
+  - No checkpoint routing behavior changed.
+  - No checkpoint flags are mutated from the semantic model.
+  - No authority transfer happened.
+  - Legacy board handlers remain authoritative.
+- **Next step**
+  - Phase 10 Step 13: BoardCheckpoint Pure Builder Parity Review / First Safe Consumer Candidate.
 
 ## Phase 9 Step 6D Outcome
 

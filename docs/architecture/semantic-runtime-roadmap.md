@@ -1647,7 +1647,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 10 Step 11: Board/Checkpoint Semantic Model Parity Review / First Consumer Migration Decision
 
-- **Status**: Pending explicit approval.
+- **Status**: Done.
 - **Goal**: Review the new observational semantic model and decide whether any first narrow board/checkpoint consumer migration is safe.
 - **Allowed**:
   - Read-only review of semantic-model population and parity evidence.
@@ -1658,6 +1658,52 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Any mutation of checkpoint flags from the semantic model.
 - **Done When**:
   - A clear GO / NO-GO decision exists for the first consumer migration candidate.
+- **Completed Outcome**:
+  - The decision is **NO-GO** for authority migration.
+  - `BoardCheckpointSemanticResult` is useful but still too coarse for production consumer authority.
+  - Presence-level parity is not commit-equivalence proof and is not yet sufficient to replace handler-local parsing, cleanup, or commit-aware outcomes.
+  - Legacy board handlers remain authoritative.
+  - The semantic model remains observational only.
+
+---
+
+#### Phase 10 Step 12: BoardCheckpoint Semantic Model Refinement + Pure Builder Extraction
+
+- **Status**: Done.
+- **Goal**: Refine the observational semantic model and extract `_build_board_checkpoint_semantic_result(...)` into a dedicated pure helper before any consumer migration is reconsidered.
+- **Allowed**:
+  - Pure-builder extraction.
+  - Additional parity fields and characterization coverage.
+  - Shadow-only observational refinement.
+- **Forbidden**:
+  - Any authority transfer.
+  - Any board commit logic or checkpoint routing changes.
+  - Any mutation of checkpoint flags from the semantic model.
+  - Any reuse of prepass analysis inside `_run_classification_stage`.
+- **Done When**:
+  - The builder is easier to characterize directly and the semantic/parity surface is refined enough for a later migration review.
+- **Completed Outcome**:
+  - The board/checkpoint semantic-result builder was extracted into a dedicated pure helper module.
+  - Direct unit tests now characterize the helper independently from `_run_checkpoint_stage(...)`.
+  - Low-risk observational parity fields were added without changing authority or routing.
+  - `BoardCheckpointSemanticResult` remains observational only.
+
+---
+
+#### Phase 10 Step 13: BoardCheckpoint Pure Builder Parity Review / First Safe Consumer Candidate
+
+- **Status**: Pending explicit approval.
+- **Goal**: Review the extracted pure builder and refined parity surface to decide whether any first narrow consumer candidate is now safe.
+- **Allowed**:
+  - Read-only parity review.
+  - Docs-only migration-candidate analysis.
+- **Forbidden**:
+  - Any authority transfer before parity is proven.
+  - Any board commit logic or checkpoint routing changes.
+  - Any mutation of checkpoint flags from the semantic model.
+  - Any reuse of prepass analysis inside `_run_classification_stage`.
+- **Done When**:
+  - A concrete GO / NO-GO decision exists for the first safe consumer candidate.
 
 ---
 

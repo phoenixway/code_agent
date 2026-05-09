@@ -116,4 +116,6 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 112. Phase 10 Step 8: Direct Board Handler Parsing/Commit Characterization Tests: done.
 113. Phase 10 Step 9: Board/Checkpoint Semantic Model Design: done.
 114. Phase 10 Step 10: Board/Checkpoint Semantic Model Skeleton + Shadow Population: done.
-115. Next: Phase 10 Step 11: Board/Checkpoint Semantic Model Parity Review / First Consumer Migration Decision.
+115. Phase 10 Step 11: Board/Checkpoint Semantic Model Parity Review / First Consumer Migration Decision: done.
+116. Phase 10 Step 12: BoardCheckpoint Semantic Model Refinement + Pure Builder Extraction: done.
+117. Next: Phase 10 Step 13: BoardCheckpoint Pure Builder Parity Review / First Safe Consumer Candidate.

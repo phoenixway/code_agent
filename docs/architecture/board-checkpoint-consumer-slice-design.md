@@ -394,6 +394,69 @@ This design-only step is complete. It analyzed whether it is safe for the classi
   - safe fallback when compiler/prepass analysis is missing
   - confirmation that routing behavior is unchanged
 
-### 3.12. Next Intended Step
+### 3.12. Step 11: Board/Checkpoint Semantic Model Parity Review / First Consumer Migration Decision
 
-The next step is **Phase 10 Step 11: Board/Checkpoint Semantic Model Parity Review / First Consumer Migration Decision**.
+- **Review Conclusion**: **NO-GO** for a first authority migration.
+- **Why authority migration is still blocked**:
+  - `BoardCheckpointSemanticResult` is now a useful typed observational surface, but it is still too coarse to prove commit-equivalence or routing-equivalence.
+  - Current parity fields are mostly presence-level:
+    - checkpoint presence
+    - visible-text presence
+    - action presence
+  - They do not yet prove:
+    - plan-vs-memory outcome equivalence in all edge cases
+    - raw-vs-clean text equivalence
+    - compiler-invalid vs handler-cleanup interactions
+    - commit-result-aware equivalence for planner or memory-engine application
+  - `_build_board_checkpoint_semantic_result(...)` is still a large embedded builder inside `ResponsePipelineStagesMixin`, which makes later refinement and direct characterization harder than a dedicated pure helper would.
+- **Decision**:
+  - Legacy board handlers remain authoritative.
+  - `BoardCheckpointSemanticResult` remains observational only.
+  - Compiler/prepass facts remain structural-only observations.
+  - Step 10 parity fields are diagnostic hints, not migration proof.
+- **Most important remaining risks**:
+  - visible-text parity is still coarser than handler-local cleaned-text behavior
+  - action parity is still coarser than commit-aware checkpoint-with-action behavior
+  - mixed plan+memory outcomes are typed, but not yet strong enough to drive any consumer
+  - compiler-invalid cases still need stronger parity framing before any authority narrowing
+
+### 3.13. Step 12: BoardCheckpoint Semantic Model Refinement + Pure Builder Extraction
+
+- **Implementation Outcome**:
+  - The embedded `_build_board_checkpoint_semantic_result(...)` logic was extracted out of `ResponsePipelineStagesMixin`.
+  - A new pure helper module now owns the semantic builder:
+    - `modules/agent/orchestration/responses/board_checkpoint_semantics.py`
+  - The extracted pure helper:
+    - has no logging
+    - has no state mutation
+    - makes no handler calls
+    - makes no pipeline calls
+    - has no side effects
+  - `_run_checkpoint_stage(...)` now calls the pure helper and attaches the returned observational result exactly as before.
+- **Low-risk refinement added**:
+  - Additional observational-only parity fields were added:
+    - `legacy_has_checkpoint`
+    - `compiler_has_checkpoint_like`
+    - `legacy_has_visible_text`
+    - `compiler_has_visible_text`
+    - `legacy_has_action`
+    - `compiler_has_action`
+  - These fields are not used for routing or authority.
+- **Characterization outcome**:
+  - Direct unit tests now cover the pure builder for:
+    - `memory_checkpoint_only`
+    - `memory_checkpoint_and_text`
+    - `plan_checkpoint_only`
+    - mixed plan + memory outcomes
+    - no checkpoint
+    - missing compiler analysis
+    - checkpoint presence mismatch
+  - `_run_checkpoint_stage(...)` parity is also characterized against the pure helper output.
+- **Boundary remains unchanged**:
+  - `BoardCheckpointSemanticResult` remains observational only.
+  - Legacy board handlers remain authoritative.
+  - No routing, commit, or checkpoint-flag behavior changed.
+
+### 3.14. Next Intended Step
+
+The next step is **Phase 10 Step 13: BoardCheckpoint Pure Builder Parity Review / First Safe Consumer Candidate**.
