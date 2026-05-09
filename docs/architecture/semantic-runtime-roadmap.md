@@ -1111,7 +1111,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 9 Step 4: ExecutionPlan First Producer Migration / Dispatch Consumer Preflight
 
-- **Status**: Pending explicit approval.
+- **Status**: Done.
 - **Goal**: Review the characterized contract and decide whether the first
   narrow producer or dispatch-consumer migration is safe.
 - **Allowed**:
@@ -1122,10 +1122,83 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Dispatch behavior changes
   - `ActionPolicy` authority changes
   - Execution-path migration in this step
-- **Done When**:
-  - The first migration target is explicitly chosen.
+- **Completed Outcome**:
+  - The first implementation target is chosen:
+    a narrow dispatch bridge/helper for the single-action dispatch-ready slice.
+  - Broad producer rewrite is deferred.
+  - Full consumer replacement is deferred.
   - Required compatibility fallback points are confirmed.
-  - Implementation can be authorized narrowly without behavior drift.
+  - Step 5 is limited to a bridge implementation with explicit segment fallback.
+
+#### Phase 9 Step 5A: Dispatch Bridge Parity Probe
+
+- **Status**: Done.
+- **Goal**: Add the first narrow dispatch-boundary parity probe for the
+  single-action dispatch-ready slice while preserving the current
+  segment-based dispatch path.
+- **Allowed**:
+  - Narrow dispatch-boundary helper/adapter work
+  - Tests for eligible single-action bridge behavior
+  - Compatibility fallback preservation
+- **Forbidden**:
+  - Broad producer rewrite
+  - Multi-action batch migration
+  - `ActionPolicy` authority changes
+  - Final-answer, stop-gate, board/checkpoint, or parser changes
+  - Fallback removal
+- **Completed Outcome**:
+  - The parity probe is implemented only for the eligible single-action slice.
+  - Actual dispatch remains segment-driven.
+  - The probe returns the existing `segments`, not a new plan-authoritative
+    dispatch input.
+  - Eligibility requires exact IR/segment payload parity and exact action-effect
+    summary parity.
+  - Unsupported action shapes still fall back.
+  - No observable dispatch behavior changed.
+
+#### Phase 9 Step 5B: IR-Derived Dispatch Candidate Contract
+
+- **Status**: Done.
+- **Goal**: Define the first lossless IR-derived dispatch candidate contract for
+  the eligible single-action slice, using the Step 5A parity evidence as the gate.
+- **Allowed**:
+  - Read-only code inspection
+  - Design-only review
+  - Contract design
+  - Parity/risk analysis
+- **Forbidden**:
+  - Broad producer rewrite
+  - Dispatch behavior changes
+  - Fallback removal without explicit parity proof
+  - Multi-action migration
+- **Completed Outcome**:
+  - The current segment-dispatch input contract is documented.
+  - The first IR-derived candidate surface is defined as a narrow internal
+    candidate contract for the eligible single-action slice.
+  - Losslessness rules are explicit.
+  - File-content-backed and multi-action paths remain excluded.
+  - Step 5C implementation can proceed narrowly without changing dispatch behavior.
+
+#### Phase 9 Step 5C: IR-Derived Dispatch Candidate Implementation
+
+- **Status**: Pending explicit approval.
+- **Goal**: Implement the first internal IR-derived dispatch candidate surface
+  for the eligible single-action slice while keeping actual dispatch segment-driven.
+- **Allowed**:
+  - Narrow helper/type work for candidate construction
+  - Test coverage for candidate eligibility and fallback
+  - Segment-dispatch preservation
+- **Forbidden**:
+  - Dispatch side-effect changes
+  - Fallback removal
+  - Multi-action migration
+  - File-content-backed candidate migration
+  - `ActionPolicy` authority changes
+- **Done When**:
+  - A lossless `PlanDispatchCandidate` (or equivalent) is built for the eligible
+    slice.
+  - Non-eligible paths still produce no candidate and fall back explicitly.
+  - Actual dispatch remains segment-driven.
 
 ---
 

@@ -92,4 +92,7 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 88. Phase 9 Step 1 Plan-First Bundle Execution Design Gate: done.
 89. Phase 9 Step 2 ExecutionPlan Producer/Consumer Contract Design: done.
 90. Phase 9 Step 3 ExecutionPlan Contract Characterization Tests: done.
-91. Next: Phase 9 Step 4 ExecutionPlan First Producer Migration / Dispatch Consumer Preflight.
+91. Phase 9 Step 4 ExecutionPlan First Producer Migration / Dispatch Consumer Preflight: done.
+92. Phase 9 Step 5A Dispatch Bridge Parity Probe: done.
+93. Phase 9 Step 5B IR-Derived Dispatch Candidate Contract: done.
+94. Next: Phase 9 Step 5C IR-Derived Dispatch Candidate Implementation.

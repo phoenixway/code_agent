@@ -1,6 +1,6 @@
 # Phase 9 Design: Plan-First Bundle Execution
 
-- **Phase 9 Status**: Step 3 Characterization Complete
+- **Phase 9 Status**: Step 5A Parity Probe Complete
 - **Scope**: Action / bundle execution path only
 - **Non-Goals**:
   - No parser rewrite
@@ -285,13 +285,250 @@ Future implementation, pending approval.
 - keep `ActionPolicy` on the permission boundary
 - preserve `segments` fallback for non-migrated paths
 
-### Step 5: Dispatch Consumer Migration
+### Step 5A: Dispatch Bridge Parity Probe
 
-Future implementation, pending approval.
+Complete.
 
-- let `DispatchPipeline` consume plan-derived dispatch inputs for the migrated slice
+- validate eligibility and exact parity for the eligible single-action slice
+- keep actual dispatch segment-driven
 - preserve side effects and outcome behavior
-- keep compatibility fallback until plan/segment parity is proven
+- keep compatibility fallback until an IR-derived candidate contract is proven
+
+## Step 4: First Producer Migration / Dispatch Consumer Preflight
+
+### 1. What Step 5 should migrate
+
+Step 5 should **not** do a broad producer rewrite and should **not** directly replace
+segment dispatch across the whole pipeline.
+
+The safest first move is:
+
+- keep the current producer shape in `ResponsePipelineStagesMixin._build_execution_plan(...)`
+- keep `ResponsePipelineOutcome.dispatch_ready(...)` carrying both `segments` and `execution_plan`
+- add a **narrow dispatch bridge/helper** on the consumer side
+
+Reason:
+
+- the producer is already stable enough for the first slice
+- `ActionPolicy` already consumes compiler IR first and remains the permission gate
+- the highest behavior-risk sits at the dispatch side-effect boundary, not at plan creation
+- a bridge/helper allows narrow opt-in for a single proven slice while keeping full
+  segment fallback
+
+### 2. Safest first migrated slice
+
+The first migrated slice should be exactly:
+
+- single-action dispatch-ready path
+- compiler IR contains exactly one authoritative `ActionOpIR`
+- `ActionPolicy` has already allowed the action
+- no compiler-invalid state
+- no multi-action batch
+
+This includes:
+
+- valid atomic intent+action bundle with one action
+- equivalent single-action dispatch-ready path where the same `ExecutionPlan`
+  contract is already produced
+
+This excludes:
+
+- readonly multi-action batches
+- any path without exactly one authoritative IR action op
+- final-answer / stop-gate / board-checkpoint paths
+
+### 3. Where legacy `segments` fallback must remain
+
+`segments` fallback must remain in all of these cases:
+
+- `execution_plan` is missing
+- `parsed_output.compiler_ir` is missing
+- IR contains zero or multiple action ops
+- plan/IR payload cannot be translated losslessly to the dispatch input surface
+- path is outside the first migrated slice
+- any runtime uncertainty about parity between plan-derived and segment-derived inputs
+
+Step 5 must therefore keep the legacy `dispatcher.dispatch_segments(...)` path and
+use the bridge/helper only when the slice is explicitly eligible.
+
+### 4. What counts as behavior drift
+
+Any of the following counts as drift and is forbidden in Step 5:
+
+- dispatching when the current segment path would not dispatch
+- dispatching a different action type, path, command, or file content
+- changing action count or order
+- bypassing existing `ActionPolicy` checks
+- changing pre-action text emission order or content
+- changing post-dispatch reconstruction or outcome routing
+- removing segment fallback on uncertain parity
+
+### 5. Exact Step 5A implementation shape
+
+Step 5A should implement a **parity probe/helper first**, not a full dispatch consumer replacement.
+
+Recommended shape:
+
+- add a narrow helper at the dispatch boundary that:
+  - inspects `iteration.execution_plan`
+  - inspects `iteration.parsed_output.compiler_ir`
+  - when exactly one authoritative `ActionOpIR` is present, validates that the
+    current segment-derived input is losslessly equivalent for that one action
+  - otherwise returns "fallback to segments"
+- keep `DispatchPipeline.run_iteration(...)` as the orchestrator of this decision
+- keep actual side effects routed through the existing segment-based dispatcher contract
+- preserve `processed_segs` / `DispatchOutcomeHandler` expectations
+
+This makes Step 5A an instrumentation/parity implementation, not yet a full
+plan-authoritative dispatch migration.
+
+### 6. Tests required for Step 5A
+
+- eligible single-action path uses the parity probe without changing observable
+  dispatch outcome
+- same path still matches legacy segment-derived dispatch payload
+- fallback remains active when:
+  - no plan exists
+  - IR action count is not exactly one
+  - IR payload is not losslessly usable
+- no-dispatch-on-invalid remains true
+- pre-action-text emission remains unchanged
+- `ActionPolicy` still runs before any bridge-derived dispatch input is used
+
+### 7. Preflight conclusion
+
+- **Chosen first implementation target**:
+  first dispatch-boundary parity probe/helper for the single-action dispatch-ready slice
+- **Why**:
+  narrowest side-effect-adjacent migration with existing parity coverage and explicit
+  fallback points
+- **Not authorized in Step 5A**:
+  broad producer rewrite, multi-action migration, fallback removal, or direct
+  replacement of the segment dispatch path across all consumers
+
+## Step 5A: Parity Probe Outcome
+
+- A narrow dispatch-boundary parity probe/helper is implemented.
+- The helper only recognizes the eligible slice when:
+  - `execution_plan` exists
+  - `parsed_output.compiler_ir` exists
+  - IR has exactly one `ActionOpIR`
+  - the IR payload matches the segment-derived action payload exactly
+  - the plan action summary matches the same action exactly
+  - no unsupported action shape is present
+- Even on the eligible slice, dispatch still routes through the existing
+  segment-driven dispatcher contract and preserves processed-segment/outcome expectations.
+- The helper returns the existing `segments`; it does not yet build a new
+  plan-authoritative dispatch input.
+- On any mismatch or uncertainty, dispatch falls back explicitly to the legacy
+  segment path.
+
+## Step 5B: IR-Derived Dispatch Candidate Contract
+
+Complete.
+
+### 1. Current segment dispatch input contract
+
+The current dispatcher contract is still segment-based:
+
+- `DispatchPipeline._dispatch_segments(...)` calls
+  `dispatcher.dispatch_segments(segments, state)`.
+- `ActionDispatcher.dispatch_segments(...)` expects an ordered segment list where:
+  - `segment.type == "thought"` carries `segment.content` text for thought rendering
+  - `segment.type == "text"` carries visible assistant text
+  - `segment.type == "action"` carries `segment.content` as a dict command payload
+- action dispatch is derived from:
+  - `action_segments = [seg for seg in segments if seg.type == "action"]`
+  - `action_commands = [seg.content for seg in action_segments]`
+- current action payload shape is therefore:
+  - a dict with action fields such as `type`, `path`, `command`, `overwrite`, etc.
+- `file_content` / file block handling is still segment-coupled:
+  - write-like/file-content-backed actions are represented via the segment stream
+  - the current parity probe correctly excludes these shapes for now
+- processed segment expectations remain unchanged:
+  - `DispatchOutcomeHandler` reconstructs and interprets `processed_segs`
+  - `ExecutionCommit` counts committed action segments from `processed_segs`
+
+### 2. Proposed IR-derived candidate contract
+
+The first candidate surface should be an internal helper type, for example:
+
+- `PlanDispatchCandidate`
+
+Minimum required fields:
+
+- `action_type: str`
+- `payload: dict[str, Any]`
+- `action_summary: str`
+- `source: Literal["compiler_ir"]`
+- `matched_segment_index: int`
+
+Optional compatibility fields:
+
+- `compiler_shape: str`
+- `transaction_kind: str`
+- `pre_action_text: str | None`
+
+Explicit exclusions for the first slice:
+
+- no `file_content` / file block candidate surface yet
+- no multi-action candidate list
+- no board/checkpoint payloads
+- no final-answer or text-only dispatch candidate
+
+### 3. Losslessness rules
+
+Step 5C may only build a candidate when all of these are true:
+
+- exactly one IR action op
+- exactly one segment action
+- IR action payload is a dict
+- IR action has no file-content-backed shape
+- candidate payload equals segment action payload exactly
+- candidate summary equals `ExecutionPlan.action_effects[0]`
+- candidate `action_type` matches IR and payload consistently
+
+Fallback is mandatory for:
+
+- missing `execution_plan`
+- missing `compiler_ir`
+- zero or multiple IR action ops
+- zero or multiple segment actions
+- payload mismatch
+- summary mismatch
+- unsupported shape
+- any uncertainty
+
+### 4. How Step 5C should work
+
+Step 5C should not change dispatch behavior. It should:
+
+1. build `PlanDispatchCandidate` from IR/plan for the eligible single-action slice
+2. compare the candidate against the current segment-derived action
+3. if the match is exact, keep routing through the existing dispatcher contract
+4. keep `segments` fallback fully intact
+
+This means Step 5C still does not make dispatch plan-authoritative. It only makes
+the IR-derived candidate surface concrete and testable.
+
+### 5. Tests required for Step 5C
+
+- candidate builds for eligible `read_file` single action
+- candidate payload equals segment payload exactly
+- candidate summary equals `ExecutionPlan.action_effects[0]`
+- no candidate for file-content-backed action
+- no candidate for multi-action path
+- no candidate for payload mismatch
+- `run_iteration(...)` still dispatches with the same observable segment behavior
+
+### 6. Step 5B conclusion
+
+- The first IR-derived dispatch candidate surface is precise enough for implementation.
+- It is intentionally narrower than a dispatch bridge:
+  - candidate contract only
+  - no dispatch behavior change
+  - no fallback removal
+  - no side-effect change
 
 ## Safety Gate
 

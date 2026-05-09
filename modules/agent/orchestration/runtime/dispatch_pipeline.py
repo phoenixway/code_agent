@@ -26,6 +26,69 @@ class DispatchPipeline:
     def ui(self):
         return getattr(self.agent, "ui", None)
 
+    def _dispatch_equivalent_action_summary(self, payload: dict | None, *, action_type: str = "") -> str:
+        action_kind = str(
+            action_type
+            or (payload or {}).get("type")
+            or (payload or {}).get("action")
+            or ""
+        ).strip()
+        target = ""
+        if isinstance(payload, dict):
+            target = str(payload.get("path") or payload.get("command") or "").strip()
+        summary = action_kind or "action"
+        if target:
+            summary = f"{summary}:{target}"
+        return summary
+
+    def _single_action_plan_parity_probe(self, iteration):
+        execution_plan = getattr(iteration, "execution_plan", None)
+        if execution_plan is None:
+            return None, "no_execution_plan"
+
+        parsed_output = getattr(iteration, "parsed_output", None)
+        compiler_ir = getattr(parsed_output, "compiler_ir", None)
+        if compiler_ir is None:
+            return None, "no_compiler_ir"
+
+        action_ops = list(getattr(compiler_ir, "action_ops", ()) or ())
+        if len(action_ops) != 1:
+            return None, "ir_action_count_not_one"
+
+        action_op = action_ops[0]
+        payload = getattr(action_op, "payload", None)
+        if not isinstance(payload, dict):
+            return None, "unsupported_action_shape"
+        if isinstance(getattr(action_op, "file_content", None), str):
+            return None, "unsupported_action_shape"
+
+        segments = getattr(iteration, "segments", None) or []
+        action_segments = [
+            seg for seg in segments if getattr(seg, "type", None) == "action" and isinstance(getattr(seg, "content", None), dict)
+        ]
+        if len(action_segments) != 1:
+            return None, "no_matching_segment_action"
+
+        segment_payload = dict(getattr(action_segments[0], "content", None) or {})
+        if segment_payload != dict(payload):
+            return None, "payload_mismatch"
+
+        expected_summary = self._dispatch_equivalent_action_summary(
+            payload,
+            action_type=str(getattr(action_op, "action_type", "") or ""),
+        )
+        plan_effects = list(getattr(execution_plan, "action_effects", []) or [])
+        if len(plan_effects) != 1 or plan_effects[0] != expected_summary:
+            return None, "action_effect_mismatch"
+
+        return segments, "single_action_ir_parity"
+
+    def _resolve_dispatch_segments(self, iteration):
+        bridged_segments, bridge_reason = self._single_action_plan_parity_probe(iteration)
+        if bridged_segments is not None:
+            return bridged_segments, True, bridge_reason
+        return getattr(iteration, "segments", None) or [], False, bridge_reason
+
     async def _dispatch_segments(self, ctx, segments):
         if ctx.state_machine is not None:
             ctx.state_machine.intent_runtime = getattr(self.state, "intent_runtime", None)
@@ -80,6 +143,7 @@ class DispatchPipeline:
 
     async def run_iteration(self, ctx, iteration):
         execution_plan = getattr(iteration, "execution_plan", None)
+        dispatch_segments, bridge_used, bridge_reason = self._resolve_dispatch_segments(iteration)
         pre_action_text_emitted = False
         pre_action_text_chars = 0
         ui = getattr(self, "ui", None)
@@ -99,8 +163,10 @@ class DispatchPipeline:
             action_count=iteration.parsed_action_count,
             pre_action_text_emitted=pre_action_text_emitted,
             pre_action_text_chars=pre_action_text_chars,
+            dispatch_bridge_used=bridge_used,
+            dispatch_bridge_reason=bridge_reason,
         )
-        processed_segs, sys_results, should_stop = await self._dispatch_segments(ctx, iteration.segments)
+        processed_segs, sys_results, should_stop = await self._dispatch_segments(ctx, dispatch_segments)
         decision = await self.dispatch_outcome.handle(ctx, processed_segs, sys_results, should_stop)
         decision.execution_commit = self._build_execution_commit(
             getattr(iteration, "execution_plan", None),

@@ -188,3 +188,187 @@ async def test_dispatch_pipeline_no_ui_no_crash(dispatch_pipeline: DispatchPipel
     assert dispatch_pipeline._dispatch_segments.await_count == 1
 
 
+def test_single_action_plan_parity_probe_uses_existing_segments_for_eligible_slice(dispatch_pipeline: DispatchPipeline):
+    segments = [SimpleNamespace(type="action", content={"type": "read_file", "path": "README.md"})]
+    iteration = SimpleNamespace(
+        execution_plan=ExecutionPlan(
+            shape="ACTION_ONLY",
+            transaction_kind="atomic_intent_action_bundle",
+            action_effects=["read_file:README.md"],
+        ),
+        parsed_output=SimpleNamespace(
+            compiler_ir=SimpleNamespace(
+                action_ops=[
+                    SimpleNamespace(
+                        action_type="read_file",
+                        payload={"type": "read_file", "path": "README.md"},
+                        file_content=None,
+                    )
+                ]
+            )
+        ),
+        segments=segments,
+    )
+
+    bridged_segments, used_bridge, reason = dispatch_pipeline._resolve_dispatch_segments(iteration)
+
+    assert bridged_segments is segments
+    assert used_bridge is True
+    assert reason == "single_action_ir_parity"
+
+
+def test_single_action_plan_parity_probe_falls_back_without_execution_plan(dispatch_pipeline: DispatchPipeline):
+    segments = [SimpleNamespace(type="action", content={"type": "read_file", "path": "README.md"})]
+    iteration = SimpleNamespace(
+        execution_plan=None,
+        parsed_output=SimpleNamespace(
+            compiler_ir=SimpleNamespace(
+                action_ops=[SimpleNamespace(action_type="read_file", payload={"type": "read_file", "path": "README.md"}, file_content=None)]
+            )
+        ),
+        segments=segments,
+    )
+
+    bridged_segments, used_bridge, reason = dispatch_pipeline._resolve_dispatch_segments(iteration)
+
+    assert bridged_segments is segments
+    assert used_bridge is False
+    assert reason == "no_execution_plan"
+
+
+def test_single_action_plan_parity_probe_falls_back_without_compiler_ir(dispatch_pipeline: DispatchPipeline):
+    segments = [SimpleNamespace(type="action", content={"type": "read_file", "path": "README.md"})]
+    iteration = SimpleNamespace(
+        execution_plan=ExecutionPlan(
+            shape="ACTION_ONLY",
+            transaction_kind="atomic_intent_action_bundle",
+            action_effects=["read_file:README.md"],
+        ),
+        parsed_output=SimpleNamespace(compiler_ir=None),
+        segments=segments,
+    )
+
+    bridged_segments, used_bridge, reason = dispatch_pipeline._resolve_dispatch_segments(iteration)
+
+    assert bridged_segments is segments
+    assert used_bridge is False
+    assert reason == "no_compiler_ir"
+
+
+def test_single_action_plan_parity_probe_falls_back_when_ir_action_count_is_not_one(dispatch_pipeline: DispatchPipeline):
+    segments = [SimpleNamespace(type="action", content={"type": "read_file", "path": "README.md"})]
+    iteration = SimpleNamespace(
+        execution_plan=ExecutionPlan(
+            shape="ACTION_ONLY",
+            transaction_kind="atomic_intent_action_bundle",
+            action_effects=["read_file:README.md"],
+        ),
+        parsed_output=SimpleNamespace(
+            compiler_ir=SimpleNamespace(
+                action_ops=[
+                    SimpleNamespace(action_type="read_file", payload={"type": "read_file", "path": "README.md"}, file_content=None),
+                    SimpleNamespace(action_type="read_chunk", payload={"type": "read_chunk", "path": "x.py"}, file_content=None),
+                ]
+            )
+        ),
+        segments=segments,
+    )
+
+    bridged_segments, used_bridge, reason = dispatch_pipeline._resolve_dispatch_segments(iteration)
+
+    assert bridged_segments is segments
+    assert used_bridge is False
+    assert reason == "ir_action_count_not_one"
+
+
+def test_single_action_plan_parity_probe_falls_back_on_payload_mismatch(dispatch_pipeline: DispatchPipeline):
+    segments = [SimpleNamespace(type="action", content={"type": "read_file", "path": "README.md"})]
+    iteration = SimpleNamespace(
+        execution_plan=ExecutionPlan(
+            shape="ACTION_ONLY",
+            transaction_kind="atomic_intent_action_bundle",
+            action_effects=["read_file:README.md"],
+        ),
+        parsed_output=SimpleNamespace(
+            compiler_ir=SimpleNamespace(
+                action_ops=[
+                    SimpleNamespace(
+                        action_type="read_file",
+                        payload={"type": "read_file", "path": "OTHER.md"},
+                        file_content=None,
+                    )
+                ]
+            )
+        ),
+        segments=segments,
+    )
+
+    bridged_segments, used_bridge, reason = dispatch_pipeline._resolve_dispatch_segments(iteration)
+
+    assert bridged_segments is segments
+    assert used_bridge is False
+    assert reason == "payload_mismatch"
+
+
+def test_single_action_plan_parity_probe_falls_back_on_unsupported_action_shape(dispatch_pipeline: DispatchPipeline):
+    segments = [
+        SimpleNamespace(type="action", content={"type": "write_file_block", "path": "docs/x.md", "overwrite": True}),
+        SimpleNamespace(type="file_content", content="body"),
+    ]
+    iteration = SimpleNamespace(
+        execution_plan=ExecutionPlan(
+            shape="INTENT_ACTION_BUNDLE",
+            transaction_kind="atomic_intent_action_bundle",
+            action_effects=["write_file_block:docs/x.md"],
+        ),
+        parsed_output=SimpleNamespace(
+            compiler_ir=SimpleNamespace(
+                action_ops=[
+                    SimpleNamespace(
+                        action_type="write_file_block",
+                        payload={"type": "write_file_block", "path": "docs/x.md", "overwrite": True},
+                        file_content="body",
+                    )
+                ]
+            )
+        ),
+        segments=segments,
+    )
+
+    bridged_segments, used_bridge, reason = dispatch_pipeline._resolve_dispatch_segments(iteration)
+
+    assert bridged_segments is segments
+    assert used_bridge is False
+    assert reason == "unsupported_action_shape"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_pipeline_eligible_bridge_keeps_dispatch_behavior_unchanged(dispatch_pipeline: DispatchPipeline):
+    segments = [SimpleNamespace(type="action", content={"type": "read_file", "path": "README.md"})]
+    mock_plan = ExecutionPlan(
+        shape="ACTION_ONLY",
+        transaction_kind="atomic_intent_action_bundle",
+        action_effects=["read_file:README.md"],
+    )
+    mock_iteration = SimpleNamespace(
+        execution_plan=mock_plan,
+        parsed_action_count=1,
+        parsed_output=SimpleNamespace(
+            compiler_ir=SimpleNamespace(
+                action_ops=[
+                    SimpleNamespace(
+                        action_type="read_file",
+                        payload={"type": "read_file", "path": "README.md"},
+                        file_content=None,
+                    )
+                ]
+            )
+        ),
+        segments=segments,
+    )
+
+    await dispatch_pipeline.run_iteration(MagicMock(), mock_iteration)
+
+    dispatch_pipeline._dispatch_segments.assert_awaited_once()
+    called_ctx, called_segments = dispatch_pipeline._dispatch_segments.await_args.args
+    assert called_segments is segments

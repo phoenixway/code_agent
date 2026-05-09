@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 9 Step 3: ExecutionPlan Contract Characterization Tests
+- **Phase**: Phase 9 Step 5B: IR-Derived Dispatch Candidate Contract
 - **Status**: Complete.
-- **Next Step**: Phase 9 Step 4: ExecutionPlan First Producer Migration / Dispatch Consumer Preflight.
-- **Boundary**: This slice remains design-only. Compiler/IR owns structure, `ActionPolicy` owns permission, the execution layer owns side effects, and `ResponsePipeline` remains the orchestrator. No dispatch behavior change is authorized yet.
+- **Next Step**: Phase 9 Step 5C: IR-Derived Dispatch Candidate Implementation.
+- **Boundary**: The parity probe is implemented and the IR-derived candidate contract is now defined, but actual dispatch remains segment-driven. Compiler/IR still owns structure, `ActionPolicy` still owns permission, the execution layer still owns side effects, and `ResponsePipeline` still orchestrates. Segment fallback remains in place and no observable dispatch behavior changed.
 
 ## Step 4I Parity Matrix
 
@@ -295,9 +295,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Next Intended Step
 
-- **Phase 9 Step 4: ExecutionPlan First Producer Migration / Dispatch Consumer Preflight**
-  - Review the new characterization/parity coverage before any execution-path migration.
-  - Decide whether a first narrow producer or dispatch-consumer migration is safe.
+- **Phase 9 Step 5C: IR-Derived Dispatch Candidate Implementation**
+  - Implement the first lossless IR-derived dispatch candidate surface for the eligible single-action slice.
+  - Keep actual dispatch segment-driven.
   - Keep `segments` fallback where parity is not yet proven.
   - Keep `PLAINTEXT_TERMINAL_ANSWER` / final-answer-path migration deferred.
   - Keep board/checkpoint consumers deferred to their separate slice.
@@ -388,6 +388,121 @@ This document is the single source of truth for the current state of the Semanti
   - No production behavior changed.
   - No dispatch behavior changed.
   - No `ActionPolicy` authority changed.
+
+## Phase 9 Step 4 Outcome
+
+- **Decision**
+  - Step 5 should implement a narrow dispatch bridge/helper first, not a broad
+    producer rewrite and not a full consumer replacement.
+
+- **Chosen first migrated slice**
+  - single-action dispatch-ready path only
+  - compiler IR contains exactly one authoritative `ActionOpIR`
+  - `ActionPolicy` has already allowed the action
+  - `ExecutionPlan` is present and matches the current characterized slice
+
+- **Why this is the safest slice**
+  - current producer behavior is already characterized
+  - plan-vs-segment parity exists for this path
+  - `ActionPolicy` already consumes compiler IR first
+  - side-effect behavior can stay behind explicit segment fallback
+
+- **Where fallback must remain**
+  - when `execution_plan` is absent
+  - when `compiler_ir` is absent
+  - when IR action count is not exactly one
+  - when dispatch input cannot be derived losslessly
+  - on all non-migrated paths
+
+- **Behavior drift definition**
+  - different action count, order, payload, path, command, or file content
+  - any bypass of `ActionPolicy`
+  - changed pre-action-text emission
+  - changed post-dispatch reconstruction/outcome behavior
+  - dispatch on a path that currently falls back or rejects
+
+- **Step 5 scope**
+  - add a narrow bridge/helper at the dispatch boundary
+  - keep `ResponsePipelineStagesMixin._build_execution_plan(...)` as the current producer
+  - keep `ResponsePipelineOutcome.dispatch_ready(...)` carrying both `segments`
+    and `execution_plan`
+  - keep segment dispatch as the compatibility fallback
+
+## Phase 9 Step 5A Outcome
+
+- **Implemented**
+  - A narrow dispatch-boundary parity probe was added for the eligible
+    single-action dispatch-ready slice.
+  - The probe inspects:
+    - `iteration.execution_plan`
+    - `iteration.parsed_output.compiler_ir`
+    - current `segments`
+  - The probe only marks the path eligible when:
+    - `execution_plan` is present
+    - `compiler_ir` is present
+    - IR has exactly one authoritative `ActionOpIR`
+    - payload parity with the segment-derived action is exact
+    - action-effect summary parity is exact
+    - no unsupported action shape is present
+
+- **What it does not do**
+  - It does not produce a new plan-authoritative dispatch input.
+  - It returns the existing `segments`.
+  - Actual dispatch remains segment-driven.
+  - It is an instrumentation/parity bridge, not yet a plan-authoritative
+    dispatch bridge.
+
+- **Fallback preserved**
+  - `segments` remain the explicit production fallback for:
+    - no `execution_plan`
+    - no `compiler_ir`
+    - zero or multiple IR action ops
+    - payload mismatch
+    - unsupported action shape
+    - any uncertainty
+
+- **Behavior boundary**
+  - No dispatch side effects changed.
+  - No `ActionPolicy` authority changed.
+  - No pre-action text emission changed.
+  - No post-dispatch reconstruction or outcome handling changed.
+  - The existing segment dispatcher contract remains intact.
+
+## Phase 9 Step 5B Outcome
+
+- **Current segment dispatch contract documented**
+  - `DispatchPipeline._dispatch_segments(...)` still calls
+    `dispatcher.dispatch_segments(segments, state)`.
+  - The dispatcher expects an ordered segment list with:
+    - `thought` segments
+    - `text` segments
+    - `action` segments where `content` is a dict payload
+  - Processed-segment expectations in dispatch outcome handling remain unchanged.
+
+- **IR-derived candidate contract chosen**
+  - Proposed internal type:
+    `PlanDispatchCandidate`
+  - Required fields:
+    - `action_type`
+    - `payload`
+    - `action_summary`
+    - `source="compiler_ir"`
+    - `matched_segment_index`
+  - Optional compatibility fields may include compiler shape, transaction kind,
+    and pre-action text.
+
+- **Losslessness rules**
+  - Candidate payload must equal the segment action payload exactly.
+  - Candidate summary must equal `ExecutionPlan.action_effects[0]`.
+  - Exactly one IR action op and exactly one segment action are required.
+  - File-content-backed shapes and multi-action paths remain excluded.
+  - Unsupported shapes must fall back.
+
+- **Step 5C shape**
+  - Build the candidate from IR/plan for the eligible slice.
+  - Compare it against the current segment-derived action.
+  - If the match is exact, keep routing through the existing dispatcher contract.
+  - Keep segment fallback explicit and intact.
 
 ## Step 4M Batch Plan
 
