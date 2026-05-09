@@ -15,7 +15,7 @@ from .board_checkpoint_semantics import resolve_memory_checkpoint_and_text_typed
 from .board_checkpoint_semantics import resolve_memory_checkpoint_only_typed_primary
 from ..config.switch_registry import get_switch
 from .board_checkpoint_semantics import resolve_plan_checkpoint_and_action_typed_primary
-from .board_checkpoint_semantics import resolve_plan_checkpoint_and_text_typed_primary
+from .board_checkpoint_semantics import resolve_plan_checkpoint_and_text_authority
 from .board_checkpoint_semantics import resolve_plan_checkpoint_only_authority
 from .board_checkpoint_semantics import resolve_plan_checkpoint_only_typed_primary
 from .protocol_decision_bridge import compiler_invalid_kind_for_output, resolve_protocol_authority
@@ -371,12 +371,14 @@ class ResponsePipelineStagesMixin:
             plan_board_decision.source = "compiler_authority"
             plan_board_decision.next_query = None
 
-        effective_plan_checkpoint_and_text = resolve_plan_checkpoint_and_text_typed_primary(
+        plan_checkpoint_with_text_switch = get_switch("board_checkpoint.plan_checkpoint_with_text")
+        plan_checkpoint_and_text_authority = resolve_plan_checkpoint_and_text_authority(
             plan_semantic_result,
-            legacy_plan_checkpoint_only=plan_checkpoint_only,
             legacy_plan_checkpoint_and_text=plan_checkpoint_and_text,
-            legacy_plan_checkpoint_and_action=plan_checkpoint_and_action,
+            switch_value=plan_checkpoint_with_text_switch,
         )
+        self._log_board_checkpoint_authority_resolution(plan_checkpoint_and_text_authority)
+        effective_plan_checkpoint_and_text = plan_checkpoint_and_text_authority.effective_value
         effective_plan_checkpoint_and_action = resolve_plan_checkpoint_and_action_typed_primary(
             plan_semantic_result,
             legacy_plan_checkpoint_only=plan_checkpoint_only,
@@ -443,12 +445,13 @@ class ResponsePipelineStagesMixin:
             plan_board_decision.source = "compiler_authority"
             plan_board_decision.next_query = None
 
-        effective_plan_checkpoint_and_text = resolve_plan_checkpoint_and_text_typed_primary(
+        plan_checkpoint_and_text_authority = resolve_plan_checkpoint_and_text_authority(
             board_checkpoint_semantic_result,
-            legacy_plan_checkpoint_only=plan_checkpoint_only,
             legacy_plan_checkpoint_and_text=plan_checkpoint_and_text,
-            legacy_plan_checkpoint_and_action=plan_checkpoint_and_action,
+            switch_value=plan_checkpoint_with_text_switch,
         )
+        self._log_board_checkpoint_authority_resolution(plan_checkpoint_and_text_authority)
+        effective_plan_checkpoint_and_text = plan_checkpoint_and_text_authority.effective_value
         effective_plan_checkpoint_and_action = resolve_plan_checkpoint_and_action_typed_primary(
             board_checkpoint_semantic_result,
             legacy_plan_checkpoint_only=plan_checkpoint_only,

@@ -14,6 +14,7 @@ from modules.agent.orchestration.responses.board_checkpoint_models import (
 )
 from modules.agent.orchestration.responses.board_checkpoint_semantics import (
     build_board_checkpoint_semantic_result,
+    resolve_plan_checkpoint_and_text_authority,
     resolve_plan_checkpoint_only_authority,
     resolve_legacy_derived_checkpoint_effective_flags,
     resolve_memory_checkpoint_and_action_typed_primary,
@@ -2331,6 +2332,7 @@ class TestResponsePipelineCheckpointStageCharacterization(unittest.TestCase):
         authority_calls = [
             call for call in self.harness.stage_logger.log.call_args_list
             if call.args[:2] == ("protocol_shadow", "board_checkpoint_authority_resolution")
+            and call.kwargs.get("branch") == "board_checkpoint.plan_checkpoint_only"
         ]
         self.assertEqual(1, len(authority_calls))
         self.assertEqual("board_checkpoint.plan_checkpoint_only", authority_calls[0].kwargs["branch"])
@@ -2384,6 +2386,7 @@ class TestResponsePipelineCheckpointStageCharacterization(unittest.TestCase):
         authority_calls = [
             call for call in self.harness.stage_logger.log.call_args_list
             if call.args[:2] == ("protocol_shadow", "board_checkpoint_authority_resolution")
+            and call.kwargs.get("branch") == "board_checkpoint.plan_checkpoint_only"
         ]
         self.assertEqual(2, len(authority_calls))
         final_authority = authority_calls[-1]
@@ -2437,6 +2440,7 @@ class TestResponsePipelineCheckpointStageCharacterization(unittest.TestCase):
         authority_calls = [
             call for call in self.harness.stage_logger.log.call_args_list
             if call.args[:2] == ("protocol_shadow", "board_checkpoint_authority_resolution")
+            and call.kwargs.get("branch") == "board_checkpoint.plan_checkpoint_only"
         ]
         self.assertEqual(2, len(authority_calls))
         final_authority = authority_calls[-1]
@@ -2516,6 +2520,83 @@ class TestBoardCheckpointAuthorityDiagnostics(unittest.TestCase):
         diagnostic = resolve_plan_checkpoint_only_authority(
             result,
             legacy_plan_checkpoint_only=False,
+            switch_value="compiler",
+        )
+
+        self.assertEqual("compiler", diagnostic.switch_value)
+        self.assertEqual("legacy_fallback", diagnostic.authority_source)
+        self.assertEqual("UNKNOWN", diagnostic.typed_kind)
+        self.assertTrue(diagnostic.fallback_used)
+        self.assertFalse(diagnostic.behavior_changed)
+        self.assertFalse(diagnostic.branch_active)
+        self.assertFalse(diagnostic.effective_value)
+
+    def test_resolve_plan_checkpoint_with_text_authority_legacy_mode(self):
+        result = BoardCheckpointSemanticResult(
+            source=BoardCheckpointSource.COMPILER_PREPASS_FACT,
+            compiler_has_checkpoint=True,
+            compiler_has_subgoal_tags=True,
+            compiler_has_memory_tags=False,
+            compiler_has_action=False,
+            compiler_has_visible_text=True,
+            compiler_error_code="",
+        )
+
+        diagnostic = resolve_plan_checkpoint_and_text_authority(
+            result,
+            legacy_plan_checkpoint_and_text=False,
+            switch_value="legacy",
+        )
+
+        self.assertEqual("board_checkpoint.plan_checkpoint_with_text", diagnostic.branch)
+        self.assertEqual("legacy", diagnostic.switch_value)
+        self.assertEqual("legacy", diagnostic.authority_source)
+        self.assertEqual("PLAN_CHECKPOINT_WITH_TEXT", diagnostic.typed_kind)
+        self.assertEqual("NONE", diagnostic.legacy_kind)
+        self.assertFalse(diagnostic.fallback_used)
+        self.assertFalse(diagnostic.behavior_changed)
+        self.assertTrue(diagnostic.branch_active)
+        self.assertFalse(diagnostic.effective_value)
+
+    def test_resolve_plan_checkpoint_with_text_authority_compiler_mode(self):
+        result = BoardCheckpointSemanticResult(
+            source=BoardCheckpointSource.COMPILER_PREPASS_FACT,
+            compiler_has_checkpoint=True,
+            compiler_has_subgoal_tags=True,
+            compiler_has_memory_tags=False,
+            compiler_has_action=False,
+            compiler_has_visible_text=True,
+            compiler_error_code="",
+        )
+
+        diagnostic = resolve_plan_checkpoint_and_text_authority(
+            result,
+            legacy_plan_checkpoint_and_text=False,
+            switch_value="compiler",
+        )
+
+        self.assertEqual("compiler", diagnostic.switch_value)
+        self.assertEqual("compiler", diagnostic.authority_source)
+        self.assertEqual("PLAN_CHECKPOINT_WITH_TEXT", diagnostic.typed_kind)
+        self.assertFalse(diagnostic.fallback_used)
+        self.assertTrue(diagnostic.behavior_changed)
+        self.assertTrue(diagnostic.branch_active)
+        self.assertTrue(diagnostic.effective_value)
+
+    def test_resolve_plan_checkpoint_with_text_authority_compiler_fallback(self):
+        result = BoardCheckpointSemanticResult(
+            source=BoardCheckpointSource.COMPILER_PREPASS_FACT,
+            compiler_has_checkpoint=True,
+            compiler_has_subgoal_tags=True,
+            compiler_has_memory_tags=False,
+            compiler_has_action=True,
+            compiler_has_visible_text=True,
+            compiler_error_code="",
+        )
+
+        diagnostic = resolve_plan_checkpoint_and_text_authority(
+            result,
+            legacy_plan_checkpoint_and_text=False,
             switch_value="compiler",
         )
 

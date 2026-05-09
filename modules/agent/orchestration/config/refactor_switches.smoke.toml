@@ -3,7 +3,7 @@
 
 [board_checkpoint]
 plan_checkpoint_only = "compiler"
-plan_checkpoint_with_text = "legacy"
+plan_checkpoint_with_text = "compiler"
 plan_checkpoint_with_action = "legacy"
 memory_checkpoint_only = "legacy"
 memory_checkpoint_with_text = "legacy"

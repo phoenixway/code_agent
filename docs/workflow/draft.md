@@ -133,4 +133,6 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 129. Phase 10 Step 25: done. Added smoke profile support for refactor switch registry via env var.
 130. Phase 10 Step 26B: done. Fixed compiler recognition for self-closing `<subgoal ... />` checkpoints and added deterministic synthetic smoke coverage for the PLAN_CHECKPOINT_ONLY smoke-authority branch.
 131. Phase 10 Step 26D: done. Added explicit board/checkpoint authority-source diagnostics so smoke logs distinguish shadow parity from real compiler-authority selection.
-132. Next: Phase 27 Step 1: Board/Checkpoint Synthetic Smoke Matrix Expansion.
+132. Phase 27 Step 1: done. Expanded deterministic board/checkpoint synthetic smoke coverage across plan, memory, mixed, action-only, plaintext-only, and invalid checkpoint controls.
+133. Phase 27 Step 2: done. Enabled and validated smoke-profile compiler authority for `board_checkpoint.plan_checkpoint_with_text` with positive and negative synthetic controls, while keeping the default registry legacy.
+134. Next: Phase 27 Step 3: Rerun live Angelica smoke for `board_checkpoint.plan_checkpoint_with_text` under the smoke profile.

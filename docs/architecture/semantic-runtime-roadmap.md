@@ -1991,6 +1991,45 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Recovery / invalid-output branches
   - Intent / protocol branches
 
+#### Phase 27 Step 1: Board/Checkpoint Synthetic Smoke Matrix Expansion
+
+- **Status**: Done.
+- **Goal**: Expand deterministic synthetic smoke coverage across the board/checkpoint slice so future compiler-authority switches can be validated branch-by-branch.
+- **Completed Outcome**:
+  - Added coverage for:
+    - `PLAN_CHECKPOINT_ONLY`
+    - `PLAN_CHECKPOINT_WITH_TEXT`
+    - `PLAN_CHECKPOINT_WITH_ACTION`
+    - `MEMORY_CHECKPOINT_ONLY`
+    - `MEMORY_CHECKPOINT_WITH_TEXT`
+    - `MEMORY_CHECKPOINT_WITH_ACTION`
+    - mixed plan+memory checkpoint
+    - action-only negative control
+    - plaintext-only negative control
+    - invalid checkpoint/think negative control
+  - The default registry remains `legacy`.
+  - No runtime behavior changed.
+- **Next**:
+  - Phase 27 Step 2: enable/validate compiler authority for the next board/checkpoint branch via smoke profile.
+
+#### Phase 27 Step 2: `PLAN_CHECKPOINT_WITH_TEXT` Smoke-Profile Compiler Authority
+
+- **Status**: Done.
+- **Goal**: Enable the next narrow non-action plan-checkpoint branch via the smoke profile only, using typed semantic result -> resolver -> branch switch -> effective decision.
+- **Completed Outcome**:
+  - Added branch-specific authority resolution and authority-source diagnostics for `board_checkpoint.plan_checkpoint_with_text`.
+  - The smoke registry now enables:
+    - `board_checkpoint.plan_checkpoint_only = "compiler"`
+    - `board_checkpoint.plan_checkpoint_with_text = "compiler"`
+  - Synthetic smoke validates:
+    - default-registry legacy behavior for clean `PLAN_CHECKPOINT_WITH_TEXT`
+    - smoke-profile compiler authority selection for clean `PLAN_CHECKPOINT_WITH_TEXT`
+    - negative controls for checkpoint-only, checkpoint-with-action, memory-checkpoint-with-text, and invalid open-`<think>` cases
+  - The default registry remains `legacy`.
+  - No runtime behavior changed under the default registry.
+- **Next**:
+  - Phase 27 Step 3: rerun live Angelica smoke for `board_checkpoint.plan_checkpoint_with_text` under the smoke profile.
+
 ---
 
 ### Phase 11: RecoveryStrategy Registry Expansion

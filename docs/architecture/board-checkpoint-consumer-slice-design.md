@@ -668,7 +668,23 @@ The board/checkpoint consumer migration slice is now complete. The key outcomes 
   - Legacy board handlers remain authoritative unless the branch-specific switch and structural conditions explicitly allow compiler authority.
   - The default switch registry remains `legacy`.
 
-### 4. Phase 27: Synthetic Smoke Matrix Expansion Plan
+## 4. Refactor Governance: Typed Accessors + Branch Authority Switches
+
+As of Phase 10, the semantic runtime refactor adopts a new guiding principle for managing the transition from legacy to compiler-driven authority.
+
+- **Accessors/Resolvers are the Common Consumption Path**: All consumption of compiler/typed semantic results must go through approved accessors or resolvers (e.g., in `board_checkpoint_semantics.py`). Pipeline code must not read raw compiler facts directly for routing decisions.
+
+- **Branch-Specific Authority Switches**: The authority for a specific semantic decision (e.g., a single checkpoint branch) is controlled by an explicit, named switch. This switch determines whether the legacy implementation or the new compiler/typed implementation is authoritative.
+
+- **Centralized Switch Registry**: All authority switches must be centrally registered and documented. A central TOML registry (`modules/agent/orchestration/config/refactor_switches.toml`) now exists for this purpose. They must not be scattered as loose constants. The default state for each switch must be explicit.
+
+- **Validation Through Controlled Authority Transfer**: During development and refactoring, compiler authority may be enabled for selected branches to force real-world validation via smoke tests (e.g., Angelica runs).
+
+- **Production Safety**: Default and production behavior remains controlled by the central switch registry, not hardcoded constants. Switches for unvalidated branches must default to `off` (legacy authority).
+
+- **Fix-Forward on Regressions**: If enabling compiler authority for a branch reveals regressions, the preferred path is to fix the underlying compiler, parser, or semantic extraction logic rather than adding more complex legacy-only bypasses.
+
+### 4.1. Phase 27: Synthetic Smoke Matrix Expansion Plan
 
 - **Purpose**:
   - Make synthetic smoke a required gate for all branch-authority switches, not just `PLAN_CHECKPOINT_ONLY`.
@@ -725,18 +741,49 @@ The board/checkpoint consumer migration slice is now complete. The key outcomes 
   - smoke profile switch needed
   - whether live Angelica smoke is also required
 
-## 4. Refactor Governance: Typed Accessors + Branch Authority Switches
+### 4.2. Step 27.1: Board/Checkpoint Synthetic Smoke Matrix Expansion
 
-As of Phase 10, the semantic runtime refactor adopts a new guiding principle for managing the transition from legacy to compiler-driven authority.
+- **Status**: Done.
+- **Completed coverage**:
+  - `PLAN_CHECKPOINT_ONLY`
+  - `PLAN_CHECKPOINT_WITH_TEXT`
+  - `PLAN_CHECKPOINT_WITH_ACTION`
+  - `MEMORY_CHECKPOINT_ONLY`
+  - `MEMORY_CHECKPOINT_WITH_TEXT`
+  - `MEMORY_CHECKPOINT_WITH_ACTION`
+  - mixed plan+memory checkpoint characterization
+  - action-only negative control
+  - plaintext-only negative control
+  - invalid open-`<think>` checkpoint negative control
+- **Result**:
+  - Board/checkpoint branch synthetic smoke is now broad enough to serve as a required gate before future branch-authority expansions.
+  - No default authority expansion occurred.
+  - No runtime routing or commit behavior changed.
+- **Next**:
+  - Phase 27 Step 2: enable/validate compiler authority for the next board/checkpoint branch via smoke profile.
 
-- **Accessors/Resolvers are the Common Consumption Path**: All consumption of compiler/typed semantic results must go through approved accessors or resolvers (e.g., in `board_checkpoint_semantics.py`). Pipeline code must not read raw compiler facts directly for routing decisions.
+### 4.3. Step 27.2: `PLAN_CHECKPOINT_WITH_TEXT` Smoke-Profile Compiler Authority
 
-- **Branch-Specific Authority Switches**: The authority for a specific semantic decision (e.g., a single checkpoint branch) is controlled by an explicit, named switch. This switch determines whether the legacy implementation or the new compiler/typed implementation is authoritative.
-
-- **Centralized Switch Registry**: All authority switches must be centrally registered and documented. A central TOML registry (`modules/agent/orchestration/config/refactor_switches.toml`) now exists for this purpose. They must not be scattered as loose constants. The default state for each switch must be explicit.
-
-- **Validation Through Controlled Authority Transfer**: During development and refactoring, compiler authority may be enabled for selected branches to force real-world validation via smoke tests (e.g., Angelica runs).
-
-- **Production Safety**: Default and production behavior remains controlled by the central switch registry, not hardcoded constants. Switches for unvalidated branches must default to `off` (legacy authority).
-
-- **Fix-Forward on Regressions**: If enabling compiler authority for a branch reveals regressions, the preferred path is to fix the underlying compiler, parser, or semantic extraction logic rather than adding more complex legacy-only bypasses.
+- **Goal**:
+  - Enable the next narrow non-action board/checkpoint branch through the centralized switch registry, but only under the smoke profile first.
+- **Completed Outcome**:
+  - Added branch-specific authority resolution for `board_checkpoint.plan_checkpoint_with_text`.
+  - Added explicit authority-source diagnostics for that branch:
+    - `legacy`
+    - `compiler`
+    - `legacy_fallback`
+  - Expanded synthetic smoke validation to prove:
+    - default-registry legacy behavior for clean `PLAN_CHECKPOINT_WITH_TEXT`
+    - smoke-profile compiler authority selection for clean `PLAN_CHECKPOINT_WITH_TEXT`
+    - no unsafe authority selection for:
+      - `PLAN_CHECKPOINT_ONLY`
+      - `PLAN_CHECKPOINT_WITH_ACTION`
+      - `MEMORY_CHECKPOINT_WITH_TEXT`
+      - invalid open-`<think>` checkpoint text
+- **What did not change**:
+  - The default registry remains `legacy`.
+  - No board handler behavior changed.
+  - No dispatch, final-answer, stop-gate, `ActionPolicy`, parser, `history.py`, or classification-stage behavior changed.
+  - No action-bearing or memory checkpoint branch was enabled.
+- **Next**:
+  - Phase 27 Step 3: rerun targeted live Angelica smoke for `board_checkpoint.plan_checkpoint_with_text` under the smoke profile.

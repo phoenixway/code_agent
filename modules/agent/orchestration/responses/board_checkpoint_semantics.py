@@ -222,6 +222,88 @@ def resolve_plan_checkpoint_and_text_typed_primary(
     )
 
 
+def resolve_plan_checkpoint_and_text_authority(
+    result: BoardCheckpointSemanticResult | None,
+    *,
+    legacy_plan_checkpoint_and_text: bool,
+    switch_value: str,
+) -> BoardCheckpointAuthorityDiagnostic:
+    """Resolve plan-checkpoint-and-text and return diagnostic metadata for authority selection."""
+    normalized_switch = str(switch_value or "legacy").strip().lower()
+    if normalized_switch not in {"legacy", "compiler", "shadow"}:
+        normalized_switch = "legacy"
+
+    legacy_kind = "PLAN_CHECKPOINT_WITH_TEXT" if legacy_plan_checkpoint_and_text else "NONE"
+    typed_kind = "UNKNOWN"
+    compiler_eligible = False
+
+    if result is not None:
+        has_clean_compiler_pct_facts = (
+            result.compiler_has_checkpoint
+            and result.compiler_has_subgoal_tags
+            and not result.compiler_has_memory_tags
+            and not result.compiler_has_action
+            and result.compiler_has_visible_text
+            and not result.compiler_error_code
+        )
+        if has_clean_compiler_pct_facts:
+            typed_kind = "PLAN_CHECKPOINT_WITH_TEXT"
+            compiler_eligible = result.source in {
+                BoardCheckpointSource.COMPILER_PREPASS_FACT,
+                BoardCheckpointSource.COMBINED_SHADOW,
+            }
+
+    agreement = legacy_plan_checkpoint_and_text == compiler_eligible
+    branch_active = bool(legacy_plan_checkpoint_and_text or compiler_eligible)
+
+    if normalized_switch != "compiler":
+        return BoardCheckpointAuthorityDiagnostic(
+            branch="board_checkpoint.plan_checkpoint_with_text",
+            switch_value=normalized_switch,
+            authority_source="legacy",
+            legacy_active=legacy_plan_checkpoint_and_text,
+            typed_kind=typed_kind,
+            legacy_kind=legacy_kind,
+            agreement=agreement,
+            fallback_used=False,
+            behavior_changed=False,
+            branch_active=branch_active,
+            compiler_eligible=compiler_eligible,
+            effective_value=legacy_plan_checkpoint_and_text,
+        )
+
+    if compiler_eligible:
+        return BoardCheckpointAuthorityDiagnostic(
+            branch="board_checkpoint.plan_checkpoint_with_text",
+            switch_value=normalized_switch,
+            authority_source="compiler",
+            legacy_active=legacy_plan_checkpoint_and_text,
+            typed_kind=typed_kind,
+            legacy_kind=legacy_kind,
+            agreement=agreement,
+            fallback_used=False,
+            behavior_changed=not legacy_plan_checkpoint_and_text,
+            branch_active=True,
+            compiler_eligible=True,
+            effective_value=True,
+        )
+
+    return BoardCheckpointAuthorityDiagnostic(
+        branch="board_checkpoint.plan_checkpoint_with_text",
+        switch_value=normalized_switch,
+        authority_source="legacy_fallback",
+        legacy_active=legacy_plan_checkpoint_and_text,
+        typed_kind=typed_kind,
+        legacy_kind=legacy_kind,
+        agreement=agreement,
+        fallback_used=True,
+        behavior_changed=False,
+        branch_active=branch_active,
+        compiler_eligible=compiler_eligible,
+        effective_value=legacy_plan_checkpoint_and_text,
+    )
+
+
 def resolve_plan_checkpoint_and_action_typed_primary(
     result: BoardCheckpointSemanticResult | None,
     *,
