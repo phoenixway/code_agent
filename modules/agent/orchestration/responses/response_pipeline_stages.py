@@ -374,9 +374,15 @@ class ResponsePipelineStagesMixin:
                 )
 
     def _run_classification_stage(self, step, raw_response: str, checkpoint_state: CheckpointStageState):
-        response = checkpoint_state.response
+        normalized = self._normalize_response_stage(
+            checkpoint_state.response,
+            allow_autorepair=True,
+            source="classification_stage",
+        )
+        response = normalized.normalized_response
         segments = self.parser.parse(response)
         parsed_output = self._classify_intent_output(response, segments, allow_think_autorepair=True)
+        self._merge_normalization_metadata(parsed_output, normalized)
         compiler_analysis = self._apply_compiler_diagnosis(parsed_output, response)
         parsed_output.model_stop_reason = str(getattr(step, "model_stop_reason", "") or "").strip()
         checkpoint_has_think = self.semantics.has_complete_think_before_action(raw_response)

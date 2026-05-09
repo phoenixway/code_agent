@@ -29,22 +29,26 @@ class ThinkBoundaryRepairer:
     UNCLOSED_THINK_CLOSE_RE = re.compile(r"</think>", re.IGNORECASE)
     PROTOCOL_TAG_LINE_RE = re.compile(
         r"(?m)^(?P<indent>[ \t]*)"
-        r"(?P<tag><(?P<name>action|intent|subgoal|memory_update_done|finding|fact|decision|progress|path|file_content)\b[^>]*>)"
+        r"(?P<tag><(?P<name>action|intent|subgoal|memory_update_done|memory_review|finding|fact|decision|preference|progress|path|file_content)\b[^>]*>)"
     )
     FENCED_CODE_RE = re.compile(r"```.*?```", re.DOTALL)
     INLINE_CODE_RE = re.compile(r"`[^`\n]+`")
     XML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
     QUOTED_PROTOCOL_RE = re.compile(
-        r"""(["'])[^"'\\\n]*(?:\\.[^"'\\\n]*)*<(?:action|intent|subgoal|memory_update_done|finding|fact|decision|progress|path|file_content)\b[^"'\\\n>]*>[^"'\\\n]*\1""",
+        r"""(["'])[^"'\\\n]*(?:\\.[^"'\\\n]*)*<(?:action|intent|subgoal|memory_update_done|memory_review|finding|fact|decision|preference|progress|path|file_content)\b[^"'\\\n>]*>[^"'\\\n]*\1""",
         re.IGNORECASE,
     )
     ESCAPED_PROTOCOL_RE = re.compile(
-        r"(?:&lt;|\\<)\s*(?:action|intent|subgoal|memory_update_done|finding|fact|decision|progress|path|file_content)\b",
+        r"(?:&lt;|\\<)\s*(?:action|intent|subgoal|memory_update_done|memory_review|finding|fact|decision|preference|progress|path|file_content)\b",
         re.IGNORECASE,
     )
     CANONICAL_PROTOCOL_SEQUENCE_RE = re.compile(
         r"(?is)"
-        r"<(?:finding|fact|decision|progress|path|subgoal)\b[^>]*>.*?</(?:finding|fact|decision|progress|path|subgoal)>"
+        r"(?:"
+        r"<(?:finding|fact|decision|preference|progress|path)\b[^>]*>.*?</(?:finding|fact|decision|preference|progress|path)>"
+        r"|<subgoal\b[^>]*(?:>.*?</subgoal>|/>)"
+        r"|<memory_review\b[^>]*/>"
+        r")"
         r".{0,400}?<memory_update_done\s*/>"
         r".{0,400}?<action\b"
     )
@@ -118,7 +122,7 @@ class ThinkBoundaryRepairer:
             if re.match(r"(?is)<action(?:\s+[^>]*)?>\s*\{", trailing_original) and "</action>" in trailing_original:
                 high_confidence = True
                 reason = "action_json_after_unclosed_think"
-        elif candidate_name in {"finding", "fact", "decision", "progress", "path", "subgoal"}:
+        elif candidate_name in {"finding", "fact", "decision", "preference", "progress", "path", "subgoal", "memory_review"}:
             if has_canonical_sequence and has_multiple_protocol_tags:
                 high_confidence = True
                 reason = "canonical_protocol_sequence_after_unclosed_think"

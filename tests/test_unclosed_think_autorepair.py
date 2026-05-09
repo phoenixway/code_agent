@@ -4,6 +4,7 @@ import pytest
 
 from modules.agent.orchestration.parsers import IntentResponseParser
 from modules.agent.orchestration.responses import ModelResponsePipeline
+from modules.agent.orchestration.responses.response_pipeline_stages import CheckpointStageState
 from modules.parser import ResponseParser
 
 
@@ -50,6 +51,24 @@ from modules.parser import ResponseParser
             False,
             "",
             {"action_inside_think", "malformed_incomplete_think"},
+            "",
+        ),
+        (
+            "fenced_tag_mention",
+            "<think>\n```xml\n<action>{\"type\":\"read_file\",\"path\":\"x.py\"}</action>\n```",
+            True,
+            False,
+            "",
+            {"malformed_incomplete_think"},
+            "",
+        ),
+        (
+            "textual_subgoal_mention",
+            "<think>\nExample only: <subgoal action=\"mark_done\" id=\"sg_1\" /> should not be emitted yet.",
+            True,
+            False,
+            "",
+            {"memory_tag_inside_think", "malformed_incomplete_think"},
             "",
         ),
         (
@@ -249,8 +268,80 @@ async def test_normalization_stage_logs_think_repair_trace_fields():
         if getattr(entry, "stage", "") == "response_normalization"
     ]
     assert normalization_entries
-    fields = normalization_entries[-1].fields
+    fields = next(
+        entry.fields
+        for entry in normalization_entries
+        if entry.fields.get("source") == "run_step"
+    )
     assert fields["think_repair_applied"] is True
     assert fields["think_repair_confidence"] == "high"
     assert fields["think_repair_tag"] == "action"
     assert fields["source"] == "run_step"
+
+
+def test_classification_stage_repairs_unclosed_think_before_checkpoint_tail():
+    pipeline, _state = _make_pipeline()
+    response = (
+        "<think>\n"
+        "Goal: inspect files\n"
+        "Evidence: need file list\n"
+        "Next: run listing\n"
+        "<memory_update_done />\n"
+        '<action>{"type":"run_shell","command":"ls"}</action>'
+    )
+    step = SimpleNamespace(response=response, model_stop_reason="")
+    checkpoint_state = CheckpointStageState(
+        response=response,
+        reflection_repair_pending=False,
+        reflection_repair_kind="",
+        plan_checkpoint_only=False,
+        plan_checkpoint_and_text=False,
+        plan_checkpoint_and_action=False,
+        memory_checkpoint_only=False,
+        memory_checkpoint_and_text=False,
+        memory_checkpoint_and_action=False,
+        memory_board_decision=None,
+    )
+
+    classified = pipeline._run_classification_stage(step, response, checkpoint_state)
+
+    assert classified.response != response
+    assert "</think>\n<memory_update_done />" in classified.response
+    assert classified.parsed_output.auto_closed_think is True
+    assert classified.parsed_output.compiler_error_code == ""
+    assert classified.parsed_output.compiler_shape != "INVALID"
+    assert classified.parsed_action_count == 1
+
+
+def test_classification_stage_repairs_unclosed_think_before_board_tags_and_action():
+    pipeline, _state = _make_pipeline()
+    response = (
+        "<think>\n"
+        "Need to checkpoint and inspect.\n"
+        '<subgoal action="mark_in_progress" id="sg_1" />\n'
+        '<memory_review status="no_change" scope="intent" />\n'
+        "<memory_update_done />\n"
+        '<action>{"type":"read_file","path":"README.md"}</action>'
+    )
+    step = SimpleNamespace(response=response, model_stop_reason="")
+    checkpoint_state = CheckpointStageState(
+        response=response,
+        reflection_repair_pending=False,
+        reflection_repair_kind="",
+        plan_checkpoint_only=False,
+        plan_checkpoint_and_text=False,
+        plan_checkpoint_and_action=False,
+        memory_checkpoint_only=False,
+        memory_checkpoint_and_text=False,
+        memory_checkpoint_and_action=False,
+        memory_board_decision=None,
+    )
+
+    classified = pipeline._run_classification_stage(step, response, checkpoint_state)
+
+    assert classified.response != response
+    assert '</think>\n<subgoal action="mark_in_progress" id="sg_1" />' in classified.response
+    assert classified.parsed_output.auto_closed_think is True
+    assert classified.parsed_output.compiler_error_code == ""
+    assert classified.parsed_output.compiler_shape != "INVALID"
+    assert classified.parsed_action_count == 1

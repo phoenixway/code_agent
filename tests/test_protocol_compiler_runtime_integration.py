@@ -439,3 +439,47 @@ async def test_compiler_invalid_unclosed_think_blocks_legacy_action_dispatch():
     assert snapshot.action_count == 0
 
 
+@pytest.mark.asyncio
+async def test_compiler_invalid_unclosed_think_still_blocks_legacy_action_when_tag_is_in_code_fence():
+    """
+    Even if the legacy parser reports an action segment, compiler-invalid output
+    must not dispatch when the only action-like content is inside a code fence.
+    """
+    recovery = CapturingOutputRecovery()
+    pipeline = _pipeline(recovery)
+
+    step = SimpleNamespace(
+        response=(
+            "<think>\n"
+            "Draft\n"
+            "```xml\n"
+            '<action>{"type":"read_file","path":"x.py"}</action>\n'
+            "```\n"
+            "<!-- unclosed_think_with_legacy_action -->"
+        ),
+        intent_payload=None,
+        intent_error=None,
+        model_stop_reason="",
+    )
+    outcome = await pipeline.run_step(
+        SimpleNamespace(state_machine=None, malformed_action_retries=0, audit_marker_retries=0),
+        step,
+    )
+
+    assert outcome.continue_loop is True
+    assert outcome.reason == "malformed_incomplete_think"
+
+    assert len(recovery.calls) == 1
+    parsed_output = recovery.calls[0]
+    assert parsed_output.compiler_shape == "INVALID"
+    assert parsed_output.compiler_error_code == "E_UNCLOSED_THINK"
+    assert parsed_output.invalid_kind == "malformed_incomplete_think"
+    assert parsed_output.has_action_segment is True
+
+    snapshot = parsed_output.runtime_protocol_semantics
+    assert snapshot is not None
+    assert snapshot.shape == "INVALID"
+    assert snapshot.error_code == "E_UNCLOSED_THINK"
+    assert snapshot.has_action is False
+    assert snapshot.action_count == 0
+
