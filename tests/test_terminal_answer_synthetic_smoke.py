@@ -14,6 +14,7 @@ from modules.agent.orchestration.responses.response_pipeline_prevalidation impor
 from modules.agent.orchestration.responses.response_pipeline_stages import ResponsePipelineStagesMixin
 from modules.agent.orchestration.responses.response_semantics import ResponseSemantics
 from modules.agent.orchestration.responses.terminal_answer_authority import (
+    resolve_checkpoint_only_terminal_authority,
     resolve_plaintext_terminal_answer_authority,
 )
 from modules.agent.orchestration.responses.terminal_answer_models import TerminalAnswerKind
@@ -137,6 +138,15 @@ def _terminal_authority_calls(harness):
     ]
 
 
+def _terminal_authority_calls_for_branch(harness, branch: str):
+    return [
+        call
+        for call in harness.stage_logger.log.call_args_list
+        if call.args[:2] == ("protocol_shadow", "terminal_answer_authority_resolution")
+        and call.kwargs.get("branch") == branch
+    ]
+
+
 @pytest.fixture
 def smoke_registry_override():
     with patch.dict(
@@ -158,7 +168,9 @@ def test_pure_plaintext_terminal_answer_logs_legacy_authority():
     assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.PLAINTEXT_TERMINAL_ANSWER
     assert classified.parsed_action_count == 0
     assert outcome.reason == "dispatch_ready"
-    authority_calls = _terminal_authority_calls(harness)
+    authority_calls = _terminal_authority_calls_for_branch(
+        harness, "terminal_answer.plaintext_terminal_answer"
+    )
     assert len(authority_calls) >= 1
     final_authority = authority_calls[-1]
     assert final_authority.kwargs["branch"] == "terminal_answer.plaintext_terminal_answer"
@@ -186,7 +198,9 @@ def test_smoke_registry_done_plaintext_selects_compiler_candidate(smoke_registry
     assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.PLAINTEXT_TERMINAL_ANSWER
     assert classified.parsed_action_count == 0
     assert outcome.reason == "dispatch_ready"
-    final_authority = _terminal_authority_calls(harness)[-1].kwargs
+    final_authority = _terminal_authority_calls_for_branch(
+        harness, "terminal_answer.plaintext_terminal_answer"
+    )[-1].kwargs
     assert final_authority["switch_value"] == "compiler"
     assert final_authority["authority_source"] == "compiler"
     assert final_authority["clean_plaintext_candidate"] is True
@@ -204,7 +218,9 @@ def test_done_single_line_now_aligns_as_clean_plaintext_candidate():
     assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.PLAINTEXT_TERMINAL_ANSWER
     assert classified.parsed_action_count == 0
     assert outcome.reason == "dispatch_ready"
-    authority_calls = _terminal_authority_calls(harness)
+    authority_calls = _terminal_authority_calls_for_branch(
+        harness, "terminal_answer.plaintext_terminal_answer"
+    )
     final_authority = authority_calls[-1]
     assert final_authority.kwargs["switch_value"] == "legacy"
     assert final_authority.kwargs["authority_source"] == "legacy"
@@ -227,7 +243,9 @@ def test_smoke_registry_markdownish_plaintext_selects_compiler_candidate(smoke_r
     assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.PLAINTEXT_TERMINAL_ANSWER
     assert classified.parsed_action_count == 0
     assert outcome.reason == "dispatch_ready"
-    final_authority = _terminal_authority_calls(harness)[-1].kwargs
+    final_authority = _terminal_authority_calls_for_branch(
+        harness, "terminal_answer.plaintext_terminal_answer"
+    )[-1].kwargs
     assert final_authority["switch_value"] == "compiler"
     assert final_authority["authority_source"] == "compiler"
     assert final_authority["clean_plaintext_candidate"] is True
@@ -245,7 +263,9 @@ def test_multiline_plaintext_characterizes_current_clean_alignment():
     assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.PLAINTEXT_TERMINAL_ANSWER
     assert classified.parsed_action_count == 0
     assert outcome.reason == "dispatch_ready"
-    authority_calls = _terminal_authority_calls(harness)
+    authority_calls = _terminal_authority_calls_for_branch(
+        harness, "terminal_answer.plaintext_terminal_answer"
+    )
     final_authority = authority_calls[-1]
     assert final_authority.kwargs["authority_source"] == "legacy"
     assert final_authority.kwargs["legacy_active"] is True
@@ -265,7 +285,9 @@ def test_smoke_registry_multiline_plaintext_selects_compiler_candidate(smoke_reg
     assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.PLAINTEXT_TERMINAL_ANSWER
     assert classified.parsed_action_count == 0
     assert outcome.reason == "dispatch_ready"
-    final_authority = _terminal_authority_calls(harness)[-1].kwargs
+    final_authority = _terminal_authority_calls_for_branch(
+        harness, "terminal_answer.plaintext_terminal_answer"
+    )[-1].kwargs
     assert final_authority["switch_value"] == "compiler"
     assert final_authority["authority_source"] == "compiler"
     assert final_authority["clean_plaintext_candidate"] is True
@@ -282,7 +304,9 @@ def test_markdownish_plaintext_now_aligns_as_clean_plaintext_candidate():
     assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.PLAINTEXT_TERMINAL_ANSWER
     assert classified.parsed_action_count == 0
     assert outcome.reason == "dispatch_ready"
-    authority_calls = _terminal_authority_calls(harness)
+    authority_calls = _terminal_authority_calls_for_branch(
+        harness, "terminal_answer.plaintext_terminal_answer"
+    )
     final_authority = authority_calls[-1]
     assert final_authority.kwargs["authority_source"] == "legacy"
     assert final_authority.kwargs["legacy_active"] is True
@@ -303,7 +327,9 @@ def test_preactionish_plaintext_without_action_stays_on_current_plaintext_path()
     assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.PLAINTEXT_TERMINAL_ANSWER
     assert classified.parsed_action_count == 0
     assert outcome.reason == "dispatch_ready"
-    authority_calls = _terminal_authority_calls(harness)
+    authority_calls = _terminal_authority_calls_for_branch(
+        harness, "terminal_answer.plaintext_terminal_answer"
+    )
     final_authority = authority_calls[-1]
     assert final_authority.kwargs["authority_source"] == "legacy"
     assert final_authority.kwargs["legacy_active"] is True
@@ -322,7 +348,9 @@ def test_action_only_does_not_activate_plaintext_terminal_authority():
     assert classified.parsed_action_count == 1
     assert outcome.reason == "dispatch_ready"
     assert outcome.parsed_action_count == 1
-    authority_calls = _terminal_authority_calls(harness)
+    authority_calls = _terminal_authority_calls_for_branch(
+        harness, "terminal_answer.plaintext_terminal_answer"
+    )
     assert len(authority_calls) >= 1
     final_authority = authority_calls[-1]
     assert final_authority.kwargs["authority_source"] == "legacy_fallback"
@@ -344,7 +372,9 @@ def test_smoke_registry_action_only_falls_back_without_compiler_plaintext_author
     assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.NO_VISIBLE_TEXT
     assert classified.parsed_action_count == 1
     assert outcome.reason == "dispatch_ready"
-    final_authority = _terminal_authority_calls(harness)[-1].kwargs
+    final_authority = _terminal_authority_calls_for_branch(
+        harness, "terminal_answer.plaintext_terminal_answer"
+    )[-1].kwargs
     assert final_authority["switch_value"] == "compiler"
     assert final_authority["authority_source"] == "legacy_fallback"
     assert final_authority["fallback_used"] is True
@@ -360,7 +390,9 @@ def test_pre_action_text_and_action_is_not_treated_as_terminal_plaintext():
     assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.PRE_ACTION_VISIBLE_TEXT_WITH_ACTION
     assert classified.parsed_action_count == 1
     assert outcome.reason == "dispatch_ready"
-    authority_calls = _terminal_authority_calls(harness)
+    authority_calls = _terminal_authority_calls_for_branch(
+        harness, "terminal_answer.plaintext_terminal_answer"
+    )
     assert len(authority_calls) >= 1
     final_authority = authority_calls[-1]
     assert final_authority.kwargs["authority_source"] == "legacy_fallback"
@@ -381,7 +413,9 @@ def test_smoke_registry_pre_action_text_and_action_falls_back(smoke_registry_ove
     assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.PRE_ACTION_VISIBLE_TEXT_WITH_ACTION
     assert classified.parsed_action_count == 1
     assert outcome.reason == "dispatch_ready"
-    final_authority = _terminal_authority_calls(harness)[-1].kwargs
+    final_authority = _terminal_authority_calls_for_branch(
+        harness, "terminal_answer.plaintext_terminal_answer"
+    )[-1].kwargs
     assert final_authority["switch_value"] == "compiler"
     assert final_authority["authority_source"] == "legacy_fallback"
     assert final_authority["fallback_used"] is True
@@ -395,7 +429,9 @@ def test_checkpoint_only_characterization_does_not_activate_plaintext_terminal_a
     assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.CHECKPOINT_ONLY
     assert classified.parsed_action_count == 0
     assert outcome.reason == "dispatch_ready"
-    authority_calls = _terminal_authority_calls(harness)
+    authority_calls = _terminal_authority_calls_for_branch(
+        harness, "terminal_answer.plaintext_terminal_answer"
+    )
     assert len(authority_calls) >= 1
     final_authority = authority_calls[-1]
     assert final_authority.kwargs["authority_source"] == "legacy_fallback"
@@ -414,7 +450,9 @@ def test_checkpoint_with_visible_text_characterizes_current_plaintext_disagreeme
     assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.CHECKPOINT_WITH_VISIBLE_TEXT
     assert classified.parsed_action_count == 0
     assert outcome.reason == "dispatch_ready"
-    authority_calls = _terminal_authority_calls(harness)
+    authority_calls = _terminal_authority_calls_for_branch(
+        harness, "terminal_answer.plaintext_terminal_answer"
+    )
     assert len(authority_calls) >= 1
     final_authority = authority_calls[-1]
     assert final_authority.kwargs["authority_source"] == "legacy"
@@ -437,7 +475,9 @@ def test_smoke_registry_checkpoint_with_visible_text_falls_back_with_overlap_rea
     assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.CHECKPOINT_WITH_VISIBLE_TEXT
     assert classified.parsed_action_count == 0
     assert outcome.reason == "dispatch_ready"
-    final_authority = _terminal_authority_calls(harness)[-1].kwargs
+    final_authority = _terminal_authority_calls_for_branch(
+        harness, "terminal_answer.plaintext_terminal_answer"
+    )[-1].kwargs
     assert final_authority["switch_value"] == "compiler"
     assert final_authority["authority_source"] == "legacy_fallback"
     assert final_authority["fallback_used"] is True
@@ -453,7 +493,9 @@ def test_unclosed_think_keeps_invalid_recovery_behavior_and_no_plaintext_authori
     assert parsed_output.compiler_error_code == "E_UNCLOSED_THINK"
     assert outcome.continue_loop is True
     assert outcome.reason == "malformed_incomplete_think"
-    authority_calls = _terminal_authority_calls(harness)
+    authority_calls = _terminal_authority_calls_for_branch(
+        harness, "terminal_answer.plaintext_terminal_answer"
+    )
     assert len(authority_calls) >= 1
     final_authority = authority_calls[-1]
     assert final_authority.kwargs["authority_source"] == "legacy_fallback"
@@ -470,7 +512,9 @@ def test_smoke_registry_unclosed_think_falls_back(smoke_registry_override):
 
     assert parsed_output.compiler_shape == "INVALID"
     assert outcome.reason == "malformed_incomplete_think"
-    final_authority = _terminal_authority_calls(harness)[-1].kwargs
+    final_authority = _terminal_authority_calls_for_branch(
+        harness, "terminal_answer.plaintext_terminal_answer"
+    )[-1].kwargs
     assert final_authority["switch_value"] == "compiler"
     assert final_authority["authority_source"] == "legacy_fallback"
     assert final_authority["fallback_used"] is True
@@ -483,7 +527,9 @@ def test_empty_output_keeps_current_behavior_without_plaintext_authority():
     assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.NO_VISIBLE_TEXT
     assert classified.parsed_action_count == 0
     assert outcome.reason == "dispatch_ready"
-    authority_calls = _terminal_authority_calls(harness)
+    authority_calls = _terminal_authority_calls_for_branch(
+        harness, "terminal_answer.plaintext_terminal_answer"
+    )
     assert len(authority_calls) >= 1
     final_authority = authority_calls[-1]
     assert final_authority.kwargs["authority_source"] == "legacy_fallback"
@@ -498,7 +544,9 @@ def test_smoke_registry_empty_output_falls_back_without_compiler_plaintext_autho
 
     assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.NO_VISIBLE_TEXT
     assert outcome.reason == "dispatch_ready"
-    final_authority = _terminal_authority_calls(harness)[-1].kwargs
+    final_authority = _terminal_authority_calls_for_branch(
+        harness, "terminal_answer.plaintext_terminal_answer"
+    )[-1].kwargs
     assert final_authority["switch_value"] == "compiler"
     assert final_authority["authority_source"] == "legacy_fallback"
     assert final_authority["fallback_used"] is True
@@ -511,7 +559,9 @@ def test_leaked_system_result_keeps_existing_recovery_path():
     assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.LEAKED_SYSTEM_RESULT
     assert outcome.continue_loop is True
     assert outcome.reason == "leaked_system_result_in_assistant_text"
-    authority_calls = _terminal_authority_calls(harness)
+    authority_calls = _terminal_authority_calls_for_branch(
+        harness, "terminal_answer.plaintext_terminal_answer"
+    )
     assert len(authority_calls) >= 1
     final_authority = authority_calls[-1]
     assert final_authority.kwargs["authority_source"] == "legacy"
@@ -530,7 +580,9 @@ def test_smoke_registry_leaked_system_result_falls_back_with_overlap_reason(smok
 
     assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.LEAKED_SYSTEM_RESULT
     assert outcome.reason == "leaked_system_result_in_assistant_text"
-    final_authority = _terminal_authority_calls(harness)[-1].kwargs
+    final_authority = _terminal_authority_calls_for_branch(
+        harness, "terminal_answer.plaintext_terminal_answer"
+    )[-1].kwargs
     assert final_authority["switch_value"] == "compiler"
     assert final_authority["authority_source"] == "legacy_fallback"
     assert final_authority["fallback_used"] is True
@@ -544,7 +596,9 @@ def test_whitespace_only_output_keeps_plaintext_authority_inactive():
     assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.NO_VISIBLE_TEXT
     assert classified.parsed_action_count == 0
     assert outcome.reason == "dispatch_ready"
-    authority_calls = _terminal_authority_calls(harness)
+    authority_calls = _terminal_authority_calls_for_branch(
+        harness, "terminal_answer.plaintext_terminal_answer"
+    )
     final_authority = authority_calls[-1]
     assert final_authority.kwargs["authority_source"] == "legacy_fallback"
     assert final_authority.kwargs["legacy_active"] is False
@@ -560,7 +614,9 @@ def test_smoke_registry_dangling_short_text_falls_back_without_compiler_plaintex
     assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.INVALID_OR_TRUNCATED_TERMINAL_TEXT
     assert classified.parsed_action_count == 0
     assert outcome.reason == "dispatch_ready"
-    final_authority = _terminal_authority_calls(harness)[-1].kwargs
+    final_authority = _terminal_authority_calls_for_branch(
+        harness, "terminal_answer.plaintext_terminal_answer"
+    )[-1].kwargs
     assert final_authority["switch_value"] == "compiler"
     assert final_authority["authority_source"] == "legacy_fallback"
     assert final_authority["fallback_used"] is True
@@ -659,3 +715,190 @@ def test_plaintext_authority_resolver_uses_legacy_fallback_for_blocked_compiler_
     assert result.fallback_used is True
     assert result.effective_value is True
     assert "checkpoint_with_visible_text_overlap" in result.blocking_reasons
+
+
+def test_checkpoint_only_authority_resolver_selects_compiler_for_clean_agreed_candidate():
+    clean = SimpleNamespace(
+        terminal_answer_semantic_result=SimpleNamespace(kind=TerminalAnswerKind.CHECKPOINT_ONLY),
+        compiler_ir=SimpleNamespace(
+            has_action=False,
+            has_checkpoint=True,
+            has_memory_tags=False,
+            has_subgoal_tags=False,
+            has_memory_checkpoint=True,
+            has_visible_answer=False,
+            has_pre_action_text=False,
+        ),
+        invalid_kind="",
+        compiler_shape="CHECKPOINT_ONLY",
+    )
+    result = resolve_checkpoint_only_terminal_authority(
+        clean,
+        legacy_checkpoint_only_active=True,
+        switch_value="compiler",
+    )
+    assert result.authority_source == "compiler"
+    assert result.fallback_used is False
+    assert result.effective_value is True
+    assert result.clean_checkpoint_only_candidate is True
+
+
+def test_checkpoint_only_authority_resolver_falls_back_for_visible_text_overlap():
+    blocked = SimpleNamespace(
+        terminal_answer_semantic_result=SimpleNamespace(kind=TerminalAnswerKind.CHECKPOINT_WITH_VISIBLE_TEXT),
+        compiler_ir=SimpleNamespace(
+            has_action=False,
+            has_checkpoint=True,
+            has_memory_tags=False,
+            has_subgoal_tags=False,
+            has_memory_checkpoint=True,
+            has_visible_answer=True,
+            has_pre_action_text=False,
+        ),
+        invalid_kind="",
+        compiler_shape="MEMORY_TEXT",
+    )
+    result = resolve_checkpoint_only_terminal_authority(
+        blocked,
+        legacy_checkpoint_only_active=False,
+        switch_value="compiler",
+    )
+    assert result.authority_source == "legacy_fallback"
+    assert result.fallback_used is True
+    assert "checkpoint_with_visible_text_overlap" in result.blocking_reasons
+
+
+def test_checkpoint_only_default_registry_logs_legacy_authority():
+    response = "<memory_update_done />"
+    harness, parsed_output, classified, outcome = _run_terminal_smoke(response)
+
+    assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.CHECKPOINT_ONLY
+    assert classified.parsed_action_count == 0
+    assert outcome.reason == "dispatch_ready"
+    final_authority = _terminal_authority_calls_for_branch(
+        harness, "terminal_answer.checkpoint_only"
+    )[-1].kwargs
+    assert final_authority["switch_value"] == "legacy"
+    assert final_authority["authority_source"] == "legacy"
+    assert final_authority["typed_kind"] == "CHECKPOINT_ONLY"
+    assert final_authority["legacy_kind"] == "checkpoint_only"
+    assert final_authority["agreement"] is True
+    assert final_authority["fallback_used"] is False
+    assert final_authority["has_checkpoint"] is True
+    assert final_authority["has_visible_text"] is False
+    assert final_authority["has_action"] is False
+    assert final_authority["clean_checkpoint_only_candidate"] is True
+
+
+def test_smoke_registry_checkpoint_only_selects_compiler_candidate(smoke_registry_override):
+    response = "<memory_update_done />"
+    harness, parsed_output, classified, outcome = _run_terminal_smoke(response)
+
+    assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.CHECKPOINT_ONLY
+    assert classified.parsed_action_count == 0
+    assert outcome.reason == "dispatch_ready"
+    final_authority = _terminal_authority_calls_for_branch(
+        harness, "terminal_answer.checkpoint_only"
+    )[-1].kwargs
+    assert final_authority["switch_value"] == "compiler"
+    assert final_authority["authority_source"] == "compiler"
+    assert final_authority["typed_kind"] == "CHECKPOINT_ONLY"
+    assert final_authority["agreement"] is True
+    assert final_authority["fallback_used"] is False
+    assert final_authority["effective_value"] is True
+    assert final_authority["has_checkpoint"] is True
+    assert final_authority["has_visible_text"] is False
+    assert final_authority["has_action"] is False
+    assert final_authority["clean_checkpoint_only_candidate"] is True
+    assert final_authority["behavior_changed"] is False
+
+
+def test_smoke_registry_checkpoint_with_visible_text_does_not_select_checkpoint_only(smoke_registry_override):
+    response = "<memory_update_done />\nDone."
+    harness, parsed_output, classified, outcome = _run_terminal_smoke(response)
+
+    assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.CHECKPOINT_WITH_VISIBLE_TEXT
+    assert outcome.reason == "dispatch_ready"
+    final_authority = _terminal_authority_calls_for_branch(
+        harness, "terminal_answer.checkpoint_only"
+    )[-1].kwargs
+    assert final_authority["switch_value"] == "compiler"
+    assert final_authority["authority_source"] == "legacy_fallback"
+    assert final_authority["fallback_used"] is True
+    assert final_authority["checkpoint_with_visible_text_overlap"] is True
+    assert "checkpoint_with_visible_text_overlap" in final_authority["blocking_reasons"]
+
+
+def test_smoke_registry_action_only_does_not_select_checkpoint_only(smoke_registry_override):
+    response = '<action>{"type":"read_file","path":"README.md"}</action>'
+    harness, parsed_output, classified, outcome = _run_terminal_smoke(response)
+
+    assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.NO_VISIBLE_TEXT
+    assert classified.parsed_action_count == 1
+    assert outcome.reason == "dispatch_ready"
+    final_authority = _terminal_authority_calls_for_branch(
+        harness, "terminal_answer.checkpoint_only"
+    )[-1].kwargs
+    assert final_authority["switch_value"] == "compiler"
+    assert final_authority["authority_source"] == "legacy_fallback"
+    assert final_authority["fallback_used"] is True
+    assert final_authority["action_or_pre_action_overlap"] is True
+
+
+def test_smoke_registry_plaintext_does_not_select_checkpoint_only(smoke_registry_override):
+    harness, parsed_output, classified, outcome = _run_terminal_smoke("Done.")
+
+    assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.PLAINTEXT_TERMINAL_ANSWER
+    assert outcome.reason == "dispatch_ready"
+    final_authority = _terminal_authority_calls_for_branch(
+        harness, "terminal_answer.checkpoint_only"
+    )[-1].kwargs
+    assert final_authority["switch_value"] == "compiler"
+    assert final_authority["authority_source"] == "legacy_fallback"
+    assert final_authority["fallback_used"] is True
+    assert final_authority["has_checkpoint"] is False
+
+
+def test_smoke_registry_leaked_system_result_does_not_select_checkpoint_only(smoke_registry_override):
+    response = "SYSTEM RESULT: The tool output is..."
+    harness, parsed_output, classified, outcome = _run_terminal_smoke(response)
+
+    assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.LEAKED_SYSTEM_RESULT
+    assert outcome.reason == "leaked_system_result_in_assistant_text"
+    final_authority = _terminal_authority_calls_for_branch(
+        harness, "terminal_answer.checkpoint_only"
+    )[-1].kwargs
+    assert final_authority["switch_value"] == "compiler"
+    assert final_authority["authority_source"] == "legacy_fallback"
+    assert final_authority["fallback_used"] is True
+    assert final_authority["leaked_system_result_overlap"] is True
+
+
+def test_smoke_registry_unclosed_think_does_not_select_checkpoint_only(smoke_registry_override):
+    response = "<think>\n<memory_update_done />"
+    harness, parsed_output, classified, outcome = _run_terminal_smoke(response)
+
+    assert parsed_output.compiler_shape == "INVALID"
+    assert outcome.continue_loop is True
+    final_authority = _terminal_authority_calls_for_branch(
+        harness, "terminal_answer.checkpoint_only"
+    )[-1].kwargs
+    assert final_authority["switch_value"] == "compiler"
+    assert final_authority["authority_source"] == "legacy_fallback"
+    assert final_authority["fallback_used"] is True
+    assert "invalid_kind" in final_authority["blocking_reasons"]
+
+
+def test_smoke_registry_checkpoint_plus_action_does_not_select_checkpoint_only(smoke_registry_override):
+    response = '<memory_update_done />\n<action>{"type":"read_file","path":"README.md"}</action>'
+    harness, parsed_output, classified, outcome = _run_terminal_smoke(response)
+
+    assert classified.parsed_action_count == 1
+    assert outcome.reason == "dispatch_ready"
+    final_authority = _terminal_authority_calls_for_branch(
+        harness, "terminal_answer.checkpoint_only"
+    )[-1].kwargs
+    assert final_authority["switch_value"] == "compiler"
+    assert final_authority["authority_source"] == "legacy_fallback"
+    assert final_authority["fallback_used"] is True
+    assert final_authority["action_or_pre_action_overlap"] is True

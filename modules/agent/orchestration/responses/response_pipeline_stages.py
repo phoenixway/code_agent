@@ -20,7 +20,10 @@ from .board_checkpoint_semantics import resolve_plan_checkpoint_only_authority
 from .board_checkpoint_semantics import resolve_plan_checkpoint_only_typed_primary
 from .protocol_decision_bridge import compiler_invalid_kind_for_output, resolve_protocol_authority
 from .semantic_accessors import is_leaked_system_result
-from .terminal_answer_authority import resolve_plaintext_terminal_answer_authority
+from .terminal_answer_authority import (
+    resolve_checkpoint_only_terminal_authority,
+    resolve_plaintext_terminal_answer_authority,
+)
 from .terminal_answer_models import TerminalAnswerKind
 
 
@@ -289,12 +292,14 @@ class ResponsePipelineStagesMixin:
                 terminal_answer_kind=diagnostic.terminal_answer_kind,
                 has_action=diagnostic.has_action,
                 has_checkpoint=diagnostic.has_checkpoint,
+                has_visible_text=diagnostic.has_visible_text,
                 is_leaked_system_result=diagnostic.is_leaked_system_result,
                 invalid_or_truncated_terminal_text=diagnostic.invalid_or_truncated_terminal_text,
                 checkpoint_with_visible_text_overlap=diagnostic.checkpoint_with_visible_text_overlap,
                 leaked_system_result_overlap=diagnostic.leaked_system_result_overlap,
                 action_or_pre_action_overlap=diagnostic.action_or_pre_action_overlap,
                 clean_plaintext_candidate=diagnostic.clean_plaintext_candidate,
+                clean_checkpoint_only_candidate=diagnostic.clean_checkpoint_only_candidate,
                 blocking_reasons=diagnostic.blocking_reasons,
                 mismatch_reason=diagnostic.mismatch_reason,
                 shadow_only=True,
@@ -952,6 +957,30 @@ class ResponsePipelineStagesMixin:
             switch_value=terminal_answer_switch,
         )
         self._log_terminal_answer_authority_resolution(terminal_answer_authority)
+        has_memory_update_done = getattr(self.semantics, "has_memory_update_done", None)
+        looks_like_leaked_system_result = getattr(
+            self.semantics,
+            "looks_like_leaked_system_result",
+            None,
+        )
+        legacy_checkpoint_only_active = bool(
+            callable(has_memory_update_done)
+            and has_memory_update_done(raw_response)
+            and not legacy_plaintext_answer_path
+            and not self.semantics.has_any_action_proposal(parsed_output, parsed_action_count)
+            and not (
+                callable(looks_like_leaked_system_result)
+                and looks_like_leaked_system_result(raw_response)
+            )
+            and not str(getattr(parsed_output, "invalid_kind", "") or "").strip()
+        )
+        checkpoint_only_switch = get_switch("terminal_answer.checkpoint_only")
+        checkpoint_only_authority = resolve_checkpoint_only_terminal_authority(
+            parsed_output,
+            legacy_checkpoint_only_active=legacy_checkpoint_only_active,
+            switch_value=checkpoint_only_switch,
+        )
+        self._log_terminal_answer_authority_resolution(checkpoint_only_authority)
         effective_plaintext_answer_path = legacy_plaintext_answer_path
         if (
             terminal_answer_switch == "compiler"

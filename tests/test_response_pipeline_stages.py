@@ -42,6 +42,8 @@ class TestResponsePipelineStages(unittest.TestCase):
                 self.semantics = SimpleNamespace(
                     has_any_action_proposal=MagicMock(return_value=False),
                     is_plaintext_answer_path=MagicMock(return_value=False),
+                    has_memory_update_done=MagicMock(return_value=False),
+                    looks_like_leaked_system_result=MagicMock(return_value=False),
                     is_reflection_only_repair_turn=MagicMock(return_value=False),
                     is_durable_state_repair_turn=MagicMock(return_value=False),
                 )
@@ -406,7 +408,13 @@ class TestResponsePipelineStages(unittest.TestCase):
         self.assertEqual("dispatch_ready", outcome.reason)
         self.harness.guards.is_nonproductive_thinking_turn.assert_called_once()
         self.assertTrue(self.harness.guards.is_nonproductive_thinking_turn.call_args.kwargs["plaintext_answer_path"])
-        mock_get_switch.assert_called_once_with("terminal_answer.plaintext_terminal_answer")
+        self.assertEqual(
+            [
+                (("terminal_answer.plaintext_terminal_answer",), {}),
+                (("terminal_answer.checkpoint_only",), {}),
+            ],
+            [(call.args, call.kwargs) for call in mock_get_switch.call_args_list],
+        )
         mock_resolve_plaintext.assert_called_once()
 
 

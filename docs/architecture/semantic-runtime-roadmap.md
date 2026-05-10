@@ -2412,6 +2412,34 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 28 Step 11: Terminal Checkpoint-Only Synthetic Authority Candidate.
 
+#### Phase 28 Step 11: Terminal Checkpoint-Only Synthetic Authority Candidate
+
+- **Status**: Done.
+- **Goal**: Add synthetic-first authority diagnostics and a smoke-profile compiler candidate for `terminal_answer.checkpoint_only` without changing production authority.
+- **Completed Outcome**:
+  - Added `resolve_checkpoint_only_terminal_authority(...)`.
+  - Added smoke-profile-only switch configuration:
+    - `terminal_answer.checkpoint_only = "compiler"` in `refactor_switches.smoke.toml`
+    - default registry remains `legacy`
+  - Added `protocol_shadow / terminal_answer_authority_resolution` coverage for branch:
+    - `terminal_answer.checkpoint_only`
+  - Positive synthetic case validates compiler selection for:
+    - `<memory_update_done />`
+  - Negative controls validate `legacy_fallback` for:
+    - checkpoint-with-visible-text
+    - action-only
+    - pre-action text plus action
+    - plaintext-only
+    - leaked system result
+    - empty / malformed output
+    - checkpoint plus action
+  - Important boundary:
+    - no production authority flip happened
+    - no runtime behavior change under the default registry
+    - checkpoint-with-visible-text authority is still deferred
+- **Next**:
+  - Phase 28 Step 12: Live Angelica Smoke for Terminal Checkpoint-Only under Smoke Profile.
+
 ---
 
 ### Phase 11: RecoveryStrategy Registry Expansion

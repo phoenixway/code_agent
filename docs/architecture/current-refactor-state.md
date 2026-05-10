@@ -4,9 +4,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 28 Step 10: Plaintext Terminal Authority Closure / Next Terminal Branch Selection
+- **Phase**: Phase 28 Step 11: Terminal Checkpoint-Only Synthetic Authority Candidate
 - **Status**: Complete.
-- **Next Step**: Phase 28 Step 11: Terminal Checkpoint-Only Synthetic Authority Candidate.
+- **Next Step**: Phase 28 Step 12: Live Angelica Smoke for Terminal Checkpoint-Only under Smoke Profile.
 - **Boundary**: The checkpoint parity bridge remains diagnostic-only. Legacy board handlers still own commit behavior, the prepass compiler analysis remains observational, and `_apply_compiler_diagnosis` remains the effectful classification-stage path that recomputes on normalized response.
 
 ## Step 4I Parity Matrix
@@ -1351,6 +1351,24 @@ This document is the single source of truth for the current state of the Semanti
     - no action dispatch
     - switch placeholder already exists
     - synthetic-first validation is straightforward
+- **Phase 28 Step 11: Terminal Checkpoint-Only Synthetic Authority Candidate (Complete)**
+  - Added `terminal_answer.checkpoint_only` authority diagnostics/resolver.
+  - Added smoke-profile-only switch configuration:
+    - `modules/agent/orchestration/config/refactor_switches.smoke.toml`
+      - `terminal_answer.checkpoint_only = "compiler"`
+  - Synthetic positives validate compiler selection for:
+    - `<memory_update_done />`
+  - Negative controls validate `legacy_fallback` for:
+    - checkpoint-with-visible-text
+    - action-only
+    - pre-action text plus action
+    - plaintext-only
+    - leaked system result
+    - empty / malformed output
+    - checkpoint plus action
+  - Default registry remains `legacy`.
+  - No production authority flip happened.
+  - No behavior change under the default registry.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 

@@ -149,4 +149,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 145. Phase 28 Step 8: done. Introduced the first actual smoke-profile-only local routing use of plaintext terminal authority via an agreement-gated effective value, while keeping the default registry legacy and preserving fallback for all negative controls.
 146. Phase 28 Step 9: done. Live Angelica smoke for the actual plaintext terminal routing flip passed under the smoke profile; `terminal_answer_authority_resolution` selected `compiler` with no fallback, no overlap blockers, and no runtime crash.
 147. Phase 28 Step 10: done. Closed the plaintext terminal authority smoke slice, kept default production behavior legacy, and selected `terminal_answer.checkpoint_only` as the next synthetic-first terminal branch while deferring checkpoint-with-visible-text and action-bearing/recovery-sensitive branches.
-148. Next: Phase 28 Step 11: Terminal Checkpoint-Only Synthetic Authority Candidate.
+148. Phase 28 Step 11: done. Added the synthetic-first `terminal_answer.checkpoint_only` authority candidate with smoke-profile-only compiler switch, explicit diagnostics, and negative controls, while keeping the default registry legacy and leaving production authority unchanged.
+149. Next: Phase 28 Step 12: Live Angelica Smoke for Terminal Checkpoint-Only under Smoke Profile.
