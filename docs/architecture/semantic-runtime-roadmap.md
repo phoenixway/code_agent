@@ -3216,13 +3216,42 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 30 Step 10: MEMORY_CHECKPOINT_ONLY Live Smoke Validation
 
-- **Status**: Not started.
+- **Status**: Done.
 - **Goal**: Run a live/integrated smoke test for the `MEMORY_CHECKPOINT_ONLY` branch to confirm that authority selection is now observable in runtime logs.
-- **Expected Scope**:
-  - Run a live smoke test with the smoke profile enabled.
-  - Verify that the `board_memory_commit_authority_resolution` log is produced and shows `authority_source="compiler"`.
+- **Completed Outcome**:
+  - **Result**: NOT A PASS.
+  - Live smoke was run for `<memory_update_done />` under the smoke profile.
+  - The `board_memory_commit_authority_resolution` diagnostic was observable, but it reported `commit_equivalent=False` and fell back to legacy.
+  - **Root Cause**: The live `MemoryBoardStageHandler` correctly reported `accepted_count=0` for a marker-only checkpoint, while the synthetic equivalence model incorrectly expected `accepted_count=1`.
 - **Next**:
-  - Phase 30 Step 11: ...
+  - Phase 30 Step 11: MEMORY_CHECKPOINT_ONLY Live Semantics Reconciliation / Closure Decision.
+
+---
+
+#### Phase 30 Step 11: MEMORY_CHECKPOINT_ONLY Live Semantics Reconciliation / Closure Decision
+
+- **Status**: Done.
+- **Goal**: Reconcile synthetic `MEMORY_CHECKPOINT_ONLY` equivalence with real live `MemoryBoardStageHandler` behavior.
+- **Completed Outcome**:
+  - The `resolve_memory_checkpoint_only_commit_authority` resolver was updated to correctly handle marker-only checkpoints (`accepted_count=0`).
+  - Live behavior showed `<memory_update_done />` has `accepted_count=0`. The model now treats this zero-count continuation as valid observed equivalence.
+  - Synthetic tests in `tests/test_board_memory_commit_equivalence.py` were updated to reflect this live-faithful behavior.
+  - Content-bearing memory update authority remains out of scope/deferred until its real protocol syntax and typed classification are identified.
+  - No runtime behavior was changed.
+- **Next**:
+  - Phase 30 Step 12: MEMORY_CHECKPOINT_ONLY Closure / Remaining Board-Memory Branch Selection.
+
+---
+
+#### Phase 30 Step 12: MEMORY_CHECKPOINT_ONLY Closure / Remaining Board-Memory Branch Selection
+
+- **Status**: Not started.
+- **Goal**: Close the `MEMORY_CHECKPOINT_ONLY` slice and select the next board/memory branch.
+- **Expected Scope**:
+  - Re-run live smoke validation for `MEMORY_CHECKPOINT_ONLY` to confirm the fix.
+  - If it passes, document the closure and select the next branch (`MEMORY_CHECKPOINT_WITH_TEXT`).
+- **Next**:
+  - Phase 30 Step 13: ...
 
 ---
 

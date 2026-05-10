@@ -83,7 +83,15 @@ def resolve_memory_checkpoint_only_commit_authority(
 
     # For observed-equivalence, we don't predict counts/query from typed facts.
     # We check if the observed legacy values are consistent with a clean MCO.
-    accepted_count_agreement = legacy_accepted_count == 1 if candidate.candidate_available else False
+    if candidate.candidate_available and semantic_result:
+        if not semantic_result.compiler_has_memory_tags:
+            # Marker-only MCO, e.g. <memory_update_done />
+            accepted_count_agreement = legacy_accepted_count == 0
+        else:
+            # MCO with memory content, e.g. <fact>...</fact>
+            accepted_count_agreement = legacy_accepted_count == 1
+    else:
+        accepted_count_agreement = False
     rejected_count_agreement = legacy_rejected_count == 0 if candidate.candidate_available else False
     next_query_agreement = bool(legacy_next_query) if candidate.candidate_available else False
 

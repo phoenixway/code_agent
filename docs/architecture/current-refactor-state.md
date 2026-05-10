@@ -1961,7 +1961,18 @@ This document is the single source of truth for the current state of the Semanti
   - Hardened the diagnostic integration to correctly read commit evidence from real-handler state fields (`last_memory_board_accepted_count`, etc.).
   - The diagnostic resolver input now safely falls back from the memory decision object to the agent state fields.
   - This remains a diagnostic-only change. No runtime behavior was changed.
-  - **Next Step**: `Phase 30 — Step 10/11: MEMORY_CHECKPOINT_ONLY Live Smoke Validation`.
+- **Phase 30 Step 10: MEMORY_CHECKPOINT_ONLY Live Smoke Validation (Complete)**
+  - Live smoke was run for `<memory_update_done />` under the smoke profile.
+  - **Result**: NOT A PASS. `commit_equivalent` was `False`, causing a fallback to legacy.
+  - **Root Cause**: The live `MemoryBoardStageHandler` correctly reported `accepted_count=0` for a marker-only checkpoint, but the synthetic equivalence model expected `accepted_count=1`.
+  - **Next Step**: `Phase 30 — Step 11/11: MEMORY_CHECKPOINT_ONLY Live Semantics Reconciliation / Closure Decision`.
+- **Phase 30 Step 11: MEMORY_CHECKPOINT_ONLY Live Semantics Reconciliation (Complete)**
+  - The `resolve_memory_checkpoint_only_commit_authority` resolver was updated to correctly handle marker-only checkpoints (`accepted_count=0`).
+  - Live behavior showed `<memory_update_done />` has `accepted_count=0`. The model now treats this zero-count continuation as valid observed equivalence.
+  - Synthetic tests in `tests/test_board_memory_commit_equivalence.py` were updated to reflect this live-faithful behavior.
+  - Content-bearing memory update authority remains out of scope/deferred until its real protocol syntax and typed classification are identified.
+  - No runtime behavior was changed.
+  - **Next Step**: Re-run live smoke validation or close the slice.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 

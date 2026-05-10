@@ -357,9 +357,10 @@ def test_memory_checkpoint_only_real_handler_snapshot():
         log=None,
     )
     mock_prompt_builder = SimpleNamespace(_current_active_intent_id=MagicMock(return_value="intent_123"))
+    # A marker-only response does not result in a memory commit, so counts are 0.
     mock_board_result = SimpleNamespace(
-        parsed_count=1,
-        accepted_count=1,
+        parsed_count=0,
+        accepted_count=0,
         rejected_count=0,
         clean_text="",
     )
@@ -373,7 +374,7 @@ def test_memory_checkpoint_only_real_handler_snapshot():
     assert snapshot.snapshot_source == "memory_board_stage_handler"
     assert snapshot.memory_commit_mode == "real_handler"
     assert snapshot.memory_commit_attempted is True
-    assert snapshot.memory_commit_accepted_count == 1
+    assert snapshot.memory_commit_accepted_count == 0
     assert snapshot.memory_commit_rejected_count == 0
     assert snapshot.last_memory_update_done is True
     assert snapshot.handled is True
@@ -391,7 +392,7 @@ class TestMemoryCommitAuthority:
         response = "<memory_update_done />"
         mock_agent = SimpleNamespace(state=SimpleNamespace(), memory_board_engine=MagicMock(), log=None)
         mock_prompt_builder = SimpleNamespace(_current_active_intent_id=MagicMock(return_value="intent_123"))
-        mock_board_result = SimpleNamespace(parsed_count=1, accepted_count=1, rejected_count=0, clean_text="")
+        mock_board_result = SimpleNamespace(parsed_count=0, accepted_count=0, rejected_count=0, clean_text="")
         mock_agent.memory_board_engine.apply_response_text.return_value = mock_board_result
         real_handler = MemoryBoardStageHandler(mock_agent, mock_prompt_builder)
 
@@ -443,7 +444,7 @@ class TestMemoryCommitAuthority:
         response = "<memory_update_done />"
         mock_agent = SimpleNamespace(state=SimpleNamespace(), memory_board_engine=MagicMock(), log=None)
         mock_prompt_builder = SimpleNamespace(_current_active_intent_id=MagicMock(return_value="intent_123"))
-        mock_board_result = SimpleNamespace(parsed_count=1, accepted_count=1, rejected_count=0, clean_text="")
+        mock_board_result = SimpleNamespace(parsed_count=0, accepted_count=0, rejected_count=0, clean_text="")
         mock_agent.memory_board_engine.apply_response_text.return_value = mock_board_result
         real_handler = MemoryBoardStageHandler(mock_agent, mock_prompt_builder)
         harness, state, outcome, snapshot = _run_commit_equivalence_harness(
@@ -482,7 +483,7 @@ class TestMemoryCommitAuthority:
         mock_agent = SimpleNamespace(state=SimpleNamespace(), memory_board_engine=MagicMock(), log=None)
         mock_prompt_builder = SimpleNamespace(_current_active_intent_id=MagicMock(return_value="intent_123"))
         # Create a mismatch in accepted_count
-        mock_board_result = SimpleNamespace(parsed_count=1, accepted_count=0, rejected_count=0, clean_text="")
+        mock_board_result = SimpleNamespace(parsed_count=1, accepted_count=1, rejected_count=0, clean_text="")
         mock_agent.memory_board_engine.apply_response_text.return_value = mock_board_result
         real_handler = MemoryBoardStageHandler(mock_agent, mock_prompt_builder)
         harness, state, outcome, snapshot = _run_commit_equivalence_harness(
@@ -527,11 +528,11 @@ class TestMemoryCommitAuthority:
 
 
 class TestMemoryCommitEquivalence:
-    def test_resolver_proves_commit_equivalence_for_clean_mco(self):
+    def test_resolver_proves_commit_equivalence_for_marker_only_mco(self):
         response = "<memory_update_done />"
         mock_agent = SimpleNamespace(state=SimpleNamespace(), memory_board_engine=MagicMock(), log=None)
         mock_prompt_builder = SimpleNamespace(_current_active_intent_id=MagicMock(return_value="intent_123"))
-        mock_board_result = SimpleNamespace(parsed_count=1, accepted_count=1, rejected_count=0, clean_text="")
+        mock_board_result = SimpleNamespace(parsed_count=0, accepted_count=0, rejected_count=0, clean_text="")
         mock_agent.memory_board_engine.apply_response_text.return_value = mock_board_result
         real_handler = MemoryBoardStageHandler(mock_agent, mock_prompt_builder)
         harness, state, outcome, snapshot = _run_commit_equivalence_harness(
@@ -571,6 +572,7 @@ class TestMemoryCommitEquivalence:
         assert diag.authority_source == "compiler"
         assert diag.selected_by_switch is True
 
+
     def test_resolver_fails_commit_equivalence_on_count_mismatch(self):
         response = "<memory_update_done />"
         mock_agent = SimpleNamespace(state=SimpleNamespace(), memory_board_engine=MagicMock(), log=None)
@@ -605,11 +607,11 @@ class TestMemoryCommitEquivalence:
 
 @pytest.mark.usefixtures("smoke_registry_override")
 class TestMemoryCommitSmokeValidation:
-    def test_smoke_compiler_authority_selected_for_clean_mco(self):
+    def test_smoke_compiler_authority_selected_for_marker_only_mco(self):
         response = "<memory_update_done />"
         mock_agent = SimpleNamespace(state=SimpleNamespace(), memory_board_engine=MagicMock(), log=None)
         mock_prompt_builder = SimpleNamespace(_current_active_intent_id=MagicMock(return_value="intent_123"))
-        mock_board_result = SimpleNamespace(parsed_count=1, accepted_count=1, rejected_count=0, clean_text="")
+        mock_board_result = SimpleNamespace(parsed_count=0, accepted_count=0, rejected_count=0, clean_text="")
         mock_agent.memory_board_engine.apply_response_text.return_value = mock_board_result
         real_handler = MemoryBoardStageHandler(mock_agent, mock_prompt_builder)
         harness, state, outcome, snapshot = _run_commit_equivalence_harness(
@@ -639,6 +641,7 @@ class TestMemoryCommitSmokeValidation:
         assert diag.selected_by_switch is True
         assert diag.commit_equivalent is True
         assert diag.behavior_changed is False
+
 
     def test_smoke_compiler_authority_falls_back_on_mismatch(self):
         response = "<memory_update_done />"
