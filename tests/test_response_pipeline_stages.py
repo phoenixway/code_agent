@@ -27,6 +27,7 @@ from modules.agent.orchestration.responses.board_checkpoint_semantics import (
     resolve_plan_checkpoint_only_with_compiler_switch,
 )
 from modules.agent.orchestration.responses.response_pipeline_stages import CheckpointStageState, ResponsePipelineStagesMixin
+from modules.agent.orchestration.responses.terminal_answer_authority import TerminalAnswerAuthorityDiagnostic
 from modules.agent.orchestration.responses.terminal_answer_models import TerminalAnswerKind, TerminalAnswerSemanticResult
 from modules.agent.orchestration.shared.decision_models import ParsedModelOutput, ResponsePipelineOutcome
 
@@ -325,6 +326,88 @@ class TestResponsePipelineStages(unittest.TestCase):
         self.assertEqual("dispatch_ready", outcome.reason)
         self.assertIsNone(outcome.execution_plan)
         self.assertEqual([action_segment], outcome.segments)
+
+    @patch("modules.agent.orchestration.responses.response_pipeline_stages.get_switch", return_value="compiler")
+    @patch("modules.agent.orchestration.responses.response_pipeline_stages.resolve_plaintext_terminal_answer_authority")
+    def test_smoke_profile_plaintext_effective_value_is_used_by_nonproductive_guard(
+        self,
+        mock_resolve_plaintext,
+        mock_get_switch,
+    ):
+        self.harness.semantics.is_plaintext_answer_path.return_value = False
+        self.harness.semantics.has_any_action_proposal.return_value = False
+        self.harness.output_recovery.decide = AsyncMock(
+            return_value=SimpleNamespace(
+                handled=False,
+                next_query=None,
+                reason="",
+                malformed_action_retries=0,
+                audit_marker_retries=0,
+            )
+        )
+        self.harness.action_policy = SimpleNamespace(
+            decide=AsyncMock(
+                return_value=SimpleNamespace(
+                    handled=False,
+                    next_query=None,
+                    reason="actions_allowed_to_proceed",
+                    source="action_policy",
+                    parsed_action_count=0,
+                )
+            )
+        )
+        mock_resolve_plaintext.return_value = TerminalAnswerAuthorityDiagnostic(
+            branch="terminal_answer.plaintext_terminal_answer",
+            switch_value="compiler",
+            authority_source="compiler",
+            legacy_active=False,
+            typed_kind="PLAINTEXT_TERMINAL_ANSWER",
+            legacy_kind="none",
+            agreement=True,
+            fallback_used=False,
+            behavior_changed=False,
+            branch_active=True,
+            typed_eligible=True,
+            typed_plaintext_eligible=True,
+            effective_value=True,
+            clean_plaintext_candidate=True,
+            blocking_reasons=(),
+        )
+
+        ctx = SimpleNamespace(malformed_action_retries=0, audit_marker_retries=0)
+        step = SimpleNamespace(response="Done.", intent_payload=None)
+        checkpoint_state = SimpleNamespace(
+            reflection_repair_pending=False,
+            reflection_repair_kind="",
+            memory_checkpoint_and_text=False,
+            memory_checkpoint_and_action=False,
+            memory_board_decision=SimpleNamespace(memory_checkpoint_and_text=False),
+        )
+        parsed_output = ParsedModelOutput(
+            response="Done.",
+            compiler_shape="PURE_PLAINTEXT",
+            terminal_answer_semantic_result=TerminalAnswerSemanticResult(
+                kind=TerminalAnswerKind.PLAINTEXT_TERMINAL_ANSWER,
+                source="compiler_fact",
+                reason_code="visible_text_source_is_pure_plaintext",
+                visible_text="Done.",
+            ),
+        )
+        classified = SimpleNamespace(
+            response=step.response,
+            parsed_output=parsed_output,
+            segments=[],
+            parsed_action_count=0,
+        )
+
+        outcome = asyncio.run(self.harness._run_post_classification_stage(ctx, step, checkpoint_state, classified))
+
+        self.assertIsInstance(outcome, ResponsePipelineOutcome)
+        self.assertEqual("dispatch_ready", outcome.reason)
+        self.harness.guards.is_nonproductive_thinking_turn.assert_called_once()
+        self.assertTrue(self.harness.guards.is_nonproductive_thinking_turn.call_args.kwargs["plaintext_answer_path"])
+        mock_get_switch.assert_called_once_with("terminal_answer.plaintext_terminal_answer")
+        mock_resolve_plaintext.assert_called_once()
 
 
 class TestBoardCheckpointSemanticBuilder(unittest.TestCase):

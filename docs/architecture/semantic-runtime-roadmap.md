@@ -2302,6 +2302,116 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 28 Step 7: Live Angelica smoke for plaintext terminal answer under smoke profile.
 
+#### Phase 28 Step 7: Live Angelica Smoke for Plaintext Terminal Answer under Smoke Profile
+
+- **Status**: Done.
+- **Goal**: Validate the smoke-profile plaintext terminal authority candidate against live Angelica behavior before any actual routing use.
+- **Completed Outcome**:
+  - Live smoke passed for clean plaintext terminal output (`Done.`).
+  - Authority diagnostics showed:
+    - `switch_value="compiler"`
+    - `authority_source="compiler"`
+    - `typed_kind="PLAINTEXT_TERMINAL_ANSWER"`
+    - `legacy_kind="plaintext_answer_path"`
+    - `agreement=True`
+    - `fallback_used=False`
+    - `clean_plaintext_candidate=True`
+    - no action/checkpoint/leak overlap
+  - Runtime remained stable (`last_error_code=None`, `consecutive_same_error_count=0`).
+  - Up to this step, actual routing remained legacy.
+  - Default registry remained `legacy`.
+- **Next**:
+  - Phase 28 Step 8: Plaintext Terminal Authority Closure / Actual Smoke-Profile Routing Flip Candidate.
+
+#### Phase 28 Step 8: Plaintext Terminal Authority Closure / Actual Smoke-Profile Routing Flip Candidate
+
+- **Status**: Done.
+- **Goal**: If safe, move from diagnostic-only compiler selection to actual smoke-profile-only local routing use for the clean plaintext terminal-answer branch.
+- **Completed Outcome**:
+  - Decision:
+    - **GO** for the first actual smoke-profile-only routing use of `terminal_answer.plaintext_terminal_answer`.
+  - Implemented a local effective plaintext authority value in `_run_post_classification_stage(...)`.
+  - The actual local branch consumption now uses the resolver’s effective value only when:
+    - switch is `compiler`
+    - `authority_source="compiler"`
+    - `clean_plaintext_candidate=True`
+    - `agreement=True`
+    - no `blocking_reasons`
+    - `behavior_changed=False`
+  - Positive synthetic coverage validates the smoke-profile routing flip for:
+    - `Done.`
+    - markdown-ish plaintext
+    - multi-line plaintext
+  - Negative controls remain protected with fallback for:
+    - action-only
+    - pre-action text plus action
+    - checkpoint-with-visible-text
+    - leaked system result
+    - empty / malformed output
+    - dangling short text such as `And.`
+  - Important boundary:
+    - the default registry remains `legacy`
+    - no production authority flip happened
+    - runtime behavior under the default registry is unchanged
+- **Next**:
+  - Phase 28 Step 9: Live Angelica Smoke for Actual Plaintext Terminal Routing Flip under Smoke Profile.
+
+#### Phase 28 Step 9: Live Angelica Smoke for Actual Plaintext Terminal Routing Flip under Smoke Profile
+
+- **Status**: Done.
+- **Goal**: Verify with a live Angelica run that the actual smoke-profile-only plaintext terminal routing flip remains healthy when exercised outside the synthetic harness.
+- **Completed Outcome**:
+  - Live smoke passed from dump `dumps/agent_dump_20260510_035546.txt`.
+  - Verified evidence:
+    - model output: `Done.`
+    - `last_error_code=None`
+    - `consecutive_same_error_count=0`
+    - `switch_value="compiler"`
+    - `authority_source="compiler"`
+    - `typed_kind="PLAINTEXT_TERMINAL_ANSWER"`
+    - `legacy_kind="plaintext_answer_path"`
+    - `agreement=True`
+    - `fallback_used=False`
+    - `behavior_changed=False`
+    - `effective_value=True`
+    - `clean_plaintext_candidate=True`
+    - no action/checkpoint/leak overlap flags were set
+  - Important note:
+    - older `terminal_answer_classifier_shadow` mismatches in the dump are not the authority signal for this step
+    - the relevant authority evidence is `protocol_shadow / terminal_answer_authority_resolution`
+  - Default registry remains `legacy`.
+  - No production authority flip happened.
+- **Next**:
+  - Phase 28 Step 10: Plaintext Terminal Authority Closure / Next Terminal Branch Selection.
+
+#### Phase 28 Step 10: Plaintext Terminal Authority Closure / Next Terminal Branch Selection
+
+- **Status**: Done.
+- **Goal**: Close the plaintext terminal-answer smoke-profile authority slice and select the next terminal-answer branch.
+- **Completed Outcome**:
+  - Closed the plaintext terminal-answer smoke-profile slice.
+  - `terminal_answer.plaintext_terminal_answer` now has:
+    - synthetic matrix coverage
+    - hardened authority diagnostics
+    - typed classifier fix for short plaintext like `Done.`
+    - smoke-profile compiler authority candidate
+    - actual smoke-profile routing use
+    - live Angelica smoke pass
+  - Smoke profile may keep `terminal_answer.plaintext_terminal_answer = "compiler"` for continued validation.
+  - Default production behavior remains `legacy`.
+  - No production authority flip happened.
+  - Selected next branch:
+    - `terminal_answer.checkpoint_only`
+  - Deferred branches:
+    - `terminal_answer.checkpoint_with_visible_text`
+      - still overlaps the legacy plaintext path and needs a dedicated diagnostics/fix slice
+    - action-bearing / pre-action branches
+      - they cross dispatch/action semantics
+    - leaked-system-result cases
+      - recovery must remain authoritative
+- **Next**:
+  - Phase 28 Step 11: Terminal Checkpoint-Only Synthetic Authority Candidate.
+
 ---
 
 ### Phase 11: RecoveryStrategy Registry Expansion

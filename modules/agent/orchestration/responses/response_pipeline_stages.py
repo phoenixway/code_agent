@@ -940,14 +940,28 @@ class ResponsePipelineStagesMixin:
                 source="think_reflection_guard",
             )
 
-        plaintext_answer_path = self.semantics.is_plaintext_answer_path(raw_response, parsed_output, parsed_action_count)
+        legacy_plaintext_answer_path = self.semantics.is_plaintext_answer_path(
+            raw_response,
+            parsed_output,
+            parsed_action_count,
+        )
         terminal_answer_switch = get_switch("terminal_answer.plaintext_terminal_answer")
         terminal_answer_authority = resolve_plaintext_terminal_answer_authority(
             parsed_output,
-            legacy_plaintext_answer_path=plaintext_answer_path,
+            legacy_plaintext_answer_path=legacy_plaintext_answer_path,
             switch_value=terminal_answer_switch,
         )
         self._log_terminal_answer_authority_resolution(terminal_answer_authority)
+        effective_plaintext_answer_path = legacy_plaintext_answer_path
+        if (
+            terminal_answer_switch == "compiler"
+            and terminal_answer_authority.authority_source == "compiler"
+            and terminal_answer_authority.clean_plaintext_candidate
+            and terminal_answer_authority.agreement
+            and not terminal_answer_authority.blocking_reasons
+            and not terminal_answer_authority.behavior_changed
+        ):
+            effective_plaintext_answer_path = bool(terminal_answer_authority.effective_value)
         reflection_only_repair = self.semantics.is_reflection_only_repair_turn(
             raw_response, parsed_output, parsed_action_count
         )
@@ -1122,7 +1136,7 @@ class ResponsePipelineStagesMixin:
             raw_response,
             parsed_output,
             parsed_action_count,
-            plaintext_answer_path=plaintext_answer_path,
+            plaintext_answer_path=effective_plaintext_answer_path,
             intent_transition_handled=False,
             memory_checkpoint_and_action=memory_checkpoint_and_action,
             memory_checkpoint_and_text=memory_checkpoint_and_text,

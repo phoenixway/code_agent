@@ -4,9 +4,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 28 Step 6: Plaintext Terminal Authority Re-review / Smoke-Profile Candidate
+- **Phase**: Phase 28 Step 10: Plaintext Terminal Authority Closure / Next Terminal Branch Selection
 - **Status**: Complete.
-- **Next Step**: Phase 28 Step 7: Live Angelica smoke for plaintext terminal answer under smoke profile.
+- **Next Step**: Phase 28 Step 11: Terminal Checkpoint-Only Synthetic Authority Candidate.
 - **Boundary**: The checkpoint parity bridge remains diagnostic-only. Legacy board handlers still own commit behavior, the prepass compiler analysis remains observational, and `_apply_compiler_diagnosis` remains the effectful classification-stage path that recomputes on normalized response.
 
 ## Step 4I Parity Matrix
@@ -1249,11 +1249,108 @@ This document is the single source of truth for the current state of the Semanti
     - empty / malformed output
     - dangling/incomplete plaintext like `And.`
   - Important boundary:
-    - actual post-classification routing still remains legacy in this step
-    - compiler authority is selected diagnostically under the smoke profile only
+    - actual post-classification routing still remained legacy in this step
+    - compiler authority was selected diagnostically under the smoke profile only
     - no production authority flip happened
   - Default registry remains `legacy`.
   - No runtime behavior changed under the default registry.
+- **Phase 28 Step 7: Live Angelica Smoke for Plaintext Terminal Answer under Smoke Profile (Complete)**
+  - Live smoke passed for `terminal_answer.plaintext_terminal_answer` under the smoke profile.
+  - Observed authority diagnostics:
+    - `switch_value="compiler"`
+    - `authority_source="compiler"`
+    - `typed_kind="PLAINTEXT_TERMINAL_ANSWER"`
+    - `legacy_kind="plaintext_answer_path"`
+    - `agreement=True`
+    - `fallback_used=False`
+    - `clean_plaintext_candidate=True`
+    - no action/checkpoint/leak overlap
+  - Runtime remained stable:
+    - `last_error_code=None`
+    - `consecutive_same_error_count=0`
+  - Up to this step, actual routing was still legacy.
+  - Default registry remained `legacy`.
+- **Phase 28 Step 8: Plaintext Terminal Authority Closure / Actual Smoke-Profile Routing Flip Candidate (Complete)**
+  - Decision:
+    - **GO** for the first actual smoke-profile-only routing use of `terminal_answer.plaintext_terminal_answer`.
+  - Implemented an agreement-gated local effective variable in `_run_post_classification_stage(...)`:
+    - `legacy_plaintext_answer_path`
+    - `terminal_answer_authority`
+    - `effective_plaintext_answer_path`
+  - Actual routing use is enabled only when all are true:
+    - switch is `compiler`
+    - `authority_source="compiler"`
+    - `clean_plaintext_candidate=True`
+    - `agreement=True`
+    - no `blocking_reasons`
+    - `behavior_changed=False`
+  - The first local consumer now uses `effective_plaintext_answer_path` instead of the raw legacy value:
+    - the nonproductive-thinking guard call inside `_run_post_classification_stage(...)`
+  - Positive smoke coverage:
+    - `Done.`
+    - markdown-ish plaintext
+    - multi-line plaintext
+  - Negative controls remain protected:
+    - action-only
+    - pre-action text plus action
+    - checkpoint-with-visible-text
+    - leaked system result
+    - empty / malformed output
+    - dangling short text such as `And.`
+  - Behavior boundary:
+    - default registry remains `legacy`
+    - no production authority flip happened
+    - runtime behavior under the default registry is unchanged
+- **Phase 28 Step 9: Live Angelica Smoke for Actual Plaintext Terminal Routing Flip under Smoke Profile (Complete)**
+  - Live smoke passed for the actual smoke-profile plaintext terminal routing flip.
+  - Verified from dump:
+    - model output was exactly `Done.`
+    - `last_error_code=None`
+    - `consecutive_same_error_count=0`
+    - `stage=protocol_shadow`
+    - `decision=terminal_answer_authority_resolution`
+    - `branch=terminal_answer.plaintext_terminal_answer`
+    - `switch_value=compiler`
+    - `authority_source=compiler`
+    - `typed_kind=PLAINTEXT_TERMINAL_ANSWER`
+    - `legacy_kind=plaintext_answer_path`
+    - `agreement=True`
+    - `fallback_used=False`
+    - `behavior_changed=False`
+    - `effective_value=True`
+    - `clean_plaintext_candidate=True`
+    - no action/checkpoint/leak overlap flags were set
+  - Important note:
+    - older `terminal_answer_classifier_shadow` mismatches in the same dump are not the authority signal for this step
+    - the relevant authority evidence is `protocol_shadow / terminal_answer_authority_resolution`
+  - Default registry remains `legacy`.
+  - No production authority flip happened.
+- **Phase 28 Step 10: Plaintext Terminal Authority Closure / Next Terminal Branch Selection (Complete)**
+  - Closed the plaintext terminal-answer smoke-profile authority slice.
+  - `terminal_answer.plaintext_terminal_answer` now has:
+    - synthetic matrix coverage
+    - hardened authority diagnostics
+    - typed classifier fix for short plaintext like `Done.`
+    - smoke-profile compiler authority candidate
+    - actual smoke-profile routing use
+    - live Angelica smoke pass
+  - Smoke profile may keep `terminal_answer.plaintext_terminal_answer = "compiler"` for continued validation.
+  - Default production behavior remains `legacy`.
+  - No production authority flip happened.
+  - Next branch decision:
+    - selected: `terminal_answer.checkpoint_only`
+    - deferred: `terminal_answer.checkpoint_with_visible_text`
+      - because it still overlaps the legacy plaintext path and needs a dedicated diagnostics/fix slice
+    - deferred: action-bearing / pre-action branches
+      - because they cross dispatch/action semantics
+    - deferred: leaked-system-result cases
+      - because recovery must remain authoritative
+  - Rationale for `terminal_answer.checkpoint_only`:
+    - narrower than checkpoint-with-visible-text
+    - no visible-text ambiguity
+    - no action dispatch
+    - switch placeholder already exists
+    - synthetic-first validation is straightforward
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 
