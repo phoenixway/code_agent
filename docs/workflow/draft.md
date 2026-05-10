@@ -171,4 +171,6 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 167. Phase 29 Step 15: done. Closed the invalid/truncated terminal text slice as diagnostic-only, and decided to close Phase 29 to avoid expanding into deep policy or stateful guard refactoring.
 168. Phase 29 Step 16: done. Closed Phase 29 (Recovery Core), documented smoke-validated and deferred branches, and selected Phase 30 (Board/Memory Commit Policy on Compiler-IR Foundation) as the next major phase.
 169. Phase 30 Step 1: done. Inventoried board/memory commit policy, documented blockers, and designed a commit-equivalence harness plan, with `MEMORY_CHECKPOINT_ONLY` as the first target.
-170. Next: Phase 30 Step 2: Board/Memory Synthetic Commit-Equivalence Harness.
+170. Phase 30 Step 2: done. Created a synthetic harness in `tests/test_board_memory_commit_equivalence.py` to capture legacy memory commit behavior for `MEMORY_CHECKPOINT_ONLY` and other branches using a controlled static memory stage, without changing any production code.
+171. Phase 30 Step 3: done. Hardened the commit-equivalence harness to snapshot the real `MemoryBoardStageHandler`, improved the `LegacyCommitSnapshot` model, and added a test to prove the real handler's `MEMORY_CHECKPOINT_ONLY` commit behavior can be captured. No production behavior changed.
+172. Next: Phase 30 Step 4: MEMORY_CHECKPOINT_ONLY Commit Candidate Model / Resolver Design.

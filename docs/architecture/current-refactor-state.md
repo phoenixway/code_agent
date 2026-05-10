@@ -1916,7 +1916,21 @@ This document is the single source of truth for the current state of the Semanti
   - **First Candidate**:
     - The first implementation target for the commit-equivalence harness is `MEMORY_CHECKPOINT_ONLY`. It is the narrowest memory branch with no action or visible text, making it the best first target.
   - **Boundary**: This was a docs-only inventory and planning step. No runtime behavior was changed.
-  - **Next Step**: `Phase 30 Step 2: Board/Memory Synthetic Commit-Equivalence Harness`.
+- **Phase 30 Step 2: Board/Memory Synthetic Commit-Equivalence Harness (Complete)**
+  - Created `tests/test_board_memory_commit_equivalence.py` to characterize legacy memory commit behavior.
+  - Implemented a synthetic harness that runs the `_run_checkpoint_stage` path with a controlled static memory stage, as the real `MemoryBoardStageHandler` has complex dependencies.
+  - Added a `LegacyCommitSnapshot` dataclass to capture structured outcomes from the controlled stage.
+  - Added positive snapshot coverage for `MEMORY_CHECKPOINT_ONLY`.
+  - Added negative controls for plaintext, action-only, and plan-checkpoint-only to ensure they are not treated as memory commits.
+  - Added characterization for `MEMORY_CHECKPOINT_WITH_TEXT` and `MEMORY_CHECKPOINT_WITH_ACTION`.
+  - No production code was changed. No runtime behavior was changed.
+- **Phase 30 Step 3: Real MemoryBoardStageHandler Commit Snapshot Hardening (Complete)**
+  - The commit-equivalence harness in `tests/test_board_memory_commit_equivalence.py` was hardened to support snapshotting the real `MemoryBoardStageHandler`.
+  - The `LegacyCommitSnapshot` model was improved to distinguish between `controlled_static` and `real_handler` modes and to capture `rejected_count`.
+  - A new test, `test_memory_checkpoint_only_real_handler_snapshot`, now proves that the real handler can be instantiated and its commit behavior for `MEMORY_CHECKPOINT_ONLY` can be captured.
+  - The real handler's dependencies (`agent`, `prompt_builder`, `memory_board_engine`) were mocked, and its `state` was wired to the harness's state to ensure accurate snapshotting.
+  - No production behavior was changed.
+  - **Next Step**: `Phase 30 Step 4: MEMORY_CHECKPOINT_ONLY Commit Candidate Model / Resolver Design`.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 

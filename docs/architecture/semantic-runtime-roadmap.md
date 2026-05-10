@@ -3099,16 +3099,47 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 30 Step 2: Board/Memory Synthetic Commit-Equivalence Harness
 
-- **Status**: Not started.
+- **Status**: Done.
 - **Goal**: Implement the first synthetic commit-equivalence harness for the `MEMORY_CHECKPOINT_ONLY` branch.
-- **Expected Scope**:
-  - Create `tests/test_board_memory_commit_equivalence.py`.
-  - Implement a harness that can run the legacy `MemoryBoardStageHandler` path for `MEMORY_CHECKPOINT_ONLY`.
-  - The harness should capture a structured snapshot of the outcome, including `handled`, `reason`, `source`, `next_query`, and any memory commit side effects.
-  - No compiler/typed candidate path will be implemented in this step.
-  - No production code changes.
+- **Completed Outcome**:
+  - Created `tests/test_board_memory_commit_equivalence.py` to characterize legacy memory commit behavior.
+  - Implemented a synthetic harness that runs the `_run_checkpoint_stage` path with a controlled static memory stage, as the real `MemoryBoardStageHandler` has complex dependencies.
+  - Added a `LegacyCommitSnapshot` dataclass to capture structured outcomes from the controlled stage.
+  - Added positive snapshot coverage for `MEMORY_CHECKPOINT_ONLY`.
+  - Added negative controls for plaintext, action-only, and plan-checkpoint-only to ensure they are not treated as memory commits.
+  - Added characterization for `MEMORY_CHECKPOINT_WITH_TEXT` and `MEMORY_CHECKPOINT_WITH_ACTION`.
+  - No production code was changed. No runtime behavior was changed.
 - **Next**:
-  - Phase 30 Step 3: ...
+  - Phase 30 Step 3: Real MemoryBoardStageHandler Commit Snapshot Hardening.
+
+---
+
+#### Phase 30 Step 3: Real MemoryBoardStageHandler Commit Snapshot Hardening
+
+- **Status**: Done.
+- **Goal**: Harden the commit-equivalence harness to snapshot the real `MemoryBoardStageHandler`, not just a static mock.
+- **Completed Outcome**:
+  - The harness in `tests/test_board_memory_commit_equivalence.py` now supports snapshotting the real `MemoryBoardStageHandler`.
+  - `LegacyCommitSnapshot` was improved to distinguish `controlled_static` vs. `real_handler` modes and capture more commit details.
+  - A new test proves that the real handler's commit behavior for `MEMORY_CHECKPOINT_ONLY` can be captured.
+  - The handler's dependencies were mocked, and its state was wired to the harness's state for accurate snapshotting.
+  - No production behavior was changed.
+- **Next**:
+  - Phase 30 Step 4: MEMORY_CHECKPOINT_ONLY Commit Candidate Model / Resolver Design.
+
+---
+
+#### Phase 30 Step 4: MEMORY_CHECKPOINT_ONLY Commit Candidate Model / Resolver Design
+
+- **Status**: Not started.
+- **Goal**: Design a typed model and resolver for a `MEMORY_CHECKPOINT_ONLY` commit candidate.
+- **Expected Scope**:
+  - Design a `MemoryCommitCandidate` dataclass.
+  - Design a `resolve_memory_checkpoint_only_commit_authority` function.
+  - The resolver should compare the legacy outcome (from the snapshot) with a future typed candidate.
+  - This is a design-only step. No implementation.
+- **Next**:
+  - Phase 30 Step 5: ...
 
 ---
 
