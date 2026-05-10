@@ -8,6 +8,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from modules.agent.orchestration.protocol import ProtocolCompiler
+from modules.agent.orchestration.responses.memory_commit_authority import (
+    build_memory_checkpoint_only_commit_candidate,
+    resolve_memory_checkpoint_only_commit_authority,
+)
 from modules.agent.orchestration.responses.response_pipeline_prevalidation import ResponsePipelinePrevalidationMixin
 from modules.agent.orchestration.responses.response_pipeline_stages import ResponsePipelineStagesMixin
 from modules.agent.orchestration.runtime.memory_board_stage import MemoryBoardStageHandler
@@ -359,3 +363,132 @@ def test_memory_checkpoint_only_real_handler_snapshot():
     assert snapshot.final_answer_preserved is False
 
     mock_agent.memory_board_engine.apply_response_text.assert_called_once()
+
+
+class TestMemoryCommitAuthority:
+    def test_candidate_builder_for_real_handler_mco(self):
+        response = "<memory_update_done />"
+        mock_agent = SimpleNamespace(state=SimpleNamespace(), memory_board_engine=MagicMock(), log=None)
+        mock_prompt_builder = SimpleNamespace(_current_active_intent_id=MagicMock(return_value="intent_123"))
+        mock_board_result = SimpleNamespace(parsed_count=1, accepted_count=1, rejected_count=0, clean_text="")
+        mock_agent.memory_board_engine.apply_response_text.return_value = mock_board_result
+        real_handler = MemoryBoardStageHandler(mock_agent, mock_prompt_builder)
+
+        harness, state, outcome, snapshot = _run_commit_equivalence_harness(
+            response, memory_board_stage=real_handler
+        )
+
+        candidate = build_memory_checkpoint_only_commit_candidate(state.board_checkpoint_semantic_result)
+
+        assert candidate.candidate_available is True
+        assert candidate.branch == "MEMORY_CHECKPOINT_ONLY"
+        assert candidate.has_memory_checkpoint is True
+        assert candidate.has_plan_checkpoint is False
+        assert candidate.has_action is False
+        assert candidate.has_visible_text is False
+        assert candidate.compiler_error_code == ""
+        assert candidate.expected_handled is True
+        assert candidate.expected_reason == "memory_checkpoint_only"
+        assert candidate.expected_source == "memory_board"
+        assert candidate.expected_commit_attempted is True
+        assert candidate.blocking_reasons == ("commit_count_not_typed", "next_query_not_typed")
+
+    @pytest.mark.parametrize(
+        "response",
+        [
+            "Done.",
+            '<action>{"type":"read_file","path":"README.md"}</action>',
+            '<subgoal action="mark_in_progress" id="sg_1" />',
+            "<memory_update_done />\nDone.",
+            '<memory_update_done />\n<action>{"type":"read_file","path":"README.md"}</action>',
+        ],
+        ids=[
+            "plaintext_only",
+            "action_only",
+            "plan_checkpoint_only",
+            "memory_checkpoint_with_text",
+            "memory_checkpoint_with_action",
+        ],
+    )
+    def test_candidate_builder_unavailable_for_negative_controls(self, response):
+        harness, state, outcome, snapshot = _run_commit_equivalence_harness(response)
+        candidate = build_memory_checkpoint_only_commit_candidate(state.board_checkpoint_semantic_result)
+        assert candidate.candidate_available is False
+
+    def test_resolver_legacy_mode_preserves_legacy_decision(self):
+        response = "<memory_update_done />"
+        mock_agent = SimpleNamespace(state=SimpleNamespace(), memory_board_engine=MagicMock(), log=None)
+        mock_prompt_builder = SimpleNamespace(_current_active_intent_id=MagicMock(return_value="intent_123"))
+        mock_board_result = SimpleNamespace(parsed_count=1, accepted_count=1, rejected_count=0, clean_text="")
+        mock_agent.memory_board_engine.apply_response_text.return_value = mock_board_result
+        real_handler = MemoryBoardStageHandler(mock_agent, mock_prompt_builder)
+        harness, state, outcome, snapshot = _run_commit_equivalence_harness(
+            response, memory_board_stage=real_handler
+        )
+
+        decision = resolve_memory_checkpoint_only_commit_authority(
+            semantic_result=state.board_checkpoint_semantic_result,
+            legacy_branch=snapshot.branch,
+            legacy_handled=snapshot.handled,
+            legacy_reason=snapshot.reason,
+            legacy_source=snapshot.source,
+            legacy_response_text=snapshot.response_text,
+            legacy_next_query=snapshot.next_query,
+            legacy_commit_attempted=snapshot.memory_commit_attempted,
+            legacy_accepted_count=snapshot.memory_commit_accepted_count,
+            legacy_rejected_count=snapshot.memory_commit_rejected_count,
+            legacy_last_memory_update_done=snapshot.last_memory_update_done,
+            switch_value="legacy",
+        )
+
+        diag = decision.diagnostic
+        assert diag.branch == "board_memory.memory_checkpoint_only"
+        assert diag.switch_value == "legacy"
+        assert diag.authority_source == "legacy"
+        assert diag.selected_by_switch is False
+        assert diag.candidate_available is True
+        assert diag.fallback_used is False
+        assert diag.behavior_changed is False
+        assert decision.effective_commit.handled == snapshot.handled
+        assert decision.effective_commit.reason == snapshot.reason
+
+    def test_resolver_compiler_mode_falls_back_when_equivalence_unproven(self):
+        response = "<memory_update_done />"
+        mock_agent = SimpleNamespace(state=SimpleNamespace(), memory_board_engine=MagicMock(), log=None)
+        mock_prompt_builder = SimpleNamespace(_current_active_intent_id=MagicMock(return_value="intent_123"))
+        mock_board_result = SimpleNamespace(parsed_count=1, accepted_count=1, rejected_count=0, clean_text="")
+        mock_agent.memory_board_engine.apply_response_text.return_value = mock_board_result
+        real_handler = MemoryBoardStageHandler(mock_agent, mock_prompt_builder)
+        harness, state, outcome, snapshot = _run_commit_equivalence_harness(
+            response, memory_board_stage=real_handler
+        )
+
+        decision = resolve_memory_checkpoint_only_commit_authority(
+            semantic_result=state.board_checkpoint_semantic_result,
+            legacy_branch=snapshot.branch,
+            legacy_handled=snapshot.handled,
+            legacy_reason=snapshot.reason,
+            legacy_source=snapshot.source,
+            legacy_response_text=snapshot.response_text,
+            legacy_next_query=snapshot.next_query,
+            legacy_commit_attempted=snapshot.memory_commit_attempted,
+            legacy_accepted_count=snapshot.memory_commit_accepted_count,
+            legacy_rejected_count=snapshot.memory_commit_rejected_count,
+            legacy_last_memory_update_done=snapshot.last_memory_update_done,
+            switch_value="compiler",
+        )
+
+        diag = decision.diagnostic
+        assert diag.branch == "board_memory.memory_checkpoint_only"
+        assert diag.switch_value == "compiler"
+        assert diag.authority_source == "legacy_fallback"
+        assert diag.selected_by_switch is False
+        assert diag.candidate_available is True
+        assert diag.fallback_used is True
+        assert diag.behavior_changed is False
+        assert diag.commit_equivalent is False
+        assert diag.accepted_count_agreement is False
+        assert diag.rejected_count_agreement is False
+        assert diag.next_query_agreement is False
+        assert decision.effective_commit.handled == snapshot.handled
+        assert decision.effective_commit.reason == snapshot.reason

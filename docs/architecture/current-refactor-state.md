@@ -1930,7 +1930,14 @@ This document is the single source of truth for the current state of the Semanti
   - A new test, `test_memory_checkpoint_only_real_handler_snapshot`, now proves that the real handler can be instantiated and its commit behavior for `MEMORY_CHECKPOINT_ONLY` can be captured.
   - The real handler's dependencies (`agent`, `prompt_builder`, `memory_board_engine`) were mocked, and its `state` was wired to the harness's state to ensure accurate snapshotting.
   - No production behavior was changed.
-  - **Next Step**: `Phase 30 Step 4: MEMORY_CHECKPOINT_ONLY Commit Candidate Model / Resolver Design`.
+- **Phase 30 Step 4: MEMORY_CHECKPOINT_ONLY Commit Candidate Model / Resolver Design (Complete)**
+  - Added a typed `MemoryCommitCandidate` model and a `resolve_memory_checkpoint_only_commit_authority` resolver.
+  - The candidate is intentionally narrow, available only for clean `MEMORY_CHECKPOINT_ONLY` cases, and blocks on commit-count equivalence.
+  - The resolver compares the candidate to the legacy snapshot and produces a detailed authority diagnostic.
+  - Added a `board_memory.memory_checkpoint_only` switch placeholder to the registries, with both default and smoke profiles set to `legacy`.
+  - Added tests for candidate construction, legacy-mode resolution, and compiler-mode fallback.
+  - No production authority was transferred, and no runtime behavior was changed.
+  - **Next Step**: `Phase 30 Step 5: MEMORY_CHECKPOINT_ONLY Synthetic Commit-Equivalence Validation`.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 

@@ -173,4 +173,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 169. Phase 30 Step 1: done. Inventoried board/memory commit policy, documented blockers, and designed a commit-equivalence harness plan, with `MEMORY_CHECKPOINT_ONLY` as the first target.
 170. Phase 30 Step 2: done. Created a synthetic harness in `tests/test_board_memory_commit_equivalence.py` to capture legacy memory commit behavior for `MEMORY_CHECKPOINT_ONLY` and other branches using a controlled static memory stage, without changing any production code.
 171. Phase 30 Step 3: done. Hardened the commit-equivalence harness to snapshot the real `MemoryBoardStageHandler`, improved the `LegacyCommitSnapshot` model, and added a test to prove the real handler's `MEMORY_CHECKPOINT_ONLY` commit behavior can be captured. No production behavior changed.
-172. Next: Phase 30 Step 4: MEMORY_CHECKPOINT_ONLY Commit Candidate Model / Resolver Design.
+172. Phase 30 Step 4: done. Added a typed `MemoryCommitCandidate` model and a `resolve_memory_checkpoint_only_commit_authority` resolver. The candidate is narrow and blocks on commit-count equivalence. Added a `legacy`-only switch placeholder. No production authority was transferred, and no runtime behavior was changed.
+173. Next: Phase 30 Step 5: MEMORY_CHECKPOINT_ONLY Synthetic Commit-Equivalence Validation.

@@ -34,6 +34,10 @@ class TestSwitchRegistry(unittest.TestCase):
         # This test uses the actual default registry file on disk.
         value = get_switch("board_checkpoint.plan_checkpoint_only")
         self.assertEqual(value, "legacy")
+        value_recovery = get_switch("recovery.compiler_invalid_kind_mapping")
+        self.assertEqual(value_recovery, "legacy")
+        value_memory = get_switch("board_memory.memory_checkpoint_only")
+        self.assertEqual(value_memory, "legacy")
 
     def test_get_switch_override_registry_returns_compiler(self):
         """An override registry file should be loaded when the env var is set."""

@@ -3131,15 +3131,30 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 30 Step 4: MEMORY_CHECKPOINT_ONLY Commit Candidate Model / Resolver Design
 
-- **Status**: Not started.
-- **Goal**: Design a typed model and resolver for a `MEMORY_CHECKPOINT_ONLY` commit candidate.
-- **Expected Scope**:
-  - Design a `MemoryCommitCandidate` dataclass.
-  - Design a `resolve_memory_checkpoint_only_commit_authority` function.
-  - The resolver should compare the legacy outcome (from the snapshot) with a future typed candidate.
-  - This is a design-only step. No implementation.
+- **Status**: Done.
+- **Goal**: Design and implement the first typed commit candidate model and resolver for `MEMORY_CHECKPOINT_ONLY` without changing behavior.
+- **Completed Outcome**:
+  - Added a typed `MemoryCommitCandidate` model and a `resolve_memory_checkpoint_only_commit_authority` resolver.
+  - The candidate is intentionally narrow, available only for clean `MEMORY_CHECKPOINT_ONLY` cases, and blocks on commit-count equivalence.
+  - The resolver compares the candidate to the legacy snapshot and produces a detailed authority diagnostic.
+  - Added a `board_memory.memory_checkpoint_only` switch placeholder to the registries, with both default and smoke profiles set to `legacy`.
+  - Added tests for candidate construction, legacy-mode resolution, and compiler-mode fallback.
+  - No production authority was transferred, and no runtime behavior was changed.
 - **Next**:
-  - Phase 30 Step 5: ...
+  - Phase 30 Step 5: MEMORY_CHECKPOINT_ONLY Synthetic Commit-Equivalence Validation.
+
+---
+
+#### Phase 30 Step 5: MEMORY_CHECKPOINT_ONLY Synthetic Commit-Equivalence Validation
+
+- **Status**: Not started.
+- **Goal**: Use the new resolver and candidate model to synthetically validate commit equivalence for the `MEMORY_CHECKPOINT_ONLY` branch.
+- **Expected Scope**:
+  - Enable the `board_memory.memory_checkpoint_only` switch in the smoke profile only.
+  - Add synthetic tests that prove `commit_equivalent` is `True` for clean cases.
+  - This may require refining the candidate model to predict commit counts or other state effects from typed facts if possible, or explicitly marking them as unprovable.
+- **Next**:
+  - Phase 30 Step 6: ...
 
 ---
 
