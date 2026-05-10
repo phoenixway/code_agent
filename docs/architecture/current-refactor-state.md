@@ -4,9 +4,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 29 Step 6: Recovery Compiler Invalid Mapping Closure / Next Recovery Branch Selection
+- **Phase**: Phase 29 Step 7: Recovery Prevalidation Reject-Invalid-Output Authority Candidate
 - **Status**: Complete.
-- **Next Step**: Phase 29 Step 7: Recovery Prevalidation Reject-Invalid-Output Authority Candidate.
+- **Next Step**: Phase 29 Step 8: Recovery Prevalidation Reject-Invalid-Output Switch + Synthetic Validation.
 - **Boundary**: The checkpoint parity bridge remains diagnostic-only. Legacy board handlers still own commit behavior, the prepass compiler analysis remains observational, and `_apply_compiler_diagnosis` remains the effectful classification-stage path that recomputes on normalized response.
 
 ## Step 4I Parity Matrix
@@ -1662,6 +1662,39 @@ This document is the single source of truth for the current state of the Semanti
     - it is a better immediate progression target than stateful retry/guard branches, which need heavier harness/state modeling
   - Recommended next step:
     - `Phase 29 Step 7: Recovery Prevalidation Reject-Invalid-Output Authority Candidate`
+- **Phase 29 Step 7: Recovery Prevalidation Reject-Invalid-Output Authority Candidate (Complete)**
+  - Added `resolve_prevalidation_reject_invalid_output_authority(...)` in [recovery_authority.py](/home/romankozak/studio/public/it/angelica-ai/modules/agent/orchestration/responses/recovery_authority.py).
+  - Added a small `RecoveryDecisionAuthorityResolution` wrapper so the resolver can return:
+    - the effective recovery decision
+    - `RecoveryAuthorityDiagnostic`
+  - `_reject_invalid_intent_followup_before_transition(...)` now computes the legacy recovery decision as before, then consumes the resolver’s effective decision behavior-preservingly.
+  - Added registry placeholders:
+    - `recovery.prevalidation_reject_invalid_output = "legacy"` in the default registry
+    - `recovery.prevalidation_reject_invalid_output = "legacy"` in the smoke registry
+  - Switch decision:
+    - Option A selected
+    - no smoke compiler enablement yet, because this branch does not yet have an independent compiler decision producer to validate against legacy recovery action selection
+  - Expanded synthetic coverage for the prevalidation reject path to include:
+    - malformed action JSON
+    - unclosed think
+    - memory tag inside think
+    - checkpoint/subgoal tag inside think
+    - mixed visible answer plus invalid protocol
+    - valid action-only control
+    - clean plaintext control
+    - empty/whitespace intent followup characterization
+  - Added direct resolver tests for:
+    - legacy mode preserving the current decision
+    - invalid switch fallback
+    - compiler-mode fallback when no compiler decision path exists
+    - inactive branch when there is no invalid kind and no recovery decision
+  - Boundary:
+    - no production behavior changed
+    - default registry remains `legacy`
+    - smoke registry remains `legacy` for this branch
+    - effective decision is now consumed, but remains behavior-preserving and test-locked
+  - Recommended next step:
+    - `Phase 29 Step 8: Recovery Prevalidation Reject-Invalid-Output Switch + Synthetic Validation`
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 

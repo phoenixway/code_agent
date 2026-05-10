@@ -26,3 +26,4 @@ plan_first_single_action = "legacy"
 
 [recovery]
 compiler_invalid_kind_mapping = "legacy"
+prevalidation_reject_invalid_output = "legacy"

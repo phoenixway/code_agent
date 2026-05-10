@@ -2760,6 +2760,42 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 29 Step 7: Recovery Prevalidation Reject-Invalid-Output Authority Candidate.
 
+#### Phase 29 Step 7: Recovery Prevalidation Reject-Invalid-Output Authority Candidate
+
+- **Status**: Done.
+- **Goal**: Introduce a real resolver/accessor for prevalidation recovery action selection and consume it behavior-preservingly in the prevalidation path.
+- **Completed Outcome**:
+  - Added `resolve_prevalidation_reject_invalid_output_authority(...)` in `recovery_authority.py`.
+  - Added `RecoveryDecisionAuthorityResolution` so the resolver returns:
+    - the effective recovery decision
+    - a unified `RecoveryAuthorityDiagnostic`
+  - `_reject_invalid_intent_followup_before_transition(...)` now computes the current legacy `OutputRecoveryDecision` first, then consumes the resolver’s effective decision without changing behavior.
+  - Added recovery switch placeholders:
+    - `[recovery] prevalidation_reject_invalid_output = "legacy"` in the default registry
+    - `[recovery] prevalidation_reject_invalid_output = "legacy"` in the smoke profile
+  - Switch decision:
+    - Option A selected
+    - smoke compiler mode deferred until there is a distinct compiler-side recovery decision path to validate
+  - Expanded deterministic synthetic coverage for:
+    - malformed action JSON
+    - unclosed think
+    - memory tag inside think
+    - checkpoint/subgoal tag inside think
+    - mixed visible answer plus invalid protocol
+    - valid action-only control
+    - clean plaintext control
+    - empty/whitespace intent-followup characterization
+  - Added direct resolver tests for:
+    - legacy mode preserving the current decision
+    - invalid switch fallback
+    - compiler-mode fallback when no compiler decision path exists
+    - inactive branch when there is no invalid kind and no recovery decision
+  - No production behavior changed.
+  - Default registry remains `legacy`.
+  - Smoke registry remains `legacy` for this branch.
+- **Next**:
+  - Phase 29 Step 8: Recovery Prevalidation Reject-Invalid-Output Switch + Synthetic Validation.
+
 ---
 
 ### Phase 11: RecoveryStrategy Registry Expansion

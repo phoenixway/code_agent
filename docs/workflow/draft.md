@@ -160,4 +160,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 156. Phase 29 Step 4: done. Added `resolve_compiler_invalid_kind_mapping_authority(...)`, routed both prevalidation and output-recovery invalid-kind mapping through it, and added a default/smoke-legacy `[recovery] compiler_invalid_kind_mapping` placeholder without changing runtime behavior.
 157. Phase 29 Step 5: done. Enabled smoke-profile compiler mode for `recovery.compiler_invalid_kind_mapping`, clarified switch-vs-effective-source diagnostics, added behavior-preserving `E_MEMORY_TAG_INSIDE_THINK` mapping, and validated the branch synthetically with preserved fallback behavior.
 158. Phase 29 Step 6: done. Closed the `recovery.compiler_invalid_kind_mapping` smoke slice, kept default authority legacy, retained smoke-only compiler mode, and selected `recovery.prevalidation_reject_invalid_output` as the next recovery authority branch.
-159. Next: Phase 29 Step 7: Recovery Prevalidation Reject-Invalid-Output Authority Candidate.
+159. Phase 29 Step 7: done. Added `resolve_prevalidation_reject_invalid_output_authority(...)`, routed the prevalidation reject path through its effective decision behavior-preservingly, and added default/smoke-legacy placeholders for the branch.
+160. Next: Phase 29 Step 8: Recovery Prevalidation Reject-Invalid-Output Switch + Synthetic Validation.

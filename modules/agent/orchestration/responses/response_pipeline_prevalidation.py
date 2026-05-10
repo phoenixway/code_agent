@@ -11,6 +11,7 @@ from .protocol_decision_bridge import COMPILER_INVALID_KIND_BY_CODE
 from .recovery_authority import (
     build_prevalidation_reject_invalid_output_diagnostic,
     resolve_compiler_invalid_kind_mapping_authority,
+    resolve_prevalidation_reject_invalid_output_authority,
 )
 from .runtime_protocol_semantics import compact_runtime_protocol_semantics, runtime_semantics_from_compiler_analysis
 from .terminal_answer_classifier import (
@@ -555,18 +556,19 @@ class ResponsePipelinePrevalidationMixin:
             malformed_action_retries=ctx.malformed_action_retries,
             audit_marker_retries=ctx.audit_marker_retries,
         )
+        authority_resolution = resolve_prevalidation_reject_invalid_output_authority(
+            parsed_output,
+            legacy_decision=recovery_decision,
+            switch_value=get_switch("recovery.prevalidation_reject_invalid_output"),
+            parsed_action_count=parsed_action_count,
+            malformed_action_retries=int(getattr(ctx, "malformed_action_retries", 0) or 0),
+            guard_name="intent_atomicity_guard",
+            guard_triggered=True,
+            guard_state="intent_followup_prevalidation_failed",
+        )
+        recovery_decision = authority_resolution.effective_decision
         self._log_recovery_authority_resolution(
-            build_prevalidation_reject_invalid_output_diagnostic(
-                parsed_output,
-                recovery_action=str(getattr(recovery_decision, "reason", "") or ""),
-                recovery_reason=str(getattr(recovery_decision, "reason", "") or ""),
-                recovery_prompt_kind="output_recovery_query" if bool(getattr(recovery_decision, "next_query", "")) else "",
-                parsed_action_count=parsed_action_count,
-                malformed_action_retries=int(getattr(ctx, "malformed_action_retries", 0) or 0),
-                guard_name="intent_atomicity_guard",
-                guard_triggered=True,
-                guard_state="intent_followup_prevalidation_failed",
-            )
+            authority_resolution.diagnostic
         )
         if recovery_decision.handled:
             return ResponsePipelineOutcome(
