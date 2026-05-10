@@ -3177,14 +3177,52 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 30 Step 7: MEMORY_CHECKPOINT_ONLY Live/Integrated Smoke or Closure Decision
 
-- **Status**: Not started.
+- **Status**: Done.
 - **Goal**: Decide whether to run live/integrated smoke tests for the `MEMORY_CHECKPOINT_ONLY` branch or close the slice based on synthetic evidence.
-- **Expected Scope**:
-  - Review the synthetic validation results from Step 6.
-  - If confidence is high, proceed to a live smoke run.
-  - If confidence is low or the branch is hard to exercise live, document the decision and close the slice.
+- **Completed Outcome**:
+  - **Decision**: **NO-GO** for live/integrated smoke at this time.
+  - **Blocker**: The `resolve_memory_checkpoint_only_commit_authority` resolver is not yet integrated into the runtime pipeline, so authority selection cannot be observed in a live run.
+  - The slice is closed as an "integrated observability blocker".
+  - No runtime behavior was changed.
 - **Next**:
-  - Phase 30 Step 8: ...
+  - Phase 30 Step 8: Board/Memory Commit Authority Runtime Diagnostic Integration.
+
+---
+
+#### Phase 30 Step 8: Board/Memory Commit Authority Runtime Diagnostic Integration
+
+- **Status**: Done.
+- **Goal**: Integrate the `resolve_memory_checkpoint_only_commit_authority` resolver into the runtime pipeline for diagnostic logging only, without changing behavior.
+- **Completed Outcome**:
+  - The resolver is now called from `_run_checkpoint_stage`.
+  - A new `_log_board_memory_commit_authority_resolution` helper logs the diagnostic output.
+  - The resolver's `effective_commit` is not used, and no runtime behavior was changed.
+- **Next**:
+  - Phase 30 Step 9: MEMORY_CHECKPOINT_ONLY Live Smoke Validation.
+
+---
+
+#### Phase 30 Step 9: Runtime Diagnostic Real-Handler Commit Field Hardening
+
+- **Status**: Done.
+- **Goal**: Harden the runtime diagnostic integration to correctly read commit evidence from real-handler state fields.
+- **Completed Outcome**:
+  - The diagnostic resolver input in `_run_checkpoint_stage` now safely falls back from the memory decision object to agent state fields for commit evidence.
+  - This remains a diagnostic-only change. No runtime behavior was changed.
+- **Next**:
+  - Phase 30 Step 10: MEMORY_CHECKPOINT_ONLY Live Smoke Validation.
+
+---
+
+#### Phase 30 Step 10: MEMORY_CHECKPOINT_ONLY Live Smoke Validation
+
+- **Status**: Not started.
+- **Goal**: Run a live/integrated smoke test for the `MEMORY_CHECKPOINT_ONLY` branch to confirm that authority selection is now observable in runtime logs.
+- **Expected Scope**:
+  - Run a live smoke test with the smoke profile enabled.
+  - Verify that the `board_memory_commit_authority_resolution` log is produced and shows `authority_source="compiler"`.
+- **Next**:
+  - Phase 30 Step 11: ...
 
 ---
 

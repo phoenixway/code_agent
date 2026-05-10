@@ -18,6 +18,7 @@ from .board_checkpoint_semantics import resolve_plan_checkpoint_and_action_autho
 from .board_checkpoint_semantics import resolve_plan_checkpoint_and_text_authority
 from .board_checkpoint_semantics import resolve_plan_checkpoint_only_authority
 from .board_checkpoint_semantics import resolve_plan_checkpoint_only_typed_primary
+from .memory_commit_authority import resolve_memory_checkpoint_only_commit_authority
 from .protocol_decision_bridge import compiler_invalid_kind_for_output, resolve_protocol_authority
 from .semantic_accessors import is_leaked_system_result
 from .terminal_answer_authority import (
@@ -266,6 +267,27 @@ class ResponsePipelineStagesMixin:
                 branch_active=diagnostic.branch_active,
                 compiler_eligible=diagnostic.compiler_eligible,
                 effective_value=diagnostic.effective_value,
+                shadow_only=True,
+            )
+        except Exception:
+            return
+
+    def _log_board_memory_commit_authority_resolution(self, diagnostic) -> None:
+        stage_logger = getattr(self, "stage_logger", None)
+        if not stage_logger or diagnostic is None:
+            return
+        try:
+            stage_logger.log(
+                "protocol_shadow",
+                "board_memory_commit_authority_resolution",
+                branch=diagnostic.branch,
+                switch_value=diagnostic.switch_value,
+                authority_source=diagnostic.authority_source,
+                selected_by_switch=diagnostic.selected_by_switch,
+                candidate_available=diagnostic.candidate_available,
+                commit_equivalent=diagnostic.commit_equivalent,
+                fallback_used=diagnostic.fallback_used,
+                behavior_changed=diagnostic.behavior_changed,
                 shadow_only=True,
             )
         except Exception:
@@ -585,6 +607,49 @@ class ResponsePipelineStagesMixin:
             legacy_memory_checkpoint_and_text=memory_checkpoint_and_text,
             legacy_memory_checkpoint_and_action=memory_checkpoint_and_action,
         )
+
+        mco_switch_value = get_switch("board_memory.memory_checkpoint_only")
+
+        # Phase 30 Step 9: Harden commit field extraction for real handler state.
+        # The real MemoryBoardStageHandler may expose commit results via state fields.
+        # This logic safely falls back to state fields if the decision object lacks them.
+        legacy_commit_attempted = bool(
+            getattr(memory_board_decision, "memory_commit_attempted", False)
+            or int(getattr(self.state, "last_memory_board_parsed_count", 0) or 0) > 0
+            or int(getattr(self.state, "last_memory_board_accepted_count", 0) or 0) > 0
+            or int(getattr(self.state, "last_memory_board_rejected_count", 0) or 0) > 0
+        )
+        accepted_count_from_decision = getattr(memory_board_decision, "memory_commit_accepted_count", None)
+        legacy_accepted_count = int(
+            accepted_count_from_decision
+            if accepted_count_from_decision is not None
+            else getattr(self.state, "last_memory_board_accepted_count", 0)
+            or 0
+        )
+        rejected_count_from_decision = getattr(memory_board_decision, "memory_commit_rejected_count", None)
+        legacy_rejected_count = int(
+            rejected_count_from_decision
+            if rejected_count_from_decision is not None
+            else getattr(self.state, "last_memory_board_rejected_count", 0)
+            or 0
+        )
+        legacy_last_memory_update_done = bool(getattr(self.state, "last_memory_update_done", False))
+
+        mco_authority_decision = resolve_memory_checkpoint_only_commit_authority(
+            semantic_result=board_checkpoint_semantic_result,
+            legacy_branch=board_checkpoint_semantic_result.kind.name,
+            legacy_handled=bool(getattr(memory_board_decision, "handled", False)),
+            legacy_reason=str(getattr(memory_board_decision, "reason", "") or ""),
+            legacy_source=str(getattr(memory_board_decision, "source", "") or ""),
+            legacy_response_text=str(getattr(memory_board_decision, "response_text", "") or ""),
+            legacy_next_query=getattr(memory_board_decision, "next_query", None),
+            legacy_commit_attempted=legacy_commit_attempted,
+            legacy_accepted_count=legacy_accepted_count,
+            legacy_rejected_count=legacy_rejected_count,
+            legacy_last_memory_update_done=legacy_last_memory_update_done,
+            switch_value=mco_switch_value,
+        )
+        self._log_board_memory_commit_authority_resolution(mco_authority_decision.diagnostic)
 
         self._log_board_checkpoint_structural_parity(
             compiler_analysis,

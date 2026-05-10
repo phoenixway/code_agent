@@ -2785,6 +2785,133 @@ class TestBoardCheckpointAuthorityDiagnostics(unittest.TestCase):
         self.assertFalse(diagnostic.effective_value)
 
 
+class TestResponsePipelineCheckpointStageCharacterization(unittest.TestCase):
+    def setUp(self):
+        class Harness(ResponsePipelinePrevalidationMixin, ResponsePipelineStagesMixin):
+            def __init__(self):
+                self.state = SimpleNamespace(active_intent=None, last_memory_update_done=False)
+                self.plan_board_stage = AsyncMock()
+                self.memory_board_stage = AsyncMock()
+                self.ui = AsyncMock()
+                self.stage_logger = SimpleNamespace(log=MagicMock(), log_architecture_defect=MagicMock())
+                self.guards = SimpleNamespace(
+                    reflection_repair_pending=MagicMock(return_value=False),
+                    reflection_repair_kind=MagicMock(return_value=""),
+                    memory_checkpoint_streak=MagicMock(return_value=1),
+                    set_reflection_repair_pending=MagicMock(),
+                    set_nonproductive_thinking_state=MagicMock(),
+                )
+                self.semantics = SimpleNamespace(has_substantial_think=MagicMock(return_value=False))
+                self.memory_checkpoint_hard_stop_streak = 3
+                self.nonproductive_thinking_hard_stop_streak = 3
+                self.prompt_builder = SimpleNamespace(
+                    build_reflection_repair_accepted_prompt=MagicMock(return_value="repair_accepted_prompt"),
+                    build_durable_state_repair_prompt=MagicMock(return_value="durable_state_repair_prompt"),
+                    build_repeated_thinking_without_valid_output_prompt=MagicMock(return_value="repeated_thinking_prompt"),
+                )
+                # Mocks for prevalidation mixin
+                self.protocol_compiler = SimpleNamespace(analyze=MagicMock())
+
+        self.harness = Harness()
+        self.ctx = SimpleNamespace()
+
+    @patch("modules.agent.orchestration.responses.response_pipeline_stages.ResponsePipelineStagesMixin._log_board_memory_commit_authority_resolution")
+    def test_checkpoint_stage_logs_memory_commit_authority(self, mock_log_commit_authority):
+        """Characterizes that the checkpoint stage logs memory commit authority diagnostics."""
+        self.harness.protocol_compiler.analyze.return_value = SimpleNamespace(
+            shape=SimpleNamespace(name="CHECKPOINT_ONLY"),
+            error=None,
+            ir=SimpleNamespace(
+                has_action=False,
+                action_count=0,
+                has_checkpoint=True,
+                has_memory_tags=True,
+                has_subgoal_tags=False,
+                has_memory_checkpoint=True,
+                has_visible_answer=False,
+                has_pre_action_text=False,
+                visible_text_source="NONE",
+            ),
+        )
+        self.harness.plan_board_stage.apply.return_value = SimpleNamespace(
+            handled=False, response_text="response"
+        )
+        self.harness.memory_board_stage.apply.return_value = SimpleNamespace(
+            handled=True,
+            response_text="response",
+            next_query="next_query_from_memory_board",
+            reason="memory_checkpoint_only",
+            source="memory_board",
+            memory_checkpoint_only=True,
+            memory_checkpoint_and_text=False,
+            memory_checkpoint_and_action=False,
+            memory_commit_attempted=True,
+            memory_commit_accepted_count=1,
+            memory_commit_rejected_count=0,
+        )
+
+        asyncio.run(
+            self.harness._run_checkpoint_stage(
+                self.ctx, "response", reflection_repair_pending=False, reflection_repair_kind=""
+            )
+        )
+
+        mock_log_commit_authority.assert_called_once()
+        diagnostic = mock_log_commit_authority.call_args.args[0]
+        self.assertEqual("board_memory.memory_checkpoint_only", diagnostic.branch)
+
+    @patch("modules.agent.orchestration.responses.response_pipeline_stages.ResponsePipelineStagesMixin._log_board_memory_commit_authority_resolution")
+    def test_checkpoint_stage_logs_memory_commit_authority_from_state_fields(self, mock_log_commit_authority):
+        """Characterizes that commit diagnostics can be read from state fields."""
+        self.harness.protocol_compiler.analyze.return_value = SimpleNamespace(
+            shape=SimpleNamespace(name="CHECKPOINT_ONLY"),
+            error=None,
+            ir=SimpleNamespace(
+                has_action=False,
+                action_count=0,
+                has_checkpoint=True,
+                has_memory_tags=True,
+                has_subgoal_tags=False,
+                has_memory_checkpoint=True,
+                has_visible_answer=False,
+                has_pre_action_text=False,
+                visible_text_source="NONE",
+            ),
+        )
+        self.harness.plan_board_stage.apply.return_value = SimpleNamespace(
+            handled=False, response_text="response"
+        )
+        # Decision object does NOT have commit fields
+        self.harness.memory_board_stage.apply.return_value = SimpleNamespace(
+            handled=True,
+            response_text="response",
+            next_query="next_query_from_memory_board",
+            reason="memory_checkpoint_only",
+            source="memory_board",
+            memory_checkpoint_only=True,
+            memory_checkpoint_and_text=False,
+            memory_checkpoint_and_action=False,
+        )
+        # State fields DO have commit results
+        self.harness.state.last_memory_update_done = True
+        self.harness.state.last_memory_board_parsed_count = 1
+        self.harness.state.last_memory_board_accepted_count = 1
+        self.harness.state.last_memory_board_rejected_count = 0
+
+        asyncio.run(
+            self.harness._run_checkpoint_stage(
+                self.ctx, "response", reflection_repair_pending=False, reflection_repair_kind=""
+            )
+        )
+
+        mock_log_commit_authority.assert_called_once()
+        diagnostic = mock_log_commit_authority.call_args.args[0]
+        self.assertEqual("board_memory.memory_checkpoint_only", diagnostic.branch)
+        self.assertTrue(diagnostic.candidate_available)
+        self.assertTrue(diagnostic.commit_equivalent)
+        self.assertFalse(diagnostic.behavior_changed)
+
+
 class TestResponsePipelineClassificationStage(unittest.TestCase):
     def setUp(self):
         class Harness(ResponsePipelinePrevalidationMixin, ResponsePipelineStagesMixin):

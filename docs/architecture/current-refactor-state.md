@@ -1948,7 +1948,20 @@ This document is the single source of truth for the current state of the Semanti
   - Added synthetic tests to `tests/test_board_memory_commit_equivalence.py` that validate compiler authority is selected for clean, observed-equivalent `MEMORY_CHECKPOINT_ONLY` cases under the smoke profile.
   - Fallback controls confirm that mismatched or non-eligible cases still use legacy authority.
   - The default registry remains `legacy`, and no production behavior was changed.
-  - **Next Step**: `Phase 30 Step 7: MEMORY_CHECKPOINT_ONLY Live/Integrated Smoke or Closure Decision`.
+- **Phase 30 Step 7: MEMORY_CHECKPOINT_ONLY Live/Integrated Smoke or Closure Decision (Complete)**
+  - **Decision**: **NO-GO** for live/integrated smoke at this time.
+  - **Blocker**: The `resolve_memory_checkpoint_only_commit_authority` resolver is not yet integrated into the runtime pipeline (`_run_checkpoint_stage`), so authority selection cannot be observed in a live run.
+  - The slice is closed as an "integrated observability blocker".
+  - No runtime behavior was changed.
+- **Phase 30 Step 8: Board/Memory Commit Authority Runtime Diagnostic Integration (Complete)**
+  - The `resolve_memory_checkpoint_only_commit_authority` resolver is now integrated into `_run_checkpoint_stage` for diagnostic logging only.
+  - A new `_log_board_memory_commit_authority_resolution` helper was added to log the diagnostic output.
+  - The resolver's `effective_commit` is not used, and no runtime behavior was changed.
+- **Phase 30 Step 9: Runtime Diagnostic Real-Handler Commit Field Hardening (Complete)**
+  - Hardened the diagnostic integration to correctly read commit evidence from real-handler state fields (`last_memory_board_accepted_count`, etc.).
+  - The diagnostic resolver input now safely falls back from the memory decision object to the agent state fields.
+  - This remains a diagnostic-only change. No runtime behavior was changed.
+  - **Next Step**: `Phase 30 — Step 10/11: MEMORY_CHECKPOINT_ONLY Live Smoke Validation`.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 

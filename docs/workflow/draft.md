@@ -176,4 +176,7 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 172. Phase 30 Step 4: done. Added a typed `MemoryCommitCandidate` model and a `resolve_memory_checkpoint_only_commit_authority` resolver. The candidate is narrow and blocks on commit-count equivalence. Added a `legacy`-only switch placeholder. No production authority was transferred, and no runtime behavior was changed.
 173. Phase 30 Step 5: done. Hardened commit-equivalence validation for `MEMORY_CHECKPOINT_ONLY` using an "observed-equivalence" model where the resolver proves equivalence by checking the observed legacy commit result against structural expectations. The smoke switch remains `legacy`. No runtime behavior changed.
 174. Phase 30 Step 6: done. Enabled the smoke-only switch for `board_memory.memory_checkpoint_only` and added synthetic tests to validate compiler authority selection for clean, observed-equivalent cases, with appropriate fallback controls. Default registry remains legacy. No production behavior changed.
-175. Next: Phase 30 Step 7: MEMORY_CHECKPOINT_ONLY Live/Integrated Smoke or Closure Decision.
+175. Phase 30 Step 7: done. Decided NO-GO for live smoke due to integrated observability blocker; resolver is not yet wired into the runtime pipeline. Next step is to add diagnostic integration. No runtime behavior changed.
+176. Phase 30 Step 8: done. Integrated the memory commit authority resolver for diagnostic logging only. No runtime behavior changed.
+177. Phase 30 Step 9: done. Hardened runtime diagnostic extraction for real handler state fields. Diagnostic-only change. No runtime behavior changed.
+178. Next: Phase 30 Step 10: MEMORY_CHECKPOINT_ONLY Live Smoke Validation.
