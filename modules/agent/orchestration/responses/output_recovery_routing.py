@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from ..config.switch_registry import get_switch
 from ..shared.decision_models import OutputRecoveryDecision, ParsedModelOutput
 from .terminal_answer_models import TerminalAnswerKind
 from .protocol_decision_bridge import COMPILER_INVALID_KIND_BY_CODE, compiler_invalid_kind_for_output
+from .recovery_authority import resolve_compiler_invalid_kind_mapping_authority
 from .runtime_protocol_semantics import output_recovery_compiler_metadata, output_recovery_structural_parity
 from .semantic_accessors import get_compiler_metadata
 
@@ -694,15 +696,20 @@ class OutputRecoveryRoutingMixin:
 
     def _resolved_invalid_kind(self, parsed_output: ParsedModelOutput) -> str:
         legacy_invalid_kind = str(getattr(parsed_output, "invalid_kind", "") or "").strip()
-        compiler_code = str(getattr(parsed_output, "compiler_error_code", "") or "").strip()
         compiler_invalid_kind = compiler_invalid_kind_for_output(parsed_output)
-        if compiler_invalid_kind and (not legacy_invalid_kind or legacy_invalid_kind in self.COMPILER_ROUTED_INVALID_KINDS):
-            return compiler_invalid_kind
-        if legacy_invalid_kind:
-            return legacy_invalid_kind
-        if compiler_code and compiler_invalid_kind:
-            return compiler_invalid_kind
-        return ""
+        segments = getattr(parsed_output, "segments", []) or []
+        parsed_action_count = sum(1 for seg in segments if getattr(seg, "type", "") == "action")
+        diagnostic = resolve_compiler_invalid_kind_mapping_authority(
+            parsed_output,
+            compiler_kind=compiler_invalid_kind,
+            legacy_kind=legacy_invalid_kind,
+            switch_value=get_switch("recovery.compiler_invalid_kind_mapping"),
+            compiler_driven_invalid_kinds=tuple(self.COMPILER_ROUTED_INVALID_KINDS),
+            parsed_action_count=parsed_action_count,
+            has_plain_think_prefix=False,
+            apply_plain_think_prefix_exception=False,
+        )
+        return diagnostic.effective_invalid_kind
 
 
     def _compiler_strategy_decision(

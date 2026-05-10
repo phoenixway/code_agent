@@ -2675,6 +2675,33 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 29 Step 4: Recovery Authority Candidate Design.
 
+#### Phase 29 Step 4: Recovery Authority Candidate Design
+
+- **Status**: Done.
+- **Goal**: Turn `recovery.compiler_invalid_kind_mapping` into a real resolver/accessor branch, without changing any current recovery behavior.
+- **Completed Outcome**:
+  - Added `resolve_compiler_invalid_kind_mapping_authority(...)` in `recovery_authority.py`.
+  - The resolver now computes:
+    - `effective_invalid_kind`
+    - a unified `RecoveryAuthorityDiagnostic`
+  - `_apply_compiler_diagnosis(...)` now uses that resolver as the single effectful mapping path.
+  - `OutputRecoveryRoutingMixin._resolved_invalid_kind(...)` now uses the same resolver, eliminating duplicate compiler-vs-legacy mapping logic.
+  - Added a recovery switch placeholder:
+    - `[recovery] compiler_invalid_kind_mapping = "legacy"` in the default registry
+    - `[recovery] compiler_invalid_kind_mapping = "legacy"` in the smoke profile
+  - Switch decision:
+    - Option B selected
+    - registry completeness now, smoke enablement deferred
+  - Expanded synthetic coverage with direct resolver tests for:
+    - compiler-primary agreement
+    - legacy-preserving mismatch fallback
+    - plain-think-prefix exception fallback
+  - No runtime behavior changed.
+  - No recovery routing or prompt-selection behavior changed.
+  - Default registry remains `legacy`.
+- **Next**:
+  - Phase 29 Step 5: Recovery Compiler Invalid Mapping Switch + Synthetic Validation.
+
 ---
 
 ### Phase 11: RecoveryStrategy Registry Expansion

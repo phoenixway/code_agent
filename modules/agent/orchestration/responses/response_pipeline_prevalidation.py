@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
+from ..config.switch_registry import get_switch
 from ..shared.decision_models import AtomicBundlePlan, NormalizedModelResponse, ResponsePipelineOutcome
 from ..runtime.action_policy_models import AtomicBundlePolicyResultKind
 from ..parsers.visible_text import sanitize_visible_text_for_user, terminal_plaintext_completion_status
 from .bundle_semantic_validator import BundleResultKind, BundleSemanticValidator
 from .protocol_decision_bridge import COMPILER_INVALID_KIND_BY_CODE
 from .recovery_authority import (
-    build_compiler_invalid_mapping_diagnostic,
     build_prevalidation_reject_invalid_output_diagnostic,
+    resolve_compiler_invalid_kind_mapping_authority,
 )
 from .runtime_protocol_semantics import compact_runtime_protocol_semantics, runtime_semantics_from_compiler_analysis
 from .terminal_answer_classifier import (
@@ -204,40 +205,23 @@ class ResponsePipelinePrevalidationMixin:
                     has_plain_think_prefix = bool(self.semantics.has_plain_think_prefix(response))
                 except Exception:
                     has_plain_think_prefix = False
-            if (
-                compiler_invalid_kind == "mixed_visible_text_and_control_protocol"
-                and has_plain_think_prefix
-                and not legacy_invalid_kind
-            ):
-                self._log_recovery_authority_resolution(
-                    build_compiler_invalid_mapping_diagnostic(
-                        parsed_output,
-                        compiler_kind=compiler_invalid_kind,
-                        legacy_kind=legacy_invalid_kind,
-                        effective_invalid_kind=legacy_invalid_kind,
-                        parsed_action_count=sum(
-                            1 for seg in (getattr(parsed_output, "segments", []) or [])
-                            if getattr(seg, "type", "") == "action"
-                        ),
-                        has_plain_think_prefix=has_plain_think_prefix,
-                    )
-                )
-                return compiler_analysis
-            if not legacy_invalid_kind or legacy_invalid_kind in self.COMPILER_DRIVEN_INVALID_KINDS:
-                parsed_output.invalid_kind = compiler_invalid_kind
-        effective_invalid_kind = str(getattr(parsed_output, "invalid_kind", "") or "").strip()
+        parsed_action_count = sum(
+            1 for seg in (getattr(parsed_output, "segments", []) or [])
+            if getattr(seg, "type", "") == "action"
+        )
+        diagnostic = resolve_compiler_invalid_kind_mapping_authority(
+            parsed_output,
+            compiler_kind=compiler_invalid_kind,
+            legacy_kind=legacy_invalid_kind,
+            switch_value=get_switch("recovery.compiler_invalid_kind_mapping"),
+            compiler_driven_invalid_kinds=tuple(self.COMPILER_DRIVEN_INVALID_KINDS),
+            parsed_action_count=parsed_action_count,
+            has_plain_think_prefix=has_plain_think_prefix,
+            apply_plain_think_prefix_exception=True,
+        )
+        parsed_output.invalid_kind = diagnostic.effective_invalid_kind
         self._log_recovery_authority_resolution(
-            build_compiler_invalid_mapping_diagnostic(
-                parsed_output,
-                compiler_kind=compiler_invalid_kind,
-                legacy_kind=legacy_invalid_kind,
-                effective_invalid_kind=effective_invalid_kind,
-                parsed_action_count=sum(
-                    1 for seg in (getattr(parsed_output, "segments", []) or [])
-                    if getattr(seg, "type", "") == "action"
-                ),
-                has_plain_think_prefix=has_plain_think_prefix,
-            )
+            diagnostic
         )
         return compiler_analysis
 
@@ -903,6 +887,7 @@ class ResponsePipelinePrevalidationMixin:
                 "protocol_shadow",
                 "recovery_authority_resolution",
                 branch=diagnostic.branch,
+                switch_value=diagnostic.switch_value,
                 authority_source=diagnostic.authority_source,
                 legacy_kind=diagnostic.legacy_kind,
                 compiler_kind=diagnostic.compiler_kind,

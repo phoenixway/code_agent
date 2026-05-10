@@ -11,6 +11,7 @@ from .terminal_answer_models import TerminalAnswerKind
 @dataclass(frozen=True)
 class RecoveryAuthorityDiagnostic:
     branch: str = ""
+    switch_value: str = "legacy"
     authority_source: str = "legacy"
     legacy_kind: str = ""
     compiler_kind: str = ""
@@ -87,28 +88,79 @@ def build_compiler_invalid_mapping_diagnostic(
     parsed_action_count: int = 0,
     has_plain_think_prefix: bool = False,
 ) -> RecoveryAuthorityDiagnostic:
+    return resolve_compiler_invalid_kind_mapping_authority(
+        parsed_output,
+        compiler_kind=compiler_kind,
+        legacy_kind=legacy_kind,
+        switch_value="legacy",
+        compiler_driven_invalid_kinds=(),
+        parsed_action_count=parsed_action_count,
+        has_plain_think_prefix=has_plain_think_prefix,
+    )
+
+
+def resolve_compiler_invalid_kind_mapping_authority(
+    parsed_output,
+    *,
+    compiler_kind: str,
+    legacy_kind: str,
+    switch_value: str,
+    compiler_driven_invalid_kinds: tuple[str, ...] | set[str],
+    parsed_action_count: int = 0,
+    has_plain_think_prefix: bool = False,
+    apply_plain_think_prefix_exception: bool = True,
+) -> RecoveryAuthorityDiagnostic:
     facts = _recovery_facts(parsed_output, parsed_action_count=parsed_action_count)
+    normalized_switch = str(switch_value or "legacy").strip().lower()
+    if normalized_switch not in {"legacy", "compiler", "shadow"}:
+        normalized_switch = "legacy"
     compiler_error_code = str(getattr(parsed_output, "compiler_error_code", "") or "")
+    normalized_compiler_kind = str(compiler_kind or "").strip()
+    normalized_legacy_kind = str(legacy_kind or "").strip()
+    driven_kinds = set(compiler_driven_invalid_kinds or ())
+
+    effective_invalid_kind = normalized_legacy_kind
     blocking_reasons: list[str] = []
     if has_plain_think_prefix:
         blocking_reasons.append("plain_think_prefix_exception")
-    if compiler_kind and effective_invalid_kind and compiler_kind != effective_invalid_kind:
+    compiler_eligible = bool(normalized_compiler_kind)
+    if compiler_eligible:
+        plain_think_prefix_exception = bool(
+            apply_plain_think_prefix_exception
+            and normalized_compiler_kind == "mixed_visible_text_and_control_protocol"
+            and has_plain_think_prefix
+            and not normalized_legacy_kind
+        )
+        if plain_think_prefix_exception:
+            effective_invalid_kind = normalized_legacy_kind
+        elif not normalized_legacy_kind or normalized_legacy_kind in driven_kinds:
+            effective_invalid_kind = normalized_compiler_kind
+        elif normalized_legacy_kind != normalized_compiler_kind:
+            blocking_reasons.append("legacy_kind_preserved")
+
+    if normalized_compiler_kind and effective_invalid_kind and normalized_compiler_kind != effective_invalid_kind:
         blocking_reasons.append("effective_invalid_kind_differs_from_compiler_kind")
-    if legacy_kind and compiler_kind and legacy_kind != compiler_kind:
+    if normalized_legacy_kind and normalized_compiler_kind and normalized_legacy_kind != normalized_compiler_kind:
         blocking_reasons.append("legacy_compiler_mismatch")
 
     branch_active = bool(
         compiler_error_code
-        or compiler_kind
-        or legacy_kind
+        or normalized_compiler_kind
+        or normalized_legacy_kind
         or effective_invalid_kind
     )
-    agreement = bool(compiler_kind and legacy_kind and compiler_kind == legacy_kind)
+    agreement = bool(
+        normalized_compiler_kind
+        and (
+            not normalized_legacy_kind
+            or normalized_compiler_kind == normalized_legacy_kind
+        )
+    )
 
-    if compiler_kind and effective_invalid_kind == compiler_kind:
+    if normalized_compiler_kind and effective_invalid_kind == normalized_compiler_kind:
         authority_source = "compiler"
         fallback_used = False
-    elif compiler_kind and effective_invalid_kind and effective_invalid_kind != compiler_kind:
+    elif normalized_compiler_kind and effective_invalid_kind and effective_invalid_kind != normalized_compiler_kind:
         authority_source = "legacy_fallback"
         fallback_used = True
     elif effective_invalid_kind:
@@ -120,11 +172,12 @@ def build_compiler_invalid_mapping_diagnostic(
 
     return RecoveryAuthorityDiagnostic(
         branch="recovery.compiler_invalid_kind_mapping",
+        switch_value=normalized_switch,
         authority_source=authority_source,
-        legacy_kind=str(legacy_kind or ""),
-        compiler_kind=str(compiler_kind or ""),
+        legacy_kind=normalized_legacy_kind,
+        compiler_kind=normalized_compiler_kind,
         typed_kind=str(facts["typed_kind"] or ""),
-        parsed_invalid_kind=str(legacy_kind or ""),
+        parsed_invalid_kind=normalized_legacy_kind,
         effective_invalid_kind=str(effective_invalid_kind or ""),
         agreement=agreement,
         fallback_used=fallback_used,
@@ -188,6 +241,7 @@ def build_prevalidation_reject_invalid_output_diagnostic(
 
     return RecoveryAuthorityDiagnostic(
         branch="recovery.prevalidation_reject_invalid_output",
+        switch_value="legacy",
         authority_source=authority_source,
         legacy_kind=legacy_kind,
         compiler_kind=compiler_kind,

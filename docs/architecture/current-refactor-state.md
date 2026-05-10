@@ -4,9 +4,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 29 Step 3: Recovery Synthetic Matrix Expansion / First Authority Candidate Decision
+- **Phase**: Phase 29 Step 4: Recovery Authority Candidate Design
 - **Status**: Complete.
-- **Next Step**: Phase 29 Step 4: Recovery Authority Candidate Design.
+- **Next Step**: Phase 29 Step 5: Recovery Compiler Invalid Mapping Switch + Synthetic Validation.
 - **Boundary**: The checkpoint parity bridge remains diagnostic-only. Legacy board handlers still own commit behavior, the prepass compiler analysis remains observational, and `_apply_compiler_diagnosis` remains the effectful classification-stage path that recomputes on normalized response.
 
 ## Step 4I Parity Matrix
@@ -1585,6 +1585,29 @@ This document is the single source of truth for the current state of the Semanti
     - default registry remains `legacy`
   - Recommended next step:
     - `Phase 29 Step 4: Recovery Authority Candidate Design`
+- **Phase 29 Step 4: Recovery Authority Candidate Design (Complete)**
+  - Added `resolve_compiler_invalid_kind_mapping_authority(...)` in [recovery_authority.py](/home/romankozak/studio/public/it/angelica-ai/modules/agent/orchestration/responses/recovery_authority.py).
+  - The resolver now centralizes compiler-invalid-kind mapping and returns both:
+    - a behavior-preserving `effective_invalid_kind`
+    - `RecoveryAuthorityDiagnostic`
+  - `_apply_compiler_diagnosis(...)` now consumes the resolver directly.
+  - `OutputRecoveryRoutingMixin._resolved_invalid_kind(...)` now uses the same resolver, removing duplicated mapping logic while preserving current recovery outcomes.
+  - Added a new registry placeholder:
+    - `recovery.compiler_invalid_kind_mapping = "legacy"` in the default registry
+    - `recovery.compiler_invalid_kind_mapping = "legacy"` in the smoke registry
+  - Switch decision:
+    - Option B selected
+    - add the branch key now for registry completeness, but keep both default and smoke on `legacy` until the next validation step
+  - Expanded tests with direct resolver characterization for:
+    - compiler-primary agreement
+    - legacy-preserving mismatch fallback
+    - plain-think-prefix exception fallback
+  - Boundary:
+    - no runtime behavior changed
+    - no recovery routing or prompt-selection behavior changed
+    - default registry remains `legacy`
+  - Recommended next step:
+    - `Phase 29 Step 5: Recovery Compiler Invalid Mapping Switch + Synthetic Validation`
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 

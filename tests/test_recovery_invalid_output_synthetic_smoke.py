@@ -6,6 +6,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 from modules.agent.orchestration.parsers.parsing import IntentResponseParser
 from modules.agent.orchestration.protocol.classifier import ProtocolCompiler
+from modules.agent.orchestration.responses.recovery_authority import (
+    resolve_compiler_invalid_kind_mapping_authority,
+)
 from modules.agent.orchestration.responses.response_pipeline_prevalidation import ResponsePipelinePrevalidationMixin
 from modules.agent.orchestration.responses.response_pipeline_stages import ResponsePipelineStagesMixin
 from modules.agent.orchestration.responses.response_semantics import ResponseSemantics
@@ -196,6 +199,7 @@ def test_unclosed_think_logs_invalid_mapping_and_preserves_recovery_behavior():
     assert outcome.continue_loop is True
     assert outcome.reason == "malformed_incomplete_think"
     diagnostic = _recovery_authority_calls(harness, "recovery.compiler_invalid_kind_mapping")[-1].kwargs
+    assert diagnostic["switch_value"] == "legacy"
     assert diagnostic["authority_source"] == "compiler"
     assert diagnostic["effective_invalid_kind"] == "malformed_incomplete_think"
     assert diagnostic["behavior_changed"] is False
@@ -221,6 +225,7 @@ def test_leaked_system_result_is_characterized_without_terminal_authority_transf
     assert outcome.continue_loop is True
     assert outcome.reason == "leaked_system_result_in_assistant_text"
     diagnostic = _recovery_authority_calls(harness, "recovery.compiler_invalid_kind_mapping")[-1].kwargs
+    assert diagnostic["switch_value"] == "legacy"
     assert diagnostic["typed_kind"] == "LEAKED_SYSTEM_RESULT"
     assert diagnostic["is_leaked_system_result"] is True
     assert diagnostic["behavior_changed"] is False
@@ -233,6 +238,7 @@ def test_invalid_truncated_terminal_text_is_characterized_without_dispatch():
     assert classified.parsed_action_count == 0
     assert outcome.reason == "dispatch_ready"
     diagnostic = _recovery_authority_calls(harness, "recovery.compiler_invalid_kind_mapping")[-1].kwargs
+    assert diagnostic["switch_value"] == "legacy"
     assert diagnostic["typed_kind"] == "INVALID_OR_TRUNCATED_TERMINAL_TEXT"
     assert diagnostic["behavior_changed"] is False
 
@@ -244,7 +250,9 @@ def test_memory_tag_inside_think_is_characterized_as_invalid_without_checkpoint_
     assert classified.parsed_output.compiler_error_code
     assert outcome.continue_loop is True
     diagnostic = _recovery_authority_calls(harness, "recovery.compiler_invalid_kind_mapping")[-1].kwargs
+    assert diagnostic["switch_value"] == "legacy"
     assert diagnostic["compiler_error_code"]
+    assert diagnostic["effective_invalid_kind"] == "malformed_incomplete_think"
     assert diagnostic["has_checkpoint"] is False
     assert diagnostic["behavior_changed"] is False
 
@@ -256,7 +264,9 @@ def test_checkpoint_tag_inside_think_is_characterized_as_invalid_without_checkpo
     assert classified.parsed_output.compiler_error_code
     assert outcome.continue_loop is True
     diagnostic = _recovery_authority_calls(harness, "recovery.compiler_invalid_kind_mapping")[-1].kwargs
+    assert diagnostic["switch_value"] == "legacy"
     assert diagnostic["compiler_error_code"]
+    assert diagnostic["effective_invalid_kind"] == "malformed_incomplete_think"
     assert diagnostic["has_checkpoint"] is False
     assert diagnostic["behavior_changed"] is False
 
@@ -268,6 +278,7 @@ def test_empty_output_is_characterized_without_recovery_authority_transfer():
     assert outcome.reason == "dispatch_ready"
     diagnostic = _recovery_authority_calls(harness, "recovery.compiler_invalid_kind_mapping")[-1].kwargs
     assert diagnostic["branch"] == "recovery.compiler_invalid_kind_mapping"
+    assert diagnostic["switch_value"] == "legacy"
     assert diagnostic["behavior_changed"] is False
     assert diagnostic["effective_invalid_kind"] == ""
 
@@ -279,6 +290,7 @@ def test_pre_action_text_with_action_keeps_dispatch_safe_and_logs_recovery_mappi
     assert classified.parsed_action_count == 1
     assert outcome.reason == "dispatch_ready"
     diagnostic = _recovery_authority_calls(harness, "recovery.compiler_invalid_kind_mapping")[-1].kwargs
+    assert diagnostic["switch_value"] == "legacy"
     assert diagnostic["has_action"] is True
     assert diagnostic["behavior_changed"] is False
 
@@ -294,6 +306,7 @@ def test_internal_summary_recovery_is_characterized_without_terminal_authority_t
     assert classified.parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.INTERNAL_SUMMARY_LIKE_TEXT
     assert outcome.reason == "dispatch_ready"
     diagnostic = _recovery_authority_calls(harness, "recovery.compiler_invalid_kind_mapping")[-1].kwargs
+    assert diagnostic["switch_value"] == "legacy"
     assert diagnostic["typed_kind"] == "INTERNAL_SUMMARY_LIKE_TEXT"
     assert diagnostic["is_internal_summary"] is True
     assert diagnostic["branch_active"] is False
@@ -308,6 +321,7 @@ def test_mixed_visible_answer_and_invalid_protocol_is_characterized_as_recovery(
     assert outcome.continue_loop is True
     assert outcome.reason == "malformed_incomplete_think"
     diagnostic = _recovery_authority_calls(harness, "recovery.compiler_invalid_kind_mapping")[-1].kwargs
+    assert diagnostic["switch_value"] == "legacy"
     assert diagnostic["effective_invalid_kind"] == "malformed_incomplete_think"
     assert diagnostic["has_visible_text"] is True
     assert diagnostic["behavior_changed"] is False
@@ -348,6 +362,7 @@ def test_action_only_valid_control_does_not_select_recovery_branch():
     assert classified.parsed_action_count == 1
     assert outcome.reason == "dispatch_ready"
     diagnostic = _recovery_authority_calls(harness, "recovery.compiler_invalid_kind_mapping")[-1].kwargs
+    assert diagnostic["switch_value"] == "legacy"
     assert diagnostic["branch_active"] is False
     assert diagnostic["has_action"] is True
     assert diagnostic["effective_invalid_kind"] == ""
@@ -359,6 +374,80 @@ def test_clean_plaintext_control_does_not_select_recovery_branch():
     assert classified.parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.PLAINTEXT_TERMINAL_ANSWER
     assert outcome.reason == "dispatch_ready"
     diagnostic = _recovery_authority_calls(harness, "recovery.compiler_invalid_kind_mapping")[-1].kwargs
+    assert diagnostic["switch_value"] == "legacy"
     assert diagnostic["branch_active"] is False
     assert diagnostic["typed_kind"] == "PLAINTEXT_TERMINAL_ANSWER"
     assert diagnostic["effective_invalid_kind"] == ""
+
+
+def test_compiler_invalid_mapping_resolver_selects_compiler_when_mapping_matches_current_behavior():
+    parsed_output = SimpleNamespace(
+        compiler_error_code="E_UNCLOSED_THINK",
+        compiler_ir=None,
+        terminal_answer_semantic_result=None,
+        visible_text="",
+        has_action_segment=False,
+    )
+
+    diagnostic = resolve_compiler_invalid_kind_mapping_authority(
+        parsed_output,
+        compiler_kind="malformed_incomplete_think",
+        legacy_kind="",
+        switch_value="legacy",
+        compiler_driven_invalid_kinds=_RecoverySmokeHarness.COMPILER_DRIVEN_INVALID_KINDS,
+        parsed_action_count=0,
+    )
+
+    assert diagnostic.switch_value == "legacy"
+    assert diagnostic.authority_source == "compiler"
+    assert diagnostic.effective_invalid_kind == "malformed_incomplete_think"
+    assert diagnostic.behavior_changed is False
+
+
+def test_compiler_invalid_mapping_resolver_preserves_legacy_on_conflict():
+    parsed_output = SimpleNamespace(
+        compiler_error_code="E_ACTION_PAYLOAD_NOT_OBJECT",
+        compiler_ir=None,
+        terminal_answer_semantic_result=None,
+        visible_text="",
+        has_action_segment=False,
+    )
+
+    diagnostic = resolve_compiler_invalid_kind_mapping_authority(
+        parsed_output,
+        compiler_kind="action_payload_not_object",
+        legacy_kind="malformed_action",
+        switch_value="legacy",
+        compiler_driven_invalid_kinds=_RecoverySmokeHarness.COMPILER_DRIVEN_INVALID_KINDS,
+        parsed_action_count=0,
+    )
+
+    assert diagnostic.authority_source == "legacy_fallback"
+    assert diagnostic.effective_invalid_kind == "malformed_action"
+    assert "effective_invalid_kind_differs_from_compiler_kind" in diagnostic.blocking_reasons
+    assert "legacy_compiler_mismatch" in diagnostic.blocking_reasons
+
+
+def test_compiler_invalid_mapping_resolver_honors_plain_think_prefix_exception():
+    parsed_output = SimpleNamespace(
+        compiler_error_code="E_MIXED_VISIBLE_TEXT_AND_CONTROL",
+        compiler_ir=None,
+        terminal_answer_semantic_result=None,
+        visible_text="",
+        has_action_segment=False,
+    )
+
+    diagnostic = resolve_compiler_invalid_kind_mapping_authority(
+        parsed_output,
+        compiler_kind="mixed_visible_text_and_control_protocol",
+        legacy_kind="",
+        switch_value="legacy",
+        compiler_driven_invalid_kinds=_RecoverySmokeHarness.COMPILER_DRIVEN_INVALID_KINDS,
+        parsed_action_count=0,
+        has_plain_think_prefix=True,
+        apply_plain_think_prefix_exception=True,
+    )
+
+    assert diagnostic.authority_source == "legacy_fallback"
+    assert diagnostic.effective_invalid_kind == ""
+    assert "plain_think_prefix_exception" in diagnostic.blocking_reasons
