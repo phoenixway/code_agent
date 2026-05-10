@@ -3013,14 +3013,30 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 29 Step 15: Recovery Invalid-Truncated Boundary Closure / Remaining Recovery Branch Decision
 
-- **Status**: Not started.
+- **Status**: Done.
 - **Goal**: Close the invalid/truncated terminal text slice and select the next recovery branch.
-- **Expected Scope**:
-  - Document closure of the `invalid_truncated_terminal_text` branch as a diagnostic-only characterization.
-  - Review remaining recovery branches (`internal_summary`, stateful guards, etc.).
-  - Select the next branch with the best safety/value tradeoff.
+- **Completed Outcome**:
+  - Closed the `recovery.invalid_truncated_terminal_text` branch as a diagnostic-only characterization.
+  - The branch has resolver/accessor coverage and synthetic tests, but no recovery decision ownership.
+  - The smoke switch remains `legacy` because enabling compiler authority would be misleading.
+  - Future work on this branch is deferred until a runtime policy decision is made to actively recover from invalid/truncated terminal text.
+  - Decision: Close Phase 29. The core recovery architecture is significantly advanced. Remaining branches (`internal_summary`, stateful guards) are deferred to avoid expanding into deep policy or stateful harness work.
 - **Next**:
-  - Phase 29 Step 16: ...
+  - Phase 29 Step 16: Recovery Core Closure / Next Phase Selection.
+
+---
+
+#### Phase 29 Step 16: Recovery Core Closure / Next Phase Selection
+
+- **Status**: Not started.
+- **Goal**: Close Phase 29 and select the next major refactor phase.
+- **Expected Scope**:
+  - Summarize completed recovery slices (`compiler_invalid_kind_mapping`, `prevalidation_reject_invalid_output`, `leaked_system_result`).
+  - Record smoke-validated branches and diagnostic-only/deferred branches.
+  - Confirm default registry remains `legacy` and no production authority was flipped.
+  - Select the next phase: `Phase 30: Semantic Policy on Compiler-IR Foundation`.
+- **Next**:
+  - Phase 30 Step 1: ...
 
 ---
 

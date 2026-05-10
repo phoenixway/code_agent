@@ -4,9 +4,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 29 Step 14: Invalid-Truncated Terminal Text Smoke Switch Validation
+- **Phase**: Phase 29 Step 15: Recovery Invalid-Truncated Boundary Closure / Remaining Recovery Branch Decision
 - **Status**: Complete.
-- **Next Step**: Phase 29 Step 15: Recovery Invalid-Truncated Boundary Closure / Remaining Recovery Branch Decision.
+- **Next Step**: Phase 29 Step 16: Recovery Core Closure / Next Phase Selection.
 - **Boundary**: The checkpoint parity bridge remains diagnostic-only. Legacy board handlers still own commit behavior, the prepass compiler analysis remains observational, and `_apply_compiler_diagnosis` remains the effectful classification-stage path that recomputes on normalized response.
 
 ## Step 4I Parity Matrix
@@ -1876,8 +1876,14 @@ This document is the single source of truth for the current state of the Semanti
   - Added synthetic smoke coverage for incomplete sentences and negative controls.
   - No production behavior changed.
   - Default and smoke registries remain `legacy` for this branch.
+- **Phase 29 Step 15: Recovery Invalid-Truncated Boundary Closure / Remaining Recovery Branch Decision (Complete)**
+  - Closed the `recovery.invalid_truncated_terminal_text` branch as a diagnostic-only characterization.
+  - The branch has resolver/accessor coverage and synthetic tests, but no recovery decision ownership.
+  - The smoke switch remains `legacy` because enabling compiler authority would be misleading.
+  - Future work on this branch is deferred until a runtime policy decision is made to actively recover from invalid/truncated terminal text.
+  - Decision: Close Phase 29. The core recovery architecture is significantly advanced. Remaining branches (`internal_summary`, stateful guards) are deferred to avoid expanding into deep policy or stateful harness work.
   - Recommended next step:
-    - `Phase 29 Step 15: Recovery Invalid-Truncated Boundary Closure / Remaining Recovery Branch Decision`
+    - `Phase 29 Step 16: Recovery Core Closure / Next Phase Selection`
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 
