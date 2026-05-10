@@ -2973,25 +2973,38 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 29 Step 13: Invalid-Truncated Terminal Text Recovery Authority Candidate
 
-- **Status**: Not started.
+- **Status**: Done.
 - **Goal**: Centralize invalid/truncated terminal text recovery authority through a typed/legacy resolver without changing current recovery behavior.
-- **Expected Scope**:
-  - Inventory current invalid/truncated terminal text recovery path.
-  - Compare typed terminal signal vs legacy guard behavior.
-  - Preserve short plaintext fixes like `Done.`.
-  - Add resolver/accessor and diagnostics.
-  - Add default/smoke legacy placeholders.
-  - Do not enable smoke compiler until equivalence is proven.
-  - Strict negative controls for:
-    - `Done.`
-    - markdown-ish plaintext
-    - clean multiline plaintext
-    - action-only
-    - checkpoint-only
-    - leaked system result
-    - internal-summary-like text
+- **Completed Outcome**:
+  - Added `resolve_invalid_truncated_terminal_text_recovery_authority(...)` in `recovery_authority.py`.
+  - Added a diagnostic-only call to the resolver in `_run_post_classification_stage(...)` to characterize the branch without changing behavior.
+  - Added registry placeholders:
+    - `recovery.invalid_truncated_terminal_text = "legacy"` in the default registry
+    - `recovery.invalid_truncated_terminal_text = "legacy"` in the smoke registry
+  - Added synthetic smoke coverage for:
+    - positive invalid/truncated cases like `And.`
+    - negative controls for clean plaintext, action, checkpoint, leak, and internal-summary
+  - No production behavior changed.
+  - Default registry remains `legacy`.
+  - No recovery routing decisions changed.
+  - No output recovery prompt selection changed.
 - **Next**:
-  - Phase 29 Step 14: ...
+  - Phase 29 Step 14: Invalid-Truncated Terminal Text Smoke Switch Validation.
+
+---
+
+#### Phase 29 Step 14: Invalid-Truncated Terminal Text Smoke Switch Validation
+
+- **Status**: Not started.
+- **Goal**: Enable the smoke-only switch for `recovery.invalid_truncated_terminal_text` and validate that it preserves current behavior.
+- **Expected Scope**:
+  - Enable the smoke switch.
+  - Add a compiler decision candidate path to the resolver.
+  - Validate with synthetic smoke that compiler authority is selected only for agreement-proven cases.
+  - Preserve legacy fallback for all other cases.
+  - Ensure `behavior_changed=False` across the synthetic matrix.
+- **Next**:
+  - Phase 29 Step 15: ...
 
 ---
 

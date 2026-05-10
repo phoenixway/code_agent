@@ -1854,8 +1854,21 @@ This document is the single source of truth for the current state of the Semanti
     - directly connected to recovery/final-answer boundary
     - good next semantic-policy authority target before deeper stateful guard work
     - validates that earlier short-plaintext fixes like `Done.` remain safe
+- **Phase 29 Step 13: Invalid-Truncated Terminal Text Recovery Authority Candidate (Complete)**
+  - Added `resolve_invalid_truncated_terminal_text_recovery_authority(...)` in [recovery_authority.py](/home/romankozak/studio/public/it/angelica-ai/modules/agent/orchestration/responses/recovery_authority.py).
+  - Added a diagnostic-only call to the resolver in `_run_post_classification_stage(...)` to characterize the branch without changing behavior.
+  - Added registry placeholders:
+    - `recovery.invalid_truncated_terminal_text = "legacy"` in the default registry
+    - `recovery.invalid_truncated_terminal_text = "legacy"` in the smoke registry
+  - Added synthetic smoke coverage for:
+    - positive invalid/truncated cases like `And.`
+    - negative controls for clean plaintext, action, checkpoint, leak, and internal-summary
+  - No production behavior changed.
+  - Default registry remains `legacy`.
+  - No recovery routing decisions changed.
+  - No output recovery prompt selection changed.
   - Recommended next step:
-    - `Phase 29 Step 13: Invalid-Truncated Terminal Text Recovery Authority Candidate`
+    - `Phase 29 Step 14: Invalid-Truncated Terminal Text Smoke Switch Validation`
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 

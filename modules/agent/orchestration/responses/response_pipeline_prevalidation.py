@@ -924,6 +924,7 @@ class ResponsePipelinePrevalidationMixin:
                 terminal_answer_kind=diagnostic.terminal_answer_kind,
                 legacy_leak_active=diagnostic.legacy_leak_active,
                 typed_leak_eligible=diagnostic.typed_leak_eligible,
+                typed_invalid_truncated_eligible=diagnostic.typed_invalid_truncated_eligible,
                 parsed_action_count=diagnostic.parsed_action_count,
                 has_action=diagnostic.has_action,
                 has_checkpoint=diagnostic.has_checkpoint,

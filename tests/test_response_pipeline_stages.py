@@ -412,6 +412,7 @@ class TestResponsePipelineStages(unittest.TestCase):
             [
                 (("terminal_answer.plaintext_terminal_answer",), {}),
                 (("terminal_answer.checkpoint_only",), {}),
+                (("recovery.invalid_truncated_terminal_text",), {}),
             ],
             [(call.args, call.kwargs) for call in mock_get_switch.call_args_list],
         )

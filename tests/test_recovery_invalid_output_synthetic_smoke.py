@@ -13,6 +13,7 @@ from modules.agent.orchestration.responses.recovery_authority import (
     build_compiler_prevalidation_recovery_decision_candidate,
     build_typed_leaked_system_result_recovery_decision_candidate,
     resolve_compiler_invalid_kind_mapping_authority,
+    resolve_invalid_truncated_terminal_text_recovery_authority,
     resolve_leaked_system_result_recovery_authority,
     resolve_prevalidation_reject_invalid_output_authority,
 )
@@ -329,6 +330,32 @@ def test_invalid_truncated_terminal_text_is_characterized_without_dispatch():
     assert diagnostic["switch_value"] == "legacy"
     assert diagnostic["typed_kind"] == "INVALID_OR_TRUNCATED_TERMINAL_TEXT"
     assert diagnostic["behavior_changed"] is False
+
+
+def test_invalid_truncated_terminal_text_logs_authority_diagnostic():
+    harness, classified, outcome = _run_full_path_smoke("And.")
+
+    assert classified.parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.INVALID_OR_TRUNCATED_TERMINAL_TEXT
+    assert outcome.reason == "dispatch_ready"
+    diagnostic = _recovery_authority_calls(harness, "recovery.invalid_truncated_terminal_text")[-1].kwargs
+    assert diagnostic["switch_value"] == "legacy"
+    assert diagnostic["authority_source"] == "legacy"
+    assert diagnostic["legacy_kind"] == ""
+    assert diagnostic["typed_kind"] == "INVALID_OR_TRUNCATED_TERMINAL_TEXT"
+    assert diagnostic["agreement"] is False
+    assert diagnostic["branch_active"] is True
+    assert diagnostic["behavior_changed"] is False
+    assert diagnostic["effective_source"] == "typed"
+    assert diagnostic["typed_invalid_truncated_eligible"] is True
+
+
+def test_clean_plaintext_does_not_log_invalid_truncated_authority_diagnostic():
+    harness, classified, outcome = _run_full_path_smoke("Done.")
+
+    assert classified.parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.PLAINTEXT_TERMINAL_ANSWER
+    assert outcome.reason == "dispatch_ready"
+    diagnostic = _recovery_authority_calls(harness, "recovery.invalid_truncated_terminal_text")[-1].kwargs
+    assert diagnostic["branch_active"] is False
 
 
 def test_memory_tag_inside_think_is_characterized_as_invalid_without_checkpoint_authority():

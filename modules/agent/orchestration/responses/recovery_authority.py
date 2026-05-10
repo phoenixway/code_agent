@@ -39,6 +39,7 @@ class RecoveryAuthorityDiagnostic:
     terminal_answer_kind: str = ""
     legacy_leak_active: bool = False
     typed_leak_eligible: bool = False
+    typed_invalid_truncated_eligible: bool = False
     parsed_action_count: int = 0
     has_action: bool = False
     has_checkpoint: bool = False
@@ -279,6 +280,10 @@ def resolve_compiler_invalid_kind_mapping_authority(
     else:
         effective_source = "none"
 
+    typed_invalid_truncated_eligible = (
+        facts["typed_kind_enum"] == TerminalAnswerKind.INVALID_OR_TRUNCATED_TERMINAL_TEXT
+    )
+
     if normalized_switch == "compiler":
         if compiler_safe_for_switch:
             authority_source = "compiler"
@@ -318,6 +323,9 @@ def resolve_compiler_invalid_kind_mapping_authority(
         blocking_reasons=tuple(blocking_reasons),
         compiler_error_code=compiler_error_code,
         terminal_answer_kind=str(facts["typed_kind"] or ""),
+        legacy_leak_active=False,
+        typed_leak_eligible=False,
+        typed_invalid_truncated_eligible=typed_invalid_truncated_eligible,
         parsed_action_count=int(parsed_action_count or 0),
         has_action=bool(facts["has_action"]),
         has_checkpoint=bool(facts["has_checkpoint"]),
@@ -400,6 +408,9 @@ def resolve_prevalidation_reject_invalid_output_authority(
         TerminalAnswerKind.INTERNAL_SUMMARY_LIKE_TEXT.name,
         TerminalAnswerKind.INVALID_OR_TRUNCATED_TERMINAL_TEXT.name,
     }
+    typed_invalid_truncated_eligible = (
+        facts["typed_kind_enum"] == TerminalAnswerKind.INVALID_OR_TRUNCATED_TERMINAL_TEXT
+    )
 
     if legacy_kind and compiler_kind:
         effective_source = "mixed" if legacy_kind != compiler_kind else "compiler"
@@ -491,6 +502,9 @@ def resolve_prevalidation_reject_invalid_output_authority(
         blocking_reasons=tuple(blocking_reasons),
         compiler_error_code=compiler_kind,
         terminal_answer_kind=str(facts["typed_kind"] or ""),
+        legacy_leak_active=False,
+        typed_leak_eligible=False,
+        typed_invalid_truncated_eligible=typed_invalid_truncated_eligible,
         parsed_action_count=int(parsed_action_count or 0),
         has_action=bool(facts["has_action"]),
         has_checkpoint=bool(facts["has_checkpoint"]),
@@ -501,6 +515,115 @@ def resolve_prevalidation_reject_invalid_output_authority(
         guard_name=str(guard_name or ""),
         guard_triggered=bool(guard_triggered),
         guard_state=str(guard_state or ""),
+    )
+    return RecoveryDecisionAuthorityResolution(
+        effective_decision=decision,
+        diagnostic=diagnostic,
+    )
+
+
+def resolve_invalid_truncated_terminal_text_recovery_authority(
+    parsed_output,
+    *,
+    legacy_invalid_truncated_active: bool,
+    legacy_decision,
+    switch_value: str,
+    parsed_action_count: int = 0,
+    recovery_action: str = "",
+    recovery_reason: str = "",
+    recovery_prompt_kind: str = "",
+) -> RecoveryDecisionAuthorityResolution:
+    facts = _recovery_facts(parsed_output, parsed_action_count=parsed_action_count)
+    normalized_switch = str(switch_value or "legacy").strip().lower()
+    if normalized_switch not in {"legacy", "compiler", "shadow"}:
+        normalized_switch = "legacy"
+
+    typed_invalid_truncated_eligible = (
+        facts["typed_kind_enum"] == TerminalAnswerKind.INVALID_OR_TRUNCATED_TERMINAL_TEXT
+    )
+    branch_active = bool(
+        legacy_invalid_truncated_active
+        or typed_invalid_truncated_eligible
+        or getattr(legacy_decision, "handled", False)
+    )
+    decision = legacy_decision
+    decision_reason = str(recovery_reason or getattr(decision, "reason", "") or "")
+    decision_prompt_kind = str(
+        recovery_prompt_kind
+        or ("output_recovery_query" if bool(getattr(decision, "next_query", "")) else "")
+    )
+    decision_action = str(recovery_action or decision_reason or "")
+    agreement = bool(branch_active and legacy_invalid_truncated_active and typed_invalid_truncated_eligible)
+
+    blocking_reasons: list[str] = []
+    if facts["has_action"]:
+        blocking_reasons.append("action_present")
+    if facts["has_checkpoint"]:
+        blocking_reasons.append("checkpoint_present")
+    if facts["is_leaked_system_result"]:
+        blocking_reasons.append("leaked_system_result_present")
+    if facts["is_internal_summary"]:
+        blocking_reasons.append("internal_summary_present")
+    if legacy_invalid_truncated_active and not typed_invalid_truncated_eligible:
+        blocking_reasons.append("typed_legacy_disagreement")
+
+    if typed_invalid_truncated_eligible:
+        effective_source = "typed"
+    elif legacy_invalid_truncated_active:
+        effective_source = "legacy"
+    else:
+        effective_source = "none"
+
+    compiler_decision_available = False
+    prompt_equivalent = False
+
+    if normalized_switch == "compiler":
+        authority_source = "legacy_fallback"
+        fallback_used = True
+        selected_by_switch = False
+        blocking_reasons.append("no_compiler_decision_path")
+    else:
+        if branch_active:
+            authority_source = "legacy"
+            fallback_used = False
+        else:
+            authority_source = "legacy_fallback"
+            fallback_used = True
+        selected_by_switch = False
+
+    diagnostic = RecoveryAuthorityDiagnostic(
+        branch="recovery.invalid_truncated_terminal_text",
+        switch_value=normalized_switch,
+        authority_source=authority_source,
+        effective_source=effective_source,
+        selected_by_switch=selected_by_switch,
+        legacy_kind="invalid_truncated_terminal_text" if legacy_invalid_truncated_active else "",
+        compiler_kind="",
+        typed_kind=str(facts["typed_kind"] or ""),
+        parsed_invalid_kind=str(getattr(parsed_output, "invalid_kind", "") or ""),
+        effective_invalid_kind=str(getattr(parsed_output, "invalid_kind", "") or ""),
+        agreement=agreement,
+        fallback_used=fallback_used,
+        behavior_changed=False,
+        branch_active=branch_active,
+        recovery_action=decision_action,
+        recovery_reason=decision_reason,
+        recovery_prompt_kind=decision_prompt_kind,
+        compiler_decision_available=compiler_decision_available,
+        decision_agreement=agreement,
+        prompt_equivalent=prompt_equivalent,
+        blocking_reasons=tuple(blocking_reasons),
+        compiler_error_code=str(getattr(parsed_output, "compiler_error_code", "") or ""),
+        terminal_answer_kind=str(facts["typed_kind"] or ""),
+        legacy_leak_active=False,
+        typed_leak_eligible=False,
+        typed_invalid_truncated_eligible=typed_invalid_truncated_eligible,
+        parsed_action_count=int(parsed_action_count or 0),
+        has_action=bool(facts["has_action"]),
+        has_checkpoint=bool(facts["has_checkpoint"]),
+        has_visible_text=bool(facts["has_visible_text"]),
+        is_leaked_system_result=bool(facts["is_leaked_system_result"]),
+        is_internal_summary=bool(facts["is_internal_summary"]),
     )
     return RecoveryDecisionAuthorityResolution(
         effective_decision=decision,
@@ -542,6 +665,9 @@ def resolve_leaked_system_result_recovery_authority(
         normalized_switch = "legacy"
 
     typed_leak_eligible = bool(facts["is_leaked_system_result"])
+    typed_invalid_truncated_eligible = (
+        facts["typed_kind_enum"] == TerminalAnswerKind.INVALID_OR_TRUNCATED_TERMINAL_TEXT
+    )
     branch_active = bool(
         legacy_leak_active
         or typed_leak_eligible
@@ -642,6 +768,7 @@ def resolve_leaked_system_result_recovery_authority(
         terminal_answer_kind=str(facts["typed_kind"] or ""),
         legacy_leak_active=bool(legacy_leak_active),
         typed_leak_eligible=bool(typed_leak_eligible),
+        typed_invalid_truncated_eligible=typed_invalid_truncated_eligible,
         parsed_action_count=int(parsed_action_count or 0),
         has_action=bool(facts["has_action"]),
         has_checkpoint=bool(facts["has_checkpoint"]),

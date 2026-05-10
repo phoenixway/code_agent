@@ -24,8 +24,12 @@ from .terminal_answer_authority import (
     resolve_checkpoint_only_terminal_authority,
     resolve_plaintext_terminal_answer_authority,
 )
-from .recovery_authority import resolve_leaked_system_result_recovery_authority
+from .recovery_authority import (
+    resolve_invalid_truncated_terminal_text_recovery_authority,
+    resolve_leaked_system_result_recovery_authority,
+)
 from .terminal_answer_models import TerminalAnswerKind
+from ..parsers.visible_text import terminal_plaintext_completion_status
 
 
 @dataclass
@@ -345,6 +349,7 @@ class ResponsePipelineStagesMixin:
                 terminal_answer_kind=diagnostic.terminal_answer_kind,
                 legacy_leak_active=diagnostic.legacy_leak_active,
                 typed_leak_eligible=diagnostic.typed_leak_eligible,
+                typed_invalid_truncated_eligible=diagnostic.typed_invalid_truncated_eligible,
                 parsed_action_count=diagnostic.parsed_action_count,
                 has_action=diagnostic.has_action,
                 has_checkpoint=diagnostic.has_checkpoint,
@@ -1034,6 +1039,17 @@ class ResponsePipelineStagesMixin:
             switch_value=checkpoint_only_switch,
         )
         self._log_terminal_answer_authority_resolution(checkpoint_only_authority)
+
+        is_invalid_truncated, _, _ = terminal_plaintext_completion_status(raw_response)
+        invalid_truncated_authority = resolve_invalid_truncated_terminal_text_recovery_authority(
+            parsed_output,
+            legacy_invalid_truncated_active=is_invalid_truncated,
+            legacy_decision=None,
+            switch_value=get_switch("recovery.invalid_truncated_terminal_text"),
+            parsed_action_count=parsed_action_count,
+        )
+        self._log_recovery_authority_resolution(invalid_truncated_authority.diagnostic)
+
         effective_plaintext_answer_path = legacy_plaintext_answer_path
         if (
             terminal_answer_switch == "compiler"
