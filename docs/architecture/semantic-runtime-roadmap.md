@@ -3296,13 +3296,33 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 31 — Step 2/10: MEMORY_CHECKPOINT_WITH_TEXT Synthetic Commit-Equivalence Harness
 
-- **Status**: Not started.
+- **Status**: Done.
 - **Goal**: Implement the synthetic commit-equivalence harness for the `MEMORY_CHECKPOINT_WITH_TEXT` branch.
-- **Expected Scope**:
-  - Extend `tests/test_board_memory_commit_equivalence.py` with a snapshot test for `MEMORY_CHECKPOINT_WITH_TEXT`.
-  - The test will use the real `MemoryBoardStageHandler` and assert that visible text is preserved and the pipeline continues to post-classification stages.
+- **Completed Outcome**:
+  - The commit-equivalence harness was extended to cover `MEMORY_CHECKPOINT_WITH_TEXT`.
+  - A real-handler snapshot test now characterizes the branch's behavior, including:
+    - visible text preservation (`Done.`)
+    - marker stripping (`<memory_update_done />`)
+    - pass-through behavior (`handled=False`) to allow final-answer evaluation
+    - zero-count memory commit (`accepted_count=0`)
+  - Negative controls were added to ensure other branches are not misclassified.
+  - No runtime behavior was changed, and no authority was transferred.
 - **Next**:
-  - Phase 31 — Step 3/10: ...
+  - Phase 31 — Step 3/10: MEMORY_CHECKPOINT_WITH_TEXT Candidate Model / Resolver Design.
+
+---
+
+#### Phase 31 — Step 3/10: MEMORY_CHECKPOINT_WITH_TEXT Candidate Model / Resolver Design
+
+- **Status**: Not started.
+- **Goal**: Design and implement the first typed commit candidate model and resolver for `MEMORY_CHECKPOINT_WITH_TEXT` without changing behavior.
+- **Expected Scope**:
+  - Add a `MemoryCheckpointWithTextCandidate` model.
+  - Add a `resolve_memory_checkpoint_with_text_commit_authority` resolver.
+  - Add a `board_memory.memory_checkpoint_with_text` switch placeholder to the registries, default `legacy`.
+  - Add tests for candidate construction, legacy-mode resolution, and compiler-mode fallback.
+- **Next**:
+  - Phase 31 — Step 4/10: ...
 
 ---
 

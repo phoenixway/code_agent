@@ -1988,7 +1988,16 @@ This document is the single source of truth for the current state of the Semanti
     - **Blockers**: The primary blocker is ensuring that any future compiler-driven path perfectly preserves the visible text and the `handled=False` pass-through behavior that allows the final-answer path to continue.
   - **Harness Plan**: The commit-equivalence harness will be extended to capture `MEMORY_CHECKPOINT_WITH_TEXT` snapshots, asserting that visible text is preserved and the pipeline continues correctly.
   - **Boundary**: This was a docs-only inventory and planning step. No runtime behavior was changed.
-  - **Next Step**: `Phase 31 — Step 2/10: MEMORY_CHECKPOINT_WITH_TEXT Synthetic Commit-Equivalence Harness`.
+- **Phase 31 — Step 2/10: MEMORY_CHECKPOINT_WITH_TEXT Synthetic Commit-Equivalence Harness (Complete)**
+  - The commit-equivalence harness was extended to cover `MEMORY_CHECKPOINT_WITH_TEXT`.
+  - A real-handler snapshot test now characterizes the branch's behavior, including:
+    - visible text preservation (`Done.`)
+    - marker stripping (`<memory_update_done />`)
+    - pass-through behavior (`handled=False`) to allow final-answer evaluation
+    - zero-count memory commit (`accepted_count=0`)
+  - Negative controls were added to ensure other branches are not misclassified.
+  - No runtime behavior was changed, and no authority was transferred.
+  - **Next Step**: `Phase 31 — Step 3/10: MEMORY_CHECKPOINT_WITH_TEXT Candidate Model / Resolver Design`.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 

@@ -49,6 +49,11 @@ class LegacyCommitSnapshot:
     final_answer_preserved: bool
     snapshot_source: str
     memory_commit_mode: str
+    visible_text_before_memory_stage: str | None = None
+    visible_text_after_memory_stage: str | None = None
+    checkpoint_removed_from_visible_response: bool | None = None
+    visible_text_preserved: bool | None = None
+    pass_through_preserved: bool | None = None
     blocking_reasons: list[str] = field(default_factory=list)
 
 
@@ -165,6 +170,17 @@ def _run_commit_equivalence_harness(response: str, *, memory_board_stage=None):
         memory_commit_accepted_count = int(getattr(harness.state, "last_memory_board_accepted_count", 0) or 0)
         memory_commit_rejected_count = int(getattr(harness.state, "last_memory_board_rejected_count", 0) or 0)
 
+    temp_handler = MemoryBoardStageHandler(SimpleNamespace(state=SimpleNamespace(), log=None), None)
+    visible_text_before_memory_stage = response
+    visible_text_after_memory_stage = state.response
+    checkpoint_removed = (
+        "<memory_update_done />" in str(visible_text_before_memory_stage or "").lower()
+        and "<memory_update_done />" not in str(visible_text_after_memory_stage or "").lower()
+    )
+    stripped_before = temp_handler._strip_control_blocks_for_visible_text(visible_text_before_memory_stage)
+    stripped_after = temp_handler._strip_control_blocks_for_visible_text(visible_text_after_memory_stage)
+    visible_text_preserved = stripped_before == stripped_after
+
     snapshot = LegacyCommitSnapshot(
         branch=semantic_result.kind.name,
         input_response=response,
@@ -194,6 +210,11 @@ def _run_commit_equivalence_harness(response: str, *, memory_board_stage=None):
         final_answer_preserved=outcome is None,
         snapshot_source=snapshot_source,
         memory_commit_mode=memory_commit_mode,
+        pass_through_preserved=outcome is None,
+        visible_text_before_memory_stage=visible_text_before_memory_stage,
+        visible_text_after_memory_stage=visible_text_after_memory_stage,
+        checkpoint_removed_from_visible_response=checkpoint_removed,
+        visible_text_preserved=visible_text_preserved,
     )
     return harness, state, outcome, snapshot
 
@@ -385,6 +406,65 @@ def test_memory_checkpoint_only_real_handler_snapshot():
     assert snapshot.final_answer_preserved is False
 
     mock_agent.memory_board_engine.apply_response_text.assert_called_once()
+
+
+def test_memory_checkpoint_with_text_real_handler_snapshot():
+    response = "<memory_update_done />\nDone."
+    mock_agent = SimpleNamespace(
+        state=SimpleNamespace(),
+        memory_board_engine=MagicMock(),
+        log=None,
+    )
+    mock_prompt_builder = SimpleNamespace(_current_active_intent_id=MagicMock(return_value="intent_123"))
+    mock_board_result = SimpleNamespace(
+        parsed_count=0,
+        accepted_count=0,
+        rejected_count=0,
+        clean_text="Done.",
+    )
+    mock_agent.memory_board_engine.apply_response_text.return_value = mock_board_result
+    real_handler = MemoryBoardStageHandler(mock_agent, mock_prompt_builder)
+
+    harness, state, outcome, snapshot = _run_commit_equivalence_harness(response, memory_board_stage=real_handler)
+
+    assert snapshot.branch == "MEMORY_CHECKPOINT_WITH_TEXT"
+    assert snapshot.compiler_shape in {"MEMORY_TEXT", "PURE_PLAINTEXT"}
+    assert snapshot.compiler_has_memory_checkpoint is True
+    assert snapshot.compiler_has_visible_answer is True
+    assert snapshot.compiler_has_action is False
+    assert snapshot.legacy_memory_outcome == "checkpoint_and_text"
+    assert snapshot.parity_aligned is True
+    assert snapshot.visible_text_after_memory_stage == "Done."
+    assert snapshot.visible_text_preserved is True
+    assert snapshot.checkpoint_removed_from_visible_response is True
+    assert snapshot.memory_commit_attempted is True
+    assert snapshot.memory_commit_accepted_count == 0
+    assert snapshot.memory_commit_rejected_count == 0
+    assert snapshot.last_memory_update_done is True
+    assert snapshot.handled is False
+    assert snapshot.pass_through_preserved is True
+    assert snapshot.dispatch_preserved is True
+    assert snapshot.final_answer_preserved is True
+
+
+@pytest.mark.parametrize(
+    "response, expected_branch",
+    [
+        ("<memory_update_done />", "MEMORY_CHECKPOINT_ONLY"),
+        ('<memory_update_done />\n<action>{"type":"read_file","path":"README.md"}</action>', "MEMORY_CHECKPOINT_WITH_ACTION"),
+        ("Done.", "NONE"),
+        ('<subgoal action="mark_in_progress" id="sg_1" />\nDone.', "PLAN_CHECKPOINT_WITH_TEXT"),
+    ],
+    ids=[
+        "marker_only_mco",
+        "mco_with_action",
+        "plaintext_only",
+        "plan_checkpoint_with_text",
+    ],
+)
+def test_memory_checkpoint_with_text_harness_negative_controls(response, expected_branch):
+    harness, state, outcome, snapshot = _run_commit_equivalence_harness(response)
+    assert snapshot.branch == expected_branch
 
 
 class TestMemoryCommitAuthority:
