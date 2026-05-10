@@ -24,6 +24,7 @@ from .terminal_answer_authority import (
     resolve_checkpoint_only_terminal_authority,
     resolve_plaintext_terminal_answer_authority,
 )
+from .recovery_authority import resolve_leaked_system_result_recovery_authority
 from .terminal_answer_models import TerminalAnswerKind
 
 
@@ -302,6 +303,58 @@ class ResponsePipelineStagesMixin:
                 clean_checkpoint_only_candidate=diagnostic.clean_checkpoint_only_candidate,
                 blocking_reasons=diagnostic.blocking_reasons,
                 mismatch_reason=diagnostic.mismatch_reason,
+                shadow_only=True,
+            )
+        except Exception:
+            return
+
+    def _log_recovery_authority_resolution(self, diagnostic) -> None:
+        stage_logger = getattr(self, "stage_logger", None)
+        if not stage_logger or diagnostic is None:
+            return
+        try:
+            stage_logger.log(
+                "protocol_shadow",
+                "recovery_authority_resolution",
+                branch=diagnostic.branch,
+                switch_value=diagnostic.switch_value,
+                authority_source=diagnostic.authority_source,
+                effective_source=diagnostic.effective_source,
+                selected_by_switch=diagnostic.selected_by_switch,
+                legacy_kind=diagnostic.legacy_kind,
+                compiler_kind=diagnostic.compiler_kind,
+                typed_kind=diagnostic.typed_kind,
+                parsed_invalid_kind=diagnostic.parsed_invalid_kind,
+                effective_invalid_kind=diagnostic.effective_invalid_kind,
+                agreement=diagnostic.agreement,
+                fallback_used=diagnostic.fallback_used,
+                behavior_changed=diagnostic.behavior_changed,
+                branch_active=diagnostic.branch_active,
+                recovery_action=diagnostic.recovery_action,
+                recovery_reason=diagnostic.recovery_reason,
+                recovery_prompt_kind=diagnostic.recovery_prompt_kind,
+                compiler_recovery_action=diagnostic.compiler_recovery_action,
+                compiler_recovery_reason=diagnostic.compiler_recovery_reason,
+                compiler_recovery_prompt_kind=diagnostic.compiler_recovery_prompt_kind,
+                compiler_decision_available=diagnostic.compiler_decision_available,
+                decision_agreement=diagnostic.decision_agreement,
+                prompt_equivalent=diagnostic.prompt_equivalent,
+                candidate_source=diagnostic.candidate_source,
+                blocking_reasons=diagnostic.blocking_reasons,
+                compiler_error_code=diagnostic.compiler_error_code,
+                terminal_answer_kind=diagnostic.terminal_answer_kind,
+                legacy_leak_active=diagnostic.legacy_leak_active,
+                typed_leak_eligible=diagnostic.typed_leak_eligible,
+                parsed_action_count=diagnostic.parsed_action_count,
+                has_action=diagnostic.has_action,
+                has_checkpoint=diagnostic.has_checkpoint,
+                has_visible_text=diagnostic.has_visible_text,
+                is_leaked_system_result=diagnostic.is_leaked_system_result,
+                is_internal_summary=diagnostic.is_internal_summary,
+                retry_count=diagnostic.retry_count,
+                guard_name=diagnostic.guard_name,
+                guard_triggered=diagnostic.guard_triggered,
+                guard_state=diagnostic.guard_state,
                 shadow_only=True,
             )
         except Exception:
@@ -1082,17 +1135,9 @@ class ResponsePipelineStagesMixin:
                 typed_result is not None
                 and typed_result.kind == TerminalAnswerKind.LEAKED_SYSTEM_RESULT
             )
-            is_legacy_leak = False if is_typed_leak else is_leaked_system_result(response)
-            if is_typed_leak or is_legacy_leak:
-                self.guards.set_reflection_repair_pending(False)
-                self.guards.set_nonproductive_thinking_state(False)
-                self.stage_logger.log(
-                    "response_pipeline",
-                    "continue",
-                    reason="leaked_system_result_in_assistant_text",
-                    source="output_recovery",
-                )
-                return ResponsePipelineOutcome.continue_with(
+            legacy_leak_active = True if is_typed_leak else is_leaked_system_result(response)
+            if is_typed_leak or legacy_leak_active:
+                legacy_outcome = ResponsePipelineOutcome.continue_with(
                     self.prompt_builder.build_leaked_system_result_recovery_prompt(),
                     response_text=response,
                     segments=segments,
@@ -1103,6 +1148,23 @@ class ResponsePipelineStagesMixin:
                     reason="leaked_system_result_in_assistant_text",
                     source="output_recovery",
                 )
+                authority_resolution = resolve_leaked_system_result_recovery_authority(
+                    parsed_output,
+                    legacy_leak_active=legacy_leak_active,
+                    legacy_decision=legacy_outcome,
+                    switch_value=get_switch("recovery.leaked_system_result"),
+                    parsed_action_count=parsed_action_count,
+                )
+                self._log_recovery_authority_resolution(authority_resolution.diagnostic)
+                self.guards.set_reflection_repair_pending(False)
+                self.guards.set_nonproductive_thinking_state(False)
+                self.stage_logger.log(
+                    "response_pipeline",
+                    "continue",
+                    reason="leaked_system_result_in_assistant_text",
+                    source="output_recovery",
+                )
+                return authority_resolution.effective_decision
 
         authority = resolve_protocol_authority(parsed_output, parsed_action_count)
         if authority.suppress_legacy_invalid_kind:

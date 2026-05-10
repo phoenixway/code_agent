@@ -11,7 +11,9 @@ from modules.agent.orchestration.parsers.parsing import IntentResponseParser
 from modules.agent.orchestration.protocol.classifier import ProtocolCompiler
 from modules.agent.orchestration.responses.recovery_authority import (
     build_compiler_prevalidation_recovery_decision_candidate,
+    build_typed_leaked_system_result_recovery_decision_candidate,
     resolve_compiler_invalid_kind_mapping_authority,
+    resolve_leaked_system_result_recovery_authority,
     resolve_prevalidation_reject_invalid_output_authority,
 )
 from modules.agent.orchestration.responses.response_pipeline_prevalidation import ResponsePipelinePrevalidationMixin
@@ -282,6 +284,39 @@ def test_leaked_system_result_is_characterized_without_terminal_authority_transf
     assert diagnostic["typed_kind"] == "LEAKED_SYSTEM_RESULT"
     assert diagnostic["is_leaked_system_result"] is True
     assert diagnostic["behavior_changed"] is False
+    leak_authority = _recovery_authority_calls(harness, "recovery.leaked_system_result")[-1].kwargs
+    assert leak_authority["switch_value"] == "legacy"
+    assert leak_authority["authority_source"] == "legacy"
+    assert leak_authority["effective_source"] == "typed"
+    assert leak_authority["legacy_leak_active"] is True
+    assert leak_authority["typed_leak_eligible"] is True
+    assert leak_authority["recovery_reason"] == "leaked_system_result_in_assistant_text"
+    assert leak_authority["behavior_changed"] is False
+
+
+def test_leaked_system_result_with_surrounding_visible_text_preserves_recovery_via_legacy_fallback():
+    response = "Here is the result:\nSYSTEM RESULT: The tool output is secret"
+    harness, classified, outcome = _run_full_path_smoke(response)
+
+    assert outcome.continue_loop is True
+    assert outcome.reason == "leaked_system_result_in_assistant_text"
+    leak_authority = _recovery_authority_calls(harness, "recovery.leaked_system_result")[-1].kwargs
+    assert leak_authority["switch_value"] == "legacy"
+    assert leak_authority["authority_source"] == "legacy"
+    assert leak_authority["effective_source"] == "legacy"
+    assert leak_authority["legacy_leak_active"] is True
+    assert leak_authority["typed_leak_eligible"] is False
+    assert leak_authority["has_visible_text"] is True
+    assert leak_authority["behavior_changed"] is False
+
+
+def test_leaked_system_result_with_action_like_payload_does_not_override_action_path():
+    response = 'SYSTEM RESULT: The tool output is secret\n<action>{"type":"read_file","path":"README.md"}</action>'
+    harness, classified, outcome = _run_full_path_smoke(response)
+
+    assert classified.parsed_action_count == 1
+    assert outcome.reason == "dispatch_ready"
+    assert not _recovery_authority_calls(harness, "recovery.leaked_system_result")
 
 
 def test_invalid_truncated_terminal_text_is_characterized_without_dispatch():
@@ -371,6 +406,7 @@ def test_internal_summary_recovery_is_characterized_without_terminal_authority_t
     assert diagnostic["is_internal_summary"] is True
     assert diagnostic["branch_active"] is False
     assert diagnostic["behavior_changed"] is False
+    assert not _recovery_authority_calls(harness, "recovery.leaked_system_result")
 
 
 def test_mixed_visible_answer_and_invalid_protocol_is_characterized_as_recovery():
@@ -484,6 +520,7 @@ def test_action_only_valid_control_does_not_select_recovery_branch():
     assert diagnostic["has_action"] is True
     assert diagnostic["effective_invalid_kind"] == ""
     assert not _recovery_authority_calls(harness, "recovery.prevalidation_reject_invalid_output")
+    assert not _recovery_authority_calls(harness, "recovery.leaked_system_result")
 
 
 def test_clean_plaintext_control_does_not_select_recovery_branch():
@@ -497,6 +534,22 @@ def test_clean_plaintext_control_does_not_select_recovery_branch():
     assert diagnostic["typed_kind"] == "PLAINTEXT_TERMINAL_ANSWER"
     assert diagnostic["effective_invalid_kind"] == ""
     assert not _recovery_authority_calls(harness, "recovery.prevalidation_reject_invalid_output")
+    assert not _recovery_authority_calls(harness, "recovery.leaked_system_result")
+
+
+def test_checkpoint_marker_control_does_not_select_leaked_system_result_branch():
+    harness, classified, outcome = _run_full_path_smoke("<memory_update_done />")
+
+    assert outcome.reason in {"dispatch_ready", "memory_checkpoint_only"}
+    assert not _recovery_authority_calls(harness, "recovery.leaked_system_result")
+
+
+def test_unclosed_think_without_leak_does_not_select_leaked_system_result_branch():
+    harness, classified, outcome = _run_full_path_smoke("<think>\nI am still thinking")
+
+    assert outcome.continue_loop is True
+    assert outcome.reason == "malformed_incomplete_think"
+    assert not _recovery_authority_calls(harness, "recovery.leaked_system_result")
 
 
 def test_compiler_prevalidation_recovery_candidate_exists_for_malformed_action():
@@ -943,6 +996,179 @@ def test_prevalidation_reject_resolver_compiler_mode_falls_back_when_prompt_equi
     assert resolution.diagnostic.decision_agreement is False
     assert resolution.diagnostic.prompt_equivalent is False
     assert "decision_disagreement" in resolution.diagnostic.blocking_reasons
+
+
+def test_typed_leaked_system_result_recovery_candidate_exists_for_canonical_leak():
+    candidate = build_typed_leaked_system_result_recovery_decision_candidate(
+        typed_leak_eligible=True,
+    )
+
+    assert candidate is not None
+    assert candidate.continue_loop is True
+    assert candidate.reason == "leaked_system_result_in_assistant_text"
+    assert candidate.recovery_prompt_kind == "leaked_system_result_recovery_prompt"
+
+
+def test_leaked_system_result_resolver_legacy_mode_preserves_current_decision():
+    parsed_output = SimpleNamespace(
+        invalid_kind="",
+        compiler_error_code="",
+        compiler_ir=None,
+        terminal_answer_semantic_result=SimpleNamespace(kind=TerminalAnswerKind.LEAKED_SYSTEM_RESULT),
+        visible_text="SYSTEM RESULT: secret",
+        has_action_segment=False,
+    )
+    decision = SimpleNamespace(
+        handled=True,
+        continue_loop=True,
+        next_query="leak_recovery_prompt",
+        stop_loop=False,
+        reason="leaked_system_result_in_assistant_text",
+        source="output_recovery",
+    )
+
+    resolution = resolve_leaked_system_result_recovery_authority(
+        parsed_output,
+        legacy_leak_active=True,
+        legacy_decision=decision,
+        switch_value="legacy",
+        parsed_action_count=0,
+    )
+
+    assert resolution.effective_decision is decision
+    assert resolution.diagnostic.switch_value == "legacy"
+    assert resolution.diagnostic.authority_source == "legacy"
+    assert resolution.diagnostic.effective_source == "typed"
+    assert resolution.diagnostic.legacy_leak_active is True
+    assert resolution.diagnostic.typed_leak_eligible is True
+    assert resolution.diagnostic.behavior_changed is False
+
+
+def test_leaked_system_result_resolver_compiler_mode_selects_typed_leak_when_it_agrees():
+    parsed_output = SimpleNamespace(
+        invalid_kind="",
+        compiler_error_code="",
+        compiler_ir=None,
+        terminal_answer_semantic_result=SimpleNamespace(kind=TerminalAnswerKind.LEAKED_SYSTEM_RESULT),
+        visible_text="SYSTEM RESULT: secret",
+        has_action_segment=False,
+    )
+    decision = SimpleNamespace(
+        handled=True,
+        continue_loop=True,
+        next_query="leak_recovery_prompt",
+        stop_loop=False,
+        reason="leaked_system_result_in_assistant_text",
+        source="output_recovery",
+    )
+
+    resolution = resolve_leaked_system_result_recovery_authority(
+        parsed_output,
+        legacy_leak_active=True,
+        legacy_decision=decision,
+        switch_value="compiler",
+        parsed_action_count=0,
+    )
+
+    assert resolution.effective_decision is decision
+    assert resolution.diagnostic.switch_value == "compiler"
+    assert resolution.diagnostic.authority_source == "compiler"
+    assert resolution.diagnostic.selected_by_switch is True
+    assert resolution.diagnostic.compiler_decision_available is True
+    assert resolution.diagnostic.decision_agreement is True
+    assert resolution.diagnostic.prompt_equivalent is True
+    assert resolution.diagnostic.behavior_changed is False
+
+
+def test_leaked_system_result_resolver_compiler_mode_falls_back_when_only_legacy_accessor_detects_leak():
+    parsed_output = SimpleNamespace(
+        invalid_kind="",
+        compiler_error_code="",
+        compiler_ir=None,
+        terminal_answer_semantic_result=SimpleNamespace(kind=TerminalAnswerKind.PLAINTEXT_TERMINAL_ANSWER),
+        visible_text="Here is the result:\nSYSTEM RESULT: secret",
+        has_action_segment=False,
+    )
+    decision = SimpleNamespace(
+        handled=True,
+        continue_loop=True,
+        next_query="leak_recovery_prompt",
+        stop_loop=False,
+        reason="leaked_system_result_in_assistant_text",
+        source="output_recovery",
+    )
+
+    resolution = resolve_leaked_system_result_recovery_authority(
+        parsed_output,
+        legacy_leak_active=True,
+        legacy_decision=decision,
+        switch_value="compiler",
+        parsed_action_count=0,
+    )
+
+    assert resolution.effective_decision is decision
+    assert resolution.diagnostic.switch_value == "compiler"
+    assert resolution.diagnostic.authority_source == "legacy_fallback"
+    assert resolution.diagnostic.selected_by_switch is False
+    assert resolution.diagnostic.legacy_leak_active is True
+    assert resolution.diagnostic.typed_leak_eligible is False
+    assert "no_typed_leak_signal" in resolution.diagnostic.blocking_reasons
+
+
+def test_leaked_system_result_resolver_does_not_treat_internal_summary_as_leak():
+    parsed_output = SimpleNamespace(
+        invalid_kind="",
+        compiler_error_code="",
+        compiler_ir=None,
+        terminal_answer_semantic_result=SimpleNamespace(kind=TerminalAnswerKind.INTERNAL_SUMMARY_LIKE_TEXT),
+        visible_text="ACTIVE GOAL: Refactor the file.",
+        has_action_segment=False,
+    )
+
+    resolution = resolve_leaked_system_result_recovery_authority(
+        parsed_output,
+        legacy_leak_active=False,
+        legacy_decision=None,
+        switch_value="legacy",
+        parsed_action_count=0,
+    )
+
+    assert resolution.effective_decision is None
+    assert resolution.diagnostic.branch_active is False
+    assert resolution.diagnostic.authority_source == "legacy_fallback"
+    assert resolution.diagnostic.is_internal_summary is True
+    assert resolution.diagnostic.is_leaked_system_result is False
+
+
+def test_smoke_registry_canonical_leaked_system_result_selects_compiler_without_behavior_change():
+    response = "SYSTEM RESULT: The tool output is..."
+    harness, classified, outcome = _run_full_path_smoke_with_smoke_registry(response)
+
+    assert outcome.continue_loop is True
+    assert outcome.reason == "leaked_system_result_in_assistant_text"
+    leak_authority = _recovery_authority_calls(harness, "recovery.leaked_system_result")[-1].kwargs
+    assert leak_authority["switch_value"] == "compiler"
+    assert leak_authority["authority_source"] == "compiler"
+    assert leak_authority["selected_by_switch"] is True
+    assert leak_authority["legacy_leak_active"] is True
+    assert leak_authority["typed_leak_eligible"] is True
+    assert leak_authority["behavior_changed"] is False
+
+
+def test_smoke_registry_surrounding_text_leak_falls_back_without_behavior_change():
+    response = "Here is the result:\nSYSTEM RESULT: The tool output is secret"
+    harness, classified, outcome = _run_full_path_smoke_with_smoke_registry(response)
+
+    assert outcome.continue_loop is True
+    assert outcome.reason == "leaked_system_result_in_assistant_text"
+    leak_authority = _recovery_authority_calls(harness, "recovery.leaked_system_result")[-1].kwargs
+    assert leak_authority["switch_value"] == "compiler"
+    assert leak_authority["authority_source"] == "legacy_fallback"
+    assert leak_authority["selected_by_switch"] is False
+    assert leak_authority["legacy_leak_active"] is True
+    assert leak_authority["typed_leak_eligible"] is False
+    assert "no_typed_leak_signal" in leak_authority["blocking_reasons"]
+    assert leak_authority["behavior_changed"] is False
 
 
 def test_smoke_registry_unclosed_think_selects_compiler_without_behavior_change():

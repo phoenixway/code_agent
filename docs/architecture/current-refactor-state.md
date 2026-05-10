@@ -4,9 +4,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 29 Step 10: Recovery Prevalidation Reject-Invalid-Output Closure / Next Recovery Branch Selection
+- **Phase**: Phase 29 Step 12: Leaked-System-Result Recovery Closure / Next Recovery Branch Selection
 - **Status**: Complete.
-- **Next Step**: Phase 29 Step 11: Leaked-System-Result Recovery Authority Candidate.
+- **Next Step**: Phase 29 Step 13: Invalid-Truncated Terminal Text Recovery Authority Candidate.
 - **Boundary**: The checkpoint parity bridge remains diagnostic-only. Legacy board handlers still own commit behavior, the prepass compiler analysis remains observational, and `_apply_compiler_diagnosis` remains the effectful classification-stage path that recomputes on normalized response.
 
 ## Step 4I Parity Matrix
@@ -1793,6 +1793,69 @@ This document is the single source of truth for the current state of the Semanti
     - better next return than lower-value invalid/truncated cleanup or heavier stateful guard migration
   - Recommended next step:
     - `Phase 29 Step 11: Leaked-System-Result Recovery Authority Candidate`
+- **Phase 29 Step 11: Leaked-System-Result Recovery Authority Candidate (Complete)**
+  - Inventory outcome:
+    - runtime owner is the post-classification no-action leak guard in [response_pipeline_stages.py](/home/romankozak/studio/public/it/angelica-ai/modules/agent/orchestration/responses/response_pipeline_stages.py)
+    - typed leak signal comes from `TerminalAnswerKind.LEAKED_SYSTEM_RESULT`
+    - legacy fallback remains `is_leaked_system_result(response)`
+    - current recovery outcome remains:
+      - `continue_loop=True`
+      - `reason="leaked_system_result_in_assistant_text"`
+      - `source="output_recovery"`
+      - leak recovery prompt from `build_leaked_system_result_recovery_prompt()`
+  - Added `resolve_leaked_system_result_recovery_authority(...)` in [recovery_authority.py](/home/romankozak/studio/public/it/angelica-ai/modules/agent/orchestration/responses/recovery_authority.py).
+  - Added `build_typed_leaked_system_result_recovery_decision_candidate(...)` for the typed leak path.
+  - The branch now has:
+    - resolver/accessor coverage
+    - behavior-preserving effective decision consumption
+    - default `legacy` switch
+    - smoke-only `compiler` switch
+    - canonical compiler-selected synthetic coverage
+    - explicit legacy fallback when only the legacy accessor detects the leak
+  - Smoke switch decision:
+    - enabled
+    - reason: the branch already had a real typed-primary signal and a fixed recovery outcome, so fenced compiler selection can be validated without changing behavior
+  - Positive compiler-selected cases:
+    - canonical `SYSTEM RESULT: ...`
+  - Fallback-preserved cases:
+    - surrounding visible text with embedded `SYSTEM RESULT: ...`
+    - action-bearing responses
+    - internal-summary-like text
+    - checkpoint marker only
+    - malformed/unclosed think without leak text
+  - Boundary:
+    - no production behavior changed
+    - default registry remains `legacy`
+    - smoke registry enables `recovery.leaked_system_result = "compiler"`
+    - no recovery routing decisions changed
+    - no output recovery prompt selection changed
+    - leaked system result still cannot become a final answer
+- **Phase 29 Step 12: Leaked-System-Result Recovery Closure / Next Recovery Branch Selection (Complete)**
+  - Closed `recovery.leaked_system_result` as a smoke-validated fenced compiler-authority slice.
+  - The branch now has:
+    - resolver/accessor coverage
+    - typed leak recovery decision candidate
+    - effective decision consumption
+    - default `legacy` switch
+    - smoke-only `compiler` switch
+    - canonical compiler-selected synthetic coverage
+    - strict fallback for legacy-only leak detection
+    - negative controls for action, internal-summary, checkpoint, malformed think, and plaintext
+  - Default registry remains `legacy`.
+  - No production authority flip happened.
+  - Leak handling was not weakened.
+  - Leaked system result still cannot become a final answer.
+  - Action-bearing leak-like responses remain outside this no-action leak guard and keep current action behavior.
+  - Selected next recovery branch:
+    - `recovery.invalid_truncated_terminal_text`
+  - Rationale:
+    - typed signal exists
+    - high relevance after terminal plaintext work
+    - directly connected to recovery/final-answer boundary
+    - good next semantic-policy authority target before deeper stateful guard work
+    - validates that earlier short-plaintext fixes like `Done.` remain safe
+  - Recommended next step:
+    - `Phase 29 Step 13: Invalid-Truncated Terminal Text Recovery Authority Candidate`
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 

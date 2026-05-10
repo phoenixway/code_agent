@@ -2899,6 +2899,100 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 29 Step 11: Leaked-System-Result Recovery Authority Candidate.
 
+#### Phase 29 Step 11: Leaked-System-Result Recovery Authority Candidate
+
+- **Status**: Done.
+- **Goal**: Centralize leaked-system-result recovery authority through a typed/legacy resolver without changing current leak recovery behavior.
+- **Completed Outcome**:
+  - Confirmed runtime ownership sits in the post-classification no-action leak guard.
+  - Confirmed current behavior remains:
+    - `continue_loop=True`
+    - `reason="leaked_system_result_in_assistant_text"`
+    - `source="output_recovery"`
+    - prompt from `build_leaked_system_result_recovery_prompt()`
+  - Added `resolve_leaked_system_result_recovery_authority(...)`.
+  - Added `build_typed_leaked_system_result_recovery_decision_candidate(...)`.
+  - Routed the leak branch through the resolver’s effective decision behavior-preservingly.
+  - Added default/smoke placeholders:
+    - `[recovery] leaked_system_result = "legacy"` in the default registry
+    - `[recovery] leaked_system_result = "compiler"` in the smoke profile
+  - Compiler selection is fenced to cases where:
+    - the typed leak signal is present
+    - the legacy leak path agrees
+    - prompt equivalence is proven
+  - Positive compiler-selected synthetic coverage:
+    - canonical `SYSTEM RESULT: ...`
+  - Fallback-preserved cases:
+    - surrounding visible text with embedded leak transcript
+    - action-bearing responses
+    - internal-summary-like text
+    - checkpoint marker only
+    - malformed/unclosed think without leak text
+  - No production behavior changed.
+  - Default registry remains `legacy`.
+  - No recovery routing decisions changed.
+  - No output recovery prompt selection changed.
+  - Leaked system result still cannot become a final answer.
+- **Next**:
+  - Phase 29 Step 12: Leaked-System-Result Recovery Closure / Next Recovery Branch Selection.
+
+---
+
+#### Phase 29 Step 12: Leaked-System-Result Recovery Closure / Next Recovery Branch Selection
+
+- **Status**: Done.
+- **Goal**: Close the `recovery.leaked_system_result` smoke-validated slice and select the next recovery branch.
+- **Completed Outcome**:
+  - Closed `recovery.leaked_system_result` as a smoke-validated fenced compiler-authority slice.
+  - The branch now has:
+    - resolver/accessor coverage
+    - typed leak recovery decision candidate
+    - effective decision consumption
+    - default `legacy` switch
+    - smoke-only `compiler` switch
+    - canonical compiler-selected synthetic coverage
+    - strict fallback for legacy-only leak detection
+    - negative controls for action, internal-summary, checkpoint, malformed think, and plaintext
+  - Default registry remains `legacy`.
+  - No production authority flip happened.
+  - Leak handling was not weakened.
+  - Leaked system result still cannot become a final answer.
+  - Action-bearing leak-like responses remain outside this no-action leak guard and keep current action behavior.
+  - Selected next recovery branch:
+    - `recovery.invalid_truncated_terminal_text`
+  - Rationale:
+    - typed signal exists
+    - high relevance after terminal plaintext work
+    - directly connected to recovery/final-answer boundary
+    - good next semantic-policy authority target before deeper stateful guard work
+    - validates that earlier short-plaintext fixes like `Done.` remain safe
+- **Next**:
+  - Phase 29 Step 13: Invalid-Truncated Terminal Text Recovery Authority Candidate.
+
+---
+
+#### Phase 29 Step 13: Invalid-Truncated Terminal Text Recovery Authority Candidate
+
+- **Status**: Not started.
+- **Goal**: Centralize invalid/truncated terminal text recovery authority through a typed/legacy resolver without changing current recovery behavior.
+- **Expected Scope**:
+  - Inventory current invalid/truncated terminal text recovery path.
+  - Compare typed terminal signal vs legacy guard behavior.
+  - Preserve short plaintext fixes like `Done.`.
+  - Add resolver/accessor and diagnostics.
+  - Add default/smoke legacy placeholders.
+  - Do not enable smoke compiler until equivalence is proven.
+  - Strict negative controls for:
+    - `Done.`
+    - markdown-ish plaintext
+    - clean multiline plaintext
+    - action-only
+    - checkpoint-only
+    - leaked system result
+    - internal-summary-like text
+- **Next**:
+  - Phase 29 Step 14: ...
+
 ---
 
 ### Phase 11: RecoveryStrategy Registry Expansion
