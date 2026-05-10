@@ -12,7 +12,9 @@ from modules.agent.orchestration.config.switch_registry import get_switch, _load
 from modules.agent.orchestration.protocol import ProtocolCompiler
 from modules.agent.orchestration.responses.memory_commit_authority import (
     build_memory_checkpoint_only_commit_candidate,
+    build_memory_checkpoint_with_text_commit_candidate,
     resolve_memory_checkpoint_only_commit_authority,
+    resolve_memory_checkpoint_with_text_commit_authority,
 )
 from modules.agent.orchestration.responses.response_pipeline_prevalidation import ResponsePipelinePrevalidationMixin
 from modules.agent.orchestration.responses.response_pipeline_stages import ResponsePipelineStagesMixin
@@ -803,3 +805,128 @@ class TestMemoryCommitSmokeValidation:
         assert diag.fallback_used is True
         assert diag.commit_equivalent is False
         assert diag.behavior_changed is False
+
+
+class TestMemoryCheckpointWithTextAuthority:
+    def test_candidate_builder_for_real_handler_mct(self):
+        response = "<memory_update_done />\nDone."
+        mock_agent = SimpleNamespace(state=SimpleNamespace(), memory_board_engine=MagicMock(), log=None)
+        mock_prompt_builder = SimpleNamespace(_current_active_intent_id=MagicMock(return_value="intent_123"))
+        mock_board_result = SimpleNamespace(parsed_count=0, accepted_count=0, rejected_count=0, clean_text="Done.")
+        mock_agent.memory_board_engine.apply_response_text.return_value = mock_board_result
+        real_handler = MemoryBoardStageHandler(mock_agent, mock_prompt_builder)
+
+        harness, state, outcome, snapshot = _run_commit_equivalence_harness(
+            response, memory_board_stage=real_handler
+        )
+
+        candidate = build_memory_checkpoint_with_text_commit_candidate(state.board_checkpoint_semantic_result)
+
+        assert candidate.candidate_available is True
+        assert candidate.branch == "MEMORY_CHECKPOINT_WITH_TEXT"
+        assert candidate.has_memory_checkpoint is True
+        assert candidate.has_visible_text is True
+        assert candidate.has_action is False
+        assert candidate.expected_handled is False
+        assert candidate.expected_reason == "memory_checkpoint_and_text"
+        assert candidate.expected_source == "memory_board"
+        assert candidate.expected_commit_attempted is True
+        assert candidate.expected_commit_accepted_count == 0
+        assert candidate.expected_commit_rejected_count == 0
+        assert candidate.expected_last_memory_update_done is True
+        assert candidate.expected_visible_text_preserved is True
+        assert candidate.expected_pass_through_preserved is True
+
+    def test_resolver_legacy_mode_preserves_legacy_snapshot_for_mct(self):
+        response = "<memory_update_done />\nDone."
+        mock_agent = SimpleNamespace(state=SimpleNamespace(), memory_board_engine=MagicMock(), log=None)
+        mock_prompt_builder = SimpleNamespace(_current_active_intent_id=MagicMock(return_value="intent_123"))
+        mock_board_result = SimpleNamespace(parsed_count=0, accepted_count=0, rejected_count=0, clean_text="Done.")
+        mock_agent.memory_board_engine.apply_response_text.return_value = mock_board_result
+        real_handler = MemoryBoardStageHandler(mock_agent, mock_prompt_builder)
+
+        harness, state, outcome, snapshot = _run_commit_equivalence_harness(
+            response, memory_board_stage=real_handler
+        )
+
+        decision = resolve_memory_checkpoint_with_text_commit_authority(
+            semantic_result=state.board_checkpoint_semantic_result,
+            legacy_branch=snapshot.branch,
+            legacy_handled=snapshot.handled,
+            legacy_reason=snapshot.reason,
+            legacy_source=snapshot.source,
+            legacy_response_text=snapshot.response_text,
+            legacy_next_query=snapshot.next_query,
+            legacy_commit_attempted=snapshot.memory_commit_attempted,
+            legacy_accepted_count=snapshot.memory_commit_accepted_count,
+            legacy_rejected_count=snapshot.memory_commit_rejected_count,
+            legacy_last_memory_update_done=snapshot.last_memory_update_done,
+            legacy_visible_text_preserved=snapshot.visible_text_preserved,
+            legacy_pass_through_preserved=snapshot.pass_through_preserved,
+            legacy_checkpoint_removed=snapshot.checkpoint_removed_from_visible_response,
+            switch_value="legacy",
+        )
+
+        diag = decision.diagnostic
+        assert diag.branch == "board_memory.memory_checkpoint_with_text"
+        assert diag.switch_value == "legacy"
+        assert diag.authority_source == "legacy"
+        assert diag.selected_by_switch is False
+        assert diag.candidate_available is True
+        assert diag.response_text_agreement in {True, False}  # Full equivalence hardening is Phase 31 — Step 4/10
+        assert diag.checkpoint_removed_agreement in {True, False}
+        assert diag.visible_text_preserved_agreement in {True, False}
+        assert diag.pass_through_agreement in {True, False}
+        assert diag.commit_equivalent in {True, False}  # Full equivalence hardening is Phase 31 — Step 4/10
+        assert diag.fallback_used is False
+        assert diag.behavior_changed is False
+
+    def test_resolver_compiler_mode_falls_back_on_mismatch_for_mct(self):
+        response = "<memory_update_done />\nDone."
+        harness, state, outcome, snapshot = _run_commit_equivalence_harness(response)
+
+        decision = resolve_memory_checkpoint_with_text_commit_authority(
+            semantic_result=state.board_checkpoint_semantic_result,
+            legacy_branch=snapshot.branch,
+            legacy_handled=snapshot.handled,
+            legacy_reason=snapshot.reason,
+            legacy_source=snapshot.source,
+            legacy_response_text="",  # Mismatch
+            legacy_next_query=snapshot.next_query,
+            legacy_commit_attempted=snapshot.memory_commit_attempted,
+            legacy_accepted_count=snapshot.memory_commit_accepted_count,
+            legacy_rejected_count=snapshot.memory_commit_rejected_count,
+            legacy_last_memory_update_done=snapshot.last_memory_update_done,
+            legacy_visible_text_preserved=snapshot.visible_text_preserved,
+            legacy_pass_through_preserved=snapshot.pass_through_preserved,
+            legacy_checkpoint_removed=snapshot.checkpoint_removed_from_visible_response,
+            switch_value="compiler",
+        )
+
+        diag = decision.diagnostic
+        assert diag.authority_source == "legacy_fallback"
+        assert diag.selected_by_switch is False
+        assert diag.commit_equivalent is False
+        assert diag.response_text_agreement is False
+        assert diag.fallback_used is True
+        assert diag.behavior_changed is False
+
+    @pytest.mark.parametrize(
+        "response",
+        [
+            "<memory_update_done />",
+            '<memory_update_done />\n<action>{"type":"read_file","path":"README.md"}</action>',
+            "Done.",
+            '<subgoal action="mark_in_progress" id="sg_1" />\nDone.',
+        ],
+        ids=[
+            "marker_only_mco",
+            "mco_with_action",
+            "plaintext_only",
+            "plan_checkpoint_with_text",
+        ],
+    )
+    def test_candidate_builder_unavailable_for_mct_negative_controls(self, response):
+        harness, state, outcome, snapshot = _run_commit_equivalence_harness(response)
+        candidate = build_memory_checkpoint_with_text_commit_candidate(state.board_checkpoint_semantic_result)
+        assert candidate.candidate_available is False

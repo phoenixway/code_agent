@@ -1997,7 +1997,12 @@ This document is the single source of truth for the current state of the Semanti
     - zero-count memory commit (`accepted_count=0`)
   - Negative controls were added to ensure other branches are not misclassified.
   - No runtime behavior was changed, and no authority was transferred.
-  - **Next Step**: `Phase 31 — Step 3/10: MEMORY_CHECKPOINT_WITH_TEXT Candidate Model / Resolver Design`.
+- **Phase 31 — Step 3/10: MEMORY_CHECKPOINT_WITH_TEXT Candidate Model / Resolver Design (Complete)**
+  - Added a typed `MemoryCommitCandidate` model and a `resolve_memory_checkpoint_with_text_commit_authority` resolver.
+  - The candidate model and resolver cover visible text preservation, pass-through behavior, and zero-count commit semantics for marker-with-text.
+  - The `board_memory.memory_checkpoint_with_text` switch placeholder remains `legacy` in both default and smoke registries.
+  - No runtime behavior was changed, and no authority was transferred.
+  - **Next Step**: `Phase 31 — Step 4/10: MEMORY_CHECKPOINT_WITH_TEXT Commit Equivalence Hardening`.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 

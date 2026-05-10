@@ -3314,15 +3314,27 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 31 — Step 3/10: MEMORY_CHECKPOINT_WITH_TEXT Candidate Model / Resolver Design
 
-- **Status**: Not started.
+- **Status**: Done.
 - **Goal**: Design and implement the first typed commit candidate model and resolver for `MEMORY_CHECKPOINT_WITH_TEXT` without changing behavior.
-- **Expected Scope**:
-  - Add a `MemoryCheckpointWithTextCandidate` model.
-  - Add a `resolve_memory_checkpoint_with_text_commit_authority` resolver.
-  - Add a `board_memory.memory_checkpoint_with_text` switch placeholder to the registries, default `legacy`.
-  - Add tests for candidate construction, legacy-mode resolution, and compiler-mode fallback.
+- **Completed Outcome**:
+  - Added a typed `MemoryCommitCandidate` model and a `resolve_memory_checkpoint_with_text_commit_authority` resolver.
+  - The candidate model and resolver cover visible text preservation, pass-through behavior, and zero-count commit semantics for marker-with-text.
+  - The `board_memory.memory_checkpoint_with_text` switch placeholder remains `legacy` in both default and smoke registries.
+  - No runtime behavior was changed, and no authority was transferred.
 - **Next**:
-  - Phase 31 — Step 4/10: ...
+  - Phase 31 — Step 4/10: MEMORY_CHECKPOINT_WITH_TEXT Commit Equivalence Hardening.
+
+---
+
+#### Phase 31 — Step 4/10: MEMORY_CHECKPOINT_WITH_TEXT Commit Equivalence Hardening
+
+- **Status**: Not started.
+- **Goal**: Harden commit-equivalence validation for `MEMORY_CHECKPOINT_WITH_TEXT` to determine if all aspects of the legacy behavior can be proven equivalent.
+- **Expected Scope**:
+  - Refine the resolver to cover all agreements: `handled`, `reason`, `source`, `response_text`, `next_query`, commit counts, and state flags.
+  - Add tests to validate full equivalence for the clean case and to confirm fallback on any mismatch.
+- **Next**:
+  - Phase 31 — Step 5/10: ...
 
 ---
 

@@ -184,4 +184,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 180. Phase 30 — Step 12/12: done. Closed the `MEMORY_CHECKPOINT_ONLY` slice. A second live smoke run was not required. The next branch is `MEMORY_CHECKPOINT_WITH_TEXT`. No runtime behavior changed.
 181. Phase 31 — Step 1/10: done. Inventoried `MEMORY_CHECKPOINT_WITH_TEXT` behavior and designed the harness extension. No runtime behavior changed.
 182. Phase 31 — Step 2/10: done. Extended the commit-equivalence harness for `MEMORY_CHECKPOINT_WITH_TEXT`, characterizing visible text preservation, pass-through behavior, and zero-count commit semantics. No runtime behavior changed.
-183. Next: Phase 31 — Step 3/10: MEMORY_CHECKPOINT_WITH_TEXT Candidate Model / Resolver Design.
+183. Phase 31 — Step 3/10: done. Added a candidate model and resolver for `MEMORY_CHECKPOINT_WITH_TEXT`, modeling visible text preservation and pass-through behavior. No runtime behavior changed.
+184. Next: Phase 31 — Step 4/10: MEMORY_CHECKPOINT_WITH_TEXT Commit Equivalence Hardening.

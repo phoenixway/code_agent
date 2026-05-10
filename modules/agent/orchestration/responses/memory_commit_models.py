@@ -26,6 +26,8 @@ class MemoryCommitCandidate:
     expected_commit_accepted_count: int = 0
     expected_commit_rejected_count: int = 0
     expected_last_memory_update_done: bool = False
+    expected_visible_text_preserved: bool = False
+    expected_pass_through_preserved: bool = False
     blocking_reasons: tuple[str, ...] = ()
 
 
@@ -56,6 +58,11 @@ class MemoryCommitAuthorityDiagnostic:
     source_agreement: bool = False
     next_query_agreement: bool = False
     state_flags_agreement: bool = False
+    response_text_agreement: bool = False
+    visible_text_preserved_agreement: bool = False
+    checkpoint_removed_agreement: bool = False
+    pass_through_agreement: bool = False
+    final_answer_preserved_agreement: bool = False
     commit_equivalent: bool = False
     fallback_used: bool = False
     behavior_changed: bool = False
