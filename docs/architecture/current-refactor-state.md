@@ -4,9 +4,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 29 Step 9: Recovery Prevalidation Reject-Invalid-Output Fenced Smoke Switch Validation
+- **Phase**: Phase 29 Step 10: Recovery Prevalidation Reject-Invalid-Output Closure / Next Recovery Branch Selection
 - **Status**: Complete.
-- **Next Step**: Phase 29 Step 10: Recovery Prevalidation Reject-Invalid-Output Closure / Next Recovery Branch Selection.
+- **Next Step**: Phase 29 Step 11: Leaked-System-Result Recovery Authority Candidate.
 - **Boundary**: The checkpoint parity bridge remains diagnostic-only. Legacy board handlers still own commit behavior, the prepass compiler analysis remains observational, and `_apply_compiler_diagnosis` remains the effectful classification-stage path that recomputes on normalized response.
 
 ## Step 4I Parity Matrix
@@ -1765,6 +1765,34 @@ This document is the single source of truth for the current state of the Semanti
     - runtime outcomes remain behavior-preserving with `behavior_changed=False`
   - Recommended next step:
     - `Phase 29 Step 10: Recovery Prevalidation Reject-Invalid-Output Closure / Next Recovery Branch Selection`
+- **Phase 29 Step 10: Recovery Prevalidation Reject-Invalid-Output Closure / Next Recovery Branch Selection (Complete)**
+  - Closed `recovery.prevalidation_reject_invalid_output` as a smoke-validated fenced compiler-authority slice.
+  - The branch now has:
+    - resolver/accessor coverage
+    - effective decision consumption
+    - compiler decision candidate builder
+    - default `legacy` switch
+    - smoke-only `compiler` switch
+    - positive compiler-selected synthetic cases
+    - explicit legacy fallback for unsupported/stateful cases
+    - behavior-preserving outcomes
+  - Clarification:
+    - `mixed_intent_transition_and_visible_answer` is a recovery-active intent-followup prevalidation case.
+    - It is not normal terminal plaintext authority.
+  - Default registry remains `legacy`.
+  - Smoke compiler mode remains enabled only in the smoke profile for this branch.
+  - No production authority flip happened.
+  - No recovery routing decisions changed.
+  - No output recovery prompt selection changed.
+  - Selected next recovery branch:
+    - `recovery.leaked_system_result`
+  - Selection rationale:
+    - safety-critical branch
+    - typed signal already exists
+    - high-value semantic policy authority target
+    - better next return than lower-value invalid/truncated cleanup or heavier stateful guard migration
+  - Recommended next step:
+    - `Phase 29 Step 11: Leaked-System-Result Recovery Authority Candidate`
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 

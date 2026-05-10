@@ -2869,6 +2869,36 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 29 Step 10: Recovery Prevalidation Reject-Invalid-Output Closure / Next Recovery Branch Selection.
 
+#### Phase 29 Step 10: Recovery Prevalidation Reject-Invalid-Output Closure / Next Recovery Branch Selection
+
+- **Status**: Done.
+- **Goal**: Close the prevalidation reject-invalid-output smoke slice and select the next recovery branch with the best safety/value tradeoff.
+- **Completed Outcome**:
+  - Closed `recovery.prevalidation_reject_invalid_output` as a smoke-validated fenced compiler-authority slice.
+  - The branch now has:
+    - resolver/accessor coverage
+    - effective decision consumption
+    - compiler decision candidate builder
+    - default `legacy` switch
+    - smoke-only `compiler` switch
+    - positive compiler-selected synthetic coverage
+    - explicit legacy fallback for unsupported/stateful cases
+  - Clarified that `mixed_intent_transition_and_visible_answer` is an intent-followup prevalidation recovery case, not ordinary terminal plaintext authority.
+  - No production behavior changed.
+  - Default registry remains `legacy`.
+  - Smoke compiler switch remains smoke-only.
+  - No recovery routing decisions changed.
+  - No output recovery prompt selection changed.
+  - Selected next branch:
+    - `recovery.leaked_system_result`
+  - Rationale:
+    - safety-critical
+    - typed signal already exists
+    - strong next semantic-policy authority target
+    - better next return than lower-value invalid/truncated cleanup or heavier stateful guard migration
+- **Next**:
+  - Phase 29 Step 11: Leaked-System-Result Recovery Authority Candidate.
+
 ---
 
 ### Phase 11: RecoveryStrategy Registry Expansion
