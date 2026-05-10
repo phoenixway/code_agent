@@ -3045,9 +3045,9 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Default registry remains `legacy` for all recovery branches.
   - Smoke profile keeps validated recovery compiler switches enabled for continued validation.
   - No production authority was flipped, and no runtime behavior was changed.
-  - Selected next phase: `Phase 30: Semantic Policy on Compiler-IR Foundation`.
+  - Selected next phase: `Phase 30: Board/Memory Commit Policy on Compiler-IR Foundation`.
 - **Next**:
-  - Phase 30 Step 1: Semantic Policy IR Foundation Inventory.
+  - Phase 30 Step 1: Board/Memory Commit Policy Inventory + Commit-Equivalence Harness Plan.
 
 ---
 
