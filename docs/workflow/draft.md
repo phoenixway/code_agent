@@ -140,4 +140,7 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 136. Phase 27 Step 5: done. Targeted live Angelica smoke for `board_checkpoint.plan_checkpoint_with_action` passed under the smoke profile with compiler authority selected, no fallback, preserved dispatch path, and no runtime crash.
 137. Phase 27 Step 6: done. Closed the plan-domain board/checkpoint compiler-authority smoke slice; smoke profile may keep validated plan branches enabled, while default production behavior remains legacy.
 138. Phase 28 Step 1: done. Inventoried terminal/final-answer consumers, confirmed existing terminal-answer switch placeholders remain legacy, and defined the initial synthetic smoke matrix without changing runtime behavior.
-139. Next: Phase 28 Step 2: Terminal Answer Synthetic Smoke Harness Skeleton + Authority Diagnostics.
+139. Phase 28 Step 2: done. Added a lightweight terminal-answer synthetic smoke harness plus observational plaintext-terminal authority diagnostics, with no authority transfer and no runtime behavior change.
+140. Phase 28 Step 3: done. Expanded the terminal-answer synthetic matrix, hardened observational plaintext-terminal diagnostics, and recorded a NO-GO for `terminal_answer.plaintext_terminal_answer` authority transfer because `Done.`, markdown-ish plaintext, checkpoint-with-visible-text, and leaked-system-result cases still overlap the current legacy plaintext path.
+141. Phase 28 Step 4: done. Hardened plaintext-terminal diagnostics with explicit overlap/candidate buckets and direct resolver characterization, while keeping all terminal-answer switches legacy and leaving runtime behavior unchanged.
+142. Next: Phase 28 Step 5: Typed Plaintext Classification Review / Fix Candidate.

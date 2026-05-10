@@ -2141,11 +2141,104 @@ This document outlines the phased plan to migrate the runtime from legacy respon
     - empty or missing answer
     - intent plus terminal-answer mixed edge
     - file-content plus visible-answer edge if supported
-  - Identified blocker: terminal-answer branch-specific authority diagnostics do not yet exist in the same style as board/checkpoint authority logging.
   - No runtime behavior changed.
   - No authority transfer happened.
 - **Next**:
   - Phase 28 Step 2: Terminal Answer Synthetic Smoke Harness Skeleton + Authority Diagnostics.
+
+#### Phase 28 Step 2: Terminal Answer Synthetic Smoke Harness Skeleton + Authority Diagnostics
+
+- **Status**: Done.
+- **Goal**: Add the first lightweight synthetic smoke harness and observational authority diagnostics for the terminal-answer slice, without transferring authority.
+- **Completed Outcome**:
+  - Added observational authority diagnostics for:
+    - `terminal_answer.plaintext_terminal_answer`
+  - Added a lightweight synthetic smoke harness covering:
+    - pure plaintext terminal answer
+    - action only
+    - pre-action text and action
+    - checkpoint only
+    - checkpoint with visible text
+    - malformed or unclosed think
+    - empty output
+    - leaked system result
+  - The new diagnostics characterize:
+    - typed/legacy alignment for clean plaintext
+    - typed/legacy disagreement for checkpoint-with-visible-text
+    - coexistence of legacy plaintext-path detection and later leaked-system recovery
+  - Terminal-answer switches remain `legacy`.
+  - No runtime behavior changed.
+  - No authority transfer happened.
+- **Next**:
+  - Phase 28 Step 3: Terminal Answer Synthetic Matrix Expansion / First Authority Candidate Decision.
+
+#### Phase 28 Step 3: Terminal Answer Synthetic Matrix Expansion / First Authority Candidate Decision
+
+- **Status**: Done.
+- **Goal**: Expand the terminal-answer synthetic matrix enough to decide whether `terminal_answer.plaintext_terminal_answer` is a safe first authority candidate.
+- **Completed Outcome**:
+  - Expanded the synthetic smoke harness to characterize:
+    - clean single-line plaintext (`Done.`)
+    - multi-line plaintext
+    - markdown-ish plaintext
+    - plaintext that looks like a pre-action explanation but has no action
+    - action-only
+    - pre-action text plus action
+    - checkpoint-only
+    - checkpoint-with-visible-text
+    - leaked system result
+    - empty / whitespace-only output
+    - malformed / unclosed think
+  - Hardened the observational plaintext-terminal diagnostic with:
+    - `legacy_active`
+    - `has_action`
+    - `has_checkpoint`
+    - `is_leaked_system_result`
+    - more specific `mismatch_reason` values
+  - Decision:
+    - `terminal_answer.plaintext_terminal_answer` is **NO-GO** for smoke-profile compiler authority in the current state.
+  - Blocking evidence:
+    - `Done.` remains a legacy plaintext-answer path while the typed classifier currently marks it `INVALID_OR_TRUNCATED_TERMINAL_TEXT`.
+    - markdown-style plaintext currently shares the same mismatch pattern.
+    - `CHECKPOINT_WITH_VISIBLE_TEXT` still overlaps the legacy plaintext path.
+    - leaked system result can still overlap the legacy plaintext path even though later leak recovery takes authority.
+  - Safe but insufficient positive evidence:
+    - multi-line plaintext and ordinary explanatory plaintext with no action can align typed and legacy signals.
+  - Terminal-answer switches remain `legacy`.
+  - No runtime behavior changed.
+  - No authority transfer happened.
+- **Next**:
+  - Phase 28 Step 4: Terminal Answer Diagnostics Hardening.
+
+#### Phase 28 Step 4: Terminal Answer Diagnostics Hardening
+
+- **Status**: Done.
+- **Goal**: Harden plaintext-terminal diagnostics so the next authority decision can cleanly separate valid plaintext from truncated/invalid overlaps, checkpoint-visible-text overlaps, leaked-system-result overlaps, and action-bearing cases.
+- **Completed Outcome**:
+  - Expanded `TerminalAnswerAuthorityDiagnostic` with explicit observational fields for:
+    - `typed_plaintext_eligible`
+    - `legacy_active`
+    - `invalid_or_truncated_terminal_text`
+    - `checkpoint_with_visible_text_overlap`
+    - `leaked_system_result_overlap`
+    - `action_or_pre_action_overlap`
+    - `clean_plaintext_candidate`
+    - `blocking_reasons`
+  - Refined the observational plaintext resolver to expose stable diagnostic buckets for:
+    - clean plaintext candidate
+    - invalid/truncated mismatch
+    - checkpoint-visible-text overlap
+    - leaked-system-result overlap
+    - action/pre-action overlap
+    - empty / malformed inactive cases
+  - Expanded the synthetic smoke assertions and added a direct helper-level characterization test for the resolver buckets.
+  - Terminal-answer switches remain `legacy`.
+  - No authority transfer happened.
+  - No runtime behavior changed.
+  - Remaining blocker:
+    - typed plaintext classification for short answers like `Done.` and markdown-ish plaintext still needs review/fix before any authority-transfer step can be proposed.
+- **Next**:
+  - Phase 28 Step 5: Typed Plaintext Classification Review / Fix Candidate.
 
 ---
 

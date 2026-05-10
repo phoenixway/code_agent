@@ -20,6 +20,7 @@ from .board_checkpoint_semantics import resolve_plan_checkpoint_only_authority
 from .board_checkpoint_semantics import resolve_plan_checkpoint_only_typed_primary
 from .protocol_decision_bridge import compiler_invalid_kind_for_output, resolve_protocol_authority
 from .semantic_accessors import is_leaked_system_result
+from .terminal_answer_authority import resolve_plaintext_terminal_answer_authority
 from .terminal_answer_models import TerminalAnswerKind
 
 
@@ -257,6 +258,45 @@ class ResponsePipelineStagesMixin:
                 branch_active=diagnostic.branch_active,
                 compiler_eligible=diagnostic.compiler_eligible,
                 effective_value=diagnostic.effective_value,
+                shadow_only=True,
+            )
+        except Exception:
+            return
+
+    def _log_terminal_answer_authority_resolution(self, diagnostic) -> None:
+        stage_logger = getattr(self, "stage_logger", None)
+        if not stage_logger or diagnostic is None:
+            return
+        try:
+            stage_logger.log(
+                "protocol_shadow",
+                "terminal_answer_authority_resolution",
+                branch=diagnostic.branch,
+                switch_value=diagnostic.switch_value,
+                authority_source=diagnostic.authority_source,
+                legacy_active=diagnostic.legacy_active,
+                typed_kind=diagnostic.typed_kind,
+                legacy_kind=diagnostic.legacy_kind,
+                agreement=diagnostic.agreement,
+                fallback_used=diagnostic.fallback_used,
+                behavior_changed=diagnostic.behavior_changed,
+                branch_active=diagnostic.branch_active,
+                typed_eligible=diagnostic.typed_eligible,
+                typed_plaintext_eligible=diagnostic.typed_plaintext_eligible,
+                effective_value=diagnostic.effective_value,
+                invalid_kind=diagnostic.invalid_kind,
+                compiler_shape=diagnostic.compiler_shape,
+                terminal_answer_kind=diagnostic.terminal_answer_kind,
+                has_action=diagnostic.has_action,
+                has_checkpoint=diagnostic.has_checkpoint,
+                is_leaked_system_result=diagnostic.is_leaked_system_result,
+                invalid_or_truncated_terminal_text=diagnostic.invalid_or_truncated_terminal_text,
+                checkpoint_with_visible_text_overlap=diagnostic.checkpoint_with_visible_text_overlap,
+                leaked_system_result_overlap=diagnostic.leaked_system_result_overlap,
+                action_or_pre_action_overlap=diagnostic.action_or_pre_action_overlap,
+                clean_plaintext_candidate=diagnostic.clean_plaintext_candidate,
+                blocking_reasons=diagnostic.blocking_reasons,
+                mismatch_reason=diagnostic.mismatch_reason,
                 shadow_only=True,
             )
         except Exception:
@@ -901,6 +941,13 @@ class ResponsePipelineStagesMixin:
             )
 
         plaintext_answer_path = self.semantics.is_plaintext_answer_path(raw_response, parsed_output, parsed_action_count)
+        terminal_answer_switch = get_switch("terminal_answer.plaintext_terminal_answer")
+        terminal_answer_authority = resolve_plaintext_terminal_answer_authority(
+            parsed_output,
+            legacy_plaintext_answer_path=plaintext_answer_path,
+            switch_value=terminal_answer_switch,
+        )
+        self._log_terminal_answer_authority_resolution(terminal_answer_authority)
         reflection_only_repair = self.semantics.is_reflection_only_repair_turn(
             raw_response, parsed_output, parsed_action_count
         )
