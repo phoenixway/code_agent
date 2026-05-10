@@ -7,6 +7,10 @@ from ..runtime.action_policy_models import AtomicBundlePolicyResultKind
 from ..parsers.visible_text import sanitize_visible_text_for_user, terminal_plaintext_completion_status
 from .bundle_semantic_validator import BundleResultKind, BundleSemanticValidator
 from .protocol_decision_bridge import COMPILER_INVALID_KIND_BY_CODE
+from .recovery_authority import (
+    build_compiler_invalid_mapping_diagnostic,
+    build_prevalidation_reject_invalid_output_diagnostic,
+)
 from .runtime_protocol_semantics import compact_runtime_protocol_semantics, runtime_semantics_from_compiler_analysis
 from .terminal_answer_classifier import (
     TerminalAnswerClassifier,
@@ -186,9 +190,9 @@ class ResponsePipelinePrevalidationMixin:
                 **compact_runtime_protocol_semantics(parsed_output.runtime_protocol_semantics),
             )
         self._run_terminal_answer_classifier_shadow(parsed_output, response)
+        legacy_invalid_kind = str(getattr(parsed_output, "invalid_kind", "") or "").strip()
+        has_plain_think_prefix = False
         if compiler_invalid_kind:
-            legacy_invalid_kind = str(getattr(parsed_output, "invalid_kind", "") or "").strip()
-            has_plain_think_prefix = False
             checker = getattr(self.intent_response_parser, "has_plain_think_prefix", None)
             if callable(checker):
                 try:
@@ -205,9 +209,36 @@ class ResponsePipelinePrevalidationMixin:
                 and has_plain_think_prefix
                 and not legacy_invalid_kind
             ):
+                self._log_recovery_authority_resolution(
+                    build_compiler_invalid_mapping_diagnostic(
+                        parsed_output,
+                        compiler_kind=compiler_invalid_kind,
+                        legacy_kind=legacy_invalid_kind,
+                        effective_invalid_kind=legacy_invalid_kind,
+                        parsed_action_count=sum(
+                            1 for seg in (getattr(parsed_output, "segments", []) or [])
+                            if getattr(seg, "type", "") == "action"
+                        ),
+                        has_plain_think_prefix=has_plain_think_prefix,
+                    )
+                )
                 return compiler_analysis
             if not legacy_invalid_kind or legacy_invalid_kind in self.COMPILER_DRIVEN_INVALID_KINDS:
                 parsed_output.invalid_kind = compiler_invalid_kind
+        effective_invalid_kind = str(getattr(parsed_output, "invalid_kind", "") or "").strip()
+        self._log_recovery_authority_resolution(
+            build_compiler_invalid_mapping_diagnostic(
+                parsed_output,
+                compiler_kind=compiler_invalid_kind,
+                legacy_kind=legacy_invalid_kind,
+                effective_invalid_kind=effective_invalid_kind,
+                parsed_action_count=sum(
+                    1 for seg in (getattr(parsed_output, "segments", []) or [])
+                    if getattr(seg, "type", "") == "action"
+                ),
+                has_plain_think_prefix=has_plain_think_prefix,
+            )
+        )
         return compiler_analysis
 
     def _run_terminal_answer_classifier_shadow(self, parsed_output, response: str):
@@ -540,6 +571,19 @@ class ResponsePipelinePrevalidationMixin:
             malformed_action_retries=ctx.malformed_action_retries,
             audit_marker_retries=ctx.audit_marker_retries,
         )
+        self._log_recovery_authority_resolution(
+            build_prevalidation_reject_invalid_output_diagnostic(
+                parsed_output,
+                recovery_action=str(getattr(recovery_decision, "reason", "") or ""),
+                recovery_reason=str(getattr(recovery_decision, "reason", "") or ""),
+                recovery_prompt_kind="output_recovery_query" if bool(getattr(recovery_decision, "next_query", "")) else "",
+                parsed_action_count=parsed_action_count,
+                malformed_action_retries=int(getattr(ctx, "malformed_action_retries", 0) or 0),
+                guard_name="intent_atomicity_guard",
+                guard_triggered=True,
+                guard_state="intent_followup_prevalidation_failed",
+            )
+        )
         if recovery_decision.handled:
             return ResponsePipelineOutcome(
                 handled=True,
@@ -850,3 +894,42 @@ class ResponsePipelinePrevalidationMixin:
         )
         assert all(token not in sanitized for token in forbidden_tokens)
         return sanitized
+    def _log_recovery_authority_resolution(self, diagnostic) -> None:
+        stage_logger = getattr(self, "stage_logger", None)
+        if not stage_logger or diagnostic is None:
+            return
+        try:
+            stage_logger.log(
+                "protocol_shadow",
+                "recovery_authority_resolution",
+                branch=diagnostic.branch,
+                authority_source=diagnostic.authority_source,
+                legacy_kind=diagnostic.legacy_kind,
+                compiler_kind=diagnostic.compiler_kind,
+                typed_kind=diagnostic.typed_kind,
+                parsed_invalid_kind=diagnostic.parsed_invalid_kind,
+                effective_invalid_kind=diagnostic.effective_invalid_kind,
+                agreement=diagnostic.agreement,
+                fallback_used=diagnostic.fallback_used,
+                behavior_changed=diagnostic.behavior_changed,
+                branch_active=diagnostic.branch_active,
+                recovery_action=diagnostic.recovery_action,
+                recovery_reason=diagnostic.recovery_reason,
+                recovery_prompt_kind=diagnostic.recovery_prompt_kind,
+                blocking_reasons=diagnostic.blocking_reasons,
+                compiler_error_code=diagnostic.compiler_error_code,
+                terminal_answer_kind=diagnostic.terminal_answer_kind,
+                parsed_action_count=diagnostic.parsed_action_count,
+                has_action=diagnostic.has_action,
+                has_checkpoint=diagnostic.has_checkpoint,
+                has_visible_text=diagnostic.has_visible_text,
+                is_leaked_system_result=diagnostic.is_leaked_system_result,
+                is_internal_summary=diagnostic.is_internal_summary,
+                retry_count=diagnostic.retry_count,
+                guard_name=diagnostic.guard_name,
+                guard_triggered=diagnostic.guard_triggered,
+                guard_state=diagnostic.guard_state,
+                shadow_only=True,
+            )
+        except Exception:
+            return

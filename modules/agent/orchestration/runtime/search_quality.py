@@ -6,6 +6,11 @@ from __future__ import annotations
 
 import re
 
+from .filesystem_path_validation import (
+    FILESYSTEM_PATH_ACTIONS,
+    validate_filesystem_action_path,
+)
+
 SEARCH_TOOLS = {"search_content", "search_files"}
 EXACT_ANCHOR_RE = re.compile(r"\|")
 
@@ -21,6 +26,7 @@ class SearchQualityKind:
 class SearchQualitySeverity:
     OK = "ok"
     WARN = "warn"
+    BLOCK = "block"
     RECOVERABLE_CANDIDATE = "recoverable_candidate"
 
 
@@ -32,32 +38,94 @@ def classify_search_action_quality(action_payload: object) -> dict:
     if not isinstance(action_payload, dict):
         return {
             "is_search": False,
+            "is_filesystem_action": False,
             "tool_type": "",
             "kind": SearchQualityKind.NON_SEARCH_ACTION,
             "severity": SearchQualitySeverity.OK,
             "reason": "not_a_dict",
+            "boundedness_kind": SearchQualityKind.NON_SEARCH_ACTION,
+            "boundedness_severity": SearchQualitySeverity.OK,
+            "boundedness_reason": "not_a_dict",
+            "path_validity": "not_applicable",
+            "expected_path_kind": None,
+            "actual_path_kind": None,
+            "path_validation_error_code": None,
         }
 
     tool_type = str(action_payload.get("type") or action_payload.get("action") or "").strip()
+    path_validation = validate_filesystem_action_path(action_payload)
+    effective_path = path_validation.path or str(action_payload.get("path") or "").strip()
     if tool_type not in SEARCH_TOOLS:
+        path_validity = "not_applicable"
+        severity = SearchQualitySeverity.OK
+        reason = ""
+        if tool_type in FILESYSTEM_PATH_ACTIONS:
+            if path_validation.error_code is None and not path_validation.ok:
+                path_validity = "unknown"
+                severity = SearchQualitySeverity.WARN
+                reason = "path_validation_unknown"
+            elif path_validation.ok:
+                path_validity = "known_valid"
+            else:
+                path_validity = "invalid"
+                severity = SearchQualitySeverity.BLOCK
+                reason = "invalid_action_path"
         return {
             "is_search": False,
+            "is_filesystem_action": tool_type in FILESYSTEM_PATH_ACTIONS,
             "tool_type": tool_type,
             "kind": SearchQualityKind.NON_SEARCH_ACTION,
-            "severity": SearchQualitySeverity.OK,
-            "reason": "",
+            "severity": severity,
+            "reason": reason,
+            "boundedness_kind": SearchQualityKind.NON_SEARCH_ACTION,
+            "boundedness_severity": SearchQualitySeverity.OK,
+            "boundedness_reason": "",
+            "path": effective_path,
+            "path_validity": path_validity,
+            "expected_path_kind": path_validation.expected_kind,
+            "actual_path_kind": path_validation.actual_kind,
+            "path_validation_error_code": path_validation.error_code,
         }
 
-    path = str(action_payload.get("path") or "").strip()
+    path = effective_path
     pattern = str(action_payload.get("pattern") or "").strip()
     include_extensions = action_payload.get("include_extensions")
     exclude_dirs = action_payload.get("exclude_dirs")
     code_only = bool(action_payload.get("code_only", False))
     limit = action_payload.get("limit")
 
+    def _finalize(base: dict) -> dict:
+        boundedness_severity = str(base["severity"])
+        boundedness_reason = str(base["reason"])
+        if path_validation.error_code is None and not path_validation.ok:
+            path_validity = "unknown"
+            severity = SearchQualitySeverity.WARN if boundedness_severity == SearchQualitySeverity.OK else boundedness_severity
+            reason = "path_validation_unknown"
+        elif path_validation.ok:
+            path_validity = "known_valid"
+            severity = boundedness_severity
+            reason = boundedness_reason
+        else:
+            path_validity = "invalid"
+            severity = SearchQualitySeverity.BLOCK
+            reason = "invalid_search_root"
+        return {
+            **base,
+            "is_filesystem_action": True,
+            "boundedness_kind": base["kind"],
+            "boundedness_severity": boundedness_severity,
+            "boundedness_reason": boundedness_reason,
+            "path_validity": path_validity,
+            "expected_path_kind": path_validation.expected_kind,
+            "actual_path_kind": path_validation.actual_kind,
+            "path_validation_error_code": path_validation.error_code,
+            "severity": severity,
+            "reason": reason,
+        }
+
     if tool_type == "search_files":
         if pattern:
-            return {
+            return _finalize({
                 "is_search": True,
                 "tool_type": tool_type,
                 "kind": SearchQualityKind.EXACT_LOOKUP,
@@ -72,7 +140,7 @@ def classify_search_action_quality(action_payload: object) -> dict:
                 "limit": limit,
                 "bound_count": 1,
                 "missing_bounds": [],
-            }
+            })
 
     # search_content logic
     has_specific_path = bool(path and path != ".")
@@ -96,7 +164,7 @@ def classify_search_action_quality(action_payload: object) -> dict:
         }
         # For this case, `code_only` does not count as a bound.
         effective_bound_count = sum(1 for k, v in bounds.items() if v and k != "code_only")
-        return {
+        return _finalize({
             "is_search": True,
             "tool_type": tool_type,
             "kind": SearchQualityKind.UNBOUNDED_BROAD,
@@ -111,7 +179,7 @@ def classify_search_action_quality(action_payload: object) -> dict:
             "limit": limit,
             "bound_count": effective_bound_count,
             "missing_bounds": [k for k, v in bounds.items() if not v],
-        }
+        })
 
     bounds = {
         "path": has_specific_path,
@@ -125,7 +193,7 @@ def classify_search_action_quality(action_payload: object) -> dict:
     missing_bounds = [k for k, v in bounds.items() if not v]
 
     if bound_count >= 2:
-        return {
+        return _finalize({
             "is_search": True,
             "tool_type": tool_type,
             "kind": SearchQualityKind.BOUNDED_RECON,
@@ -140,9 +208,9 @@ def classify_search_action_quality(action_payload: object) -> dict:
             "limit": limit,
             "bound_count": bound_count,
             "missing_bounds": missing_bounds,
-        }
+        })
 
-    return {
+    return _finalize({
         "is_search": True,
         "tool_type": tool_type,
         "kind": SearchQualityKind.UNBOUNDED_BROAD,
@@ -157,4 +225,4 @@ def classify_search_action_quality(action_payload: object) -> dict:
         "limit": limit,
         "bound_count": bound_count,
         "missing_bounds": missing_bounds,
-    }
+    })

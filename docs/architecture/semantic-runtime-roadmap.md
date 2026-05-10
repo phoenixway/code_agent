@@ -2619,6 +2619,30 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 29 Step 2: Recovery Invalid-Output Synthetic Harness + Authority Diagnostics.
 
+#### Phase 29 Step 2: Recovery Invalid-Output Synthetic Harness + Authority Diagnostics
+
+- **Status**: Done.
+- **Goal**: Add a deterministic recovery synthetic harness and the first observational recovery authority diagnostic path without changing behavior.
+- **Completed Outcome**:
+  - Added the observational `RecoveryAuthorityDiagnostic` model.
+  - Added `protocol_shadow / recovery_authority_resolution` logging for:
+    - `recovery.compiler_invalid_kind_mapping`
+    - `recovery.prevalidation_reject_invalid_output`
+  - Added deterministic synthetic smoke coverage for:
+    - unclosed `<think>`
+    - malformed action JSON
+    - leaked system result
+    - invalid/truncated terminal text
+    - memory tag inside think
+    - checkpoint tag inside think
+    - empty / whitespace output
+    - pre-action text plus action
+  - No recovery/invalid-output switch family was introduced.
+  - No runtime behavior changed.
+  - Default registry remains `legacy`.
+- **Next**:
+  - Phase 29 Step 3: Recovery Synthetic Matrix Expansion / First Authority Candidate Decision.
+
 ---
 
 ### Phase 11: RecoveryStrategy Registry Expansion

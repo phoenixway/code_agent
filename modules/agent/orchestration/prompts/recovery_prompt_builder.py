@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from ..runtime.filesystem_path_failure import INVALID_PATH_ERROR_CODE, restore_filesystem_path_failure
+
 
 class RecoveryPromptBuilderMixin:
     def build_repeated_thinking_without_valid_output_prompt(self, stop_info: dict | None = None) -> str:
@@ -359,6 +361,41 @@ class RecoveryPromptBuilderMixin:
         details = error_details or {}
         mismatch_type = str(details.get("mismatch_type") or "")
         path = str((command or {}).get("path") or details.get("path") or "..." or "").strip() or "..."
+        path_failure = restore_filesystem_path_failure(command, details)
+        if path_failure is not None or code == INVALID_PATH_ERROR_CODE:
+            path_failure = path_failure or restore_filesystem_path_failure(
+                command,
+                {
+                    **dict(details),
+                    "recovery_kind": details.get("recovery_kind") or "INVALID_ACTION_PATH_RECOVERY",
+                    "invalid_path": details.get("invalid_path") or path,
+                    "failed_action_type": details.get("failed_action_type") or str((command or {}).get("type") or ""),
+                    "known_valid_roots": list(details.get("known_valid_roots") or ["."]),
+                    "recommended_next_actions": list(details.get("recommended_next_actions") or []),
+                    "message": details.get("message") or self._short_failed_error(stop_info),
+                },
+            )
+            known_root = "."
+            if path_failure is not None and path_failure.known_valid_roots:
+                known_root = str(path_failure.known_valid_roots[0] or ".").strip() or "."
+            failed_path = path_failure.invalid_path if path_failure is not None else path
+            failed_action = path_failure.failed_action_type if path_failure is not None else str((command or {}).get("type") or "action")
+            return self._render_strict_failure_recovery(
+                stop_info,
+                fact=f"{failed_action} failed: {self._short_failed_error(stop_info)}",
+                gap=(
+                    f"The previous filesystem path is invalid: {failed_path}. "
+                    "Do not reuse the failed path. "
+                    "Do not derive sibling, child, or package paths from the failed path. "
+                    "Do not guess Android/Kotlin package roots."
+                ),
+                next_step=(
+                    f"first establish a valid root with list_directory on {known_root}, "
+                    "or search_files/search_content from '.' before any further bounded search or read"
+                ),
+                action_block=f'<action>{{"type":"list_directory","path":"{known_root}"}}</action>',
+                safe_recovery_action="list_directory",
+            )
         if code in {"MISSING_FILE_CONTENT_BLOCK", "FILE_CONTENT_MUST_FOLLOW_ACTION"}:
             full_rewrite_allowed = self._full_rewrite_allowed(stop_info)
             if not full_rewrite_allowed and self._is_existing_source_file(path, stop_info):

@@ -470,6 +470,7 @@ class RecoveryCoordinator:
                     and bool(stop_info.get("recoverable"))
                     and str(stop_info.get("error_code") or "").strip().upper() in {
                         "VALIDATION_ERROR",
+                        "INVALID_ACTION_PATH",
                         "CONTENT_TOO_LARGE_FOR_JSON_FILE_ACTION",
                         "MISSING_FILE_CONTENT_BLOCK",
                     }
@@ -563,6 +564,7 @@ class RecoveryCoordinator:
                         clear_pending_stop=True,
                     )
                 if str(stop_info.get("error_code") or "").strip().upper() in {
+                    "INVALID_ACTION_PATH",
                     "CONTENT_TOO_LARGE_FOR_JSON_FILE_ACTION",
                     "MISSING_FILE_CONTENT_BLOCK",
                 }:
@@ -579,6 +581,20 @@ class RecoveryCoordinator:
                             clear_pending_stop=True,
                         )
                 if str(stop_info.get("error_code") or "").strip().upper() == "VALIDATION_ERROR":
+                    active_intent = self.state_view.active_intent()
+                    if active_intent is not None:
+                        allowed = self._intent_actions_from_stop_info(stop_info, active_intent)
+                        details = stop_info.get("error_details") or {}
+                        return StopHandlingDecision.continue_with(
+                            self.prompt_builder.build_current_intent_retry_recovery_query(
+                                allowed,
+                                error_code=str(stop_info.get("error_code") or ""),
+                                error_details=details,
+                                command=stop_info.get("command") or {},
+                            ),
+                            clear_pending_stop=True,
+                        )
+                if str(stop_info.get("error_code") or "").strip().upper() == "INVALID_ACTION_PATH":
                     active_intent = self.state_view.active_intent()
                     if active_intent is not None:
                         allowed = self._intent_actions_from_stop_info(stop_info, active_intent)

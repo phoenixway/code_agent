@@ -4,9 +4,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 29 Step 1: Recovery / Invalid-Output Synthetic Smoke Matrix Preflight
+- **Phase**: Phase 29 Step 2: Recovery Invalid-Output Synthetic Harness + Authority Diagnostics
 - **Status**: Complete.
-- **Next Step**: Phase 29 Step 2: Recovery Invalid-Output Synthetic Harness + Authority Diagnostics.
+- **Next Step**: Phase 29 Step 3: Recovery Synthetic Matrix Expansion / First Authority Candidate Decision.
 - **Boundary**: The checkpoint parity bridge remains diagnostic-only. Legacy board handlers still own commit behavior, the prepass compiler analysis remains observational, and `_apply_compiler_diagnosis` remains the effectful classification-stage path that recomputes on normalized response.
 
 ## Step 4I Parity Matrix
@@ -1531,6 +1531,31 @@ This document is the single source of truth for the current state of the Semanti
     - default registry remains `legacy`
     - no runtime behavior changed
     - no new authority switches were added
+- **Phase 29 Step 2: Recovery Invalid-Output Synthetic Harness + Authority Diagnostics (Complete)**
+  - Added [recovery_authority.py](/home/romankozak/studio/public/it/angelica-ai/modules/agent/orchestration/responses/recovery_authority.py) with the observational `RecoveryAuthorityDiagnostic` model.
+  - Added `protocol_shadow / recovery_authority_resolution` logging for the first two recovery instrumentation points:
+    - `recovery.compiler_invalid_kind_mapping`
+      - emitted from `_apply_compiler_diagnosis(...)`
+      - characterizes compiler-invalid mapping vs legacy/effective invalid kind
+    - `recovery.prevalidation_reject_invalid_output`
+      - emitted from `_reject_invalid_intent_followup_before_transition(...)`
+      - characterizes effective invalid kind plus the selected recovery action before the prevalidation continuation result is returned
+  - Added deterministic synthetic recovery harness coverage in [test_recovery_invalid_output_synthetic_smoke.py](/home/romankozak/studio/public/it/angelica-ai/tests/test_recovery_invalid_output_synthetic_smoke.py) for:
+    - unclosed `<think>`
+    - malformed action JSON
+    - leaked system result
+    - invalid/truncated terminal text
+    - memory tag inside think
+    - checkpoint tag inside think
+    - empty / whitespace output
+    - pre-action text plus action
+  - Important boundary:
+    - diagnostics are observational only
+    - no recovery authority switches were added
+    - no runtime behavior changed
+    - default registry remains `legacy`
+  - Recommended next step:
+    - `Phase 29 Step 3: Recovery Synthetic Matrix Expansion / First Authority Candidate Decision`
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 

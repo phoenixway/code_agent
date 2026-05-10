@@ -218,6 +218,57 @@ class TestActionDispatcherLoopGuard(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Repeated search_content calls returned no matches", result_text)
         self.assertEqual(state.pending_loop_stop_info.get("error_code"), "SEARCH_NO_MATCH_LOOP")
 
+    async def test_invalid_search_path_failure_adds_strict_root_discovery_feedback(self):
+        ui = SimpleNamespace(
+            print_edit_file_start=AsyncMock(return_value=object()),
+            start_action=AsyncMock(),
+            update_edit_file_result=AsyncMock(),
+            print_tool_call=AsyncMock(),
+            print_plan=AsyncMock(),
+            print_command_result=AsyncMock(),
+            print_confirmation=AsyncMock(),
+            print_shell_start=AsyncMock(return_value=object()),
+            update_shell_result=AsyncMock(),
+            print_read_file_start=AsyncMock(return_value=object()),
+            update_read_file_result=AsyncMock(),
+        )
+        processor = SimpleNamespace(
+            process_single_action=AsyncMock(
+                return_value={
+                    "status": "failed",
+                    "error_code": "NOT_FOUND",
+                    "recoverable": True,
+                    "output": (
+                        "Search path 'app/src/main/java/com/romankozak/forward/' is not a directory.\n"
+                        "No valid search paths given."
+                    ),
+                    "next_actions": ["list_directory", "search_files", "create_file"],
+                }
+            )
+        )
+        config = SimpleNamespace(
+            STATE_CHANGING_OPS={"edit_file", "create_file", "run_shell"},
+            LOOP_ERROR_REPEAT_THRESHOLD=2,
+            READ_ONLY_REPEAT_THRESHOLD=3,
+            RECOVERABLE_ERROR_RETRY_BUDGET=2,
+            CRITICAL_ERROR_RETRY_BUDGET=1,
+        )
+        agent = SimpleNamespace(ui=ui, processor=processor, config=config, log=None)
+        dispatcher = ActionDispatcher(agent)
+        state = AgentState(config)
+
+        command = {"type": "search_files", "path": "app/src/main/java/com/romankozak/forward/", "pattern": "Forward"}
+        _cmd_copy, result_text, should_stop = await dispatcher._execute_action(command, state)
+
+        self.assertFalse(should_stop)
+        self.assertIn("The previous filesystem path is invalid", result_text)
+        self.assertIn("Do not reuse the failed path", result_text)
+        self.assertIn("Do not derive sibling, child, or package paths", result_text)
+        self.assertIn("Do not guess Android/Kotlin package roots", result_text)
+        self.assertIn("invalid_path=app/src/main/java/com/romankozak/forward/", result_text)
+        self.assertEqual("INVALID_ACTION_PATH", state.last_error_code)
+        self.assertEqual("INVALID_ACTION_PATH_RECOVERY", state.last_failed_action_result["error_details"]["recovery_kind"])
+
     async def test_read_file_nested_command_payload_is_normalized(self):
         ui = SimpleNamespace(
             print_edit_file_start=AsyncMock(return_value=object()),

@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from .allowed_actions_resolver import AllowedActionsResolver
+from .orchestration.runtime.filesystem_path_failure import classify_filesystem_path_failure
 from .orchestration.shared.decision_models import RecoveryContext
 
 
@@ -830,6 +831,18 @@ class ActionDispatcher:
         handler = self._handlers.get(cmd_type, self._handle_default)
         result = await handler(command)
 
+        path_failure = classify_filesystem_path_failure(command, result)
+        if path_failure is not None:
+            error_details = dict(result.get("error_details") or {})
+            original_error_code = str(result.get("error_code") or "").strip()
+            error_details.update(path_failure.to_error_details())
+            if original_error_code and original_error_code != path_failure.error_code:
+                error_details.setdefault("original_error_code", original_error_code)
+            result["error_details"] = error_details
+            result["error_code"] = path_failure.error_code
+            result["recoverable"] = True
+            result["next_actions"] = [str(item.get("type") or "").strip() for item in path_failure.recommended_next_actions]
+
         self._refresh_current_file_state_after_success(command, result)
         self._capture_turn_working_material(command, result, state)
 
@@ -1049,13 +1062,35 @@ class ActionDispatcher:
                 f"last_tool_error_code={error_code or 'UNSPECIFIED'}",
                 f"last_tool_error_message={str(result.get('output', ''))[:300]}",
             ]
+            if path_failure is not None:
+                known_roots = ",".join(path_failure.known_valid_roots)
+                recommended = ",".join(
+                    f"{item.get('type')}:{item.get('path', '.')}" for item in path_failure.recommended_next_actions
+                )
+                output_text += (
+                    "\n[SYSTEM: The previous filesystem path is invalid. "
+                    "Do not reuse the failed path. "
+                    "Do not derive sibling, child, or package paths from the failed path. "
+                    "Do not guess Android/Kotlin package roots. "
+                    "First establish a valid root before any further bounded search or read.]"
+                )
+                feedback_lines.extend(
+                    [
+                        f"invalid_path={path_failure.invalid_path}",
+                        f"failed_action_type={path_failure.failed_action_type}",
+                        f"known_valid_roots={known_roots or '.'}",
+                        f"recommended_next_actions={recommended}",
+                        "instruction=Do not reuse this failed path or derive sibling/child/package paths from it unless those paths were observed from list_directory or search results.",
+                    ]
+                )
             if next_actions:
                 feedback_lines.append(
                     "suggested_recovery_actions=" + ",".join(str(x) for x in next_actions[:6])
                 )
-            feedback_lines.append(
-                "instruction=Do not repeat the same tool call with the same arguments."
-            )
+            else:
+                feedback_lines.append(
+                    "instruction=Do not repeat the same tool call with the same arguments."
+                )
             output_text += "\n" + "\n".join(feedback_lines)
 
             if cmd_type == "edit_file" and "Search block not found" in str(output_text):

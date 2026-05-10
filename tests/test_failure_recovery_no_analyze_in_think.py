@@ -57,6 +57,9 @@ class DummyState:
 
     def record_action_result(self, command, result, config):
         self.last_action_status = str(result.get("status") or "")
+        if self.last_action_status in {"failed", "error"}:
+            self.last_error_code = result.get("error_code")
+            self.last_failed_action_result = dict(result)
         return {
             "same_action_repeats": 0,
             "same_error_repeats": 0,
@@ -271,4 +274,48 @@ async def test_action_dispatcher_generic_failure_feedback_does_not_mention_think
 
     _assert_generic_failure_feedback_has_no_think_tag(system_result)
     assert "Use the runtime recovery payload below" in system_result
+    assert should_stop is False
+
+
+@pytest.mark.asyncio
+async def test_action_dispatcher_invalid_search_path_forces_root_discovery_feedback():
+    agent = DummyAgent()
+    dispatcher = ActionDispatcher(agent)
+
+    async def failing_search_files(command):
+        return {
+            "status": "failed",
+            "output": (
+                "Search path 'app/src/main/java/com/romankozak/forward/' is not a directory.\n"
+                "No valid search paths given."
+            ),
+            "error_code": "NOT_FOUND",
+            "recoverable": True,
+            "next_actions": ["list_directory", "search_files", "create_file"],
+        }
+
+    dispatcher._handlers["search_files"] = failing_search_files
+
+    command = {
+        "type": "search_files",
+        "path": "app/src/main/java/com/romankozak/forward/",
+        "pattern": "Forward",
+        "before_execution": "Searching files",
+        "during_execution": "Searching...",
+        "after_execution": "Search files",
+    }
+
+    command_for_history, system_result, should_stop = await dispatcher._execute_action(
+        command,
+        agent.state,
+    )
+
+    assert command_for_history["type"] == "search_files"
+    assert "SYSTEM RESULT for `search_files`" in system_result
+    assert "The previous filesystem path is invalid" in system_result
+    assert "Do not reuse the failed path" in system_result
+    assert "Do not derive sibling, child, or package paths" in system_result
+    assert "Do not guess Android/Kotlin package roots" in system_result
+    assert "invalid_path=app/src/main/java/com/romankozak/forward/" in system_result
+    assert "recommended_next_actions=list_directory:.,search_files:.,search_content:." in system_result
     assert should_stop is False
