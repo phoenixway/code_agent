@@ -3028,15 +3028,82 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 29 Step 16: Recovery Core Closure / Next Phase Selection
 
-- **Status**: Not started.
+- **Status**: Done.
 - **Goal**: Close Phase 29 and select the next major refactor phase.
-- **Expected Scope**:
-  - Summarize completed recovery slices (`compiler_invalid_kind_mapping`, `prevalidation_reject_invalid_output`, `leaked_system_result`).
-  - Record smoke-validated branches and diagnostic-only/deferred branches.
-  - Confirm default registry remains `legacy` and no production authority was flipped.
-  - Select the next phase: `Phase 30: Semantic Policy on Compiler-IR Foundation`.
+- **Completed Outcome**:
+  - Closed Phase 29 (Recovery / Invalid-Output Core).
+  - Completed smoke-validated branches:
+    - `recovery.compiler_invalid_kind_mapping`
+    - `recovery.prevalidation_reject_invalid_output`
+    - `recovery.leaked_system_result`
+  - Completed diagnostic-only/deferred branch:
+    - `recovery.invalid_truncated_terminal_text`
+  - Deferred recovery branches:
+    - `recovery.internal_summary`
+    - stateful malformed-think / repeated invalid-output guards
+    - remaining prompt-equivalence hardening
+  - Default registry remains `legacy` for all recovery branches.
+  - Smoke profile keeps validated recovery compiler switches enabled for continued validation.
+  - No production authority was flipped, and no runtime behavior was changed.
+  - Selected next phase: `Phase 30: Semantic Policy on Compiler-IR Foundation`.
 - **Next**:
-  - Phase 30 Step 1: ...
+  - Phase 30 Step 1: Semantic Policy IR Foundation Inventory.
+
+---
+
+### Phase 30: Board/Memory Commit Policy on Compiler-IR Foundation
+
+- **Status**: Not started.
+- **Goal**: Migrate remaining board/memory checkpoint commit policy from legacy handler ownership toward compiler IR, typed results, and resolver/accessor authority, while proving commit-equivalence before any authority transfer.
+- **Allowed**:
+  - Inventory board/memory checkpoint commit paths.
+  - Identify current legacy owners.
+  - Identify compiler IR / typed signals already available.
+  - Design synthetic commit-equivalence harness.
+  - Define branch-level switch candidates.
+  - Document commit/state invariants.
+- **Forbidden**:
+  - Behavior changes.
+  - Production authority flips.
+  - Memory commit behavior changes.
+  - Board handler behavior changes.
+  - Dispatch/action behavior changes.
+  - ActionPolicy changes.
+  - Final-answer behavior changes.
+- **Done When**:
+  - Board/memory commit policy inventory is complete.
+  - Commit-equivalence harness plan is documented.
+  - First board/memory branch candidate is selected.
+
+---
+
+#### Phase 30 Step 1: Board/Memory Commit Policy Inventory + Commit-Equivalence Harness Plan
+
+- **Status**: Not started.
+- **Goal**: Inventory current memory-board and board/checkpoint commit paths and design a synthetic commit-equivalence harness.
+- **Expected Scope**:
+  - Inventory current memory-board and board/checkpoint commit paths, covering:
+    - `MEMORY_CHECKPOINT_ONLY`
+    - `MEMORY_CHECKPOINT_WITH_TEXT`
+    - `MEMORY_CHECKPOINT_WITH_ACTION`
+    - mixed plan+memory checkpoint cases
+    - current `MemoryBoardStageHandler` behavior
+    - current `PlanBoardStageHandler` interactions
+    - state fields such as memory accepted count / last memory update flags / next query / continue loop
+  - Identify compiler IR / typed result facts available for each branch.
+  - Define commit-equivalence assertions:
+    - same handled value
+    - same response text
+    - same next query
+    - same continue/dispatch/final-answer behavior
+    - same memory state effects
+    - same accepted count
+    - same action preservation / no swallowed dispatch
+    - same board/memory ownership
+  - No behavior change.
+  - No authority transfer.
+- **Next**:
+  - Phase 30 Step 2: Board/Memory Synthetic Commit-Equivalence Harness.
 
 ---
 

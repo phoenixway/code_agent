@@ -169,4 +169,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 165. Phase 29 Step 13: done. Added a resolver and diagnostic-only logging for `recovery.invalid_truncated_terminal_text`, added default/smoke legacy switch placeholders, and added synthetic smoke coverage without changing runtime behavior.
 166. Phase 29 Step 14: done. Recorded NO-GO for smoke switch on `recovery.invalid_truncated_terminal_text` because it is a diagnostic-only branch without a recovery decision to own. Added more synthetic coverage.
 167. Phase 29 Step 15: done. Closed the invalid/truncated terminal text slice as diagnostic-only, and decided to close Phase 29 to avoid expanding into deep policy or stateful guard refactoring.
-168. Next: Phase 29 Step 16: Recovery Core Closure / Next Phase Selection.
+168. Phase 29 Step 16: done. Closed Phase 29 (Recovery Core), documented smoke-validated and deferred branches, and selected Phase 30 (Board/Memory Commit Policy on Compiler-IR Foundation) as the next major phase.
+169. Next: Phase 30 Step 1: Board/Memory Commit Policy Inventory + Commit-Equivalence Harness Plan.
