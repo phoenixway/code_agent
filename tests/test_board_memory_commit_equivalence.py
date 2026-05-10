@@ -391,7 +391,10 @@ class TestMemoryCommitAuthority:
         assert candidate.expected_reason == "memory_checkpoint_only"
         assert candidate.expected_source == "memory_board"
         assert candidate.expected_commit_attempted is True
-        assert candidate.blocking_reasons == ("commit_count_not_typed", "next_query_not_typed")
+        assert candidate.expected_commit_accepted_count == 0  # Not predicted
+        assert candidate.expected_commit_rejected_count == 0  # Not predicted
+        assert candidate.expected_last_memory_update_done is True
+        assert candidate.blocking_reasons == ("commit_counts_not_typed", "next_query_not_typed")
 
     @pytest.mark.parametrize(
         "response",
@@ -456,7 +459,8 @@ class TestMemoryCommitAuthority:
         response = "<memory_update_done />"
         mock_agent = SimpleNamespace(state=SimpleNamespace(), memory_board_engine=MagicMock(), log=None)
         mock_prompt_builder = SimpleNamespace(_current_active_intent_id=MagicMock(return_value="intent_123"))
-        mock_board_result = SimpleNamespace(parsed_count=1, accepted_count=1, rejected_count=0, clean_text="")
+        # Create a mismatch in accepted_count
+        mock_board_result = SimpleNamespace(parsed_count=1, accepted_count=0, rejected_count=0, clean_text="")
         mock_agent.memory_board_engine.apply_response_text.return_value = mock_board_result
         real_handler = MemoryBoardStageHandler(mock_agent, mock_prompt_builder)
         harness, state, outcome, snapshot = _run_commit_equivalence_harness(
@@ -488,7 +492,90 @@ class TestMemoryCommitAuthority:
         assert diag.behavior_changed is False
         assert diag.commit_equivalent is False
         assert diag.accepted_count_agreement is False
-        assert diag.rejected_count_agreement is False
-        assert diag.next_query_agreement is False
+        assert diag.rejected_count_agreement is True
+        assert diag.next_query_agreement is True
         assert decision.effective_commit.handled == snapshot.handled
         assert decision.effective_commit.reason == snapshot.reason
+
+    def test_candidate_builder_has_no_runtime_handler_dependency(self):
+        """The candidate builder must not import or instantiate MemoryBoardStageHandler."""
+        import modules.agent.orchestration.responses.memory_commit_authority as authority_module
+
+        assert not hasattr(authority_module, "MemoryBoardStageHandler")
+
+
+class TestMemoryCommitEquivalence:
+    def test_resolver_proves_commit_equivalence_for_clean_mco(self):
+        response = "<memory_update_done />"
+        mock_agent = SimpleNamespace(state=SimpleNamespace(), memory_board_engine=MagicMock(), log=None)
+        mock_prompt_builder = SimpleNamespace(_current_active_intent_id=MagicMock(return_value="intent_123"))
+        mock_board_result = SimpleNamespace(parsed_count=1, accepted_count=1, rejected_count=0, clean_text="")
+        mock_agent.memory_board_engine.apply_response_text.return_value = mock_board_result
+        real_handler = MemoryBoardStageHandler(mock_agent, mock_prompt_builder)
+        harness, state, outcome, snapshot = _run_commit_equivalence_harness(
+            response, memory_board_stage=real_handler
+        )
+
+        decision = resolve_memory_checkpoint_only_commit_authority(
+            semantic_result=state.board_checkpoint_semantic_result,
+            legacy_branch=snapshot.branch,
+            legacy_handled=snapshot.handled,
+            legacy_reason=snapshot.reason,
+            legacy_source=snapshot.source,
+            legacy_response_text=snapshot.response_text,
+            legacy_next_query=snapshot.next_query,
+            legacy_commit_attempted=snapshot.memory_commit_attempted,
+            legacy_accepted_count=snapshot.memory_commit_accepted_count,
+            legacy_rejected_count=snapshot.memory_commit_rejected_count,
+            legacy_last_memory_update_done=snapshot.last_memory_update_done,
+            switch_value="compiler",
+        )
+
+        diag = decision.diagnostic
+        assert diag.branch == "board_memory.memory_checkpoint_only"
+        assert diag.switch_value == "compiler"
+        assert diag.candidate_available is True
+        assert diag.commit_attempted_agreement is True
+        assert diag.accepted_count_agreement is True
+        assert diag.rejected_count_agreement is True
+        assert diag.handled_agreement is True
+        assert diag.reason_agreement is True
+        assert diag.source_agreement is True
+        assert diag.next_query_agreement is True
+        assert diag.state_flags_agreement is True
+        assert diag.commit_equivalent is True
+        assert diag.fallback_used is False
+        assert diag.behavior_changed is False
+        assert diag.authority_source == "compiler"
+        assert diag.selected_by_switch is True
+
+    def test_resolver_fails_commit_equivalence_on_count_mismatch(self):
+        response = "<memory_update_done />"
+        mock_agent = SimpleNamespace(state=SimpleNamespace(), memory_board_engine=MagicMock(), log=None)
+        mock_prompt_builder = SimpleNamespace(_current_active_intent_id=MagicMock(return_value="intent_123"))
+        mock_board_result = SimpleNamespace(parsed_count=1, accepted_count=2, rejected_count=0, clean_text="")
+        mock_agent.memory_board_engine.apply_response_text.return_value = mock_board_result
+        real_handler = MemoryBoardStageHandler(mock_agent, mock_prompt_builder)
+        harness, state, outcome, snapshot = _run_commit_equivalence_harness(
+            response, memory_board_stage=real_handler
+        )
+
+        decision = resolve_memory_checkpoint_only_commit_authority(
+            semantic_result=state.board_checkpoint_semantic_result,
+            legacy_branch=snapshot.branch,
+            legacy_handled=snapshot.handled,
+            legacy_reason=snapshot.reason,
+            legacy_source=snapshot.source,
+            legacy_response_text=snapshot.response_text,
+            legacy_next_query=snapshot.next_query,
+            legacy_commit_attempted=snapshot.memory_commit_attempted,
+            legacy_accepted_count=snapshot.memory_commit_accepted_count,
+            legacy_rejected_count=snapshot.memory_commit_rejected_count,
+            legacy_last_memory_update_done=snapshot.last_memory_update_done,
+            switch_value="compiler",
+        )
+
+        diag = decision.diagnostic
+        assert diag.authority_source == "legacy_fallback"
+        assert diag.commit_equivalent is False
+        assert diag.accepted_count_agreement is False

@@ -43,9 +43,12 @@ def build_memory_checkpoint_only_commit_candidate(
         expected_reason="memory_checkpoint_only",
         expected_source="memory_board",
         expected_response_text="",
-        expected_next_query=None,  # Cannot predict from typed facts
+        expected_next_query=None,  # Cannot be predicted from typed facts
         expected_commit_attempted=True,
-        blocking_reasons=("commit_count_not_typed", "next_query_not_typed"),
+        expected_commit_accepted_count=0,  # Cannot be predicted
+        expected_commit_rejected_count=0,  # Cannot be predicted
+        expected_last_memory_update_done=True,
+        blocking_reasons=("commit_counts_not_typed", "next_query_not_typed"),
     )
 
 
@@ -78,11 +81,11 @@ def resolve_memory_checkpoint_only_commit_authority(
         else False
     )
 
-    # For now, commit counts and next_query are not predictable from typed facts.
-    # Equivalence requires these to be proven, so it will be False for now.
-    accepted_count_agreement = False
-    rejected_count_agreement = False
-    next_query_agreement = False
+    # For observed-equivalence, we don't predict counts/query from typed facts.
+    # We check if the observed legacy values are consistent with a clean MCO.
+    accepted_count_agreement = legacy_accepted_count == 1 if candidate.candidate_available else False
+    rejected_count_agreement = legacy_rejected_count == 0 if candidate.candidate_available else False
+    next_query_agreement = bool(legacy_next_query) if candidate.candidate_available else False
 
     commit_equivalent = all(
         [

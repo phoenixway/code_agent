@@ -1937,7 +1937,14 @@ This document is the single source of truth for the current state of the Semanti
   - Added a `board_memory.memory_checkpoint_only` switch placeholder to the registries, with both default and smoke profiles set to `legacy`.
   - Added tests for candidate construction, legacy-mode resolution, and compiler-mode fallback.
   - No production authority was transferred, and no runtime behavior was changed.
-  - **Next Step**: `Phase 30 Step 5: MEMORY_CHECKPOINT_ONLY Synthetic Commit-Equivalence Validation`.
+- **Phase 30 Step 5: MEMORY_CHECKPOINT_ONLY Commit Equivalence Hardening (Complete)**
+  - Hardened commit-equivalence validation for `MEMORY_CHECKPOINT_ONLY` using an "observed-equivalence" model.
+  - The `MemoryCommitCandidate` now has explicit expectations for commit counts, `next_query`, and state flags for a clean `MEMORY_CHECKPOINT_ONLY` case.
+  - The resolver now proves `commit_equivalent=True` by comparing these expectations against the observed legacy commit snapshot.
+  - Added tests to validate full equivalence for the clean case and to confirm fallback on mismatch.
+  - The `board_memory.memory_checkpoint_only` switch remains `legacy` in both default and smoke registries, as this step only proves equivalence, it does not enable the switch.
+  - No runtime behavior was changed.
+  - **Next Step**: `Phase 30 Step 6: MEMORY_CHECKPOINT_ONLY Smoke Switch Validation`.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 

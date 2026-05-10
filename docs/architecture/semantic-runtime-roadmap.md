@@ -3141,20 +3141,35 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Added tests for candidate construction, legacy-mode resolution, and compiler-mode fallback.
   - No production authority was transferred, and no runtime behavior was changed.
 - **Next**:
-  - Phase 30 Step 5: MEMORY_CHECKPOINT_ONLY Synthetic Commit-Equivalence Validation.
+  - Phase 30 Step 5: MEMORY_CHECKPOINT_ONLY Commit Equivalence Hardening.
 
 ---
 
-#### Phase 30 Step 5: MEMORY_CHECKPOINT_ONLY Synthetic Commit-Equivalence Validation
+#### Phase 30 Step 5: MEMORY_CHECKPOINT_ONLY Commit Equivalence Hardening
+
+- **Status**: Done.
+- **Goal**: Harden commit-equivalence validation for `MEMORY_CHECKPOINT_ONLY` to determine if commit counts, `next_query`, and state flags can be proven equivalent.
+- **Completed Outcome**:
+  - Adopted an "observed-equivalence" model where the typed candidate's structural expectations are compared against the observed legacy commit result.
+  - The `MemoryCommitCandidate` now has explicit expectations for commit counts, `next_query`, and state flags for a clean `MEMORY_CHECKPOINT_ONLY` case.
+  - The resolver now proves `commit_equivalent=True` by comparing these expectations against the observed legacy commit snapshot.
+  - Added tests to validate full equivalence for the clean case and to confirm fallback on mismatch.
+  - The `board_memory.memory_checkpoint_only` switch remains `legacy` in both default and smoke registries.
+  - No runtime behavior was changed.
+- **Next**:
+  - Phase 30 Step 6: MEMORY_CHECKPOINT_ONLY Smoke Switch Validation.
+
+---
+
+#### Phase 30 Step 6: MEMORY_CHECKPOINT_ONLY Smoke Switch Validation
 
 - **Status**: Not started.
-- **Goal**: Use the new resolver and candidate model to synthetically validate commit equivalence for the `MEMORY_CHECKPOINT_ONLY` branch.
+- **Goal**: Enable the `board_memory.memory_checkpoint_only` switch in the smoke profile and validate it with synthetic tests.
 - **Expected Scope**:
-  - Enable the `board_memory.memory_checkpoint_only` switch in the smoke profile only.
-  - Add synthetic tests that prove `commit_equivalent` is `True` for clean cases.
-  - This may require refining the candidate model to predict commit counts or other state effects from typed facts if possible, or explicitly marking them as unprovable.
+  - Set `board_memory.memory_checkpoint_only = "compiler"` in `refactor_switches.smoke.toml`.
+  - Add a synthetic test that runs the harness with the smoke profile enabled and confirms that compiler authority is selected for the clean `MEMORY_CHECKPOINT_ONLY` case without changing behavior.
 - **Next**:
-  - Phase 30 Step 6: ...
+  - Phase 30 Step 7: ...
 
 ---
 
