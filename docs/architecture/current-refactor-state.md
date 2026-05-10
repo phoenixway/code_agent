@@ -1972,7 +1972,14 @@ This document is the single source of truth for the current state of the Semanti
   - Synthetic tests in `tests/test_board_memory_commit_equivalence.py` were updated to reflect this live-faithful behavior.
   - Content-bearing memory update authority remains out of scope/deferred until its real protocol syntax and typed classification are identified.
   - No runtime behavior was changed.
-  - **Next Step**: Re-run live smoke validation or close the slice.
+- **Phase 30 — Step 12/12: MEMORY_CHECKPOINT_ONLY Closure / Remaining Board-Memory Branch Selection (Complete)**
+  - The `MEMORY_CHECKPOINT_ONLY` slice is now closed.
+  - A second live smoke run was not required, as the synthetic reconciliation in Step 11 was sufficient to align the model with observed live behavior.
+  - The branch now has: real-handler snapshot coverage, a candidate/resolver model, an observed-equivalence model, runtime diagnostic integration, state-field hardening, a smoke-only compiler switch, synthetic smoke validation, and live semantics reconciliation.
+  - All tests are green.
+  - The default registry remains `legacy`, and the smoke registry keeps `board_memory.memory_checkpoint_only = "compiler"`.
+  - No production behavior was changed.
+  - **Next Phase**: `Phase 31 — Step 1/?: MEMORY_CHECKPOINT_WITH_TEXT Commit Policy Inventory / Harness Plan`.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 

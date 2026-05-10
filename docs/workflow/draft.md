@@ -181,4 +181,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 177. Phase 30 Step 9: done. Hardened runtime diagnostic extraction for real handler state fields. Diagnostic-only change. No runtime behavior changed.
 178. Phase 30 Step 10: done. Live smoke for MCO was run. It was NOT a pass. `commit_equivalent` was false due to a mismatch between synthetic expectations and real handler behavior for marker-only checkpoints.
 179. Phase 30 Step 11: done. Reconciled synthetic equivalence model with live `MemoryBoardStageHandler` behavior for marker-only checkpoints (`accepted_count=0`). Content-bearing MCO tests were removed as invalid. No runtime behavior changed.
-180. Next: Phase 30 Step 12: MEMORY_CHECKPOINT_ONLY Closure / Remaining Board-Memory Branch Selection.
+180. Phase 30 — Step 12/12: done. Closed the `MEMORY_CHECKPOINT_ONLY` slice. A second live smoke run was not required. The next branch is `MEMORY_CHECKPOINT_WITH_TEXT`. No runtime behavior changed.
+181. Next: Phase 31 — Step 1/?: MEMORY_CHECKPOINT_WITH_TEXT Commit Policy Inventory / Harness Plan.

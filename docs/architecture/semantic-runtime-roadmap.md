@@ -3243,15 +3243,50 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
-#### Phase 30 Step 12: MEMORY_CHECKPOINT_ONLY Closure / Remaining Board-Memory Branch Selection
+#### Phase 30 — Step 12/12: MEMORY_CHECKPOINT_ONLY Closure / Remaining Board-Memory Branch Selection
+
+- **Status**: Done.
+- **Goal**: Close the `MEMORY_CHECKPOINT_ONLY` slice and select the next board/memory branch.
+- **Completed Outcome**:
+  - The `MEMORY_CHECKPOINT_ONLY` slice is now closed.
+  - A second live smoke run was not required, as the synthetic reconciliation in Step 11 was sufficient to align the model with observed live behavior.
+  - The branch now has: real-handler snapshot coverage, a candidate/resolver model, an observed-equivalence model, runtime diagnostic integration, state-field hardening, a smoke-only compiler switch, synthetic smoke validation, and live semantics reconciliation.
+  - All tests are green.
+  - The default registry remains `legacy`, and the smoke registry keeps `board_memory.memory_checkpoint_only = "compiler"`.
+  - No production behavior was changed.
+- **Next**:
+  - Phase 31 — Step 1/?: MEMORY_CHECKPOINT_WITH_TEXT Commit Policy Inventory / Harness Plan.
+
+---
+
+### Phase 31: Board/Memory Commit Policy (MEMORY_CHECKPOINT_WITH_TEXT)
 
 - **Status**: Not started.
-- **Goal**: Close the `MEMORY_CHECKPOINT_ONLY` slice and select the next board/memory branch.
+- **Goal**: Extend the commit-equivalence model to the `MEMORY_CHECKPOINT_WITH_TEXT` branch.
+- **Allowed**:
+  - Inventory `MEMORY_CHECKPOINT_WITH_TEXT` commit paths.
+  - Design and implement synthetic harness coverage.
+  - Define a candidate/resolver model.
+- **Forbidden**:
+  - Behavior changes.
+  - Production authority flips.
+  - Memory commit behavior changes.
+  - Board handler behavior changes.
+  - Dispatch/action behavior changes.
+- **Done When**:
+  - The `MEMORY_CHECKPOINT_WITH_TEXT` branch is smoke-validated with compiler authority.
+
+---
+
+#### Phase 31 — Step 1/?: MEMORY_CHECKPOINT_WITH_TEXT Commit Policy Inventory / Harness Plan
+
+- **Status**: Not started.
+- **Goal**: Inventory current `MEMORY_CHECKPOINT_WITH_TEXT` commit paths and design a synthetic commit-equivalence harness.
 - **Expected Scope**:
-  - Re-run live smoke validation for `MEMORY_CHECKPOINT_ONLY` to confirm the fix.
-  - If it passes, document the closure and select the next branch (`MEMORY_CHECKPOINT_WITH_TEXT`).
+  - Document the legacy handler behavior for this branch.
+  - Extend the commit-equivalence harness to capture `MEMORY_CHECKPOINT_WITH_TEXT` snapshots.
 - **Next**:
-  - Phase 30 Step 13: ...
+  - Phase 31 Step 2: ...
 
 ---
 
