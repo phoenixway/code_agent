@@ -3255,7 +3255,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - The default registry remains `legacy`, and the smoke registry keeps `board_memory.memory_checkpoint_only = "compiler"`.
   - No production behavior was changed.
 - **Next**:
-  - Phase 31 — Step 1/?: MEMORY_CHECKPOINT_WITH_TEXT Commit Policy Inventory / Harness Plan.
+  - Phase 31 — Step 1/10: MEMORY_CHECKPOINT_WITH_TEXT Commit Policy Inventory / Harness Plan.
 
 ---
 
@@ -3278,15 +3278,31 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
-#### Phase 31 — Step 1/?: MEMORY_CHECKPOINT_WITH_TEXT Commit Policy Inventory / Harness Plan
+#### Phase 31 — Step 1/10: MEMORY_CHECKPOINT_WITH_TEXT Commit Policy Inventory / Harness Plan
+
+- **Status**: Done.
+- **Goal**: Inventory current `MEMORY_CHECKPOINT_WITH_TEXT` commit paths and design a synthetic commit-equivalence harness.
+- **Completed Outcome**:
+  - **Inventory**:
+    - **Owner**: `MemoryBoardStageHandler` owns the initial detection.
+    - **Behavior**: It detects `<memory_update_done />` and visible text, strips the marker, and passes the remaining text to the next pipeline stage for final-answer evaluation.
+    - **Commit Semantics**: For a marker-only response with text, `accepted_count` is `0`. `last_memory_update_done` is set to `True`.
+    - **Blockers**: The primary blocker is ensuring that any future compiler-driven path perfectly preserves the visible text and the `handled=False` pass-through behavior that allows the final-answer path to continue.
+  - **Harness Plan**: The commit-equivalence harness will be extended to capture `MEMORY_CHECKPOINT_WITH_TEXT` snapshots, asserting that visible text is preserved and the pipeline continues correctly.
+- **Next**:
+  - Phase 31 — Step 2/10: MEMORY_CHECKPOINT_WITH_TEXT Synthetic Commit-Equivalence Harness.
+
+---
+
+#### Phase 31 — Step 2/10: MEMORY_CHECKPOINT_WITH_TEXT Synthetic Commit-Equivalence Harness
 
 - **Status**: Not started.
-- **Goal**: Inventory current `MEMORY_CHECKPOINT_WITH_TEXT` commit paths and design a synthetic commit-equivalence harness.
+- **Goal**: Implement the synthetic commit-equivalence harness for the `MEMORY_CHECKPOINT_WITH_TEXT` branch.
 - **Expected Scope**:
-  - Document the legacy handler behavior for this branch.
-  - Extend the commit-equivalence harness to capture `MEMORY_CHECKPOINT_WITH_TEXT` snapshots.
+  - Extend `tests/test_board_memory_commit_equivalence.py` with a snapshot test for `MEMORY_CHECKPOINT_WITH_TEXT`.
+  - The test will use the real `MemoryBoardStageHandler` and assert that visible text is preserved and the pipeline continues to post-classification stages.
 - **Next**:
-  - Phase 31 Step 2: ...
+  - Phase 31 — Step 3/10: ...
 
 ---
 

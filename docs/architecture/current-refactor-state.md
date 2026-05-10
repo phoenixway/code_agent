@@ -1979,7 +1979,16 @@ This document is the single source of truth for the current state of the Semanti
   - All tests are green.
   - The default registry remains `legacy`, and the smoke registry keeps `board_memory.memory_checkpoint_only = "compiler"`.
   - No production behavior was changed.
-  - **Next Phase**: `Phase 31 — Step 1/?: MEMORY_CHECKPOINT_WITH_TEXT Commit Policy Inventory / Harness Plan`.
+  - **Next Phase**: `Phase 31 — Step 1/10: MEMORY_CHECKPOINT_WITH_TEXT Commit Policy Inventory / Harness Plan`.
+- **Phase 31 — Step 1/10: MEMORY_CHECKPOINT_WITH_TEXT Commit Policy Inventory / Harness Plan (Complete)**
+  - **Inventory Outcome**:
+    - **Owner**: `MemoryBoardStageHandler` owns the initial detection of `MEMORY_CHECKPOINT_WITH_TEXT`.
+    - **Behavior**: It detects `<memory_update_done />` and visible text, strips the marker, and passes the remaining text to the next pipeline stage for final-answer evaluation.
+    - **Commit Semantics**: For a marker-only response with text, `accepted_count` is `0`. `last_memory_update_done` is set to `True`.
+    - **Blockers**: The primary blocker is ensuring that any future compiler-driven path perfectly preserves the visible text and the `handled=False` pass-through behavior that allows the final-answer path to continue.
+  - **Harness Plan**: The commit-equivalence harness will be extended to capture `MEMORY_CHECKPOINT_WITH_TEXT` snapshots, asserting that visible text is preserved and the pipeline continues correctly.
+  - **Boundary**: This was a docs-only inventory and planning step. No runtime behavior was changed.
+  - **Next Step**: `Phase 31 — Step 2/10: MEMORY_CHECKPOINT_WITH_TEXT Synthetic Commit-Equivalence Harness`.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 
