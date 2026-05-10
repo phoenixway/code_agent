@@ -18,4 +18,4 @@ checkpoint_with_visible_text = "legacy"
 plan_first_single_action = "legacy"
 
 [recovery]
-compiler_invalid_kind_mapping = "legacy"
+compiler_invalid_kind_mapping = "compiler"

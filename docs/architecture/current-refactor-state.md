@@ -4,9 +4,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 29 Step 4: Recovery Authority Candidate Design
+- **Phase**: Phase 29 Step 6: Recovery Compiler Invalid Mapping Closure / Next Recovery Branch Selection
 - **Status**: Complete.
-- **Next Step**: Phase 29 Step 5: Recovery Compiler Invalid Mapping Switch + Synthetic Validation.
+- **Next Step**: Phase 29 Step 7: Recovery Prevalidation Reject-Invalid-Output Authority Candidate.
 - **Boundary**: The checkpoint parity bridge remains diagnostic-only. Legacy board handlers still own commit behavior, the prepass compiler analysis remains observational, and `_apply_compiler_diagnosis` remains the effectful classification-stage path that recomputes on normalized response.
 
 ## Step 4I Parity Matrix
@@ -1608,6 +1608,60 @@ This document is the single source of truth for the current state of the Semanti
     - default registry remains `legacy`
   - Recommended next step:
     - `Phase 29 Step 5: Recovery Compiler Invalid Mapping Switch + Synthetic Validation`
+- **Phase 29 Step 5: Recovery Compiler Invalid Mapping Switch + Synthetic Validation (Complete)**
+  - Enabled the smoke-profile switch:
+    - `recovery.compiler_invalid_kind_mapping = "compiler"` in [refactor_switches.smoke.toml](/home/romankozak/studio/public/it/angelica-ai/modules/agent/orchestration/config/refactor_switches.smoke.toml)
+  - Kept the default registry at:
+    - `recovery.compiler_invalid_kind_mapping = "legacy"`
+  - Clarified resolver semantics in [recovery_authority.py](/home/romankozak/studio/public/it/angelica-ai/modules/agent/orchestration/responses/recovery_authority.py):
+    - `authority_source` now reflects switch-controlled authority selection
+    - `effective_source` records where the unchanged effective invalid kind came from
+    - `selected_by_switch` makes it explicit when smoke compiler mode actually selected the branch
+  - Added behavior-preserving compiler mapping coverage for `E_MEMORY_TAG_INSIDE_THINK` by mapping it to the current effective invalid kind `malformed_incomplete_think`.
+  - Synthetic smoke validation passed for:
+    - unclosed think
+    - memory tag inside think
+    - checkpoint/subgoal tag inside think
+    - malformed action JSON
+    - mixed visible answer plus invalid protocol
+    - plain-think-prefix exception fallback
+    - action-only and clean-plaintext controls
+  - Fallback behavior remains preserved on conflicts and exceptions:
+    - malformed action conflict stays on legacy/current behavior
+    - plain-think-prefix exception stays on fallback/current behavior
+  - Boundary:
+    - no runtime behavior changed
+    - no recovery routing or prompt-selection behavior changed
+    - default registry remains `legacy`
+    - no production behavior changed
+  - Recommended next step:
+    - `Phase 29 Step 6: Recovery Compiler Invalid Mapping Closure / Next Recovery Branch Selection`
+- **Phase 29 Step 6: Recovery Compiler Invalid Mapping Closure / Next Recovery Branch Selection (Complete)**
+  - Closed the `recovery.compiler_invalid_kind_mapping` smoke-profile authority slice.
+  - Validated under smoke profile:
+    - central resolver/accessor
+    - default legacy switch
+    - smoke compiler switch
+    - synthetic matrix coverage
+    - conflict fallback tests
+    - behavior-preserving `effective_invalid_kind` outcomes
+  - Explicitly recorded behavior-preserving compiler coverage:
+    - `E_MEMORY_TAG_INSIDE_THINK -> malformed_incomplete_think`
+    - this was added to cover an already-current effective invalid-kind outcome, not to change runtime behavior
+  - Boundary:
+    - default registry remains `legacy`
+    - smoke compiler switch remains enabled only in the smoke profile
+    - no production authority flip happened
+    - no recovery routing or prompt-selection behavior changed
+  - Next recovery branch decision:
+    - selected `recovery.prevalidation_reject_invalid_output`
+  - Rationale:
+    - it is the strongest architecture continuation from the Step 29.2/29.3 diagnostics work
+    - it already has observational diagnostics and sits directly at recovery action selection
+    - it is lower-risk than jumping straight into the safety-sensitive leaked-system-result branch, while still advancing the actual recovery authority boundary instead of staying in pure invalid-kind mapping
+    - it is a better immediate progression target than stateful retry/guard branches, which need heavier harness/state modeling
+  - Recommended next step:
+    - `Phase 29 Step 7: Recovery Prevalidation Reject-Invalid-Output Authority Candidate`
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 

@@ -25,6 +25,7 @@ COMPILER_INVALID_KIND_BY_CODE = {
     "E_ACTION_INSIDE_THINK": "action_inside_think",
     "E_INTENT_INSIDE_THINK": "intent_inside_think",
     "E_FILE_CONTENT_INSIDE_THINK": "file_content_inside_think",
+    "E_MEMORY_TAG_INSIDE_THINK": "malformed_incomplete_think",
     "E_FILE_CONTENT_UNCLOSED": "malformed_incomplete_file_content",
     "E_MIXED_VISIBLE_TEXT_AND_CONTROL": "mixed_visible_text_and_control_protocol",
     "E_FILE_CONTENT_REQUIRES_ACTION": "file_content_must_follow_action",

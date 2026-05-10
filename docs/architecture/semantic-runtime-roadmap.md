@@ -2702,6 +2702,64 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 29 Step 5: Recovery Compiler Invalid Mapping Switch + Synthetic Validation.
 
+#### Phase 29 Step 5: Recovery Compiler Invalid Mapping Switch + Synthetic Validation
+
+- **Status**: Done.
+- **Goal**: Enable the smoke-only switch path for `recovery.compiler_invalid_kind_mapping` and prove it preserves current behavior.
+- **Completed Outcome**:
+  - Enabled smoke-only compiler mode:
+    - `[recovery] compiler_invalid_kind_mapping = "compiler"` in the smoke registry
+  - Kept default production mode:
+    - `[recovery] compiler_invalid_kind_mapping = "legacy"` in the default registry
+  - Clarified diagnostics:
+    - `authority_source` now means switch-controlled authority selection
+    - `effective_source` records whether the unchanged effective invalid kind came from compiler or legacy behavior
+    - `selected_by_switch` records whether smoke compiler mode actually selected the branch
+  - Added behavior-preserving compiler mapping coverage for `E_MEMORY_TAG_INSIDE_THINK` by mapping it to the already-current effective invalid kind `malformed_incomplete_think`.
+  - Synthetic smoke validation passed for:
+    - unclosed think
+    - memory tag inside think
+    - checkpoint/subgoal tag inside think
+    - malformed action JSON
+    - mixed visible answer plus invalid protocol
+    - plain-think-prefix exception fallback
+    - action-only and clean-plaintext controls
+  - Conflict and exception cases still fall back to the current behavior with `behavior_changed=False`.
+  - No runtime behavior changed.
+  - No recovery routing or prompt-selection behavior changed.
+  - Default registry remains `legacy`.
+- **Next**:
+  - Phase 29 Step 6: Recovery Compiler Invalid Mapping Closure / Next Recovery Branch Selection.
+
+#### Phase 29 Step 6: Recovery Compiler Invalid Mapping Closure / Next Recovery Branch Selection
+
+- **Status**: Done.
+- **Goal**: Close the first recovery smoke-authority slice and select the next branch that best advances real recovery authority migration.
+- **Completed Outcome**:
+  - Closed `recovery.compiler_invalid_kind_mapping` as a validated smoke-profile branch.
+  - The branch now has:
+    - central resolver/accessor
+    - default legacy switch
+    - smoke compiler switch
+    - synthetic matrix coverage
+    - conflict fallback tests
+    - behavior-preserving `effective_invalid_kind` outcomes
+  - Explicitly recorded:
+    - `E_MEMORY_TAG_INSIDE_THINK -> malformed_incomplete_think`
+    - this is behavior-preserving compiler coverage for an existing effective outcome, not a behavior change
+  - Default registry remains `legacy`.
+  - Smoke compiler mode remains enabled only in the smoke profile.
+  - No production authority flip happened.
+  - No recovery routing or prompt-selection behavior changed.
+  - Next branch selected:
+    - `recovery.prevalidation_reject_invalid_output`
+  - Selection rationale:
+    - it continues directly from the existing diagnostics and synthetic harness
+    - it owns recovery action selection, which is the next meaningful authority boundary
+    - it provides better risk-adjusted progress than jumping immediately to leaked-system-result or stateful guard branches
+- **Next**:
+  - Phase 29 Step 7: Recovery Prevalidation Reject-Invalid-Output Authority Candidate.
+
 ---
 
 ### Phase 11: RecoveryStrategy Registry Expansion

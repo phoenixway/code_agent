@@ -889,6 +889,8 @@ class ResponsePipelinePrevalidationMixin:
                 branch=diagnostic.branch,
                 switch_value=diagnostic.switch_value,
                 authority_source=diagnostic.authority_source,
+                effective_source=diagnostic.effective_source,
+                selected_by_switch=diagnostic.selected_by_switch,
                 legacy_kind=diagnostic.legacy_kind,
                 compiler_kind=diagnostic.compiler_kind,
                 typed_kind=diagnostic.typed_kind,

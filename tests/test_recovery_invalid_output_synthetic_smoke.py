@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
+from pathlib import Path
 
+from modules.agent.orchestration.config.switch_registry import _load_registry
 from modules.agent.orchestration.parsers.parsing import IntentResponseParser
 from modules.agent.orchestration.protocol.classifier import ProtocolCompiler
 from modules.agent.orchestration.responses.recovery_authority import (
@@ -135,6 +138,25 @@ def _recovery_authority_calls(harness, branch: str):
     ]
 
 
+def _with_smoke_registry():
+    previous = os.environ.get("ANGELICA_REFACTOR_SWITCH_REGISTRY")
+    smoke_path = str(
+        Path(__file__).resolve().parents[1]
+        / "modules/agent/orchestration/config/refactor_switches.smoke.toml"
+    )
+    os.environ["ANGELICA_REFACTOR_SWITCH_REGISTRY"] = smoke_path
+    _load_registry.cache_clear()
+    return previous
+
+
+def _restore_registry(previous: str | None):
+    if previous is None:
+        os.environ.pop("ANGELICA_REFACTOR_SWITCH_REGISTRY", None)
+    else:
+        os.environ["ANGELICA_REFACTOR_SWITCH_REGISTRY"] = previous
+    _load_registry.cache_clear()
+
+
 def _run_full_path_smoke(response: str):
     harness = _RecoverySmokeHarness()
     checkpoint_state = SimpleNamespace(
@@ -154,6 +176,14 @@ def _run_full_path_smoke(response: str):
     ctx = SimpleNamespace(malformed_action_retries=0, audit_marker_retries=0, state_machine=None)
     outcome = asyncio.run(harness._run_post_classification_stage(ctx, step, checkpoint_state, classified))
     return harness, classified, outcome
+
+
+def _run_full_path_smoke_with_smoke_registry(response: str):
+    previous = _with_smoke_registry()
+    try:
+        return _run_full_path_smoke(response)
+    finally:
+        _restore_registry(previous)
 
 
 def _run_full_path_smoke_with_harness(harness, response: str):
@@ -190,6 +220,14 @@ def _run_intent_prevalidation_smoke(response: str, *, mode: str = "activate"):
     return harness, outcome
 
 
+def _run_intent_prevalidation_smoke_with_smoke_registry(response: str, *, mode: str = "activate"):
+    previous = _with_smoke_registry()
+    try:
+        return _run_intent_prevalidation_smoke(response, mode=mode)
+    finally:
+        _restore_registry(previous)
+
+
 def test_unclosed_think_logs_invalid_mapping_and_preserves_recovery_behavior():
     harness, classified, outcome = _run_full_path_smoke("<think>\nI am still thinking")
 
@@ -200,7 +238,9 @@ def test_unclosed_think_logs_invalid_mapping_and_preserves_recovery_behavior():
     assert outcome.reason == "malformed_incomplete_think"
     diagnostic = _recovery_authority_calls(harness, "recovery.compiler_invalid_kind_mapping")[-1].kwargs
     assert diagnostic["switch_value"] == "legacy"
-    assert diagnostic["authority_source"] == "compiler"
+    assert diagnostic["authority_source"] == "legacy"
+    assert diagnostic["effective_source"] == "compiler"
+    assert diagnostic["selected_by_switch"] is False
     assert diagnostic["effective_invalid_kind"] == "malformed_incomplete_think"
     assert diagnostic["behavior_changed"] is False
     assert diagnostic["branch_active"] is True
@@ -399,7 +439,9 @@ def test_compiler_invalid_mapping_resolver_selects_compiler_when_mapping_matches
     )
 
     assert diagnostic.switch_value == "legacy"
-    assert diagnostic.authority_source == "compiler"
+    assert diagnostic.authority_source == "legacy"
+    assert diagnostic.effective_source == "compiler"
+    assert diagnostic.selected_by_switch is False
     assert diagnostic.effective_invalid_kind == "malformed_incomplete_think"
     assert diagnostic.behavior_changed is False
 
@@ -422,7 +464,9 @@ def test_compiler_invalid_mapping_resolver_preserves_legacy_on_conflict():
         parsed_action_count=0,
     )
 
-    assert diagnostic.authority_source == "legacy_fallback"
+    assert diagnostic.authority_source == "legacy"
+    assert diagnostic.effective_source == "legacy"
+    assert diagnostic.selected_by_switch is False
     assert diagnostic.effective_invalid_kind == "malformed_action"
     assert "effective_invalid_kind_differs_from_compiler_kind" in diagnostic.blocking_reasons
     assert "legacy_compiler_mismatch" in diagnostic.blocking_reasons
@@ -449,5 +493,195 @@ def test_compiler_invalid_mapping_resolver_honors_plain_think_prefix_exception()
     )
 
     assert diagnostic.authority_source == "legacy_fallback"
+    assert diagnostic.effective_source == "none"
+    assert diagnostic.selected_by_switch is False
     assert diagnostic.effective_invalid_kind == ""
     assert "plain_think_prefix_exception" in diagnostic.blocking_reasons
+
+
+def test_compiler_invalid_mapping_resolver_compiler_mode_selects_compiler_when_safe():
+    parsed_output = SimpleNamespace(
+        compiler_error_code="E_UNCLOSED_THINK",
+        compiler_ir=None,
+        terminal_answer_semantic_result=None,
+        visible_text="",
+        has_action_segment=False,
+    )
+
+    diagnostic = resolve_compiler_invalid_kind_mapping_authority(
+        parsed_output,
+        compiler_kind="malformed_incomplete_think",
+        legacy_kind="",
+        switch_value="compiler",
+        compiler_driven_invalid_kinds=_RecoverySmokeHarness.COMPILER_DRIVEN_INVALID_KINDS,
+        parsed_action_count=0,
+    )
+
+    assert diagnostic.switch_value == "compiler"
+    assert diagnostic.authority_source == "compiler"
+    assert diagnostic.effective_source == "compiler"
+    assert diagnostic.selected_by_switch is True
+    assert diagnostic.fallback_used is False
+    assert diagnostic.behavior_changed is False
+
+
+def test_compiler_invalid_mapping_resolver_compiler_mode_falls_back_on_invalid_switch_value():
+    parsed_output = SimpleNamespace(
+        compiler_error_code="",
+        compiler_ir=None,
+        terminal_answer_semantic_result=None,
+        visible_text="",
+        has_action_segment=False,
+    )
+
+    diagnostic = resolve_compiler_invalid_kind_mapping_authority(
+        parsed_output,
+        compiler_kind="",
+        legacy_kind="",
+        switch_value="unexpected",
+        compiler_driven_invalid_kinds=_RecoverySmokeHarness.COMPILER_DRIVEN_INVALID_KINDS,
+        parsed_action_count=0,
+    )
+
+    assert diagnostic.switch_value == "legacy"
+    assert diagnostic.authority_source == "legacy_fallback"
+    assert diagnostic.effective_source == "none"
+    assert diagnostic.selected_by_switch is False
+    assert diagnostic.branch_active is False
+
+
+def test_compiler_invalid_mapping_resolver_compiler_mode_falls_back_on_legacy_conflict():
+    parsed_output = SimpleNamespace(
+        compiler_error_code="E_ACTION_PAYLOAD_NOT_OBJECT",
+        compiler_ir=None,
+        terminal_answer_semantic_result=None,
+        visible_text="",
+        has_action_segment=False,
+    )
+
+    diagnostic = resolve_compiler_invalid_kind_mapping_authority(
+        parsed_output,
+        compiler_kind="action_payload_not_object",
+        legacy_kind="malformed_action",
+        switch_value="compiler",
+        compiler_driven_invalid_kinds=_RecoverySmokeHarness.COMPILER_DRIVEN_INVALID_KINDS,
+        parsed_action_count=0,
+    )
+
+    assert diagnostic.switch_value == "compiler"
+    assert diagnostic.authority_source == "legacy_fallback"
+    assert diagnostic.effective_source == "legacy"
+    assert diagnostic.selected_by_switch is False
+    assert diagnostic.fallback_used is True
+    assert diagnostic.effective_invalid_kind == "malformed_action"
+
+
+def test_smoke_registry_unclosed_think_selects_compiler_without_behavior_change():
+    harness, classified, outcome = _run_full_path_smoke_with_smoke_registry("<think>\nI am still thinking")
+
+    assert classified.parsed_output.invalid_kind == "malformed_incomplete_think"
+    assert outcome.reason == "malformed_incomplete_think"
+    diagnostic = _recovery_authority_calls(harness, "recovery.compiler_invalid_kind_mapping")[-1].kwargs
+    assert diagnostic["switch_value"] == "compiler"
+    assert diagnostic["authority_source"] == "compiler"
+    assert diagnostic["effective_source"] == "compiler"
+    assert diagnostic["selected_by_switch"] is True
+    assert diagnostic["behavior_changed"] is False
+
+
+def test_smoke_registry_memory_tag_inside_think_selects_compiler_without_behavior_change():
+    harness, classified, outcome = _run_full_path_smoke_with_smoke_registry("<think>\n<memory_update_done />")
+
+    assert classified.parsed_output.invalid_kind == "malformed_incomplete_think"
+    assert outcome.continue_loop is True
+    diagnostic = _recovery_authority_calls(harness, "recovery.compiler_invalid_kind_mapping")[-1].kwargs
+    assert diagnostic["switch_value"] == "compiler"
+    assert diagnostic["authority_source"] == "compiler"
+    assert diagnostic["effective_invalid_kind"] == "malformed_incomplete_think"
+    assert diagnostic["has_checkpoint"] is False
+    assert diagnostic["behavior_changed"] is False
+
+
+def test_smoke_registry_checkpoint_tag_inside_think_selects_compiler_without_behavior_change():
+    harness, classified, outcome = _run_full_path_smoke_with_smoke_registry('<think>\n<subgoal action="mark_in_progress" id="sg_1" />')
+
+    assert classified.parsed_output.invalid_kind == "malformed_incomplete_think"
+    assert outcome.continue_loop is True
+    diagnostic = _recovery_authority_calls(harness, "recovery.compiler_invalid_kind_mapping")[-1].kwargs
+    assert diagnostic["switch_value"] == "compiler"
+    assert diagnostic["authority_source"] == "compiler"
+    assert diagnostic["effective_invalid_kind"] == "malformed_incomplete_think"
+    assert diagnostic["behavior_changed"] is False
+
+
+def test_smoke_registry_malformed_action_json_preserves_recovery_behavior():
+    harness, outcome = _run_intent_prevalidation_smoke_with_smoke_registry('<action>{"type":"read_file","path":</action>')
+
+    assert outcome.continue_loop is True
+    diagnostic = _recovery_authority_calls(harness, "recovery.prevalidation_reject_invalid_output")[-1].kwargs
+    assert diagnostic["switch_value"] == "legacy"
+    assert diagnostic["effective_invalid_kind"] == "malformed_action"
+    assert diagnostic["behavior_changed"] is False
+
+
+def test_smoke_registry_mixed_visible_answer_and_invalid_protocol_preserves_behavior():
+    harness, classified, outcome = _run_full_path_smoke_with_smoke_registry("Done.\n<think>\nstill thinking")
+
+    assert classified.parsed_output.invalid_kind == "malformed_incomplete_think"
+    assert outcome.reason == "malformed_incomplete_think"
+    diagnostic = _recovery_authority_calls(harness, "recovery.compiler_invalid_kind_mapping")[-1].kwargs
+    assert diagnostic["switch_value"] == "compiler"
+    assert diagnostic["authority_source"] == "compiler"
+    assert diagnostic["behavior_changed"] is False
+
+
+def test_smoke_registry_plain_think_prefix_exception_falls_back_without_behavior_change():
+    parsed_output = SimpleNamespace(
+        compiler_error_code="E_MIXED_VISIBLE_TEXT_AND_CONTROL",
+        compiler_ir=None,
+        terminal_answer_semantic_result=None,
+        visible_text="",
+        has_action_segment=False,
+    )
+
+    diagnostic = resolve_compiler_invalid_kind_mapping_authority(
+        parsed_output,
+        compiler_kind="mixed_visible_text_and_control_protocol",
+        legacy_kind="",
+        switch_value="compiler",
+        compiler_driven_invalid_kinds=_RecoverySmokeHarness.COMPILER_DRIVEN_INVALID_KINDS,
+        parsed_action_count=0,
+        has_plain_think_prefix=True,
+        apply_plain_think_prefix_exception=True,
+    )
+
+    assert diagnostic.switch_value == "compiler"
+    assert diagnostic.authority_source == "legacy_fallback"
+    assert diagnostic.effective_source == "none"
+    assert diagnostic.selected_by_switch is False
+    assert "plain_think_prefix_exception" in diagnostic.blocking_reasons
+    assert diagnostic.behavior_changed is False
+
+
+def test_smoke_registry_action_only_valid_control_keeps_recovery_branch_inactive():
+    harness, classified, outcome = _run_full_path_smoke_with_smoke_registry('<action>{"type":"read_file","path":"README.md"}</action>')
+
+    assert classified.parsed_action_count == 1
+    assert outcome.reason == "dispatch_ready"
+    diagnostic = _recovery_authority_calls(harness, "recovery.compiler_invalid_kind_mapping")[-1].kwargs
+    assert diagnostic["switch_value"] == "compiler"
+    assert diagnostic["authority_source"] == "legacy_fallback"
+    assert diagnostic["selected_by_switch"] is False
+    assert diagnostic["branch_active"] is False
+
+
+def test_smoke_registry_clean_plaintext_control_keeps_recovery_branch_inactive():
+    harness, classified, outcome = _run_full_path_smoke_with_smoke_registry("Done.")
+
+    assert classified.parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.PLAINTEXT_TERMINAL_ANSWER
+    assert outcome.reason == "dispatch_ready"
+    diagnostic = _recovery_authority_calls(harness, "recovery.compiler_invalid_kind_mapping")[-1].kwargs
+    assert diagnostic["switch_value"] == "compiler"
+    assert diagnostic["authority_source"] == "legacy_fallback"
+    assert diagnostic["selected_by_switch"] is False
+    assert diagnostic["branch_active"] is False

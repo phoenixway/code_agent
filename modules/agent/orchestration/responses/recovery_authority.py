@@ -13,6 +13,8 @@ class RecoveryAuthorityDiagnostic:
     branch: str = ""
     switch_value: str = "legacy"
     authority_source: str = "legacy"
+    effective_source: str = "legacy"
+    selected_by_switch: bool = False
     legacy_kind: str = ""
     compiler_kind: str = ""
     typed_kind: str = ""
@@ -124,6 +126,7 @@ def resolve_compiler_invalid_kind_mapping_authority(
     if has_plain_think_prefix:
         blocking_reasons.append("plain_think_prefix_exception")
     compiler_eligible = bool(normalized_compiler_kind)
+    plain_think_prefix_exception = False
     if compiler_eligible:
         plain_think_prefix_exception = bool(
             apply_plain_think_prefix_exception
@@ -156,24 +159,44 @@ def resolve_compiler_invalid_kind_mapping_authority(
             or normalized_compiler_kind == normalized_legacy_kind
         )
     )
+    compiler_safe_for_switch = bool(
+        compiler_eligible
+        and effective_invalid_kind == normalized_compiler_kind
+        and not plain_think_prefix_exception
+        and "legacy_kind_preserved" not in blocking_reasons
+    )
 
     if normalized_compiler_kind and effective_invalid_kind == normalized_compiler_kind:
-        authority_source = "compiler"
-        fallback_used = False
-    elif normalized_compiler_kind and effective_invalid_kind and effective_invalid_kind != normalized_compiler_kind:
-        authority_source = "legacy_fallback"
-        fallback_used = True
+        effective_source = "compiler"
     elif effective_invalid_kind:
-        authority_source = "legacy"
-        fallback_used = False
+        effective_source = "legacy"
     else:
-        authority_source = "legacy_fallback"
-        fallback_used = True
+        effective_source = "none"
+
+    if normalized_switch == "compiler":
+        if compiler_safe_for_switch:
+            authority_source = "compiler"
+            fallback_used = False
+            selected_by_switch = True
+        else:
+            authority_source = "legacy_fallback"
+            fallback_used = True
+            selected_by_switch = False
+    else:
+        if effective_invalid_kind:
+            authority_source = "legacy"
+            fallback_used = False
+        else:
+            authority_source = "legacy_fallback"
+            fallback_used = True
+        selected_by_switch = False
 
     return RecoveryAuthorityDiagnostic(
         branch="recovery.compiler_invalid_kind_mapping",
         switch_value=normalized_switch,
         authority_source=authority_source,
+        effective_source=effective_source,
+        selected_by_switch=selected_by_switch,
         legacy_kind=normalized_legacy_kind,
         compiler_kind=normalized_compiler_kind,
         typed_kind=str(facts["typed_kind"] or ""),
@@ -243,6 +266,8 @@ def build_prevalidation_reject_invalid_output_diagnostic(
         branch="recovery.prevalidation_reject_invalid_output",
         switch_value="legacy",
         authority_source=authority_source,
+        effective_source=authority_source if authority_source in {"legacy", "compiler", "typed", "mixed"} else "legacy",
+        selected_by_switch=False,
         legacy_kind=legacy_kind,
         compiler_kind=compiler_kind,
         typed_kind=str(facts["typed_kind"] or ""),
