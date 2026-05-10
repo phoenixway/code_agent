@@ -9,6 +9,7 @@ from ..parsers.visible_text import sanitize_visible_text_for_user, terminal_plai
 from .bundle_semantic_validator import BundleResultKind, BundleSemanticValidator
 from .protocol_decision_bridge import COMPILER_INVALID_KIND_BY_CODE
 from .recovery_authority import (
+    build_compiler_prevalidation_recovery_decision_candidate,
     build_prevalidation_reject_invalid_output_diagnostic,
     resolve_compiler_invalid_kind_mapping_authority,
     resolve_prevalidation_reject_invalid_output_authority,
@@ -556,9 +557,15 @@ class ResponsePipelinePrevalidationMixin:
             malformed_action_retries=ctx.malformed_action_retries,
             audit_marker_retries=ctx.audit_marker_retries,
         )
+        compiler_decision_candidate = build_compiler_prevalidation_recovery_decision_candidate(
+            effective_invalid_kind=str(getattr(parsed_output, "invalid_kind", "") or ""),
+            malformed_action_retries=int(getattr(ctx, "malformed_action_retries", 0) or 0),
+            audit_marker_retries=int(getattr(ctx, "audit_marker_retries", 0) or 0),
+        )
         authority_resolution = resolve_prevalidation_reject_invalid_output_authority(
             parsed_output,
             legacy_decision=recovery_decision,
+            compiler_decision_candidate=compiler_decision_candidate,
             switch_value=get_switch("recovery.prevalidation_reject_invalid_output"),
             parsed_action_count=parsed_action_count,
             malformed_action_retries=int(getattr(ctx, "malformed_action_retries", 0) or 0),
@@ -905,6 +912,13 @@ class ResponsePipelinePrevalidationMixin:
                 recovery_action=diagnostic.recovery_action,
                 recovery_reason=diagnostic.recovery_reason,
                 recovery_prompt_kind=diagnostic.recovery_prompt_kind,
+                compiler_recovery_action=diagnostic.compiler_recovery_action,
+                compiler_recovery_reason=diagnostic.compiler_recovery_reason,
+                compiler_recovery_prompt_kind=diagnostic.compiler_recovery_prompt_kind,
+                compiler_decision_available=diagnostic.compiler_decision_available,
+                decision_agreement=diagnostic.decision_agreement,
+                prompt_equivalent=diagnostic.prompt_equivalent,
+                candidate_source=diagnostic.candidate_source,
                 blocking_reasons=diagnostic.blocking_reasons,
                 compiler_error_code=diagnostic.compiler_error_code,
                 terminal_answer_kind=diagnostic.terminal_answer_kind,

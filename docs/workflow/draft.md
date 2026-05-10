@@ -161,4 +161,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 157. Phase 29 Step 5: done. Enabled smoke-profile compiler mode for `recovery.compiler_invalid_kind_mapping`, clarified switch-vs-effective-source diagnostics, added behavior-preserving `E_MEMORY_TAG_INSIDE_THINK` mapping, and validated the branch synthetically with preserved fallback behavior.
 158. Phase 29 Step 6: done. Closed the `recovery.compiler_invalid_kind_mapping` smoke slice, kept default authority legacy, retained smoke-only compiler mode, and selected `recovery.prevalidation_reject_invalid_output` as the next recovery authority branch.
 159. Phase 29 Step 7: done. Added `resolve_prevalidation_reject_invalid_output_authority(...)`, routed the prevalidation reject path through its effective decision behavior-preservingly, and added default/smoke-legacy placeholders for the branch.
-160. Next: Phase 29 Step 8: Recovery Prevalidation Reject-Invalid-Output Switch + Synthetic Validation.
+160. Phase 29 Step 8: done. Added a real compiler-side prevalidation recovery decision candidate builder, extended the resolver to compare candidate vs legacy decision shape/prompt equivalence, and deferred smoke switch enablement because candidate coverage is still partial.
+161. Next: Phase 29 Step 9: Recovery Prevalidation Reject-Invalid-Output Smoke Switch Validation.

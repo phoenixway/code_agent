@@ -10,6 +10,7 @@ from modules.agent.orchestration.config.switch_registry import _load_registry
 from modules.agent.orchestration.parsers.parsing import IntentResponseParser
 from modules.agent.orchestration.protocol.classifier import ProtocolCompiler
 from modules.agent.orchestration.responses.recovery_authority import (
+    build_compiler_prevalidation_recovery_decision_candidate,
     resolve_compiler_invalid_kind_mapping_authority,
     resolve_prevalidation_reject_invalid_output_authority,
 )
@@ -261,6 +262,11 @@ def test_malformed_action_json_logs_prevalidation_recovery_diagnostic():
     assert diagnostic["recovery_action"] == "malformed_action"
     assert diagnostic["recovery_reason"] == "malformed_action"
     assert diagnostic["recovery_prompt_kind"] == "output_recovery_query"
+    assert diagnostic["compiler_decision_available"] is True
+    assert diagnostic["compiler_recovery_action"] == "malformed_action"
+    assert diagnostic["compiler_recovery_prompt_kind"] == "malformed_action_strict_recovery_prompt"
+    assert diagnostic["decision_agreement"] is True
+    assert diagnostic["prompt_equivalent"] is True
     assert diagnostic["behavior_changed"] is False
     assert diagnostic["branch_active"] is True
 
@@ -391,6 +397,7 @@ def test_unclosed_think_under_intent_prevalidation_preserves_current_recovery_be
     assert diagnostic["switch_value"] == "legacy"
     assert diagnostic["effective_invalid_kind"] == "malformed_incomplete_think"
     assert diagnostic["recovery_action"] == "malformed_incomplete_think"
+    assert diagnostic["compiler_decision_available"] is False
     assert diagnostic["guard_triggered"] is True
     assert diagnostic["behavior_changed"] is False
 
@@ -404,6 +411,7 @@ def test_memory_tag_inside_think_under_intent_prevalidation_preserves_current_re
     diagnostic = _recovery_authority_calls(harness, "recovery.prevalidation_reject_invalid_output")[-1].kwargs
     assert diagnostic["switch_value"] == "legacy"
     assert diagnostic["effective_invalid_kind"] == "malformed_incomplete_think"
+    assert diagnostic["compiler_decision_available"] is False
     assert diagnostic["has_checkpoint"] is False
     assert diagnostic["behavior_changed"] is False
 
@@ -417,6 +425,7 @@ def test_checkpoint_tag_inside_think_under_intent_prevalidation_preserves_curren
     diagnostic = _recovery_authority_calls(harness, "recovery.prevalidation_reject_invalid_output")[-1].kwargs
     assert diagnostic["switch_value"] == "legacy"
     assert diagnostic["effective_invalid_kind"] == "malformed_incomplete_think"
+    assert diagnostic["compiler_decision_available"] is False
     assert diagnostic["has_checkpoint"] is False
     assert diagnostic["behavior_changed"] is False
 
@@ -431,6 +440,7 @@ def test_mixed_visible_answer_and_invalid_protocol_under_intent_prevalidation_pr
     assert diagnostic["switch_value"] == "legacy"
     assert diagnostic["has_visible_text"] is True
     assert diagnostic["effective_invalid_kind"] == "malformed_incomplete_think"
+    assert diagnostic["compiler_decision_available"] is False
     assert diagnostic["behavior_changed"] is False
 
 
@@ -487,6 +497,30 @@ def test_clean_plaintext_control_does_not_select_recovery_branch():
     assert diagnostic["typed_kind"] == "PLAINTEXT_TERMINAL_ANSWER"
     assert diagnostic["effective_invalid_kind"] == ""
     assert not _recovery_authority_calls(harness, "recovery.prevalidation_reject_invalid_output")
+
+
+def test_compiler_prevalidation_recovery_candidate_exists_for_malformed_action():
+    candidate = build_compiler_prevalidation_recovery_decision_candidate(
+        effective_invalid_kind="malformed_action",
+        malformed_action_retries=0,
+        audit_marker_retries=0,
+    )
+
+    assert candidate is not None
+    assert candidate.continue_loop is True
+    assert candidate.stop_loop is False
+    assert candidate.reason == "malformed_action"
+    assert candidate.recovery_prompt_kind == "malformed_action_strict_recovery_prompt"
+
+
+def test_compiler_prevalidation_recovery_candidate_is_unavailable_for_stateful_malformed_think():
+    candidate = build_compiler_prevalidation_recovery_decision_candidate(
+        effective_invalid_kind="malformed_incomplete_think",
+        malformed_action_retries=0,
+        audit_marker_retries=0,
+    )
+
+    assert candidate is None
 
 
 def test_compiler_invalid_mapping_resolver_selects_compiler_when_mapping_matches_current_behavior():
@@ -668,6 +702,11 @@ def test_prevalidation_reject_resolver_legacy_mode_preserves_current_decision():
     resolution = resolve_prevalidation_reject_invalid_output_authority(
         parsed_output,
         legacy_decision=decision,
+        compiler_decision_candidate=build_compiler_prevalidation_recovery_decision_candidate(
+            effective_invalid_kind="malformed_action",
+            malformed_action_retries=0,
+            audit_marker_retries=0,
+        ),
         switch_value="legacy",
         parsed_action_count=0,
         guard_name="intent_atomicity_guard",
@@ -681,6 +720,9 @@ def test_prevalidation_reject_resolver_legacy_mode_preserves_current_decision():
     assert resolution.diagnostic.effective_source == "legacy"
     assert resolution.diagnostic.selected_by_switch is False
     assert resolution.diagnostic.recovery_action == "malformed_action"
+    assert resolution.diagnostic.compiler_decision_available is True
+    assert resolution.diagnostic.decision_agreement is True
+    assert resolution.diagnostic.prompt_equivalent is True
     assert resolution.diagnostic.behavior_changed is False
 
 
@@ -707,6 +749,7 @@ def test_prevalidation_reject_resolver_invalid_switch_falls_back_to_legacy():
     resolution = resolve_prevalidation_reject_invalid_output_authority(
         parsed_output,
         legacy_decision=decision,
+        compiler_decision_candidate=None,
         switch_value="invalid",
         parsed_action_count=0,
     )
@@ -741,6 +784,7 @@ def test_prevalidation_reject_resolver_compiler_mode_falls_back_without_compiler
     resolution = resolve_prevalidation_reject_invalid_output_authority(
         parsed_output,
         legacy_decision=decision,
+        compiler_decision_candidate=None,
         switch_value="compiler",
         parsed_action_count=0,
     )
@@ -766,6 +810,7 @@ def test_prevalidation_reject_resolver_inactive_when_no_invalid_kind_and_no_deci
     resolution = resolve_prevalidation_reject_invalid_output_authority(
         parsed_output,
         legacy_decision=None,
+        compiler_decision_candidate=None,
         switch_value="legacy",
         parsed_action_count=0,
     )
@@ -774,6 +819,47 @@ def test_prevalidation_reject_resolver_inactive_when_no_invalid_kind_and_no_deci
     assert resolution.diagnostic.branch_active is False
     assert resolution.diagnostic.authority_source == "legacy_fallback"
     assert resolution.diagnostic.behavior_changed is False
+
+
+def test_prevalidation_reject_resolver_compiler_mode_defers_when_candidate_exists_but_prompt_text_is_not_proven():
+    parsed_output = SimpleNamespace(
+        invalid_kind="malformed_action",
+        compiler_error_code="",
+        compiler_ir=None,
+        terminal_answer_semantic_result=None,
+        visible_text="",
+        has_action_segment=False,
+    )
+    decision = SimpleNamespace(
+        handled=True,
+        continue_loop=True,
+        next_query="recover::malformed_action",
+        stop_loop=False,
+        reason="malformed_action",
+        source="output_recovery",
+        malformed_action_retries=1,
+        audit_marker_retries=0,
+    )
+
+    resolution = resolve_prevalidation_reject_invalid_output_authority(
+        parsed_output,
+        legacy_decision=decision,
+        compiler_decision_candidate=build_compiler_prevalidation_recovery_decision_candidate(
+            effective_invalid_kind="malformed_action",
+            malformed_action_retries=0,
+            audit_marker_retries=0,
+        ),
+        switch_value="compiler",
+        parsed_action_count=0,
+    )
+
+    assert resolution.effective_decision is decision
+    assert resolution.diagnostic.switch_value == "compiler"
+    assert resolution.diagnostic.compiler_decision_available is True
+    assert resolution.diagnostic.decision_agreement is True
+    assert resolution.diagnostic.prompt_equivalent is True
+    assert resolution.diagnostic.authority_source == "compiler"
+    assert resolution.diagnostic.selected_by_switch is True
 
 
 def test_smoke_registry_unclosed_think_selects_compiler_without_behavior_change():

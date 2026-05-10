@@ -2794,7 +2794,50 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Default registry remains `legacy`.
   - Smoke registry remains `legacy` for this branch.
 - **Next**:
-  - Phase 29 Step 8: Recovery Prevalidation Reject-Invalid-Output Switch + Synthetic Validation.
+  - Phase 29 Step 8: Recovery Prevalidation Reject-Invalid-Output Compiler Decision Candidate.
+
+#### Phase 29 Step 8: Recovery Prevalidation Reject-Invalid-Output Compiler Decision Candidate
+
+- **Status**: Done.
+- **Goal**: Create a real compiler-side prevalidation recovery decision candidate path before any smoke switch enablement for this branch.
+- **Completed Outcome**:
+  - Added `build_compiler_prevalidation_recovery_decision_candidate(...)` in `recovery_authority.py`.
+  - The branch now has a real compiler-side decision candidate path for a narrow stateless subset of invalid-output recovery cases.
+  - `resolve_prevalidation_reject_invalid_output_authority(...)` now compares:
+    - legacy decision
+    - compiler candidate availability
+    - decision-shape agreement
+    - prompt-equivalence proof
+  - Added decision-candidate diagnostics:
+    - `compiler_recovery_action`
+    - `compiler_recovery_reason`
+    - `compiler_recovery_prompt_kind`
+    - `compiler_decision_available`
+    - `decision_agreement`
+    - `prompt_equivalent`
+    - `candidate_source`
+  - Candidate coverage now includes:
+    - `malformed_action`
+    - `mixed_visible_text_and_control_protocol`
+    - `mixed_intent_transition_and_visible_answer`
+    - `malformed_incomplete_action`
+    - `malformed_incomplete_intent`
+    - `malformed_incomplete_file_content`
+    - `file_content_must_follow_action`
+    - `truncated_internal_response`
+    - `action_payload_array`
+    - `multiple_actions`
+    - `conflicting_intent_transitions`
+    - `intent_complete_with_action_not_allowed`
+  - Stateful or non-provable branches remain candidate-unavailable for now, especially malformed-think repeat-count recovery.
+  - Smoke switch decision:
+    - deferred
+    - the branch now has a real candidate path, but branch-wide smoke compiler authority would still be misleading until the unsupported cases are either modeled or explicitly fenced
+  - No production behavior changed.
+  - Default registry remains `legacy`.
+  - Smoke registry remains `legacy` for this branch.
+- **Next**:
+  - Phase 29 Step 9: Recovery Prevalidation Reject-Invalid-Output Smoke Switch Validation.
 
 ---
 

@@ -4,9 +4,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 29 Step 7: Recovery Prevalidation Reject-Invalid-Output Authority Candidate
+- **Phase**: Phase 29 Step 8: Recovery Prevalidation Reject-Invalid-Output Compiler Decision Candidate
 - **Status**: Complete.
-- **Next Step**: Phase 29 Step 8: Recovery Prevalidation Reject-Invalid-Output Switch + Synthetic Validation.
+- **Next Step**: Phase 29 Step 9: Recovery Prevalidation Reject-Invalid-Output Smoke Switch Validation.
 - **Boundary**: The checkpoint parity bridge remains diagnostic-only. Legacy board handlers still own commit behavior, the prepass compiler analysis remains observational, and `_apply_compiler_diagnosis` remains the effectful classification-stage path that recomputes on normalized response.
 
 ## Step 4I Parity Matrix
@@ -1694,7 +1694,49 @@ This document is the single source of truth for the current state of the Semanti
     - smoke registry remains `legacy` for this branch
     - effective decision is now consumed, but remains behavior-preserving and test-locked
   - Recommended next step:
-    - `Phase 29 Step 8: Recovery Prevalidation Reject-Invalid-Output Switch + Synthetic Validation`
+    - `Phase 29 Step 8: Recovery Prevalidation Reject-Invalid-Output Compiler Decision Candidate`
+- **Phase 29 Step 8: Recovery Prevalidation Reject-Invalid-Output Compiler Decision Candidate (Complete)**
+  - Added `build_compiler_prevalidation_recovery_decision_candidate(...)` in [recovery_authority.py](/home/romankozak/studio/public/it/angelica-ai/modules/agent/orchestration/responses/recovery_authority.py).
+  - The branch now has a real compiler-side recovery decision candidate path for a narrow subset of stateless invalid-output cases.
+  - Current compiler candidate coverage includes:
+    - `malformed_action`
+    - `mixed_visible_text_and_control_protocol`
+    - `mixed_intent_transition_and_visible_answer`
+    - `malformed_incomplete_action`
+    - `malformed_incomplete_intent`
+    - `malformed_incomplete_file_content`
+    - `file_content_must_follow_action`
+    - `truncated_internal_response`
+    - `action_payload_array`
+    - `multiple_actions`
+    - `conflicting_intent_transitions`
+    - `intent_complete_with_action_not_allowed`
+  - Stateful or otherwise non-provable branches remain candidate-unavailable for now, including:
+    - malformed-think family driven by repeat-count state
+    - empty/whitespace followups that do not enter the reject path
+  - `resolve_prevalidation_reject_invalid_output_authority(...)` now compares:
+    - legacy decision
+    - compiler candidate availability
+    - decision-shape agreement
+    - prompt-equivalence proof
+  - Added diagnostic fields for this comparison:
+    - `compiler_recovery_action`
+    - `compiler_recovery_reason`
+    - `compiler_recovery_prompt_kind`
+    - `compiler_decision_available`
+    - `decision_agreement`
+    - `prompt_equivalent`
+    - `candidate_source`
+  - Smoke switch decision:
+    - deferred
+    - reason: the branch now has a real candidate path, but coverage is still partial and branch-wide compiler authority would be misleading until the remaining unsupported cases are either modeled or explicitly fenced
+  - Boundary:
+    - no production behavior changed
+    - default registry remains `legacy`
+    - smoke registry remains `legacy` for this branch
+    - effective recovery decision remains legacy-owned
+  - Recommended next step:
+    - `Phase 29 Step 9: Recovery Prevalidation Reject-Invalid-Output Smoke Switch Validation`
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 
