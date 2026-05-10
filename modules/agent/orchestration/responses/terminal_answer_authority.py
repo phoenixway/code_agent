@@ -134,12 +134,20 @@ def resolve_plaintext_terminal_answer_authority(
         else:
             mismatch_reason = "branch_inactive"
 
-    if legacy_active:
-        authority_source = "legacy"
-        fallback_used = False
+    if normalized_switch == "compiler":
+        if clean_plaintext_candidate and agreement and not blocking_reasons:
+            authority_source = "compiler"
+            fallback_used = False
+        else:
+            authority_source = "legacy_fallback"
+            fallback_used = True
     else:
-        authority_source = "legacy_fallback"
-        fallback_used = True
+        if legacy_active:
+            authority_source = "legacy"
+            fallback_used = False
+        else:
+            authority_source = "legacy_fallback"
+            fallback_used = True
 
     return TerminalAnswerAuthorityDiagnostic(
         branch="terminal_answer.plaintext_terminal_answer",

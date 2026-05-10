@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+from modules.agent.orchestration.config.switch_registry import _load_registry
 from modules.agent.orchestration.parsers.parsing import IntentResponseParser
 from modules.agent.orchestration.protocol.classifier import ProtocolCompiler
 from modules.agent.orchestration.responses.response_pipeline_prevalidation import ResponsePipelinePrevalidationMixin
@@ -14,6 +18,8 @@ from modules.agent.orchestration.responses.terminal_answer_authority import (
 )
 from modules.agent.orchestration.responses.terminal_answer_models import TerminalAnswerKind
 from modules.parser import ResponseParser
+
+SMOKE_REGISTRY_PATH = "modules/agent/orchestration/config/refactor_switches.smoke.toml"
 
 
 class _TerminalAnswerSmokeHarness(ResponsePipelinePrevalidationMixin, ResponsePipelineStagesMixin):
@@ -131,6 +137,20 @@ def _terminal_authority_calls(harness):
     ]
 
 
+@pytest.fixture
+def smoke_registry_override():
+    with patch.dict(
+        os.environ,
+        {"ANGELICA_REFACTOR_SWITCH_REGISTRY": SMOKE_REGISTRY_PATH},
+        clear=False,
+    ):
+        _load_registry.cache_clear()
+        try:
+            yield
+        finally:
+            _load_registry.cache_clear()
+
+
 def test_pure_plaintext_terminal_answer_logs_legacy_authority():
     harness, parsed_output, classified, outcome = _run_terminal_smoke("The task is complete.")
 
@@ -160,11 +180,28 @@ def test_pure_plaintext_terminal_answer_logs_legacy_authority():
     assert final_authority.kwargs["blocking_reasons"] == ()
 
 
-def test_done_single_line_characterizes_current_plaintext_blocker():
+def test_smoke_registry_done_plaintext_selects_compiler_candidate(smoke_registry_override):
+    harness, parsed_output, classified, outcome = _run_terminal_smoke("Done.")
+
+    assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.PLAINTEXT_TERMINAL_ANSWER
+    assert classified.parsed_action_count == 0
+    assert outcome.reason == "dispatch_ready"
+    final_authority = _terminal_authority_calls(harness)[-1].kwargs
+    assert final_authority["switch_value"] == "compiler"
+    assert final_authority["authority_source"] == "compiler"
+    assert final_authority["clean_plaintext_candidate"] is True
+    assert final_authority["typed_plaintext_eligible"] is True
+    assert final_authority["agreement"] is True
+    assert final_authority["fallback_used"] is False
+    assert final_authority["effective_value"] is True
+    assert final_authority["behavior_changed"] is False
+
+
+def test_done_single_line_now_aligns_as_clean_plaintext_candidate():
     harness, parsed_output, classified, outcome = _run_terminal_smoke("Done.")
 
     assert parsed_output.compiler_shape == "PURE_PLAINTEXT"
-    assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.INVALID_OR_TRUNCATED_TERMINAL_TEXT
+    assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.PLAINTEXT_TERMINAL_ANSWER
     assert classified.parsed_action_count == 0
     assert outcome.reason == "dispatch_ready"
     authority_calls = _terminal_authority_calls(harness)
@@ -173,14 +210,31 @@ def test_done_single_line_characterizes_current_plaintext_blocker():
     assert final_authority.kwargs["authority_source"] == "legacy"
     assert final_authority.kwargs["legacy_active"] is True
     assert final_authority.kwargs["branch_active"] is True
-    assert final_authority.kwargs["typed_eligible"] is False
-    assert final_authority.kwargs["typed_plaintext_eligible"] is False
-    assert final_authority.kwargs["typed_kind"] == "INVALID_OR_TRUNCATED_TERMINAL_TEXT"
-    assert final_authority.kwargs["agreement"] is False
-    assert final_authority.kwargs["invalid_or_truncated_terminal_text"] is True
-    assert final_authority.kwargs["clean_plaintext_candidate"] is False
-    assert "invalid_or_truncated_terminal_text" in final_authority.kwargs["blocking_reasons"]
-    assert final_authority.kwargs["mismatch_reason"] == "invalid_or_truncated_plaintext_overlap"
+    assert final_authority.kwargs["typed_eligible"] is True
+    assert final_authority.kwargs["typed_plaintext_eligible"] is True
+    assert final_authority.kwargs["typed_kind"] == "PLAINTEXT_TERMINAL_ANSWER"
+    assert final_authority.kwargs["agreement"] is True
+    assert final_authority.kwargs["invalid_or_truncated_terminal_text"] is False
+    assert final_authority.kwargs["clean_plaintext_candidate"] is True
+    assert final_authority.kwargs["blocking_reasons"] == ()
+    assert final_authority.kwargs["mismatch_reason"] == ""
+
+
+def test_smoke_registry_markdownish_plaintext_selects_compiler_candidate(smoke_registry_override):
+    response = "# Summary\n\nDone."
+    harness, parsed_output, classified, outcome = _run_terminal_smoke(response)
+
+    assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.PLAINTEXT_TERMINAL_ANSWER
+    assert classified.parsed_action_count == 0
+    assert outcome.reason == "dispatch_ready"
+    final_authority = _terminal_authority_calls(harness)[-1].kwargs
+    assert final_authority["switch_value"] == "compiler"
+    assert final_authority["authority_source"] == "compiler"
+    assert final_authority["clean_plaintext_candidate"] is True
+    assert final_authority["typed_plaintext_eligible"] is True
+    assert final_authority["agreement"] is True
+    assert final_authority["fallback_used"] is False
+    assert final_authority["effective_value"] is True
 
 
 def test_multiline_plaintext_characterizes_current_clean_alignment():
@@ -204,24 +258,41 @@ def test_multiline_plaintext_characterizes_current_clean_alignment():
     assert final_authority.kwargs["mismatch_reason"] == ""
 
 
-def test_markdownish_plaintext_characterizes_current_single_line_style_blocker():
+def test_smoke_registry_multiline_plaintext_selects_compiler_candidate(smoke_registry_override):
+    response = "Done.\n\nHere is the summary."
+    harness, parsed_output, classified, outcome = _run_terminal_smoke(response)
+
+    assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.PLAINTEXT_TERMINAL_ANSWER
+    assert classified.parsed_action_count == 0
+    assert outcome.reason == "dispatch_ready"
+    final_authority = _terminal_authority_calls(harness)[-1].kwargs
+    assert final_authority["switch_value"] == "compiler"
+    assert final_authority["authority_source"] == "compiler"
+    assert final_authority["clean_plaintext_candidate"] is True
+    assert final_authority["agreement"] is True
+    assert final_authority["fallback_used"] is False
+    assert final_authority["effective_value"] is True
+
+
+def test_markdownish_plaintext_now_aligns_as_clean_plaintext_candidate():
     response = "# Summary\n\nDone."
     harness, parsed_output, classified, outcome = _run_terminal_smoke(response)
 
     assert parsed_output.compiler_shape == "PURE_PLAINTEXT"
-    assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.INVALID_OR_TRUNCATED_TERMINAL_TEXT
+    assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.PLAINTEXT_TERMINAL_ANSWER
     assert classified.parsed_action_count == 0
     assert outcome.reason == "dispatch_ready"
     authority_calls = _terminal_authority_calls(harness)
     final_authority = authority_calls[-1]
     assert final_authority.kwargs["authority_source"] == "legacy"
     assert final_authority.kwargs["legacy_active"] is True
-    assert final_authority.kwargs["typed_eligible"] is False
-    assert final_authority.kwargs["typed_plaintext_eligible"] is False
-    assert final_authority.kwargs["agreement"] is False
-    assert final_authority.kwargs["invalid_or_truncated_terminal_text"] is True
-    assert "invalid_or_truncated_terminal_text" in final_authority.kwargs["blocking_reasons"]
-    assert final_authority.kwargs["mismatch_reason"] == "invalid_or_truncated_plaintext_overlap"
+    assert final_authority.kwargs["typed_eligible"] is True
+    assert final_authority.kwargs["typed_plaintext_eligible"] is True
+    assert final_authority.kwargs["agreement"] is True
+    assert final_authority.kwargs["invalid_or_truncated_terminal_text"] is False
+    assert final_authority.kwargs["clean_plaintext_candidate"] is True
+    assert final_authority.kwargs["blocking_reasons"] == ()
+    assert final_authority.kwargs["mismatch_reason"] == ""
 
 
 def test_preactionish_plaintext_without_action_stays_on_current_plaintext_path():
@@ -266,6 +337,21 @@ def test_action_only_does_not_activate_plaintext_terminal_authority():
     assert final_authority.kwargs["mismatch_reason"] == "action_or_pre_action_overlap"
 
 
+def test_smoke_registry_action_only_falls_back_without_compiler_plaintext_authority(smoke_registry_override):
+    response = '<action>{"type":"read_file","path":"README.md"}</action>'
+    harness, parsed_output, classified, outcome = _run_terminal_smoke(response)
+
+    assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.NO_VISIBLE_TEXT
+    assert classified.parsed_action_count == 1
+    assert outcome.reason == "dispatch_ready"
+    final_authority = _terminal_authority_calls(harness)[-1].kwargs
+    assert final_authority["switch_value"] == "compiler"
+    assert final_authority["authority_source"] == "legacy_fallback"
+    assert final_authority["fallback_used"] is True
+    assert final_authority["behavior_changed"] is False
+    assert final_authority["clean_plaintext_candidate"] is False
+
+
 def test_pre_action_text_and_action_is_not_treated_as_terminal_plaintext():
     response = 'I will inspect the file.\n<action>{"type":"read_file","path":"README.md"}</action>'
     harness, parsed_output, classified, outcome = _run_terminal_smoke(response)
@@ -286,6 +372,20 @@ def test_pre_action_text_and_action_is_not_treated_as_terminal_plaintext():
     assert final_authority.kwargs["action_or_pre_action_overlap"] is True
     assert "action_or_pre_action_overlap" in final_authority.kwargs["blocking_reasons"]
     assert final_authority.kwargs["mismatch_reason"] == "action_or_pre_action_overlap"
+
+
+def test_smoke_registry_pre_action_text_and_action_falls_back(smoke_registry_override):
+    response = 'I will inspect the file.\n<action>{"type":"read_file","path":"README.md"}</action>'
+    harness, parsed_output, classified, outcome = _run_terminal_smoke(response)
+
+    assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.PRE_ACTION_VISIBLE_TEXT_WITH_ACTION
+    assert classified.parsed_action_count == 1
+    assert outcome.reason == "dispatch_ready"
+    final_authority = _terminal_authority_calls(harness)[-1].kwargs
+    assert final_authority["switch_value"] == "compiler"
+    assert final_authority["authority_source"] == "legacy_fallback"
+    assert final_authority["fallback_used"] is True
+    assert final_authority["action_or_pre_action_overlap"] is True
 
 
 def test_checkpoint_only_characterization_does_not_activate_plaintext_terminal_authority():
@@ -330,6 +430,21 @@ def test_checkpoint_with_visible_text_characterizes_current_plaintext_disagreeme
     assert final_authority.kwargs["mismatch_reason"] == "checkpoint_visible_text_overlap"
 
 
+def test_smoke_registry_checkpoint_with_visible_text_falls_back_with_overlap_reason(smoke_registry_override):
+    response = "<memory_update_done />\nDone."
+    harness, parsed_output, classified, outcome = _run_terminal_smoke(response)
+
+    assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.CHECKPOINT_WITH_VISIBLE_TEXT
+    assert classified.parsed_action_count == 0
+    assert outcome.reason == "dispatch_ready"
+    final_authority = _terminal_authority_calls(harness)[-1].kwargs
+    assert final_authority["switch_value"] == "compiler"
+    assert final_authority["authority_source"] == "legacy_fallback"
+    assert final_authority["fallback_used"] is True
+    assert final_authority["checkpoint_with_visible_text_overlap"] is True
+    assert "checkpoint_with_visible_text_overlap" in final_authority["blocking_reasons"]
+
+
 def test_unclosed_think_keeps_invalid_recovery_behavior_and_no_plaintext_authority():
     response = "<think>\nI am still thinking"
     harness, parsed_output, classified, outcome = _run_terminal_smoke(response)
@@ -349,6 +464,19 @@ def test_unclosed_think_keeps_invalid_recovery_behavior_and_no_plaintext_authori
     assert final_authority.kwargs["mismatch_reason"] == "invalid_output"
 
 
+def test_smoke_registry_unclosed_think_falls_back(smoke_registry_override):
+    response = "<think>\nI am still thinking"
+    harness, parsed_output, classified, outcome = _run_terminal_smoke(response)
+
+    assert parsed_output.compiler_shape == "INVALID"
+    assert outcome.reason == "malformed_incomplete_think"
+    final_authority = _terminal_authority_calls(harness)[-1].kwargs
+    assert final_authority["switch_value"] == "compiler"
+    assert final_authority["authority_source"] == "legacy_fallback"
+    assert final_authority["fallback_used"] is True
+    assert "invalid_kind" in final_authority["blocking_reasons"]
+
+
 def test_empty_output_keeps_current_behavior_without_plaintext_authority():
     harness, parsed_output, classified, outcome = _run_terminal_smoke("")
 
@@ -363,6 +491,17 @@ def test_empty_output_keeps_current_behavior_without_plaintext_authority():
     assert final_authority.kwargs["branch_active"] is False
     assert final_authority.kwargs["blocking_reasons"] == ()
     assert final_authority.kwargs["mismatch_reason"] == "branch_inactive"
+
+
+def test_smoke_registry_empty_output_falls_back_without_compiler_plaintext_authority(smoke_registry_override):
+    harness, parsed_output, classified, outcome = _run_terminal_smoke("")
+
+    assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.NO_VISIBLE_TEXT
+    assert outcome.reason == "dispatch_ready"
+    final_authority = _terminal_authority_calls(harness)[-1].kwargs
+    assert final_authority["switch_value"] == "compiler"
+    assert final_authority["authority_source"] == "legacy_fallback"
+    assert final_authority["fallback_used"] is True
 
 
 def test_leaked_system_result_keeps_existing_recovery_path():
@@ -385,6 +524,20 @@ def test_leaked_system_result_keeps_existing_recovery_path():
     assert final_authority.kwargs["mismatch_reason"] == "leaked_system_result_overlap"
 
 
+def test_smoke_registry_leaked_system_result_falls_back_with_overlap_reason(smoke_registry_override):
+    response = "SYSTEM RESULT: The tool output is..."
+    harness, parsed_output, classified, outcome = _run_terminal_smoke(response)
+
+    assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.LEAKED_SYSTEM_RESULT
+    assert outcome.reason == "leaked_system_result_in_assistant_text"
+    final_authority = _terminal_authority_calls(harness)[-1].kwargs
+    assert final_authority["switch_value"] == "compiler"
+    assert final_authority["authority_source"] == "legacy_fallback"
+    assert final_authority["fallback_used"] is True
+    assert final_authority["leaked_system_result_overlap"] is True
+    assert "leaked_system_result_overlap" in final_authority["blocking_reasons"]
+
+
 def test_whitespace_only_output_keeps_plaintext_authority_inactive():
     harness, parsed_output, classified, outcome = _run_terminal_smoke("   \n\t")
 
@@ -399,6 +552,20 @@ def test_whitespace_only_output_keeps_plaintext_authority_inactive():
     assert final_authority.kwargs["legacy_kind"] == "none"
     assert final_authority.kwargs["blocking_reasons"] == ()
     assert final_authority.kwargs["mismatch_reason"] == "branch_inactive"
+
+
+def test_smoke_registry_dangling_short_text_falls_back_without_compiler_plaintext_authority(smoke_registry_override):
+    harness, parsed_output, classified, outcome = _run_terminal_smoke("And.")
+
+    assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.INVALID_OR_TRUNCATED_TERMINAL_TEXT
+    assert classified.parsed_action_count == 0
+    assert outcome.reason == "dispatch_ready"
+    final_authority = _terminal_authority_calls(harness)[-1].kwargs
+    assert final_authority["switch_value"] == "compiler"
+    assert final_authority["authority_source"] == "legacy_fallback"
+    assert final_authority["fallback_used"] is True
+    assert final_authority["invalid_or_truncated_terminal_text"] is True
+    assert "invalid_or_truncated_terminal_text" in final_authority["blocking_reasons"]
 
 
 def test_plaintext_authority_resolver_directly_exposes_clean_and_blocked_buckets():
@@ -422,6 +589,7 @@ def test_plaintext_authority_resolver_directly_exposes_clean_and_blocked_buckets
     assert clean_result.clean_plaintext_candidate is True
     assert clean_result.blocking_reasons == ()
     assert clean_result.mismatch_reason == ""
+    assert clean_result.authority_source == "legacy"
 
     blocked = SimpleNamespace(
         terminal_answer_semantic_result=SimpleNamespace(kind=TerminalAnswerKind.LEAKED_SYSTEM_RESULT),
@@ -444,3 +612,50 @@ def test_plaintext_authority_resolver_directly_exposes_clean_and_blocked_buckets
     assert blocked_result.leaked_system_result_overlap is True
     assert "leaked_system_result_overlap" in blocked_result.blocking_reasons
     assert blocked_result.mismatch_reason == "leaked_system_result_overlap"
+
+
+def test_plaintext_authority_resolver_selects_compiler_only_for_clean_agreed_candidate():
+    clean = SimpleNamespace(
+        terminal_answer_semantic_result=SimpleNamespace(kind=TerminalAnswerKind.PLAINTEXT_TERMINAL_ANSWER),
+        compiler_ir=SimpleNamespace(
+            has_action=False,
+            has_checkpoint=False,
+            has_memory_tags=False,
+            has_subgoal_tags=False,
+            has_memory_checkpoint=False,
+        ),
+        invalid_kind="",
+        compiler_shape="PURE_PLAINTEXT",
+    )
+    result = resolve_plaintext_terminal_answer_authority(
+        clean,
+        legacy_plaintext_answer_path=True,
+        switch_value="compiler",
+    )
+    assert result.authority_source == "compiler"
+    assert result.fallback_used is False
+    assert result.effective_value is True
+
+
+def test_plaintext_authority_resolver_uses_legacy_fallback_for_blocked_compiler_case():
+    blocked = SimpleNamespace(
+        terminal_answer_semantic_result=SimpleNamespace(kind=TerminalAnswerKind.CHECKPOINT_WITH_VISIBLE_TEXT),
+        compiler_ir=SimpleNamespace(
+            has_action=False,
+            has_checkpoint=True,
+            has_memory_tags=False,
+            has_subgoal_tags=False,
+            has_memory_checkpoint=True,
+        ),
+        invalid_kind="",
+        compiler_shape="MEMORY_TEXT",
+    )
+    result = resolve_plaintext_terminal_answer_authority(
+        blocked,
+        legacy_plaintext_answer_path=True,
+        switch_value="compiler",
+    )
+    assert result.authority_source == "legacy_fallback"
+    assert result.fallback_used is True
+    assert result.effective_value is True
+    assert "checkpoint_with_visible_text_overlap" in result.blocking_reasons

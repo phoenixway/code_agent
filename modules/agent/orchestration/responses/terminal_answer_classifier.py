@@ -14,6 +14,14 @@ from .terminal_answer_models import (
 # It intentionally requires the complete `SYSTEM RESULT:` marker and does not
 # match a bare `SYSTEM RESULT` prefix.
 _LEAKED_SYSTEM_RESULT_RE = re.compile(r"^\s*SYSTEM\s+RESULT\s*:", re.IGNORECASE)
+_TERMINAL_END_PUNCT_RE = re.compile(r"[.!?…։。！？»”\"')\]`]+$")
+_WORD_RE = re.compile(r"[A-Za-zА-Яа-яІіЇїЄєҐґ0-9_`./-]+")
+_DANGLING_WORDS = {
+    "i", "i'm", "im", "i’ll", "ill", "the", "a", "an", "and", "or", "but",
+    "to", "for", "with", "that", "this", "it", "is", "are", "was", "were",
+    "я", "мені", "ми", "він", "вона", "це", "цей", "ця", "що", "як", "і", "та",
+    "але", "для", "у", "в", "на", "з", "із", "до", "про",
+}
 
 
 def _looks_like_leaked_system_result(text: str) -> bool:
@@ -22,6 +30,17 @@ def _looks_like_leaked_system_result(text: str) -> bool:
     Mirrors the legacy ResponseSemantics.looks_like_leaked_system_result.
     """
     return bool(_LEAKED_SYSTEM_RESULT_RE.match(text))
+
+
+def _is_safe_short_plaintext_terminal_answer(text: str) -> bool:
+    compact = re.sub(r"\s+", " ", str(text or "")).strip()
+    if not compact or not _TERMINAL_END_PUNCT_RE.search(compact):
+        return False
+    words = _WORD_RE.findall(compact)
+    if not words:
+        return False
+    last_word = words[-1].strip("`'\"“”‘’()[]{}.,!?…:;").lower()
+    return last_word not in _DANGLING_WORDS
 
 
 class TerminalAnswerClassifier:
@@ -59,7 +78,10 @@ class TerminalAnswerClassifier:
             and not is_leaked_system_result
         ):
             valid, reason, text = terminal_plaintext_completion_status(candidate_text)
-            if not valid:
+            if not valid and not (
+                reason in {"terminal_plaintext_too_short", "terminal_plaintext_too_few_words"}
+                and _is_safe_short_plaintext_terminal_answer(text)
+            ):
                 evidence = ("raw_response_text", "visible_text") if visible_text else ("raw_response_text",)
                 return TerminalAnswerSemanticResult(
                     kind=TerminalAnswerKind.INVALID_OR_TRUNCATED_TERMINAL_TEXT,

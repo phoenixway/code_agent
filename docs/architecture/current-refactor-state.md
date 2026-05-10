@@ -4,9 +4,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 28 Step 4: Terminal Answer Diagnostics Hardening
+- **Phase**: Phase 28 Step 6: Plaintext Terminal Authority Re-review / Smoke-Profile Candidate
 - **Status**: Complete.
-- **Next Step**: Phase 28 Step 5: Typed Plaintext Classification Review / Fix Candidate.
+- **Next Step**: Phase 28 Step 7: Live Angelica smoke for plaintext terminal answer under smoke profile.
 - **Boundary**: The checkpoint parity bridge remains diagnostic-only. Legacy board handlers still own commit behavior, the prepass compiler analysis remains observational, and `_apply_compiler_diagnosis` remains the effectful classification-stage path that recomputes on normalized response.
 
 ## Step 4I Parity Matrix
@@ -1208,6 +1208,52 @@ This document is the single source of truth for the current state of the Semanti
   - No runtime behavior changed.
   - Remaining blocker:
     - typed plaintext classification for short answers like `Done.` and markdown-ish plaintext still needs review/fix before any authority transfer can be reconsidered.
+- **Phase 28 Step 5: Typed Plaintext Classification Review / Fix Candidate (Complete)**
+  - Reviewed the typed plaintext classifier and identified the root cause:
+    - `TerminalAnswerClassifier` was applying `terminal_plaintext_completion_status(...)` to all `PURE_PLAINTEXT` candidates.
+    - That helper is intentionally strict for intent-completion final answers and was over-classifying short but complete plaintext like `Done.` and markdown-ish plaintext as invalid/truncated.
+  - Implemented a narrow classifier-only fix:
+    - short `PURE_PLAINTEXT` answers that are punctuated and do not end in a dangling word now remain typed `PLAINTEXT_TERMINAL_ANSWER`
+    - the fix applies only in the typed/shadow classifier path
+    - runtime routing, recovery, and authority remain unchanged
+  - Post-fix synthetic characterization now shows:
+    - `Done.` aligns as a clean plaintext candidate
+    - markdown-ish plaintext aligns as a clean plaintext candidate
+    - multi-line plaintext remains aligned
+    - checkpoint-with-visible-text remains blocked as a checkpoint overlap
+    - leaked system result remains blocked as a leak overlap
+    - action-bearing and malformed cases remain non-plaintext
+  - No authority transfer happened.
+  - Default registry remains `legacy`.
+  - No runtime behavior changed.
+- **Phase 28 Step 6: Plaintext Terminal Authority Re-review / Smoke-Profile Candidate (Complete)**
+  - Re-reviewed `terminal_answer.plaintext_terminal_answer` after the typed plaintext classifier fix.
+  - Decision:
+    - **GO** for a smoke-profile-only compiler/typed authority candidate for clean plaintext terminal answers.
+  - Implemented smoke-profile-only switch configuration:
+    - `modules/agent/orchestration/config/refactor_switches.smoke.toml`
+      - `terminal_answer.plaintext_terminal_answer = "compiler"`
+  - Refined `resolve_plaintext_terminal_answer_authority(...)` so that when the switch is `compiler`:
+    - `authority_source="compiler"` is selected only for clean, agreement-gated plaintext candidates
+    - `authority_source="legacy_fallback"` is used for every overlap or uncertain case
+    - `behavior_changed=False` remains preserved
+  - Positive synthetic smoke now validates compiler selection for:
+    - `Done.`
+    - markdown-ish plaintext
+    - multi-line plaintext
+  - Negative controls remain protected with fallback for:
+    - action-only
+    - pre-action text plus action
+    - checkpoint-with-visible-text
+    - leaked system result
+    - empty / malformed output
+    - dangling/incomplete plaintext like `And.`
+  - Important boundary:
+    - actual post-classification routing still remains legacy in this step
+    - compiler authority is selected diagnostically under the smoke profile only
+    - no production authority flip happened
+  - Default registry remains `legacy`.
+  - No runtime behavior changed under the default registry.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 

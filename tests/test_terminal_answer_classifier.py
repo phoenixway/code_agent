@@ -149,6 +149,30 @@ class TestTerminalAnswerClassifier(unittest.TestCase):
         self.assertEqual(result.source, "legacy_compatible_rule")
         self.assertIn("terminal_plaintext_too_short", result.reason_code)
 
+    def test_classify_short_terminal_answer_with_punctuation_as_plaintext(self):
+        raw_text = "Done."
+        semantics = MockRuntimeSemantics(
+            visible_text_source="PURE_PLAINTEXT",
+            has_visible_answer=True,
+            visible_text=raw_text,
+        )
+        input_data = TerminalAnswerClassifierInput(semantics, raw_text)
+        result = self.classifier.classify(input_data)
+        self.assertEqual(result.kind, TerminalAnswerKind.PLAINTEXT_TERMINAL_ANSWER)
+        self.assertEqual(result.source, "compiler_fact")
+
+    def test_classify_markdownish_short_plaintext_as_plaintext(self):
+        raw_text = "# Summary\n\nDone."
+        semantics = MockRuntimeSemantics(
+            visible_text_source="PURE_PLAINTEXT",
+            has_visible_answer=True,
+            visible_text=raw_text,
+        )
+        input_data = TerminalAnswerClassifierInput(semantics, raw_text)
+        result = self.classifier.classify(input_data)
+        self.assertEqual(result.kind, TerminalAnswerKind.PLAINTEXT_TERMINAL_ANSWER)
+        self.assertEqual(result.source, "compiler_fact")
+
     def test_truncated_text_has_priority(self):
         """Tests that truncated text has priority over other classifications."""
         # This text is both truncated and looks like a leaked system result.
@@ -198,5 +222,16 @@ class TestTerminalAnswerClassifier(unittest.TestCase):
             visible_text=raw_text,
         )
         input_data = TerminalAnswerClassifierInput(semantics, raw_text, is_internal_summary=True)
+        result = self.classifier.classify(input_data)
+        self.assertEqual(result.kind, TerminalAnswerKind.INVALID_OR_TRUNCATED_TERMINAL_TEXT)
+
+    def test_single_dangling_word_with_punctuation_stays_invalid(self):
+        raw_text = "And."
+        semantics = MockRuntimeSemantics(
+            visible_text_source="PURE_PLAINTEXT",
+            has_visible_answer=True,
+            visible_text=raw_text,
+        )
+        input_data = TerminalAnswerClassifierInput(semantics, raw_text)
         result = self.classifier.classify(input_data)
         self.assertEqual(result.kind, TerminalAnswerKind.INVALID_OR_TRUNCATED_TERMINAL_TEXT)

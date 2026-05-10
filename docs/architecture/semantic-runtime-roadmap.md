@@ -2240,6 +2240,68 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 28 Step 5: Typed Plaintext Classification Review / Fix Candidate.
 
+#### Phase 28 Step 5: Typed Plaintext Classification Review / Fix Candidate
+
+- **Status**: Done.
+- **Goal**: Review the typed plaintext classifier and, if safe, fix short valid plaintext terminal answers like `Done.` and markdown-ish plaintext without changing runtime authority.
+- **Completed Outcome**:
+  - Identified the root cause:
+    - `TerminalAnswerClassifier` was using `terminal_plaintext_completion_status(...)` for all `PURE_PLAINTEXT` candidates.
+    - That helper is stricter than the typed terminal-answer shadow classifier needs because it is designed to guard intent-completion final answers.
+  - Implemented a narrow classifier-only fix:
+    - short punctuated `PURE_PLAINTEXT` answers that do not end in a dangling word now remain typed `PLAINTEXT_TERMINAL_ANSWER`
+    - examples now aligned:
+      - `Done.`
+      - `# Summary` followed by `Done.`
+  - Retained all negative controls:
+    - action-only
+    - pre-action text plus action
+    - checkpoint-only
+    - checkpoint-with-visible-text
+    - leaked system result
+    - empty output
+    - unclosed think
+  - Expanded direct classifier tests and synthetic smoke assertions accordingly.
+  - Terminal-answer switches remain `legacy`.
+  - No authority transfer happened.
+  - No runtime behavior changed.
+- **Next**:
+  - Phase 28 Step 6: Plaintext Terminal Authority Re-review / Smoke-Profile Candidate.
+
+#### Phase 28 Step 6: Plaintext Terminal Authority Re-review / Smoke-Profile Candidate
+
+- **Status**: Done.
+- **Goal**: Re-review `terminal_answer.plaintext_terminal_answer` after the typed plaintext classifier fix and, if safe, enable a smoke-profile-only compiler authority candidate with strict fallback.
+- **Completed Outcome**:
+  - Decision:
+    - **GO** for a smoke-profile-only compiler authority candidate for clean plaintext terminal answers.
+  - Implemented smoke-profile-only configuration:
+    - `terminal_answer.plaintext_terminal_answer = "compiler"` in `refactor_switches.smoke.toml`
+    - default registry remains `legacy`
+  - Refined the plaintext authority resolver so that compiler selection is allowed only when:
+    - `clean_plaintext_candidate=True`
+    - `typed_plaintext_eligible=True`
+    - typed and legacy agree
+    - no blocking reasons are present
+  - Positive synthetic smoke validates compiler selection for:
+    - `Done.`
+    - markdown-ish plaintext
+    - multi-line plaintext
+  - Negative controls remain protected with `legacy_fallback` for:
+    - action-only
+    - pre-action text plus action
+    - checkpoint-with-visible-text
+    - leaked system result
+    - empty or malformed output
+    - dangling short text such as `And.`
+  - Important boundary:
+    - actual post-classification routing remains legacy in this step
+    - smoke-profile compiler selection is diagnostic-only until live validation is complete
+  - No production authority flip happened.
+  - No runtime behavior changed under the default registry.
+- **Next**:
+  - Phase 28 Step 7: Live Angelica smoke for plaintext terminal answer under smoke profile.
+
 ---
 
 ### Phase 11: RecoveryStrategy Registry Expansion
