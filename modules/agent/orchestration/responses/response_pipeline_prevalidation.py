@@ -8,7 +8,10 @@ from ..parsers.visible_text import sanitize_visible_text_for_user, terminal_plai
 from .bundle_semantic_validator import BundleResultKind, BundleSemanticValidator
 from .protocol_decision_bridge import COMPILER_INVALID_KIND_BY_CODE
 from .runtime_protocol_semantics import compact_runtime_protocol_semantics, runtime_semantics_from_compiler_analysis
-from .terminal_answer_classifier import TerminalAnswerClassifier
+from .terminal_answer_classifier import (
+    TerminalAnswerClassifier,
+    _is_safe_short_plaintext_terminal_answer,
+)
 from .terminal_answer_models import TerminalAnswerClassifierInput, TerminalAnswerKind
 
 
@@ -262,6 +265,8 @@ class ResponsePipelinePrevalidationMixin:
                 classifier_reason_code=result.reason_code,
                 classifier_evidence=list(result.evidence),
                 classifier_visible_text_present=bool(result.visible_text),
+                comparator_scope="legacy_parity_only",
+                authority_signal="terminal_answer_authority_resolution",
                 legacy_kind=legacy_kind,
                 is_match=is_match,
             )
@@ -294,12 +299,15 @@ class ResponsePipelinePrevalidationMixin:
                 return TerminalAnswerKind.LEAKED_SYSTEM_RESULT.value, "looks_like_leaked_system_result"
 
         # Priority 2: Truncated/invalid completion
-        valid, reason, _ = terminal_plaintext_completion_status(response)
+        valid, reason, text = terminal_plaintext_completion_status(response)
         if not valid:
-            return (
-                TerminalAnswerKind.INVALID_OR_TRUNCATED_TERMINAL_TEXT.value,
-                f"terminal_plaintext_completion_status:{reason}",
-            )
+            if reason in {"terminal_plaintext_too_short", "terminal_plaintext_too_few_words"} and _is_safe_short_plaintext_terminal_answer(text):
+                valid = True
+            else:
+                return (
+                    TerminalAnswerKind.INVALID_OR_TRUNCATED_TERMINAL_TEXT.value,
+                    f"terminal_plaintext_completion_status:{reason}",
+                )
 
         # Priority 3: Internal summary (best effort)
         checker = getattr(self, "_is_internal_summary_instead_of_final_answer", None)

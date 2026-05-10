@@ -2440,6 +2440,185 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 28 Step 12: Live Angelica Smoke for Terminal Checkpoint-Only under Smoke Profile.
 
+#### Phase 28 Step 12: Live Angelica Smoke for Terminal Checkpoint-Only under Smoke Profile
+
+- **Status**: Not exercised / deferred.
+- **Goal**: Verify with live Angelica behavior whether the smoke-profile `terminal_answer.checkpoint_only` candidate is a real terminal-authority runtime path.
+- **Completed Outcome**:
+  - A clean marker-only checkpoint was produced in dump `dumps/agent_dump_20260510_042059.txt`:
+    - model output: `<memory_update_done />`
+    - `last_error_code=None`
+    - `consecutive_same_error_count=0`
+  - Board/memory checkpoint ownership consumed the turn:
+    - `stage=memory_board`
+    - `decision=continue`
+    - `reason=memory_checkpoint_only`
+  - Structural parity for the marker-only turn remained aligned:
+    - `compiler_shape=CHECKPOINT_ONLY`
+    - `compiler_has_checkpoint=True`
+    - `compiler_has_action=False`
+    - `compiler_has_visible_answer=False`
+    - `memory_checkpoint_category=checkpoint_only`
+    - `legacy_checkpoint_only=True`
+    - `parity_aligned=True`
+  - But terminal checkpoint-only authority was not exercised:
+    - no positive `terminal_answer.checkpoint_only` compiler-authority log was observed for the clean marker-only turn
+    - later terminal authority logs belonged to a different plaintext/memory-text turn and showed `legacy_fallback`
+  - Interpretation:
+    - checkpoint-only marker generation: pass
+    - runtime safety: pass
+    - board/memory checkpoint structural behavior: pass
+    - terminal checkpoint-only live authority: not exercised
+- **Next**:
+  - Phase 28 Step 13: Terminal Checkpoint-Only Authority Boundary Review.
+
+#### Phase 28 Step 13: Terminal Checkpoint-Only Authority Boundary Review
+
+- **Status**: Done.
+- **Goal**: Decide whether `terminal_answer.checkpoint_only` should remain a terminal-answer authority migration target.
+- **Completed Outcome**:
+  - Decision: **NO-GO / DEFER** for terminal checkpoint-only authority.
+  - Reason:
+    - marker-only `<memory_update_done />` turns are practically owned by the board/memory checkpoint stage
+    - terminal post-classification does not meaningfully own this runtime branch
+    - attempting a terminal authority transfer here would duplicate or conflict with board/memory ownership
+  - Synthetic checkpoint-only terminal tests and diagnostics are retained as characterization only.
+  - Smoke-profile cleanup:
+    - `terminal_answer.checkpoint_only` was reverted back to `legacy` in `refactor_switches.smoke.toml`
+    - this avoids implying live terminal-authority validation for a branch that is intercepted earlier
+  - Boundaries preserved:
+    - default registry remains `legacy`
+    - no production authority flip happened
+    - no runtime behavior changed
+- **Next**:
+  - Phase 28 Step 14: Terminal Classifier Shadow Comparator Cleanup.
+
+#### Phase 28 Step 14: Terminal Classifier Shadow Comparator Cleanup
+
+- **Status**: Done.
+- **Goal**: Remove confusing stale mismatch artifacts from `terminal_answer_classifier_shadow` without changing runtime authority or behavior.
+- **Completed Outcome**:
+  - Updated the legacy parity comparator so safe short plaintext such as `Done.` and markdown-ish plaintext no longer report stale `invalid_or_truncated_terminal_text` mismatch after the typed plaintext fix.
+  - Added explicit shadow-only clarifiers to the comparator log:
+    - `comparator_scope="legacy_parity_only"`
+    - `authority_signal="terminal_answer_authority_resolution"`
+  - This keeps the review boundary explicit:
+    - `terminal_answer_authority_resolution` is the authority signal
+    - `terminal_answer_classifier_shadow` is parity/comparator only
+  - No runtime behavior changed.
+  - Default registry remains `legacy`.
+  - No production authority flip happened.
+- **Next**:
+  - Phase 28 Step 15: Terminal Plaintext Slice Closure / Next Domain Selection.
+
+#### Phase 28 Step 15: Terminal Plaintext Slice Closure / Next Domain Selection
+
+- **Status**: Done.
+- **Goal**: Close the terminal plaintext slice cleanly and choose the next migration domain.
+- **Completed Outcome**:
+  - Closed the plaintext terminal slice for now.
+  - `terminal_answer.plaintext_terminal_answer` is now smoke-validated with:
+    - typed classifier fix for short plaintext like `Done.`
+    - hardened authority diagnostics
+    - synthetic smoke coverage
+    - smoke-profile compiler authority candidate
+    - actual smoke-profile routing use
+    - live Angelica smoke pass
+  - `terminal_answer_classifier_shadow` is clarified as parity-only, not authority:
+    - `comparator_scope="legacy_parity_only"`
+    - `authority_signal="terminal_answer_authority_resolution"`
+  - Deferred branches remain:
+    - `terminal_answer.checkpoint_only`
+      - deferred because marker-only `<memory_update_done />` turns are owned by board/memory checkpoint stage
+    - `terminal_answer.checkpoint_with_visible_text`
+      - deferred because it overlaps the legacy plaintext path and board/memory checkpoint-with-text ownership
+  - Boundary preserved:
+    - default registry remains `legacy`
+    - no production authority flip happened
+    - no runtime behavior changed
+  - Next domain selected:
+    - `Phase 29: Recovery / Invalid-Output Synthetic Matrix`
+- **Next**:
+  - Phase 29 Step 1: Recovery / Invalid-Output Synthetic Smoke Matrix Preflight.
+
+### Phase 29: Recovery / Invalid-Output Synthetic Matrix
+
+- **Status**: Open.
+- **Goal**: Inventory recovery/invalid-output consumers, define a synthetic smoke matrix, and establish authority boundaries before any recovery-domain authority transfer.
+- **Allowed**:
+  - consumer inventory
+  - synthetic matrix design
+  - observational diagnostics
+  - characterization tests
+- **Forbidden**:
+  - production authority flips
+  - default-registry changes
+  - runtime behavior changes during preflight
+  - board/memory ownership changes
+  - dispatch/action behavior changes
+- **Initial matrix should include**:
+  - unclosed `<think>`
+  - invalid or malformed action JSON
+  - leaked system result
+  - internal-summary leak/recovery
+  - invalid/truncated terminal text
+  - checkpoint tag inside think
+  - memory tag inside think
+  - missing/empty output
+  - repeated malformed output / retry limit where easy to characterize
+  - mixed visible answer plus invalid protocol
+  - action with pre-action text where recovery treats it specially
+
+#### Phase 29 Step 1: Recovery / Invalid-Output Synthetic Smoke Matrix Preflight
+
+- **Status**: Done.
+- **Goal**: Inventory recovery/invalid-output consumers, identify current authority sources, and define the synthetic matrix before any authority transfer.
+- **Completed Outcome**:
+  - Recovery/invalid-output consumer inventory was completed.
+  - Current owners and authority patterns:
+    - `ResponsePipelinePrevalidationMixin._apply_compiler_diagnosis(...)`
+      - compiler-invalid code is mapped through `COMPILER_INVALID_KIND_BY_CODE` and merged into legacy `parsed_output.invalid_kind`
+    - `ResponsePipelinePrevalidationMixin._reject_invalid_output_before_transition(...)`
+      - legacy invalid-kind plus `output_recovery.decide(...)` still own pre-transition recovery
+    - `ResponsePipelineStagesMixin._run_post_classification_stage(...)`
+      - mixes typed-primary leaked-system-result handling, `resolve_protocol_authority(...)`, and legacy/typed invalid-kind followups
+    - `OutputRecoveryRoutingMixin.decide(...)`
+      - remains the main recovery-router owner with legacy invalid-kind branching plus compiler metadata helpers
+    - `output_recovery_terminal.py`
+      - owns terminal recovery prompt construction
+    - `protocol_decision_bridge.resolve_protocol_authority(...)`
+      - owns suppression/preservation of legacy invalid-kind in selected compiler-invalid cases
+    - `TerminalAnswerClassifier`
+      - supplies typed invalid/truncated, leaked-system-result, and internal-summary signals, but recovery-domain branch authority is not yet centralized around it
+    - guard paths in `response_pipeline_stages.py`
+      - reflection repair, repeated nonproductive thinking, and structural-invalid continuation paths remain runtime-owned
+  - Existing switches review:
+    - no recovery/invalid-output switch family exists yet
+    - current registry only contains:
+      - `board_checkpoint.*`
+      - `terminal_answer.*`
+      - `dispatch.plan_first_single_action`
+  - Approved initial synthetic matrix:
+    - unclosed `<think>`
+    - malformed action JSON / malformed action payload
+    - leaked system result
+    - internal-summary leak/recovery
+    - invalid/truncated terminal text
+    - checkpoint tag inside think
+    - memory tag inside think
+    - empty / whitespace output
+    - repeated malformed / repeated no-valid-output guard where harnessable
+    - mixed visible answer plus invalid protocol
+    - action with pre-action text where recovery treats it specially
+  - Key blockers / risk areas:
+    - recovery authority is distributed across prevalidation, post-classification, output-recovery routing, and guard state
+    - there is not yet a recovery-domain branch authority diagnostic model analogous to terminal/board authority logs
+    - retry/streak cases need stateful harness coverage, not only single-turn snapshots
+  - No runtime behavior changed.
+  - Default registry remains `legacy`.
+- **Next**:
+  - Phase 29 Step 2: Recovery Invalid-Output Synthetic Harness + Authority Diagnostics.
+
 ---
 
 ### Phase 11: RecoveryStrategy Registry Expansion

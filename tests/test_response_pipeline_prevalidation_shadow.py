@@ -67,6 +67,8 @@ class TestResponsePipelinePrevalidationShadow(unittest.TestCase):
             classifier_reason_code="test",
             classifier_evidence=[],
             classifier_visible_text_present=False,
+            comparator_scope="legacy_parity_only",
+            authority_signal="terminal_answer_authority_resolution",
             legacy_kind=None,
             is_match=None,
         )
@@ -151,6 +153,8 @@ class TestResponsePipelinePrevalidationShadow(unittest.TestCase):
             "terminal_answer_classifier_shadow", "snapshot", classifier_kind="unknown",
             classifier_source="fallback", classifier_reason_code="test",
             classifier_evidence=[], classifier_visible_text_present=False,
+            comparator_scope="legacy_parity_only",
+            authority_signal="terminal_answer_authority_resolution",
             legacy_kind=None, is_match=None
         )
 
@@ -189,6 +193,8 @@ class TestResponsePipelinePrevalidationShadow(unittest.TestCase):
             classifier_reason_code="test",
             classifier_evidence=[],
             classifier_visible_text_present=False,
+            comparator_scope="legacy_parity_only",
+            authority_signal="terminal_answer_authority_resolution",
             legacy_kind="leaked_system_result",
             is_match=True,
         )
@@ -209,6 +215,8 @@ class TestResponsePipelinePrevalidationShadow(unittest.TestCase):
             classifier_reason_code="test",
             classifier_evidence=[],
             classifier_visible_text_present=False,
+            comparator_scope="legacy_parity_only",
+            authority_signal="terminal_answer_authority_resolution",
             legacy_kind="plaintext_terminal_answer",
             is_match=False,
         )
@@ -232,6 +240,8 @@ class TestResponsePipelinePrevalidationShadow(unittest.TestCase):
             classifier_reason_code="terminal_plaintext_completion_status:terminal_plaintext_too_short",
             classifier_evidence=["raw_response_text", "visible_text"],
             classifier_visible_text_present=True,
+            comparator_scope="legacy_parity_only",
+            authority_signal="terminal_answer_authority_resolution",
             legacy_kind="invalid_or_truncated_terminal_text",
             is_match=True,
         )
@@ -254,6 +264,46 @@ class TestResponsePipelinePrevalidationShadow(unittest.TestCase):
             classifier_reason_code="legacy_internal_summary_helper",
             classifier_evidence=["is_internal_summary"],
             classifier_visible_text_present=True,
+            comparator_scope="legacy_parity_only",
+            authority_signal="terminal_answer_authority_resolution",
             legacy_kind="internal_summary_like_text",
+            is_match=True,
+        )
+
+    def test_shadow_legacy_comparator_accepts_safe_short_plaintext(self):
+        self.harness.semantics.is_plaintext_answer_path.return_value = True
+        parsed_output = ParsedModelOutput(response="")
+        self.harness._apply_compiler_diagnosis(parsed_output, "Done.")
+
+        self.harness.stage_logger.log.assert_any_call(
+            "terminal_answer_classifier_shadow",
+            "snapshot",
+            classifier_kind="plaintext_terminal_answer",
+            classifier_source="compiler_fact",
+            classifier_reason_code="visible_text_source_is_pure_plaintext",
+            classifier_evidence=["visible_text_source"],
+            classifier_visible_text_present=True,
+            comparator_scope="legacy_parity_only",
+            authority_signal="terminal_answer_authority_resolution",
+            legacy_kind="plaintext_terminal_answer",
+            is_match=True,
+        )
+
+    def test_shadow_legacy_comparator_accepts_markdownish_short_plaintext(self):
+        self.harness.semantics.is_plaintext_answer_path.return_value = True
+        parsed_output = ParsedModelOutput(response="")
+        self.harness._apply_compiler_diagnosis(parsed_output, "# Summary\n\nDone.")
+
+        self.harness.stage_logger.log.assert_any_call(
+            "terminal_answer_classifier_shadow",
+            "snapshot",
+            classifier_kind="plaintext_terminal_answer",
+            classifier_source="compiler_fact",
+            classifier_reason_code="visible_text_source_is_pure_plaintext",
+            classifier_evidence=["visible_text_source"],
+            classifier_visible_text_present=True,
+            comparator_scope="legacy_parity_only",
+            authority_signal="terminal_answer_authority_resolution",
+            legacy_kind="plaintext_terminal_answer",
             is_match=True,
         )

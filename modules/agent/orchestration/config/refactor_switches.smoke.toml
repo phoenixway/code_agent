@@ -11,7 +11,7 @@ memory_checkpoint_with_action = "legacy"
 
 [terminal_answer]
 plaintext_terminal_answer = "compiler"
-checkpoint_only = "compiler"
+checkpoint_only = "legacy"
 checkpoint_with_visible_text = "legacy"
 
 [dispatch]
