@@ -4,9 +4,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 29 Step 8: Recovery Prevalidation Reject-Invalid-Output Compiler Decision Candidate
+- **Phase**: Phase 29 Step 9: Recovery Prevalidation Reject-Invalid-Output Fenced Smoke Switch Validation
 - **Status**: Complete.
-- **Next Step**: Phase 29 Step 9: Recovery Prevalidation Reject-Invalid-Output Smoke Switch Validation.
+- **Next Step**: Phase 29 Step 10: Recovery Prevalidation Reject-Invalid-Output Closure / Next Recovery Branch Selection.
 - **Boundary**: The checkpoint parity bridge remains diagnostic-only. Legacy board handlers still own commit behavior, the prepass compiler analysis remains observational, and `_apply_compiler_diagnosis` remains the effectful classification-stage path that recomputes on normalized response.
 
 ## Step 4I Parity Matrix
@@ -1737,6 +1737,34 @@ This document is the single source of truth for the current state of the Semanti
     - effective recovery decision remains legacy-owned
   - Recommended next step:
     - `Phase 29 Step 9: Recovery Prevalidation Reject-Invalid-Output Smoke Switch Validation`
+- **Phase 29 Step 9: Recovery Prevalidation Reject-Invalid-Output Fenced Smoke Switch Validation (Complete)**
+  - Enabled the smoke-only switch:
+    - `recovery.prevalidation_reject_invalid_output = "compiler"` in [refactor_switches.smoke.toml](/home/romankozak/studio/public/it/angelica-ai/modules/agent/orchestration/config/refactor_switches.smoke.toml)
+  - Default registry remains:
+    - `recovery.prevalidation_reject_invalid_output = "legacy"` in [refactor_switches.toml](/home/romankozak/studio/public/it/angelica-ai/modules/agent/orchestration/config/refactor_switches.toml)
+  - Fenced compiler selection is now synthetically validated for candidate-covered, agreement-proven cases only.
+  - Positive smoke compiler-selected cases:
+    - `malformed_action`
+    - `mixed_visible_text_and_control_protocol`
+    - `mixed_intent_transition_and_visible_answer`
+  - Unsupported or stateful branches remain fenced behind legacy fallback:
+    - malformed-think / unclosed-think family
+    - memory tag inside think
+    - checkpoint/subgoal inside think
+    - empty/whitespace followups that never enter the reject path
+  - Selection fence remains:
+    - `compiler_decision_available=True`
+    - `decision_agreement=True`
+    - `prompt_equivalent=True`
+    - otherwise `authority_source="legacy_fallback"`
+  - Boundary:
+    - no production behavior changed
+    - no recovery routing decisions changed
+    - no output recovery prompt selection changed
+    - default registry remains `legacy`
+    - runtime outcomes remain behavior-preserving with `behavior_changed=False`
+  - Recommended next step:
+    - `Phase 29 Step 10: Recovery Prevalidation Reject-Invalid-Output Closure / Next Recovery Branch Selection`
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 

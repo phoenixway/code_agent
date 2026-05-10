@@ -2839,6 +2839,36 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 29 Step 9: Recovery Prevalidation Reject-Invalid-Output Smoke Switch Validation.
 
+#### Phase 29 Step 9: Recovery Prevalidation Reject-Invalid-Output Fenced Smoke Switch Validation
+
+- **Status**: Done.
+- **Goal**: Enable smoke compiler mode for the prevalidation reject-invalid-output branch, but only for candidate-covered cases where decision agreement and prompt equivalence are proven.
+- **Completed Outcome**:
+  - Enabled smoke-only compiler mode:
+    - `[recovery] prevalidation_reject_invalid_output = "compiler"` in the smoke profile
+  - Kept the default registry at:
+    - `[recovery] prevalidation_reject_invalid_output = "legacy"`
+  - Compiler authority is now synthetically selected only when:
+    - `compiler_decision_available=True`
+    - `decision_agreement=True`
+    - `prompt_equivalent=True`
+  - Positive compiler-selected smoke cases now include:
+    - `malformed_action`
+    - `mixed_visible_text_and_control_protocol`
+    - `mixed_intent_transition_and_visible_answer`
+  - Unsupported/stateful branches remain legacy-fallback only:
+    - malformed-think / unclosed-think recovery
+    - memory tag inside think
+    - checkpoint/subgoal inside think
+    - empty/whitespace followups that do not enter the reject path
+  - No recovery routing decisions changed.
+  - No output recovery prompt selection changed.
+  - `behavior_changed=False` across the synthetic matrix.
+  - No production behavior changed.
+  - Default registry remains `legacy`.
+- **Next**:
+  - Phase 29 Step 10: Recovery Prevalidation Reject-Invalid-Output Closure / Next Recovery Branch Selection.
+
 ---
 
 ### Phase 11: RecoveryStrategy Registry Expansion

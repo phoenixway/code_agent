@@ -821,7 +821,7 @@ def test_prevalidation_reject_resolver_inactive_when_no_invalid_kind_and_no_deci
     assert resolution.diagnostic.behavior_changed is False
 
 
-def test_prevalidation_reject_resolver_compiler_mode_defers_when_candidate_exists_but_prompt_text_is_not_proven():
+def test_prevalidation_reject_resolver_compiler_mode_selects_compiler_when_candidate_agrees_and_prompt_is_equivalent():
     parsed_output = SimpleNamespace(
         invalid_kind="malformed_action",
         compiler_error_code="",
@@ -860,6 +860,89 @@ def test_prevalidation_reject_resolver_compiler_mode_defers_when_candidate_exist
     assert resolution.diagnostic.prompt_equivalent is True
     assert resolution.diagnostic.authority_source == "compiler"
     assert resolution.diagnostic.selected_by_switch is True
+
+
+def test_prevalidation_reject_resolver_compiler_mode_falls_back_on_decision_disagreement():
+    parsed_output = SimpleNamespace(
+        invalid_kind="malformed_action",
+        compiler_error_code="",
+        compiler_ir=None,
+        terminal_answer_semantic_result=None,
+        visible_text="",
+        has_action_segment=False,
+    )
+    decision = SimpleNamespace(
+        handled=True,
+        continue_loop=False,
+        next_query=None,
+        stop_loop=True,
+        reason="malformed_action",
+        source="output_recovery",
+        malformed_action_retries=2,
+        audit_marker_retries=0,
+    )
+
+    resolution = resolve_prevalidation_reject_invalid_output_authority(
+        parsed_output,
+        legacy_decision=decision,
+        compiler_decision_candidate=build_compiler_prevalidation_recovery_decision_candidate(
+            effective_invalid_kind="malformed_action",
+            malformed_action_retries=0,
+            audit_marker_retries=0,
+        ),
+        switch_value="compiler",
+        parsed_action_count=0,
+    )
+
+    assert resolution.effective_decision is decision
+    assert resolution.diagnostic.switch_value == "compiler"
+    assert resolution.diagnostic.authority_source == "legacy_fallback"
+    assert resolution.diagnostic.selected_by_switch is False
+    assert resolution.diagnostic.compiler_decision_available is True
+    assert resolution.diagnostic.decision_agreement is False
+    assert "decision_disagreement" in resolution.diagnostic.blocking_reasons
+
+
+def test_prevalidation_reject_resolver_compiler_mode_falls_back_when_prompt_equivalence_is_unproven():
+    parsed_output = SimpleNamespace(
+        invalid_kind="malformed_action",
+        compiler_error_code="",
+        compiler_ir=None,
+        terminal_answer_semantic_result=None,
+        visible_text="",
+        has_action_segment=False,
+    )
+    decision = SimpleNamespace(
+        handled=True,
+        continue_loop=True,
+        next_query="recover::malformed_action",
+        stop_loop=False,
+        reason="different_reason",
+        source="output_recovery",
+        malformed_action_retries=0,
+        audit_marker_retries=0,
+    )
+
+    resolution = resolve_prevalidation_reject_invalid_output_authority(
+        parsed_output,
+        legacy_decision=decision,
+        compiler_decision_candidate=build_compiler_prevalidation_recovery_decision_candidate(
+            effective_invalid_kind="malformed_action",
+            malformed_action_retries=0,
+            audit_marker_retries=0,
+        ),
+        switch_value="compiler",
+        parsed_action_count=0,
+    )
+
+    assert resolution.effective_decision is decision
+    assert resolution.diagnostic.switch_value == "compiler"
+    assert resolution.diagnostic.authority_source == "legacy_fallback"
+    assert resolution.diagnostic.selected_by_switch is False
+    assert resolution.diagnostic.compiler_decision_available is True
+    assert resolution.diagnostic.decision_agreement is False
+    assert resolution.diagnostic.prompt_equivalent is False
+    assert "decision_disagreement" in resolution.diagnostic.blocking_reasons
 
 
 def test_smoke_registry_unclosed_think_selects_compiler_without_behavior_change():
@@ -905,8 +988,75 @@ def test_smoke_registry_malformed_action_json_preserves_recovery_behavior():
 
     assert outcome.continue_loop is True
     diagnostic = _recovery_authority_calls(harness, "recovery.prevalidation_reject_invalid_output")[-1].kwargs
-    assert diagnostic["switch_value"] == "legacy"
+    assert diagnostic["switch_value"] == "compiler"
+    assert diagnostic["authority_source"] == "compiler"
+    assert diagnostic["selected_by_switch"] is True
+    assert diagnostic["compiler_decision_available"] is True
+    assert diagnostic["decision_agreement"] is True
+    assert diagnostic["prompt_equivalent"] is True
     assert diagnostic["effective_invalid_kind"] == "malformed_action"
+    assert diagnostic["behavior_changed"] is False
+
+
+def test_smoke_registry_malformed_action_with_pre_action_text_selects_compiler_without_behavior_change():
+    response = 'I will inspect the file.\n<action>{"type":"read_file","path":</action>'
+    harness, outcome = _run_intent_prevalidation_smoke_with_smoke_registry(response)
+
+    assert outcome is not None
+    assert outcome.continue_loop is True
+    diagnostic = _recovery_authority_calls(harness, "recovery.prevalidation_reject_invalid_output")[-1].kwargs
+    assert diagnostic["switch_value"] == "compiler"
+    assert diagnostic["authority_source"] == "compiler"
+    assert diagnostic["selected_by_switch"] is True
+    assert diagnostic["compiler_decision_available"] is True
+    assert diagnostic["decision_agreement"] is True
+    assert diagnostic["prompt_equivalent"] is True
+    assert diagnostic["effective_invalid_kind"] == "mixed_visible_text_and_control_protocol"
+    assert diagnostic["has_visible_text"] is True
+    assert diagnostic["behavior_changed"] is False
+
+
+def test_smoke_registry_unclosed_think_under_intent_prevalidation_falls_back_without_behavior_change():
+    harness, outcome = _run_intent_prevalidation_smoke_with_smoke_registry("<think>\nI am still thinking")
+
+    assert outcome is not None
+    assert outcome.continue_loop is True
+    diagnostic = _recovery_authority_calls(harness, "recovery.prevalidation_reject_invalid_output")[-1].kwargs
+    assert diagnostic["switch_value"] == "compiler"
+    assert diagnostic["authority_source"] == "legacy_fallback"
+    assert diagnostic["selected_by_switch"] is False
+    assert diagnostic["compiler_decision_available"] is False
+    assert "no_compiler_decision_path" in diagnostic["blocking_reasons"]
+    assert diagnostic["behavior_changed"] is False
+
+
+def test_smoke_registry_memory_tag_inside_think_under_intent_prevalidation_falls_back_without_behavior_change():
+    harness, outcome = _run_intent_prevalidation_smoke_with_smoke_registry("<think>\n<memory_update_done />")
+
+    assert outcome is not None
+    assert outcome.continue_loop is True
+    diagnostic = _recovery_authority_calls(harness, "recovery.prevalidation_reject_invalid_output")[-1].kwargs
+    assert diagnostic["switch_value"] == "compiler"
+    assert diagnostic["authority_source"] == "legacy_fallback"
+    assert diagnostic["selected_by_switch"] is False
+    assert diagnostic["compiler_decision_available"] is False
+    assert "no_compiler_decision_path" in diagnostic["blocking_reasons"]
+    assert diagnostic["has_checkpoint"] is False
+    assert diagnostic["behavior_changed"] is False
+
+
+def test_smoke_registry_checkpoint_tag_inside_think_under_intent_prevalidation_falls_back_without_behavior_change():
+    harness, outcome = _run_intent_prevalidation_smoke_with_smoke_registry('<think>\n<subgoal action="mark_in_progress" id="sg_1" />')
+
+    assert outcome is not None
+    assert outcome.continue_loop is True
+    diagnostic = _recovery_authority_calls(harness, "recovery.prevalidation_reject_invalid_output")[-1].kwargs
+    assert diagnostic["switch_value"] == "compiler"
+    assert diagnostic["authority_source"] == "legacy_fallback"
+    assert diagnostic["selected_by_switch"] is False
+    assert diagnostic["compiler_decision_available"] is False
+    assert "no_compiler_decision_path" in diagnostic["blocking_reasons"]
+    assert diagnostic["has_checkpoint"] is False
     assert diagnostic["behavior_changed"] is False
 
 
@@ -918,6 +1068,30 @@ def test_smoke_registry_mixed_visible_answer_and_invalid_protocol_preserves_beha
     diagnostic = _recovery_authority_calls(harness, "recovery.compiler_invalid_kind_mapping")[-1].kwargs
     assert diagnostic["switch_value"] == "compiler"
     assert diagnostic["authority_source"] == "compiler"
+    assert diagnostic["behavior_changed"] is False
+
+
+def test_smoke_registry_empty_output_under_intent_prevalidation_keeps_branch_inactive():
+    harness, outcome = _run_intent_prevalidation_smoke_with_smoke_registry("   \n\t")
+
+    assert outcome is None
+    assert not _recovery_authority_calls(harness, "recovery.prevalidation_reject_invalid_output")
+
+
+def test_smoke_registry_clean_plaintext_under_intent_prevalidation_selects_compiler_without_behavior_change():
+    harness, outcome = _run_intent_prevalidation_smoke_with_smoke_registry("Done.")
+
+    assert outcome is not None
+    assert outcome.continue_loop is True
+    diagnostic = _recovery_authority_calls(harness, "recovery.prevalidation_reject_invalid_output")[-1].kwargs
+    assert diagnostic["switch_value"] == "compiler"
+    assert diagnostic["authority_source"] == "compiler"
+    assert diagnostic["selected_by_switch"] is True
+    assert diagnostic["compiler_decision_available"] is True
+    assert diagnostic["decision_agreement"] is True
+    assert diagnostic["prompt_equivalent"] is True
+    assert diagnostic["effective_invalid_kind"] == "mixed_intent_transition_and_visible_answer"
+    assert diagnostic["has_visible_text"] is True
     assert diagnostic["behavior_changed"] is False
 
 
