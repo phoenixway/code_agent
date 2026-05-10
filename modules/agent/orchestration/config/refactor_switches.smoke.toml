@@ -18,7 +18,7 @@ checkpoint_with_visible_text = "legacy"
 plan_first_single_action = "legacy"
 
 [board_memory]
-memory_checkpoint_only = "legacy"
+memory_checkpoint_only = "compiler"
 
 [recovery]
 compiler_invalid_kind_mapping = "compiler"

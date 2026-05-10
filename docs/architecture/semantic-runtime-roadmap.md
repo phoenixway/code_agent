@@ -3151,8 +3151,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Goal**: Harden commit-equivalence validation for `MEMORY_CHECKPOINT_ONLY` to determine if commit counts, `next_query`, and state flags can be proven equivalent.
 - **Completed Outcome**:
   - Adopted an "observed-equivalence" model where the typed candidate's structural expectations are compared against the observed legacy commit result.
-  - The `MemoryCommitCandidate` now has explicit expectations for commit counts, `next_query`, and state flags for a clean `MEMORY_CHECKPOINT_ONLY` case.
-  - The resolver now proves `commit_equivalent=True` by comparing these expectations against the observed legacy commit snapshot.
+  - The resolver now proves `commit_equivalent=True` for clean cases by checking if the observed legacy commit result (counts, query, etc.) is consistent with a `MEMORY_CHECKPOINT_ONLY` outcome. The typed candidate itself does not predict memory-engine-dependent values.
   - Added tests to validate full equivalence for the clean case and to confirm fallback on mismatch.
   - The `board_memory.memory_checkpoint_only` switch remains `legacy` in both default and smoke registries.
   - No runtime behavior was changed.
@@ -3163,13 +3162,29 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 30 Step 6: MEMORY_CHECKPOINT_ONLY Smoke Switch Validation
 
-- **Status**: Not started.
+- **Status**: Done.
 - **Goal**: Enable the `board_memory.memory_checkpoint_only` switch in the smoke profile and validate it with synthetic tests.
-- **Expected Scope**:
+- **Completed Outcome**:
   - Set `board_memory.memory_checkpoint_only = "compiler"` in `refactor_switches.smoke.toml`.
-  - Add a synthetic test that runs the harness with the smoke profile enabled and confirms that compiler authority is selected for the clean `MEMORY_CHECKPOINT_ONLY` case without changing behavior.
+  - Added synthetic tests that run the harness with the smoke profile enabled and confirm that compiler authority is selected for clean, observed-equivalent `MEMORY_CHECKPOINT_ONLY` cases.
+  - Fallback controls confirm that mismatched or non-eligible cases still use legacy authority.
+  - The default registry remains `legacy`.
+  - No production behavior was changed.
 - **Next**:
-  - Phase 30 Step 7: ...
+  - Phase 30 Step 7: MEMORY_CHECKPOINT_ONLY Live/Integrated Smoke or Closure Decision.
+
+---
+
+#### Phase 30 Step 7: MEMORY_CHECKPOINT_ONLY Live/Integrated Smoke or Closure Decision
+
+- **Status**: Not started.
+- **Goal**: Decide whether to run live/integrated smoke tests for the `MEMORY_CHECKPOINT_ONLY` branch or close the slice based on synthetic evidence.
+- **Expected Scope**:
+  - Review the synthetic validation results from Step 6.
+  - If confidence is high, proceed to a live smoke run.
+  - If confidence is low or the branch is hard to exercise live, document the decision and close the slice.
+- **Next**:
+  - Phase 30 Step 8: ...
 
 ---
 

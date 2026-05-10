@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from dataclasses import dataclass, field
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from modules.agent.orchestration.config.switch_registry import get_switch, _load_registry
 from modules.agent.orchestration.protocol import ProtocolCompiler
 from modules.agent.orchestration.responses.memory_commit_authority import (
     build_memory_checkpoint_only_commit_candidate,
@@ -100,6 +102,25 @@ class _CommitEquivalenceHarness(ResponsePipelinePrevalidationMixin, ResponsePipe
         self.memory_board_stage = memory_board_stage or _StaticMemoryStage(
             SimpleNamespace(handled=False, response_text="")
         )
+
+
+SMOKE_REGISTRY_PATH = "modules/agent/orchestration/config/refactor_switches.smoke.toml"
+
+
+@pytest.fixture
+def smoke_registry_override():
+    """Fixture to override the switch registry with the smoke profile for a test."""
+    original_env = os.environ.get("ANGELICA_REFACTOR_SWITCH_REGISTRY")
+    os.environ["ANGELICA_REFACTOR_SWITCH_REGISTRY"] = SMOKE_REGISTRY_PATH
+    _load_registry.cache_clear()
+    try:
+        yield
+    finally:
+        if original_env is None:
+            os.environ.pop("ANGELICA_REFACTOR_SWITCH_REGISTRY", None)
+        else:
+            os.environ["ANGELICA_REFACTOR_SWITCH_REGISTRY"] = original_env
+        _load_registry.cache_clear()
 
 
 def _run_commit_equivalence_harness(response: str, *, memory_board_stage=None):
@@ -450,6 +471,7 @@ class TestMemoryCommitAuthority:
         assert diag.authority_source == "legacy"
         assert diag.selected_by_switch is False
         assert diag.candidate_available is True
+        assert diag.commit_equivalent is True
         assert diag.fallback_used is False
         assert diag.behavior_changed is False
         assert decision.effective_commit.handled == snapshot.handled
@@ -579,3 +601,122 @@ class TestMemoryCommitEquivalence:
         assert diag.authority_source == "legacy_fallback"
         assert diag.commit_equivalent is False
         assert diag.accepted_count_agreement is False
+
+
+@pytest.mark.usefixtures("smoke_registry_override")
+class TestMemoryCommitSmokeValidation:
+    def test_smoke_compiler_authority_selected_for_clean_mco(self):
+        response = "<memory_update_done />"
+        mock_agent = SimpleNamespace(state=SimpleNamespace(), memory_board_engine=MagicMock(), log=None)
+        mock_prompt_builder = SimpleNamespace(_current_active_intent_id=MagicMock(return_value="intent_123"))
+        mock_board_result = SimpleNamespace(parsed_count=1, accepted_count=1, rejected_count=0, clean_text="")
+        mock_agent.memory_board_engine.apply_response_text.return_value = mock_board_result
+        real_handler = MemoryBoardStageHandler(mock_agent, mock_prompt_builder)
+        harness, state, outcome, snapshot = _run_commit_equivalence_harness(
+            response, memory_board_stage=real_handler
+        )
+
+        switch_value = get_switch("board_memory.memory_checkpoint_only")
+        assert switch_value == "compiler"
+
+        decision = resolve_memory_checkpoint_only_commit_authority(
+            semantic_result=state.board_checkpoint_semantic_result,
+            legacy_branch=snapshot.branch,
+            legacy_handled=snapshot.handled,
+            legacy_reason=snapshot.reason,
+            legacy_source=snapshot.source,
+            legacy_response_text=snapshot.response_text,
+            legacy_next_query=snapshot.next_query,
+            legacy_commit_attempted=snapshot.memory_commit_attempted,
+            legacy_accepted_count=snapshot.memory_commit_accepted_count,
+            legacy_rejected_count=snapshot.memory_commit_rejected_count,
+            legacy_last_memory_update_done=snapshot.last_memory_update_done,
+            switch_value=switch_value,
+        )
+
+        diag = decision.diagnostic
+        assert diag.authority_source == "compiler"
+        assert diag.selected_by_switch is True
+        assert diag.commit_equivalent is True
+        assert diag.behavior_changed is False
+
+    def test_smoke_compiler_authority_falls_back_on_mismatch(self):
+        response = "<memory_update_done />"
+        mock_agent = SimpleNamespace(state=SimpleNamespace(), memory_board_engine=MagicMock(), log=None)
+        mock_prompt_builder = SimpleNamespace(_current_active_intent_id=MagicMock(return_value="intent_123"))
+        mock_board_result = SimpleNamespace(parsed_count=1, accepted_count=2, rejected_count=0, clean_text="")
+        mock_agent.memory_board_engine.apply_response_text.return_value = mock_board_result
+        real_handler = MemoryBoardStageHandler(mock_agent, mock_prompt_builder)
+        harness, state, outcome, snapshot = _run_commit_equivalence_harness(
+            response, memory_board_stage=real_handler
+        )
+
+        switch_value = get_switch("board_memory.memory_checkpoint_only")
+        assert switch_value == "compiler"
+
+        decision = resolve_memory_checkpoint_only_commit_authority(
+            semantic_result=state.board_checkpoint_semantic_result,
+            legacy_branch=snapshot.branch,
+            legacy_handled=snapshot.handled,
+            legacy_reason=snapshot.reason,
+            legacy_source=snapshot.source,
+            legacy_response_text=snapshot.response_text,
+            legacy_next_query=snapshot.next_query,
+            legacy_commit_attempted=snapshot.memory_commit_attempted,
+            legacy_accepted_count=snapshot.memory_commit_accepted_count,
+            legacy_rejected_count=snapshot.memory_commit_rejected_count,
+            legacy_last_memory_update_done=snapshot.last_memory_update_done,
+            switch_value=switch_value,
+        )
+
+        diag = decision.diagnostic
+        assert diag.authority_source == "legacy_fallback"
+        assert diag.selected_by_switch is False
+        assert diag.commit_equivalent is False
+        assert diag.behavior_changed is False
+
+    @pytest.mark.parametrize(
+        "response",
+        [
+            "Done.",
+            '<action>{"type":"read_file","path":"README.md"}</action>',
+            '<subgoal action="mark_in_progress" id="sg_1" />',
+            "<memory_update_done />\nDone.",
+            '<memory_update_done />\n<action>{"type":"read_file","path":"README.md"}</action>',
+        ],
+        ids=[
+            "plaintext_only",
+            "action_only",
+            "plan_checkpoint_only",
+            "memory_checkpoint_with_text",
+            "memory_checkpoint_with_action",
+        ],
+    )
+    def test_smoke_compiler_authority_not_used_for_negative_controls(self, response):
+        harness, state, outcome, snapshot = _run_commit_equivalence_harness(response)
+
+        switch_value = get_switch("board_memory.memory_checkpoint_only")
+        assert switch_value == "compiler"
+
+        decision = resolve_memory_checkpoint_only_commit_authority(
+            semantic_result=state.board_checkpoint_semantic_result,
+            legacy_branch=snapshot.branch,
+            legacy_handled=snapshot.handled,
+            legacy_reason=snapshot.reason,
+            legacy_source=snapshot.source,
+            legacy_response_text=snapshot.response_text,
+            legacy_next_query=snapshot.next_query,
+            legacy_commit_attempted=snapshot.memory_commit_attempted,
+            legacy_accepted_count=snapshot.memory_commit_accepted_count,
+            legacy_rejected_count=snapshot.memory_commit_rejected_count,
+            legacy_last_memory_update_done=snapshot.last_memory_update_done,
+            switch_value=switch_value,
+        )
+
+        diag = decision.diagnostic
+        assert diag.candidate_available is False
+        assert diag.authority_source == "legacy_fallback"
+        assert diag.selected_by_switch is False
+        assert diag.fallback_used is True
+        assert diag.commit_equivalent is False
+        assert diag.behavior_changed is False

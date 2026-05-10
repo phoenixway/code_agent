@@ -1939,12 +1939,16 @@ This document is the single source of truth for the current state of the Semanti
   - No production authority was transferred, and no runtime behavior was changed.
 - **Phase 30 Step 5: MEMORY_CHECKPOINT_ONLY Commit Equivalence Hardening (Complete)**
   - Hardened commit-equivalence validation for `MEMORY_CHECKPOINT_ONLY` using an "observed-equivalence" model.
-  - The `MemoryCommitCandidate` now has explicit expectations for commit counts, `next_query`, and state flags for a clean `MEMORY_CHECKPOINT_ONLY` case.
-  - The resolver now proves `commit_equivalent=True` by comparing these expectations against the observed legacy commit snapshot.
+  - The resolver now proves `commit_equivalent=True` for clean cases by checking if the observed legacy commit result (counts, query, etc.) is consistent with a `MEMORY_CHECKPOINT_ONLY` outcome. The typed candidate itself does not predict memory-engine-dependent values.
   - Added tests to validate full equivalence for the clean case and to confirm fallback on mismatch.
   - The `board_memory.memory_checkpoint_only` switch remains `legacy` in both default and smoke registries, as this step only proves equivalence, it does not enable the switch.
   - No runtime behavior was changed.
-  - **Next Step**: `Phase 30 Step 6: MEMORY_CHECKPOINT_ONLY Smoke Switch Validation`.
+- **Phase 30 Step 6: MEMORY_CHECKPOINT_ONLY Smoke Switch Validation (Complete)**
+  - Enabled the `board_memory.memory_checkpoint_only` switch in the smoke-test profile only.
+  - Added synthetic tests to `tests/test_board_memory_commit_equivalence.py` that validate compiler authority is selected for clean, observed-equivalent `MEMORY_CHECKPOINT_ONLY` cases under the smoke profile.
+  - Fallback controls confirm that mismatched or non-eligible cases still use legacy authority.
+  - The default registry remains `legacy`, and no production behavior was changed.
+  - **Next Step**: `Phase 30 Step 7: MEMORY_CHECKPOINT_ONLY Live/Integrated Smoke or Closure Decision`.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 
