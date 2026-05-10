@@ -2995,16 +2995,32 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 29 Step 14: Invalid-Truncated Terminal Text Smoke Switch Validation
 
-- **Status**: Not started.
-- **Goal**: Enable the smoke-only switch for `recovery.invalid_truncated_terminal_text` and validate that it preserves current behavior.
-- **Expected Scope**:
-  - Enable the smoke switch.
-  - Add a compiler decision candidate path to the resolver.
-  - Validate with synthetic smoke that compiler authority is selected only for agreement-proven cases.
-  - Preserve legacy fallback for all other cases.
-  - Ensure `behavior_changed=False` across the synthetic matrix.
+- **Status**: Done.
+- **Goal**: Validate whether `recovery.invalid_truncated_terminal_text` can safely get smoke-profile compiler authority.
+- **Completed Outcome**:
+  - **NO-GO** for smoke switch enablement.
+  - The `INVALID_OR_TRUNCATED_TERMINAL_TEXT` branch is currently diagnostic-only in the post-classification path.
+  - It correctly identifies typed invalid/truncated text, but there is no corresponding legacy recovery decision to preserve or replace in this path.
+  - Enabling a smoke compiler switch would be misleading, as it would claim authority over a decision that is not being made.
+  - The branch remains a typed characterization signal only for now.
+  - Added synthetic smoke coverage for incomplete sentences and negative controls.
+  - No production behavior changed.
+  - Default and smoke registries remain `legacy` for this branch.
 - **Next**:
-  - Phase 29 Step 15: ...
+  - Phase 29 Step 15: Recovery Invalid-Truncated Boundary Closure / Remaining Recovery Branch Decision.
+
+---
+
+#### Phase 29 Step 15: Recovery Invalid-Truncated Boundary Closure / Remaining Recovery Branch Decision
+
+- **Status**: Not started.
+- **Goal**: Close the invalid/truncated terminal text slice and select the next recovery branch.
+- **Expected Scope**:
+  - Document closure of the `invalid_truncated_terminal_text` branch as a diagnostic-only characterization.
+  - Review remaining recovery branches (`internal_summary`, stateful guards, etc.).
+  - Select the next branch with the best safety/value tradeoff.
+- **Next**:
+  - Phase 29 Step 16: ...
 
 ---
 

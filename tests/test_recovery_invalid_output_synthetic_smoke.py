@@ -6,6 +6,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 from pathlib import Path
 
+import pytest
+
 from modules.agent.orchestration.config.switch_registry import _load_registry
 from modules.agent.orchestration.parsers.parsing import IntentResponseParser
 from modules.agent.orchestration.protocol.classifier import ProtocolCompiler
@@ -356,6 +358,36 @@ def test_clean_plaintext_does_not_log_invalid_truncated_authority_diagnostic():
     assert outcome.reason == "dispatch_ready"
     diagnostic = _recovery_authority_calls(harness, "recovery.invalid_truncated_terminal_text")[-1].kwargs
     assert diagnostic["branch_active"] is False
+
+
+def test_incomplete_sentence_is_characterized_as_invalid_truncated():
+    harness, classified, outcome = _run_full_path_smoke("I think we should")
+
+    assert classified.parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.INVALID_OR_TRUNCATED_TERMINAL_TEXT
+    assert outcome.reason == "dispatch_ready"
+    diagnostic = _recovery_authority_calls(harness, "recovery.invalid_truncated_terminal_text")[-1].kwargs
+    assert diagnostic["branch_active"] is True
+    assert diagnostic["typed_invalid_truncated_eligible"] is True
+    assert diagnostic["behavior_changed"] is False
+
+
+@pytest.mark.parametrize(
+    "response, expected_typed_kind",
+    [
+        ("Done.", TerminalAnswerKind.PLAINTEXT_TERMINAL_ANSWER),
+        ('<action>{"type":"read_file","path":"README.md"}</action>', TerminalAnswerKind.NO_VISIBLE_TEXT),
+        ("<memory_update_done />", TerminalAnswerKind.CHECKPOINT_ONLY),
+        ("SYSTEM RESULT: The tool output is...", TerminalAnswerKind.LEAKED_SYSTEM_RESULT),
+        ("<think>I am still thinking", TerminalAnswerKind.NO_VISIBLE_TEXT),
+    ],
+)
+def test_invalid_truncated_terminal_text_is_inactive_for_negative_controls(response, expected_typed_kind):
+    harness, classified, outcome = _run_full_path_smoke(response)
+
+    assert classified.parsed_output.terminal_answer_semantic_result.kind == expected_typed_kind
+    diagnostic = _recovery_authority_calls(harness, "recovery.invalid_truncated_terminal_text")[-1].kwargs
+    assert diagnostic["branch_active"] is False
+    assert diagnostic["typed_invalid_truncated_eligible"] is False
 
 
 def test_memory_tag_inside_think_is_characterized_as_invalid_without_checkpoint_authority():
@@ -1165,6 +1197,35 @@ def test_leaked_system_result_resolver_does_not_treat_internal_summary_as_leak()
     assert resolution.diagnostic.authority_source == "legacy_fallback"
     assert resolution.diagnostic.is_internal_summary is True
     assert resolution.diagnostic.is_leaked_system_result is False
+
+
+def test_invalid_truncated_resolver_legacy_mode_with_typed_only_signal():
+    parsed_output = SimpleNamespace(
+        invalid_kind="",
+        compiler_error_code="",
+        compiler_ir=None,
+        terminal_answer_semantic_result=SimpleNamespace(kind=TerminalAnswerKind.INVALID_OR_TRUNCATED_TERMINAL_TEXT),
+        visible_text="And.",
+        has_action_segment=False,
+    )
+
+    resolution = resolve_invalid_truncated_terminal_text_recovery_authority(
+        parsed_output,
+        legacy_invalid_truncated_active=False,
+        legacy_decision=None,
+        switch_value="legacy",
+        parsed_action_count=0,
+    )
+
+    assert resolution.effective_decision is None
+    assert resolution.diagnostic.switch_value == "legacy"
+    assert resolution.diagnostic.authority_source == "legacy"
+    assert resolution.diagnostic.branch_active is True
+    assert resolution.diagnostic.effective_source == "typed"
+    assert resolution.diagnostic.legacy_kind == ""
+    assert resolution.diagnostic.typed_kind == "INVALID_OR_TRUNCATED_TERMINAL_TEXT"
+    assert resolution.diagnostic.agreement is False
+    assert resolution.diagnostic.behavior_changed is False
 
 
 def test_smoke_registry_canonical_leaked_system_result_selects_compiler_without_behavior_change():

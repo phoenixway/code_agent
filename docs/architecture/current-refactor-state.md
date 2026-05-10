@@ -4,9 +4,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 29 Step 12: Leaked-System-Result Recovery Closure / Next Recovery Branch Selection
+- **Phase**: Phase 29 Step 14: Invalid-Truncated Terminal Text Smoke Switch Validation
 - **Status**: Complete.
-- **Next Step**: Phase 29 Step 13: Invalid-Truncated Terminal Text Recovery Authority Candidate.
+- **Next Step**: Phase 29 Step 15: Recovery Invalid-Truncated Boundary Closure / Remaining Recovery Branch Decision.
 - **Boundary**: The checkpoint parity bridge remains diagnostic-only. Legacy board handlers still own commit behavior, the prepass compiler analysis remains observational, and `_apply_compiler_diagnosis` remains the effectful classification-stage path that recomputes on normalized response.
 
 ## Step 4I Parity Matrix
@@ -1867,8 +1867,17 @@ This document is the single source of truth for the current state of the Semanti
   - Default registry remains `legacy`.
   - No recovery routing decisions changed.
   - No output recovery prompt selection changed.
+- **Phase 29 Step 14: Invalid-Truncated Terminal Text Smoke Switch Validation (Complete)**
+  - **NO-GO** for smoke switch enablement.
+  - The `INVALID_OR_TRUNCATED_TERMINAL_TEXT` branch is currently diagnostic-only in the post-classification path.
+  - It correctly identifies typed invalid/truncated text, but there is no corresponding legacy recovery decision to preserve or replace in this path.
+  - Enabling a smoke compiler switch would be misleading, as it would claim authority over a decision that is not being made.
+  - The branch remains a typed characterization signal only for now.
+  - Added synthetic smoke coverage for incomplete sentences and negative controls.
+  - No production behavior changed.
+  - Default and smoke registries remain `legacy` for this branch.
   - Recommended next step:
-    - `Phase 29 Step 14: Invalid-Truncated Terminal Text Smoke Switch Validation`
+    - `Phase 29 Step 15: Recovery Invalid-Truncated Boundary Closure / Remaining Recovery Branch Decision`
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 

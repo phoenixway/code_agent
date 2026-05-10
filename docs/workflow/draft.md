@@ -167,4 +167,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 163. Phase 29 Step 11: done. Added leaked-system-result recovery authority resolver/accessor coverage, wired the post-classification leak guard through the resolver behavior-preservingly, added default/smoke switch entries, and enabled smoke-only compiler authority for canonical typed leak cases with strict legacy fallback elsewhere.
 164. Phase 29 Step 12: done. Closed `recovery.leaked_system_result` as a smoke-validated fenced compiler-authority slice, kept default authority legacy, and selected `recovery.invalid_truncated_terminal_text` as the next recovery branch.
 165. Phase 29 Step 13: done. Added a resolver and diagnostic-only logging for `recovery.invalid_truncated_terminal_text`, added default/smoke legacy switch placeholders, and added synthetic smoke coverage without changing runtime behavior.
-166. Next: Phase 29 Step 14: Invalid-Truncated Terminal Text Smoke Switch Validation.
+166. Phase 29 Step 14: done. Recorded NO-GO for smoke switch on `recovery.invalid_truncated_terminal_text` because it is a diagnostic-only branch without a recovery decision to own. Added more synthetic coverage.
+167. Next: Phase 29 Step 15: Recovery Invalid-Truncated Boundary Closure / Remaining Recovery Branch Decision.
