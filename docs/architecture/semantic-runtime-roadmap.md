@@ -2643,6 +2643,38 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 29 Step 3: Recovery Synthetic Matrix Expansion / First Authority Candidate Decision.
 
+#### Phase 29 Step 3: Recovery Synthetic Matrix Expansion / First Authority Candidate Decision
+
+- **Status**: Done.
+- **Goal**: Expand the deterministic recovery synthetic matrix far enough to decide whether any narrow recovery-authority branch is safe to pursue next.
+- **Completed Outcome**:
+  - Expanded synthetic recovery coverage to include:
+    - internal-summary characterization
+    - mixed visible answer plus invalid protocol
+    - repeated-thinking / no-valid-output guard characterization
+    - malformed action payload with visible pre-action text
+    - action-only valid control
+    - clean plaintext valid control
+  - Hardened observational recovery diagnostics with:
+    - `parsed_invalid_kind`
+    - `recovery_reason`
+    - `recovery_prompt_kind`
+    - `guard_name`
+    - `guard_triggered`
+  - First authority-candidate decision:
+    - `NO-GO` for authority transfer in this step
+    - the cleanest future candidate is `recovery.compiler_invalid_kind_mapping`, not a routed recovery branch
+  - Main blockers:
+    - recovery ownership is still distributed across prevalidation, output recovery, typed terminal signals, and stateful guards
+    - internal-summary typed signals do not currently activate recovery on their own
+    - malformed action with visible text currently resolves through mixed visible-text/control recovery
+    - repeated-thinking handling is stateful and not a simple invalid-kind branch
+  - No recovery switch family was introduced.
+  - No runtime behavior changed.
+  - Default registry remains `legacy`.
+- **Next**:
+  - Phase 29 Step 4: Recovery Authority Candidate Design.
+
 ---
 
 ### Phase 11: RecoveryStrategy Registry Expansion

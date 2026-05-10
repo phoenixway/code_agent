@@ -156,4 +156,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 152. Phase 28 Step 15: done. Closed the terminal plaintext slice for now; plaintext terminal authority is smoke-validated, checkpoint terminal branches remain deferred, and `terminal_answer_classifier_shadow` is now clearly parity-only.
 153. Phase 29 Step 1: done. Inventoried recovery/invalid-output consumers, confirmed no recovery-domain switch family exists yet, and defined the initial synthetic smoke matrix plus the need for dedicated recovery authority diagnostics.
 154. Phase 29 Step 2: done. Added the observational `RecoveryAuthorityDiagnostic`, logged `recovery_authority_resolution` for compiler-invalid mapping and prevalidation invalid-output routing, and created the first deterministic recovery synthetic smoke harness.
-155. Next: Phase 29 Step 3: Recovery Synthetic Matrix Expansion / First Authority Candidate Decision.
+155. Phase 29 Step 3: done. Expanded the recovery synthetic matrix, hardened observational recovery diagnostics, and recorded a NO-GO for authority transfer in this slice; the cleanest future candidate is `recovery.compiler_invalid_kind_mapping`.
+156. Next: Phase 29 Step 4: Recovery Authority Candidate Design.

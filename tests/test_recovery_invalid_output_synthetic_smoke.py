@@ -153,6 +153,26 @@ def _run_full_path_smoke(response: str):
     return harness, classified, outcome
 
 
+def _run_full_path_smoke_with_harness(harness, response: str):
+    checkpoint_state = SimpleNamespace(
+        response=response,
+        reflection_repair_pending=False,
+        reflection_repair_kind="",
+        plan_checkpoint_only=False,
+        plan_checkpoint_and_text=False,
+        plan_checkpoint_and_action=False,
+        memory_checkpoint_only=False,
+        memory_checkpoint_and_text=False,
+        memory_checkpoint_and_action=False,
+        memory_board_decision=SimpleNamespace(memory_checkpoint_and_text=False),
+    )
+    step = SimpleNamespace(response=response, intent_payload=None, model_stop_reason="")
+    classified = harness._run_classification_stage(step, response, checkpoint_state)
+    ctx = SimpleNamespace(malformed_action_retries=0, audit_marker_retries=0, state_machine=None)
+    outcome = asyncio.run(harness._run_post_classification_stage(ctx, step, checkpoint_state, classified))
+    return classified, outcome
+
+
 def _run_intent_prevalidation_smoke(response: str, *, mode: str = "activate"):
     harness = _RecoverySmokeHarness()
     ctx = SimpleNamespace(malformed_action_retries=0, audit_marker_retries=0, state_machine=None)
@@ -261,3 +281,84 @@ def test_pre_action_text_with_action_keeps_dispatch_safe_and_logs_recovery_mappi
     diagnostic = _recovery_authority_calls(harness, "recovery.compiler_invalid_kind_mapping")[-1].kwargs
     assert diagnostic["has_action"] is True
     assert diagnostic["behavior_changed"] is False
+
+
+def test_internal_summary_recovery_is_characterized_without_terminal_authority_transfer():
+    harness = _RecoverySmokeHarness()
+    harness._is_internal_summary_instead_of_final_answer = MagicMock(return_value=True)
+    classified, outcome = _run_full_path_smoke_with_harness(
+        harness,
+        "ACTIVE GOAL: Refactor the file.\nCURRENT STATUS: collecting evidence.",
+    )
+
+    assert classified.parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.INTERNAL_SUMMARY_LIKE_TEXT
+    assert outcome.reason == "dispatch_ready"
+    diagnostic = _recovery_authority_calls(harness, "recovery.compiler_invalid_kind_mapping")[-1].kwargs
+    assert diagnostic["typed_kind"] == "INTERNAL_SUMMARY_LIKE_TEXT"
+    assert diagnostic["is_internal_summary"] is True
+    assert diagnostic["branch_active"] is False
+    assert diagnostic["behavior_changed"] is False
+
+
+def test_mixed_visible_answer_and_invalid_protocol_is_characterized_as_recovery():
+    response = "Done.\n<think>\nstill thinking"
+    harness, classified, outcome = _run_full_path_smoke(response)
+
+    assert classified.parsed_output.compiler_error_code == "E_UNCLOSED_THINK"
+    assert outcome.continue_loop is True
+    assert outcome.reason == "malformed_incomplete_think"
+    diagnostic = _recovery_authority_calls(harness, "recovery.compiler_invalid_kind_mapping")[-1].kwargs
+    assert diagnostic["effective_invalid_kind"] == "malformed_incomplete_think"
+    assert diagnostic["has_visible_text"] is True
+    assert diagnostic["behavior_changed"] is False
+
+
+def test_repeated_thinking_guard_is_characterized_when_no_specific_recovery_branch_is_active():
+    harness = _RecoverySmokeHarness()
+    harness.guards.is_nonproductive_thinking_turn = MagicMock(return_value=True)
+    harness.guards.set_nonproductive_thinking_state = MagicMock(return_value=3)
+    classified, outcome = _run_full_path_smoke_with_harness(
+        harness,
+        "I am still thinking about the next step.",
+    )
+
+    assert classified.parsed_output.invalid_kind == ""
+    assert outcome.continue_loop is True
+    assert outcome.reason == "repeated_thinking_without_valid_output"
+    assert outcome.source == "thinking_guard"
+
+
+def test_malformed_action_with_pre_action_text_logs_visible_text_and_guard_metadata():
+    response = 'I will inspect the file.\n<action>{"type":"read_file","path":</action>'
+    harness, outcome = _run_intent_prevalidation_smoke(response)
+
+    assert outcome is not None
+    assert outcome.continue_loop is True
+    diagnostic = _recovery_authority_calls(harness, "recovery.prevalidation_reject_invalid_output")[-1].kwargs
+    assert diagnostic["effective_invalid_kind"] == "mixed_visible_text_and_control_protocol"
+    assert diagnostic["has_visible_text"] is True
+    assert diagnostic["recovery_reason"] == "mixed_visible_text_and_control_protocol"
+    assert diagnostic["guard_name"] == "intent_atomicity_guard"
+    assert diagnostic["guard_triggered"] is True
+
+
+def test_action_only_valid_control_does_not_select_recovery_branch():
+    harness, classified, outcome = _run_full_path_smoke('<action>{"type":"read_file","path":"README.md"}</action>')
+
+    assert classified.parsed_action_count == 1
+    assert outcome.reason == "dispatch_ready"
+    diagnostic = _recovery_authority_calls(harness, "recovery.compiler_invalid_kind_mapping")[-1].kwargs
+    assert diagnostic["branch_active"] is False
+    assert diagnostic["has_action"] is True
+    assert diagnostic["effective_invalid_kind"] == ""
+
+
+def test_clean_plaintext_control_does_not_select_recovery_branch():
+    harness, classified, outcome = _run_full_path_smoke("Done.")
+
+    assert classified.parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.PLAINTEXT_TERMINAL_ANSWER
+    assert outcome.reason == "dispatch_ready"
+    diagnostic = _recovery_authority_calls(harness, "recovery.compiler_invalid_kind_mapping")[-1].kwargs
+    assert diagnostic["branch_active"] is False
+    assert diagnostic["typed_kind"] == "PLAINTEXT_TERMINAL_ANSWER"
+    assert diagnostic["effective_invalid_kind"] == ""

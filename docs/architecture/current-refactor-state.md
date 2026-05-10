@@ -4,9 +4,9 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 29 Step 2: Recovery Invalid-Output Synthetic Harness + Authority Diagnostics
+- **Phase**: Phase 29 Step 3: Recovery Synthetic Matrix Expansion / First Authority Candidate Decision
 - **Status**: Complete.
-- **Next Step**: Phase 29 Step 3: Recovery Synthetic Matrix Expansion / First Authority Candidate Decision.
+- **Next Step**: Phase 29 Step 4: Recovery Authority Candidate Design.
 - **Boundary**: The checkpoint parity bridge remains diagnostic-only. Legacy board handlers still own commit behavior, the prepass compiler analysis remains observational, and `_apply_compiler_diagnosis` remains the effectful classification-stage path that recomputes on normalized response.
 
 ## Step 4I Parity Matrix
@@ -1556,6 +1556,35 @@ This document is the single source of truth for the current state of the Semanti
     - default registry remains `legacy`
   - Recommended next step:
     - `Phase 29 Step 3: Recovery Synthetic Matrix Expansion / First Authority Candidate Decision`
+- **Phase 29 Step 3: Recovery Synthetic Matrix Expansion / First Authority Candidate Decision (Complete)**
+  - Expanded deterministic synthetic recovery coverage in [test_recovery_invalid_output_synthetic_smoke.py](/home/romankozak/studio/public/it/angelica-ai/tests/test_recovery_invalid_output_synthetic_smoke.py) to include:
+    - internal-summary characterization
+    - mixed visible answer plus invalid protocol
+    - repeated-thinking/no-valid-output guard characterization
+    - malformed action payload with visible pre-action text
+    - action-only valid control
+    - clean plaintext valid control
+  - Hardened observational recovery diagnostics with additional clarifying fields:
+    - `parsed_invalid_kind`
+    - `recovery_reason`
+    - `recovery_prompt_kind`
+    - `guard_name`
+    - `guard_triggered`
+  - First authority candidate decision:
+    - `NO-GO` for recovery authority transfer in this step
+    - recovery ownership remains too distributed across compiler-invalid mapping, output-recovery routing, typed terminal signals, and stateful guards
+    - the best future narrow candidate is `recovery.compiler_invalid_kind_mapping`, because it is the cleanest behavior-preserving observational slice and already tracks compiler/legacy agreement without owning downstream routing
+  - Current blockers / risk areas:
+    - internal-summary typed signals do not activate recovery on their own
+    - malformed action plus visible text currently resolves through `mixed_visible_text_and_control_protocol`
+    - repeated-thinking / no-valid-output handling is stateful and not a pure invalid-kind branch
+    - leaked-system-result and recovery/dispatch/final-answer boundaries still overlap
+  - Boundary:
+    - no recovery switches were added
+    - no runtime behavior changed
+    - default registry remains `legacy`
+  - Recommended next step:
+    - `Phase 29 Step 4: Recovery Authority Candidate Design`
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 
