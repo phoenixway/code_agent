@@ -3079,31 +3079,36 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 30 Step 1: Board/Memory Commit Policy Inventory + Commit-Equivalence Harness Plan
 
-- **Status**: Not started.
+- **Status**: Done.
 - **Goal**: Inventory current memory-board and board/checkpoint commit paths and design a synthetic commit-equivalence harness.
-- **Expected Scope**:
-  - Inventory current memory-board and board/checkpoint commit paths, covering:
-    - `MEMORY_CHECKPOINT_ONLY`
-    - `MEMORY_CHECKPOINT_WITH_TEXT`
-    - `MEMORY_CHECKPOINT_WITH_ACTION`
-    - mixed plan+memory checkpoint cases
-    - current `MemoryBoardStageHandler` behavior
-    - current `PlanBoardStageHandler` interactions
-    - state fields such as memory accepted count / last memory update flags / next query / continue loop
-  - Identify compiler IR / typed result facts available for each branch.
-  - Define commit-equivalence assertions:
-    - same handled value
-    - same response text
-    - same next query
-    - same continue/dispatch/final-answer behavior
-    - same memory state effects
-    - same accepted count
-    - same action preservation / no swallowed dispatch
-    - same board/memory ownership
-  - No behavior change.
-  - No authority transfer.
+- **Completed Outcome**:
+  - **Inventory**:
+    - **Owners**: `MemoryBoardStageHandler` and `PlanBoardStageHandler` are the legacy owners.
+    - **Commit Semantics**: `MemoryBoardStageHandler` has embedded side effects (memory-engine commits, state updates) that are not pure classification.
+    - **Available Facts**: `board_checkpoint_models.py` and `board_checkpoint_semantics.py` provide typed observational data, but this is not yet sufficient for commit authority.
+    - **Blockers**: Memory commit logic is not a pure function, no typed model for a memory commit decision exists, and state effects are computed inside legacy handlers.
+  - **Harness Plan**:
+    - A future `tests/test_board_memory_commit_equivalence.py` will compare legacy vs. candidate paths.
+    - The harness must assert equivalence across `handled`, `reason`, `source`, `response_text`, `next_query`, memory commit effects, and state flags.
+  - **First Candidate**: The first implementation target for the commit-equivalence harness is `MEMORY_CHECKPOINT_ONLY`.
+  - **Boundary**: This was a docs-only inventory and planning step. No runtime behavior was changed.
 - **Next**:
   - Phase 30 Step 2: Board/Memory Synthetic Commit-Equivalence Harness.
+
+---
+
+#### Phase 30 Step 2: Board/Memory Synthetic Commit-Equivalence Harness
+
+- **Status**: Not started.
+- **Goal**: Implement the first synthetic commit-equivalence harness for the `MEMORY_CHECKPOINT_ONLY` branch.
+- **Expected Scope**:
+  - Create `tests/test_board_memory_commit_equivalence.py`.
+  - Implement a harness that can run the legacy `MemoryBoardStageHandler` path for `MEMORY_CHECKPOINT_ONLY`.
+  - The harness should capture a structured snapshot of the outcome, including `handled`, `reason`, `source`, `next_query`, and any memory commit side effects.
+  - No compiler/typed candidate path will be implemented in this step.
+  - No production code changes.
+- **Next**:
+  - Phase 30 Step 3: ...
 
 ---
 
