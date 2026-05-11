@@ -3434,39 +3434,59 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
-### Phase 32: Board/Memory Commit Policy (MEMORY_CHECKPOINT_WITH_ACTION)
+### Phase 32: Operational Speed / Recovery Protocol Hardening
 
-- **Status**: Not started.
-- **Goal**: Extend the commit-equivalence model to the `MEMORY_CHECKPOINT_WITH_ACTION` branch.
+- **Status**: In Progress.
+- **Goal**: Improve agent recovery speed and reliability after recoverable tool failures by hardening the protocol to separate structural validity from action feasibility.
+- **Note**: The previously planned `MEMORY_CHECKPOINT_WITH_ACTION` work is deferred.
 - **Allowed**:
-  - Inventory `MEMORY_CHECKPOINT_WITH_ACTION` commit paths.
-  - Extend the synthetic/real-handler harness.
-  - Design candidate/resolver model.
-  - Add smoke-only switch placeholder later if needed.
-  - Add diagnostic-only integration later if needed.
+  - Characterization tests for recovery blockers.
+  - Narrow, behavior-preserving protocol fixes.
 - **Forbidden**:
-  - Runtime behavior changes.
-  - Production authority flips.
-  - Memory/board handler behavior changes.
-  - Dispatch/action behavior changes.
-  - Consuming resolver `effective_commit`.
+  - Broad changes to action validation or intent handling.
+  - Changes to search or path normalization logic.
+  - Changes to tool execution behavior.
 - **Done When**:
-  - `MEMORY_CHECKPOINT_WITH_ACTION` is synthetically validated, smoke-switch validated, diagnostic-integrated if needed, and live-smoke validated without runtime behavior change.
+  - Valid `intent+single-action` recovery bundles are no longer blocked by the atomic bundle guard.
 
 ---
 
-#### Phase 32 — Step 1/10: MEMORY_CHECKPOINT_WITH_ACTION Commit Policy Inventory / Harness Plan
+#### Phase 32 — Step 1/8: Invalid Path + Atomic Bundle Recovery Characterization
 
-- **Status**: Not started.
-- **Goal**: Inventory current `MEMORY_CHECKPOINT_WITH_ACTION` behavior and design the harness extension.
+- **Status**: Done.
+- **Goal**: Characterize the root cause of valid recovery bundles being blocked after a recoverable failure.
 - **Allowed**:
-  - Docs-only inventory and harness plan design.
+  - Test-only additions.
 - **Forbidden**:
-  - Production code changes.
-- **Done When**:
-  - The inventory and harness plan are documented.
+  - Any production code changes.
+- **Completed Outcome**:
+  - Narrowed root cause from path recovery to failure-mode atomic bundle rejection.
+  - Characterized that valid intent+single-action bundles after recoverable failure should be protocol-valid.
+  - Updated tests in `tests/test_response_pipeline_stages.py` to distinguish protocol validity from action/tool feasibility.
+  - No runtime behavior was changed.
 - **Next**:
-  - Phase 32 — Step 2/10: MEMORY_CHECKPOINT_WITH_ACTION Synthetic Commit-Equivalence Harness.
+  - Phase 32 — Step 2/8: Permit Valid Intent+Single-Action Bundles after Recoverable Failure.
+
+---
+
+#### Phase 32 — Step 2/8: Permit Valid Intent+Single-Action Bundles after Recoverable Failure
+
+- **Status**: Done.
+- **Goal**: Fix the `intent_atomic_bundle_guard` to allow structurally valid `intent+single-action` bundles after a recoverable failure.
+- **Allowed**:
+  - Narrow change to the atomic bundle guard.
+  - Update tests to confirm the fix.
+- **Forbidden**:
+  - Broadly disabling the guard.
+  - Skipping normal action/tool validation.
+- **Completed Outcome**:
+  - The `intent_atomic_bundle_guard` in `_reject_invalid_atomic_bundle_before_transition` no longer rejects structurally valid intent+single-action bundles during retry/continuation-after-failure.
+  - Mutating actions are not rejected at this layer solely because they are mutating.
+  - Normal action/tool policy still applies.
+  - Malformed and unsupported multi-action bundles remain blocked.
+  - No Angelica/live agent was run.
+- **Next**:
+  - Phase 32 — Step 3/8: Invalid Path Pre-dispatch Blocking / Search Recovery Normalization.
 
 ---
 

@@ -2050,6 +2050,20 @@ This document is the single source of truth for the current state of the Semanti
     - No production behavior was changed.
     - The resolver's `effective_commit` is still not consumed.
     - Selected next branch: `MEMORY_CHECKPOINT_WITH_ACTION`.
+- **Phase 32 — Step 1/8: Invalid Path + Atomic Bundle Recovery Characterization (Complete)**
+  - **Completed Outcome**:
+    - Narrowed root cause from path recovery to failure-mode atomic bundle rejection.
+    - Characterized that valid intent+single-action bundles after recoverable failure should be protocol-valid.
+    - Updated tests in `tests/test_response_pipeline_stages.py` to distinguish protocol validity from action/tool feasibility.
+    - No runtime behavior was changed.
+    - No search or path normalization logic was changed.
+- **Phase 32 — Step 2/8: Permit Valid Intent+Single-Action Bundles after Recoverable Failure (Complete)**
+  - **Completed Outcome**:
+    - The `intent_atomic_bundle_guard` in `_reject_invalid_atomic_bundle_before_transition` no longer rejects structurally valid intent+single-action bundles during retry/continuation-after-failure.
+    - Mutating actions are not rejected at this layer solely because they are mutating.
+    - Normal action/tool policy still applies.
+    - Malformed and unsupported multi-action bundles remain blocked.
+    - No Angelica/live agent was run.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 
