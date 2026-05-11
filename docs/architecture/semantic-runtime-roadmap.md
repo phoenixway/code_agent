@@ -3404,17 +3404,69 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 31 — Step 9/10: MEMORY_CHECKPOINT_WITH_TEXT Live Smoke Re-run / Closure Decision
 
-- **Status**: Not started.
+- **Status**: Done.
 - **Goal**: Re-run live/integrated smoke for the `MEMORY_CHECKPOINT_WITH_TEXT` branch to confirm that `commit_equivalent` is now `True` and decide whether to close the slice.
+- **Completed Outcome**:
+  - Manual live smoke re-run passed.
+  - MCT diagnostic showed `switch_value="compiler"`, `authority_source="compiler"`, `selected_by_switch=True`, `candidate_available=True`, and `commit_equivalent=True`.
+  - All detailed agreement fields relevant to MCT were `True`.
+  - Runtime behavior was preserved: `behavior_changed=False`, `shadow_only=True`.
+  - The resolver's `effective_commit` is still not consumed.
+- **Next**:
+  - Phase 31 — Step 10/10: MEMORY_CHECKPOINT_WITH_TEXT Closure / Next Branch Selection.
+
+---
+
+#### Phase 31 — Step 10/10: MEMORY_CHECKPOINT_WITH_TEXT Closure / Next Branch Selection
+
+- **Status**: Done.
+- **Goal**: Close the `MEMORY_CHECKPOINT_WITH_TEXT` slice and select the next board/memory branch.
+- **Completed Outcome**:
+  - The `MEMORY_CHECKPOINT_WITH_TEXT` slice is closed.
+  - The branch now has: real-handler snapshot coverage, a candidate/resolver model, full commit-equivalence hardening, a smoke-only compiler switch, runtime diagnostic integration, detailed agreement-field logging, live semantics reconciliation, and passing manual live smoke validation.
+  - Default registry remains `legacy`.
+  - Smoke registry keeps `board_memory.memory_checkpoint_with_text = "compiler"`.
+  - No production behavior was changed.
+  - The resolver's `effective_commit` is still not consumed.
+  - Selected next branch: `MEMORY_CHECKPOINT_WITH_ACTION`.
+- **Next**:
+  - Phase 32 — Step 1/10: MEMORY_CHECKPOINT_WITH_ACTION Commit Policy Inventory / Harness Plan.
+
+---
+
+### Phase 32: Board/Memory Commit Policy (MEMORY_CHECKPOINT_WITH_ACTION)
+
+- **Status**: Not started.
+- **Goal**: Extend the commit-equivalence model to the `MEMORY_CHECKPOINT_WITH_ACTION` branch.
 - **Allowed**:
-  - Run live smoke tests with the smoke profile.
-  - Documentation updates.
+  - Inventory `MEMORY_CHECKPOINT_WITH_ACTION` commit paths.
+  - Extend the synthetic/real-handler harness.
+  - Design candidate/resolver model.
+  - Add smoke-only switch placeholder later if needed.
+  - Add diagnostic-only integration later if needed.
 - **Forbidden**:
-  - Any production code changes.
-  - Any runtime behavior changes.
+  - Runtime behavior changes.
+  - Production authority flips.
+  - Memory/board handler behavior changes.
+  - Dispatch/action behavior changes.
+  - Consuming resolver `effective_commit`.
 - **Done When**:
-  - Live smoke passes with `commit_equivalent=True`.
-  - A decision is made to close the MCT slice.
+  - `MEMORY_CHECKPOINT_WITH_ACTION` is synthetically validated, smoke-switch validated, diagnostic-integrated if needed, and live-smoke validated without runtime behavior change.
+
+---
+
+#### Phase 32 — Step 1/10: MEMORY_CHECKPOINT_WITH_ACTION Commit Policy Inventory / Harness Plan
+
+- **Status**: Not started.
+- **Goal**: Inventory current `MEMORY_CHECKPOINT_WITH_ACTION` behavior and design the harness extension.
+- **Allowed**:
+  - Docs-only inventory and harness plan design.
+- **Forbidden**:
+  - Production code changes.
+- **Done When**:
+  - The inventory and harness plan are documented.
+- **Next**:
+  - Phase 32 — Step 2/10: MEMORY_CHECKPOINT_WITH_ACTION Synthetic Commit-Equivalence Harness.
 
 ---
 

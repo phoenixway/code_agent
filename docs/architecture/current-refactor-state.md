@@ -2034,7 +2034,22 @@ This document is the single source of truth for the current state of the Semanti
     - The candidate/resolver model is now live-faithful: marker-with-text is treated as a pass-through, not a content commit attempt (`expected_commit_attempted=False`).
     - No runtime behavior was changed.
     - The resolver's `effective_commit` is still not consumed.
-  - **Next Step**: `Phase 31 — Step 9/10: MEMORY_CHECKPOINT_WITH_TEXT Live Smoke Re-run / Closure Decision`.
+- **Phase 31 — Step 9/10: MEMORY_CHECKPOINT_WITH_TEXT Live Smoke Re-run / Closure Decision (Complete)**
+  - **Completed Outcome**:
+    - Manual live smoke re-run passed.
+    - MCT diagnostic showed `switch_value="compiler"`, `authority_source="compiler"`, `selected_by_switch=True`, `candidate_available=True`, and `commit_equivalent=True`.
+    - All detailed agreement fields relevant to MCT were `True`.
+    - Runtime behavior was preserved: `behavior_changed=False`, `shadow_only=True`.
+    - The resolver's `effective_commit` is still not consumed.
+- **Phase 31 — Step 10/10: MEMORY_CHECKPOINT_WITH_TEXT Closure / Next Branch Selection (Complete)**
+  - **Completed Outcome**:
+    - The `MEMORY_CHECKPOINT_WITH_TEXT` slice is closed.
+    - The branch now has: real-handler snapshot coverage, a candidate/resolver model, full commit-equivalence hardening, a smoke-only compiler switch, runtime diagnostic integration, detailed agreement-field logging, live semantics reconciliation, and passing manual live smoke validation.
+    - Default registry remains `legacy`.
+    - Smoke registry keeps `board_memory.memory_checkpoint_with_text = "compiler"`.
+    - No production behavior was changed.
+    - The resolver's `effective_commit` is still not consumed.
+    - Selected next branch: `MEMORY_CHECKPOINT_WITH_ACTION`.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 
