@@ -40,6 +40,8 @@ class TestSwitchRegistry(unittest.TestCase):
         self.assertEqual(value_memory, "legacy")
         value_memory_with_text = get_switch("board_memory.memory_checkpoint_with_text")
         self.assertEqual(value_memory_with_text, "legacy")
+        value_memory_with_text = get_switch("board_memory.memory_checkpoint_with_text")
+        self.assertEqual(value_memory_with_text, "legacy")
 
     def test_get_switch_override_registry_returns_compiler(self):
         """An override registry file should be loaded when the env var is set."""

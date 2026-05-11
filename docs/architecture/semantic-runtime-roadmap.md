@@ -3328,13 +3328,16 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 31 — Step 4/10: MEMORY_CHECKPOINT_WITH_TEXT Commit Equivalence Hardening
 
-- **Status**: Not started.
+- **Status**: Done.
 - **Goal**: Harden commit-equivalence validation for `MEMORY_CHECKPOINT_WITH_TEXT` to determine if all aspects of the legacy behavior can be proven equivalent.
-- **Expected Scope**:
-  - Refine the resolver to cover all agreements: `handled`, `reason`, `source`, `response_text`, `next_query`, commit counts, and state flags.
-  - Add tests to validate full equivalence for the clean case and to confirm fallback on any mismatch.
+- **Completed Outcome**:
+  - The `resolve_memory_checkpoint_with_text_commit_authority` resolver was hardened to prove full commit equivalence.
+  - A clean real-handler case for `MEMORY_CHECKPOINT_WITH_TEXT` now proves `commit_equivalent=True`.
+  - Mismatches in any agreement field (e.g., `response_text`, `checkpoint_removed`, `visible_text_preserved`, `pass_through`, commit counts) correctly cause a fallback to legacy authority.
+  - No runtime behavior was changed, and no authority was transferred.
+  - The `board_memory.memory_checkpoint_with_text` switch remains `legacy` in both default and smoke registries.
 - **Next**:
-  - Phase 31 — Step 5/10: ...
+  - Phase 31 — Step 5/10: MEMORY_CHECKPOINT_WITH_TEXT Smoke Switch Validation.
 
 ---
 

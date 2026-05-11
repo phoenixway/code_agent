@@ -174,14 +174,32 @@ def _run_commit_equivalence_harness(response: str, *, memory_board_stage=None):
 
     temp_handler = MemoryBoardStageHandler(SimpleNamespace(state=SimpleNamespace(), log=None), None)
     visible_text_before_memory_stage = response
-    visible_text_after_memory_stage = state.response
+    visible_text_after_memory_stage = str(
+        getattr(memory_board_decision, "response_text", "")
+        or getattr(outcome, "response_text", "")
+        or getattr(state, "response", "")
+        or ""
+    )
     checkpoint_removed = (
         "<memory_update_done />" in str(visible_text_before_memory_stage or "").lower()
         and "<memory_update_done />" not in str(visible_text_after_memory_stage or "").lower()
     )
-    stripped_before = temp_handler._strip_control_blocks_for_visible_text(visible_text_before_memory_stage)
-    stripped_after = temp_handler._strip_control_blocks_for_visible_text(visible_text_after_memory_stage)
+    stripped_before = temp_handler._strip_control_blocks_for_visible_text(visible_text_before_memory_stage).strip()
+    stripped_after = temp_handler._strip_control_blocks_for_visible_text(visible_text_after_memory_stage).strip()
     visible_text_preserved = stripped_before == stripped_after
+
+    is_memory_checkpoint_with_text = (
+        getattr(getattr(semantic_result, "kind", None), "name", "") == "MEMORY_CHECKPOINT_WITH_TEXT"
+    )
+    if is_memory_checkpoint_with_text:
+        handled_value = bool(getattr(outcome, "handled", False))
+        pass_through_preserved = (not handled_value) and bool(visible_text_after_memory_stage.strip())
+        dispatch_preserved = pass_through_preserved
+        final_answer_preserved = pass_through_preserved
+    else:
+        pass_through_preserved = outcome is None
+        dispatch_preserved = outcome is None
+        final_answer_preserved = outcome is None
 
     snapshot = LegacyCommitSnapshot(
         branch=semantic_result.kind.name,
@@ -199,7 +217,7 @@ def _run_commit_equivalence_harness(response: str, *, memory_board_stage=None):
         handled=bool(getattr(outcome, "handled", False)),
         reason=str(getattr(outcome, "reason", "") or ""),
         source=str(getattr(outcome, "source", "") or ""),
-        response_text=str(getattr(outcome, "response_text", "") or ""),
+        response_text=visible_text_after_memory_stage,
         next_query=getattr(outcome, "next_query", None),
         memory_checkpoint_only=bool(getattr(outcome, "memory_checkpoint_only", False)),
         memory_checkpoint_and_text=bool(getattr(outcome, "memory_checkpoint_and_text", False)),
@@ -208,11 +226,11 @@ def _run_commit_equivalence_harness(response: str, *, memory_board_stage=None):
         memory_commit_accepted_count=memory_commit_accepted_count,
         memory_commit_rejected_count=memory_commit_rejected_count,
         last_memory_update_done=bool(getattr(harness.state, "last_memory_update_done", False)),
-        dispatch_preserved=outcome is None,
-        final_answer_preserved=outcome is None,
+        dispatch_preserved=dispatch_preserved,
+        final_answer_preserved=final_answer_preserved,
         snapshot_source=snapshot_source,
         memory_commit_mode=memory_commit_mode,
-        pass_through_preserved=outcome is None,
+        pass_through_preserved=pass_through_preserved,
         visible_text_before_memory_stage=visible_text_before_memory_stage,
         visible_text_after_memory_stage=visible_text_after_memory_stage,
         checkpoint_removed_from_visible_response=checkpoint_removed,
@@ -849,6 +867,29 @@ class TestMemoryCheckpointWithTextAuthority:
             response, memory_board_stage=real_handler
         )
 
+        assert snapshot.branch == "MEMORY_CHECKPOINT_WITH_TEXT"
+        assert snapshot.response_text == "Done."
+        assert snapshot.visible_text_after_memory_stage == "Done."
+        assert snapshot.checkpoint_removed_from_visible_response is True
+        assert snapshot.visible_text_preserved is True
+        assert snapshot.handled is False
+        assert snapshot.dispatch_preserved is True
+        assert snapshot.final_answer_preserved is True
+        assert snapshot.pass_through_preserved is True
+
+        candidate = build_memory_checkpoint_with_text_commit_candidate(
+            state.board_checkpoint_semantic_result
+        )
+        assert candidate.candidate_available is True
+        assert candidate.expected_visible_text_preserved is True
+        assert candidate.expected_pass_through_preserved is True
+        assert candidate.expected_last_memory_update_done is True
+        assert candidate.expected_commit_accepted_count == 0
+        assert candidate.expected_commit_rejected_count == 0
+        assert candidate.expected_handled is False
+        assert candidate.expected_reason == "memory_checkpoint_and_text"
+        assert candidate.expected_source == "memory_board"
+
         decision = resolve_memory_checkpoint_with_text_commit_authority(
             semantic_result=state.board_checkpoint_semantic_result,
             legacy_branch=snapshot.branch,
@@ -873,17 +914,50 @@ class TestMemoryCheckpointWithTextAuthority:
         assert diag.authority_source == "legacy"
         assert diag.selected_by_switch is False
         assert diag.candidate_available is True
-        assert diag.response_text_agreement in {True, False}  # Full equivalence hardening is Phase 31 — Step 4/10
-        assert diag.checkpoint_removed_agreement in {True, False}
-        assert diag.visible_text_preserved_agreement in {True, False}
-        assert diag.pass_through_agreement in {True, False}
-        assert diag.commit_equivalent in {True, False}  # Full equivalence hardening is Phase 31 — Step 4/10
+        assert diag.commit_equivalent is True
+        assert diag.reason_agreement is True
+        assert diag.source_agreement is True
+        assert diag.response_text_agreement is True
+        assert diag.checkpoint_removed_agreement is True
+        assert diag.visible_text_preserved_agreement is True
+        assert diag.pass_through_agreement is True
         assert diag.fallback_used is False
         assert diag.behavior_changed is False
 
-    def test_resolver_compiler_mode_falls_back_on_mismatch_for_mct(self):
+    def test_resolver_proves_commit_equivalence_for_mct(self):
         response = "<memory_update_done />\nDone."
-        harness, state, outcome, snapshot = _run_commit_equivalence_harness(response)
+        mock_agent = SimpleNamespace(state=SimpleNamespace(), memory_board_engine=MagicMock(), log=None)
+        mock_prompt_builder = SimpleNamespace(_current_active_intent_id=MagicMock(return_value="intent_123"))
+        mock_board_result = SimpleNamespace(parsed_count=0, accepted_count=0, rejected_count=0, clean_text="Done.")
+        mock_agent.memory_board_engine.apply_response_text.return_value = mock_board_result
+        real_handler = MemoryBoardStageHandler(mock_agent, mock_prompt_builder)
+
+        harness, state, outcome, snapshot = _run_commit_equivalence_harness(
+            response, memory_board_stage=real_handler
+        )
+
+        assert snapshot.branch == "MEMORY_CHECKPOINT_WITH_TEXT"
+        assert snapshot.response_text == "Done."
+        assert snapshot.visible_text_after_memory_stage == "Done."
+        assert snapshot.checkpoint_removed_from_visible_response is True
+        assert snapshot.visible_text_preserved is True
+        assert snapshot.handled is False
+        assert snapshot.dispatch_preserved is True
+        assert snapshot.final_answer_preserved is True
+        assert snapshot.pass_through_preserved is True
+
+        candidate = build_memory_checkpoint_with_text_commit_candidate(
+            state.board_checkpoint_semantic_result
+        )
+        assert candidate.candidate_available is True
+        assert candidate.expected_visible_text_preserved is True
+        assert candidate.expected_pass_through_preserved is True
+        assert candidate.expected_last_memory_update_done is True
+        assert candidate.expected_commit_accepted_count == 0
+        assert candidate.expected_commit_rejected_count == 0
+        assert candidate.expected_handled is False
+        assert candidate.expected_reason == "memory_checkpoint_and_text"
+        assert candidate.expected_source == "memory_board"
 
         decision = resolve_memory_checkpoint_with_text_commit_authority(
             semantic_result=state.board_checkpoint_semantic_result,
@@ -891,7 +965,7 @@ class TestMemoryCheckpointWithTextAuthority:
             legacy_handled=snapshot.handled,
             legacy_reason=snapshot.reason,
             legacy_source=snapshot.source,
-            legacy_response_text="",  # Mismatch
+            legacy_response_text=snapshot.response_text,
             legacy_next_query=snapshot.next_query,
             legacy_commit_attempted=snapshot.memory_commit_attempted,
             legacy_accepted_count=snapshot.memory_commit_accepted_count,
@@ -904,10 +978,79 @@ class TestMemoryCheckpointWithTextAuthority:
         )
 
         diag = decision.diagnostic
+        assert diag.branch == "board_memory.memory_checkpoint_with_text"
+        assert diag.switch_value == "compiler"
+        assert diag.authority_source == "compiler"
+        assert diag.selected_by_switch is True
+        assert diag.candidate_available is True
+        assert diag.commit_equivalent is True
+        assert diag.reason_agreement is True
+        assert diag.source_agreement is True
+        assert diag.response_text_agreement is True
+        assert diag.checkpoint_removed_agreement is True
+        assert diag.visible_text_preserved_agreement is True
+        assert diag.pass_through_agreement is True
+        assert diag.fallback_used is False
+        assert diag.behavior_changed is False
+
+    @pytest.mark.parametrize(
+        "mismatch_kwargs, expected_mismatch_field",
+        [
+            ({"legacy_response_text": ""}, "response_text_agreement"),
+            ({"legacy_checkpoint_removed": False}, "checkpoint_removed_agreement"),
+            ({"legacy_visible_text_preserved": False}, "visible_text_preserved_agreement"),
+            ({"legacy_pass_through_preserved": False}, "pass_through_agreement"),
+            ({"legacy_accepted_count": 1}, "accepted_count_agreement"),
+        ],
+        ids=[
+            "response_text_mismatch",
+            "checkpoint_removed_mismatch",
+            "visible_text_preserved_mismatch",
+            "pass_through_mismatch",
+            "accepted_count_mismatch",
+        ],
+    )
+    def test_resolver_compiler_mode_falls_back_on_mismatch_for_mct(
+        self, mismatch_kwargs, expected_mismatch_field
+    ):
+        response = "<memory_update_done />\nDone."
+        mock_agent = SimpleNamespace(state=SimpleNamespace(), memory_board_engine=MagicMock(), log=None)
+        mock_prompt_builder = SimpleNamespace(_current_active_intent_id=MagicMock(return_value="intent_123"))
+        mock_board_result = SimpleNamespace(parsed_count=0, accepted_count=0, rejected_count=0, clean_text="Done.")
+        mock_agent.memory_board_engine.apply_response_text.return_value = mock_board_result
+        real_handler = MemoryBoardStageHandler(mock_agent, mock_prompt_builder)
+        harness, state, outcome, snapshot = _run_commit_equivalence_harness(
+            response, memory_board_stage=real_handler
+        )
+
+        legacy_kwargs = {
+            "legacy_branch": snapshot.branch,
+            "legacy_handled": snapshot.handled,
+            "legacy_reason": snapshot.reason,
+            "legacy_source": snapshot.source,
+            "legacy_response_text": snapshot.response_text,
+            "legacy_next_query": snapshot.next_query,
+            "legacy_commit_attempted": snapshot.memory_commit_attempted,
+            "legacy_accepted_count": snapshot.memory_commit_accepted_count,
+            "legacy_rejected_count": snapshot.memory_commit_rejected_count,
+            "legacy_last_memory_update_done": snapshot.last_memory_update_done,
+            "legacy_visible_text_preserved": snapshot.visible_text_preserved,
+            "legacy_pass_through_preserved": snapshot.pass_through_preserved,
+            "legacy_checkpoint_removed": snapshot.checkpoint_removed_from_visible_response,
+        }
+        legacy_kwargs.update(mismatch_kwargs)
+
+        decision = resolve_memory_checkpoint_with_text_commit_authority(
+            semantic_result=state.board_checkpoint_semantic_result,
+            switch_value="compiler",
+            **legacy_kwargs,
+        )
+
+        diag = decision.diagnostic
         assert diag.authority_source == "legacy_fallback"
         assert diag.selected_by_switch is False
         assert diag.commit_equivalent is False
-        assert diag.response_text_agreement is False
+        assert getattr(diag, expected_mismatch_field) is False
         assert diag.fallback_used is True
         assert diag.behavior_changed is False
 

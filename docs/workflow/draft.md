@@ -185,4 +185,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 181. Phase 31 — Step 1/10: done. Inventoried `MEMORY_CHECKPOINT_WITH_TEXT` behavior and designed the harness extension. No runtime behavior changed.
 182. Phase 31 — Step 2/10: done. Extended the commit-equivalence harness for `MEMORY_CHECKPOINT_WITH_TEXT`, characterizing visible text preservation, pass-through behavior, and zero-count commit semantics. No runtime behavior changed.
 183. Phase 31 — Step 3/10: done. Added a candidate model and resolver for `MEMORY_CHECKPOINT_WITH_TEXT`, modeling visible text preservation and pass-through behavior. No runtime behavior changed.
-184. Next: Phase 31 — Step 4/10: MEMORY_CHECKPOINT_WITH_TEXT Commit Equivalence Hardening.
+184. Phase 31 — Step 4/10: done. Hardened `MEMORY_CHECKPOINT_WITH_TEXT` commit-equivalence validation. A clean real-handler case now proves full `commit_equivalent=True`, while any mismatch correctly falls back to legacy. No runtime behavior was changed, and no authority was transferred. The smoke switch remains `legacy`.
+185. Next: Phase 31 — Step 5/10: MEMORY_CHECKPOINT_WITH_TEXT Smoke Switch Validation.

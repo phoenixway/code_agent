@@ -2002,7 +2002,12 @@ This document is the single source of truth for the current state of the Semanti
   - The candidate model and resolver cover visible text preservation, pass-through behavior, and zero-count commit semantics for marker-with-text.
   - The `board_memory.memory_checkpoint_with_text` switch placeholder remains `legacy` in both default and smoke registries.
   - No runtime behavior was changed, and no authority was transferred.
-  - **Next Step**: `Phase 31 — Step 4/10: MEMORY_CHECKPOINT_WITH_TEXT Commit Equivalence Hardening`.
+- **Phase 31 — Step 4/10: MEMORY_CHECKPOINT_WITH_TEXT Commit Equivalence Hardening (Complete)**
+  - Hardened commit-equivalence validation for `MEMORY_CHECKPOINT_WITH_TEXT`.
+  - A clean real-handler case now proves full `commit_equivalent=True`, while any mismatch correctly falls back to legacy.
+  - No runtime behavior was changed, and no authority was transferred.
+  - The smoke switch remains `legacy`.
+  - **Next Step**: `Phase 31 — Step 5/10: MEMORY_CHECKPOINT_WITH_TEXT Smoke Switch Validation`.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 
