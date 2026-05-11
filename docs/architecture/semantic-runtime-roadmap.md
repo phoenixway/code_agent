@@ -3341,6 +3341,23 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 31 — Step 5/10: MEMORY_CHECKPOINT_WITH_TEXT Smoke Switch Validation
+
+- **Status**: Done.
+- **Goal**: Enable smoke-only compiler authority for `board_memory.memory_checkpoint_with_text` and validate it synthetically.
+- **Completed Outcome**:
+  - Enabled the smoke-only compiler switch for `board_memory.memory_checkpoint_with_text`.
+  - The default registry remains `legacy`.
+  - Clean real-handler MCT now selects compiler authority under the smoke profile.
+  - Fallback controls correctly remain on legacy authority when equivalence mismatches.
+  - Negative controls for other branches do not select compiler authority.
+  - No production behavior was changed, and no authority was transferred in the default profile.
+  - The resolver's `effective_commit` is still not consumed by the runtime.
+- **Next**:
+  - Phase 31 — Step 6/10: MEMORY_CHECKPOINT_WITH_TEXT Runtime Diagnostic Integration or Live Observability Decision.
+
+---
+
 ### Phase 11: RecoveryStrategy Registry Expansion
 
 - **Goal**: Expand the `CompilerRecoveryRegistry` to cover more structural errors.

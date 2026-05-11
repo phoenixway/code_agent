@@ -2007,7 +2007,15 @@ This document is the single source of truth for the current state of the Semanti
   - A clean real-handler case now proves full `commit_equivalent=True`, while any mismatch correctly falls back to legacy.
   - No runtime behavior was changed, and no authority was transferred.
   - The smoke switch remains `legacy`.
-  - **Next Step**: `Phase 31 — Step 5/10: MEMORY_CHECKPOINT_WITH_TEXT Smoke Switch Validation`.
+- **Phase 31 — Step 5/10: MEMORY_CHECKPOINT_WITH_TEXT Smoke Switch Validation (Complete)**
+  - Enabled the smoke-only compiler switch for `board_memory.memory_checkpoint_with_text`.
+  - The default registry remains `legacy`.
+  - Clean real-handler MCT now selects compiler authority under the smoke profile.
+  - Fallback controls correctly remain on legacy authority when equivalence mismatches.
+  - Negative controls for other branches do not select compiler authority.
+  - No production behavior was changed, and no authority was transferred in the default profile.
+  - The resolver's `effective_commit` is still not consumed by the runtime.
+  - **Next Step**: `Phase 31 — Step 6/10: MEMORY_CHECKPOINT_WITH_TEXT Runtime Diagnostic Integration or Live Observability Decision`.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 
