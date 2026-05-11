@@ -3389,19 +3389,32 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 31 — Step 8/10: MEMORY_CHECKPOINT_WITH_TEXT Live Semantics Reconciliation
 
-- **Status**: In Progress.
-- **Goal**: Reconcile synthetic `MEMORY_CHECKPOINT_WITH_TEXT` equivalence with real live `MemoryBoardStageHandler` behavior by improving diagnostic logging.
+- **Status**: Done.
+- **Goal**: Reconcile synthetic `MEMORY_CHECKPOINT_WITH_TEXT` equivalence with real live `MemoryBoardStageHandler` behavior.
+- **Completed Outcome**:
+  - Detailed live diagnostics identified the exact mismatch: only `commit_attempted_agreement` was `False`.
+  - Live MCT marker-with-text has zero parsed/accepted/rejected counts.
+  - The candidate/resolver model is now live-faithful: marker-with-text is treated as a pass-through, not a content commit attempt (`expected_commit_attempted=False`).
+  - No runtime behavior was changed.
+  - The resolver's `effective_commit` is still not consumed.
+- **Next**:
+  - Phase 31 — Step 9/10: MEMORY_CHECKPOINT_WITH_TEXT Live Smoke Re-run / Closure Decision.
+
+---
+
+#### Phase 31 — Step 9/10: MEMORY_CHECKPOINT_WITH_TEXT Live Smoke Re-run / Closure Decision
+
+- **Status**: Not started.
+- **Goal**: Re-run live/integrated smoke for the `MEMORY_CHECKPOINT_WITH_TEXT` branch to confirm that `commit_equivalent` is now `True` and decide whether to close the slice.
 - **Allowed**:
-  - Add per-agreement diagnostic fields to `_log_board_memory_commit_authority_resolution`.
-  - Update tests to assert on the new diagnostic fields.
+  - Run live smoke tests with the smoke profile.
+  - Documentation updates.
 - **Forbidden**:
-  - Changing runtime behavior.
-  - Consuming the `effective_commit` from the resolver.
-  - Changing memory/board handler behavior.
-  - Flipping the default registry.
+  - Any production code changes.
+  - Any runtime behavior changes.
 - **Done When**:
-  - The diagnostic log includes detailed agreement fields.
-  - A manual re-run of live smoke can identify the exact cause of `commit_equivalent=False`.
+  - Live smoke passes with `commit_equivalent=True`.
+  - A decision is made to close the MCT slice.
 
 ---
 

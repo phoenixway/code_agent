@@ -2027,9 +2027,14 @@ This document is the single source of truth for the current state of the Semanti
   - The `board_memory_commit_authority_resolution` diagnostic was observable, but it reported `commit_equivalent=False` and fell back to legacy.
   - **Root Cause**: The exact agreement mismatch was not visible in the diagnostic log.
   - **Next Step**: `Phase 31 — Step 8/10: MEMORY_CHECKPOINT_WITH_TEXT Live Semantics Reconciliation`.
-- **Phase 31 — Step 8/10: MEMORY_CHECKPOINT_WITH_TEXT Live Semantics Reconciliation (In Progress)**
-  - **Goal**: Reconcile synthetic `MEMORY_CHECKPOINT_WITH_TEXT` equivalence with real live `MemoryBoardStageHandler` behavior by improving diagnostic logging.
-  - **Boundary**: This is a diagnostic-only change to expose the exact agreement mismatch. No runtime behavior will be changed.
+- **Phase 31 — Step 8/10: MEMORY_CHECKPOINT_WITH_TEXT Live Semantics Reconciliation (Complete)**
+  - **Completed Outcome**:
+    - Detailed live diagnostics identified the exact mismatch: only `commit_attempted_agreement` was `False`.
+    - Live MCT marker-with-text has zero parsed/accepted/rejected counts.
+    - The candidate/resolver model is now live-faithful: marker-with-text is treated as a pass-through, not a content commit attempt (`expected_commit_attempted=False`).
+    - No runtime behavior was changed.
+    - The resolver's `effective_commit` is still not consumed.
+  - **Next Step**: `Phase 31 — Step 9/10: MEMORY_CHECKPOINT_WITH_TEXT Live Smoke Re-run / Closure Decision`.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 

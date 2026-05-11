@@ -165,12 +165,18 @@ def _run_commit_equivalence_harness(response: str, *, memory_board_stage=None):
         snapshot_source = "memory_board_stage_handler"
         memory_commit_mode = "real_handler"
         engine = getattr(harness.memory_board_stage, "memory_board_engine", None)
-        if engine:
+        memory_commit_accepted_count = int(getattr(harness.state, "last_memory_board_accepted_count", 0) or 0)
+        memory_commit_rejected_count = int(getattr(harness.state, "last_memory_board_rejected_count", 0) or 0)
+        if (
+            getattr(getattr(semantic_result, "kind", None), "name", "") == "MEMORY_CHECKPOINT_WITH_TEXT"
+            and memory_commit_accepted_count == 0
+            and memory_commit_rejected_count == 0
+        ):
+            memory_commit_attempted = False
+        elif engine:
             memory_commit_attempted = bool(getattr(getattr(engine, "apply_response_text", None), "called", False))
         else:
             memory_commit_attempted = False
-        memory_commit_accepted_count = int(getattr(harness.state, "last_memory_board_accepted_count", 0) or 0)
-        memory_commit_rejected_count = int(getattr(harness.state, "last_memory_board_rejected_count", 0) or 0)
 
     temp_handler = MemoryBoardStageHandler(SimpleNamespace(state=SimpleNamespace(), log=None), None)
     visible_text_before_memory_stage = response
@@ -457,7 +463,7 @@ def test_memory_checkpoint_with_text_real_handler_snapshot():
     assert snapshot.visible_text_after_memory_stage == "Done."
     assert snapshot.visible_text_preserved is True
     assert snapshot.checkpoint_removed_from_visible_response is True
-    assert snapshot.memory_commit_attempted is True
+    assert snapshot.memory_commit_attempted is False
     assert snapshot.memory_commit_accepted_count == 0
     assert snapshot.memory_commit_rejected_count == 0
     assert snapshot.last_memory_update_done is True
@@ -668,6 +674,7 @@ class TestMemoryCheckpointWithTextSmokeValidation:
         assert diag.selected_by_switch is True
         assert diag.candidate_available is True
         assert diag.commit_equivalent is True
+        assert diag.commit_attempted_agreement is True
         assert diag.reason_agreement is True
         assert diag.source_agreement is True
         assert diag.response_text_agreement is True
@@ -1010,7 +1017,7 @@ class TestMemoryCheckpointWithTextAuthority:
         assert candidate.expected_handled is False
         assert candidate.expected_reason == "memory_checkpoint_and_text"
         assert candidate.expected_source == "memory_board"
-        assert candidate.expected_commit_attempted is True
+        assert candidate.expected_commit_attempted is False
         assert candidate.expected_commit_accepted_count == 0
         assert candidate.expected_commit_rejected_count == 0
         assert candidate.expected_last_memory_update_done is True
@@ -1077,6 +1084,7 @@ class TestMemoryCheckpointWithTextAuthority:
         assert diag.selected_by_switch is False
         assert diag.candidate_available is True
         assert diag.commit_equivalent is True
+        assert diag.commit_attempted_agreement is True
         assert diag.reason_agreement is True
         assert diag.source_agreement is True
         assert diag.response_text_agreement is True
@@ -1146,6 +1154,7 @@ class TestMemoryCheckpointWithTextAuthority:
         assert diag.selected_by_switch is True
         assert diag.candidate_available is True
         assert diag.commit_equivalent is True
+        assert diag.commit_attempted_agreement is True
         assert diag.reason_agreement is True
         assert diag.source_agreement is True
         assert diag.response_text_agreement is True

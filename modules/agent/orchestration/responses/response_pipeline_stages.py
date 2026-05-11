@@ -685,6 +685,15 @@ class ResponsePipelineStagesMixin:
             and bool(mct_after_text.strip())
         )
 
+        mct_legacy_commit_attempted = legacy_commit_attempted
+        if (
+            board_checkpoint_semantic_result is not None
+            and getattr(board_checkpoint_semantic_result.kind, "name", "") == "MEMORY_CHECKPOINT_WITH_TEXT"
+            and legacy_accepted_count == 0
+            and legacy_rejected_count == 0
+        ):
+            mct_legacy_commit_attempted = False
+
         mct_authority_decision = resolve_memory_checkpoint_with_text_commit_authority(
             semantic_result=board_checkpoint_semantic_result,
             legacy_branch=board_checkpoint_semantic_result.kind.name,
@@ -693,7 +702,7 @@ class ResponsePipelineStagesMixin:
             legacy_source=str(getattr(memory_board_decision, "source", "") or ""),
             legacy_response_text=mct_after_text,
             legacy_next_query=getattr(memory_board_decision, "next_query", None),
-            legacy_commit_attempted=legacy_commit_attempted,
+            legacy_commit_attempted=mct_legacy_commit_attempted,
             legacy_accepted_count=legacy_accepted_count,
             legacy_rejected_count=legacy_rejected_count,
             legacy_last_memory_update_done=legacy_last_memory_update_done,

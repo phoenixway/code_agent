@@ -195,7 +195,7 @@ def build_memory_checkpoint_with_text_commit_candidate(
         expected_source="memory_board",
         expected_response_text="",  # Cannot be predicted from typed facts
         expected_next_query=None,
-        expected_commit_attempted=True,
+        expected_commit_attempted=False,
         expected_commit_accepted_count=0,
         expected_commit_rejected_count=0,
         expected_last_memory_update_done=True,
