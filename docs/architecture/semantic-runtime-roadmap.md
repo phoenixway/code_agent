@@ -3486,7 +3486,28 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Malformed and unsupported multi-action bundles remain blocked.
   - No Angelica/live agent was run.
 - **Next**:
-  - Phase 32 — Step 3/8: Invalid Path Pre-dispatch Blocking / Search Recovery Normalization.
+  - Phase 32 — Step 3/8: E_ACTION_PAYLOAD_ARRAY / Read-only Multi-action Discovery Bundle Characterization.
+
+---
+
+#### Phase 32 — Step 3/8: E_ACTION_PAYLOAD_ARRAY / Read-only Multi-action Discovery Bundle Characterization
+
+- **Status**: Done.
+- **Goal**: Add characterization tests for current multi-action rejection and define the desired future behavior for read-only multi-action discovery bundles.
+- **Allowed**:
+  - Test-only additions.
+- **Forbidden**:
+  - Any production code changes.
+  - Implementation of read-only multi-action execution.
+- **Completed Outcome**:
+  - Characterized that the current runtime/compiler treats one-intent multi-action output as invalid (`E_ACTION_PAYLOAD_ARRAY` / `multiple_actions`).
+  - Added characterization tests for 3 read-only discovery actions.
+  - Added negative controls for >3 actions, mixed read/write, and `run_shell`.
+  - The future target is bounded read-only discovery batch support.
+  - No tool execution behavior was changed.
+  - No Angelica/live agent was run.
+- **Next**:
+  - Phase 32 — Step 4/8: Read-only Multi-action Discovery Bundle Support.
 
 ---
 

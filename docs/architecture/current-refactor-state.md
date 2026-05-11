@@ -2064,6 +2064,14 @@ This document is the single source of truth for the current state of the Semanti
     - Normal action/tool policy still applies.
     - Malformed and unsupported multi-action bundles remain blocked.
     - No Angelica/live agent was run.
+- **Phase 32 — Step 3/8: E_ACTION_PAYLOAD_ARRAY / Read-only Multi-action Discovery Bundle Characterization (Complete)**
+  - **Completed Outcome**:
+    - Characterized that the current runtime/compiler treats one-intent multi-action output as invalid (`E_ACTION_PAYLOAD_ARRAY` / `multiple_actions`).
+    - Added characterization tests for 3 read-only discovery actions.
+    - Added negative controls for >3 actions, mixed read/write, and `run_shell`.
+    - The future target is bounded read-only discovery batch support.
+    - No tool execution behavior was changed.
+    - No Angelica/live agent was run.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 
