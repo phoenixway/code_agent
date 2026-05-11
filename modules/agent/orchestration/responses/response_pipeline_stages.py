@@ -18,7 +18,10 @@ from .board_checkpoint_semantics import resolve_plan_checkpoint_and_action_autho
 from .board_checkpoint_semantics import resolve_plan_checkpoint_and_text_authority
 from .board_checkpoint_semantics import resolve_plan_checkpoint_only_authority
 from .board_checkpoint_semantics import resolve_plan_checkpoint_only_typed_primary
-from .memory_commit_authority import resolve_memory_checkpoint_only_commit_authority
+from .memory_commit_authority import (
+    resolve_memory_checkpoint_only_commit_authority,
+    resolve_memory_checkpoint_with_text_commit_authority,
+)
 from .protocol_decision_bridge import compiler_invalid_kind_for_output, resolve_protocol_authority
 from .semantic_accessors import is_leaked_system_result
 from .terminal_answer_authority import (
@@ -650,6 +653,43 @@ class ResponsePipelineStagesMixin:
             switch_value=mco_switch_value,
         )
         self._log_board_memory_commit_authority_resolution(mco_authority_decision.diagnostic)
+
+        mct_switch_value = get_switch("board_memory.memory_checkpoint_with_text")
+        # Diagnostic-only evidence for MCT
+        mct_before_text = str(response_after_plan or "")
+        mct_after_text = str(getattr(memory_board_decision, "response_text", "") or response or "")
+        legacy_checkpoint_removed = (
+            "<memory_update_done />" in mct_before_text.lower()
+            and "<memory_update_done />" not in mct_after_text.lower()
+        )
+        stripped_before = mct_before_text.replace("<memory_update_done />", "").strip()
+        stripped_after = mct_after_text.strip()
+        legacy_visible_text_preserved = stripped_before == stripped_after
+        legacy_pass_through_preserved = (
+            board_checkpoint_semantic_result is not None
+            and getattr(board_checkpoint_semantic_result.kind, "name", "") == "MEMORY_CHECKPOINT_WITH_TEXT"
+            and not bool(getattr(memory_board_decision, "handled", False))
+            and bool(mct_after_text.strip())
+        )
+
+        mct_authority_decision = resolve_memory_checkpoint_with_text_commit_authority(
+            semantic_result=board_checkpoint_semantic_result,
+            legacy_branch=board_checkpoint_semantic_result.kind.name,
+            legacy_handled=bool(getattr(memory_board_decision, "handled", False)),
+            legacy_reason=str(getattr(memory_board_decision, "reason", "") or ""),
+            legacy_source=str(getattr(memory_board_decision, "source", "") or ""),
+            legacy_response_text=mct_after_text,
+            legacy_next_query=getattr(memory_board_decision, "next_query", None),
+            legacy_commit_attempted=legacy_commit_attempted,
+            legacy_accepted_count=legacy_accepted_count,
+            legacy_rejected_count=legacy_rejected_count,
+            legacy_last_memory_update_done=legacy_last_memory_update_done,
+            legacy_visible_text_preserved=legacy_visible_text_preserved,
+            legacy_pass_through_preserved=legacy_pass_through_preserved,
+            legacy_checkpoint_removed=legacy_checkpoint_removed,
+            switch_value=mct_switch_value,
+        )
+        self._log_board_memory_commit_authority_resolution(mct_authority_decision.diagnostic)
 
         self._log_board_checkpoint_structural_parity(
             compiler_analysis,

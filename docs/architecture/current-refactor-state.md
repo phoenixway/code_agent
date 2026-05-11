@@ -2015,7 +2015,13 @@ This document is the single source of truth for the current state of the Semanti
   - Negative controls for other branches do not select compiler authority.
   - No production behavior was changed, and no authority was transferred in the default profile.
   - The resolver's `effective_commit` is still not consumed by the runtime.
-  - **Next Step**: `Phase 31 — Step 6/10: MEMORY_CHECKPOINT_WITH_TEXT Runtime Diagnostic Integration or Live Observability Decision`.
+- **Phase 31 — Step 6/10: MEMORY_CHECKPOINT_WITH_TEXT Runtime Diagnostic Integration or Live Observability Decision (Complete)**
+  - Live observability required runtime diagnostic integration.
+  - Added a diagnostic-only call to the `resolve_memory_checkpoint_with_text_commit_authority` resolver in `_run_checkpoint_stage`.
+  - Reused the existing `_log_board_memory_commit_authority_resolution` helper for logging.
+  - The resolver's `effective_commit` is not consumed, and no runtime behavior was changed.
+  - The default registry remains `legacy`, and the smoke registry remains `compiler` for this branch.
+  - **Next Step**: `Phase 31 — Step 7/10: MEMORY_CHECKPOINT_WITH_TEXT Live Smoke Validation`.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 

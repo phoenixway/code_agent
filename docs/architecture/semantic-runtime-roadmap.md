@@ -3358,6 +3358,21 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 31 — Step 6/10: MEMORY_CHECKPOINT_WITH_TEXT Runtime Diagnostic Integration or Live Observability Decision
+
+- **Status**: Done.
+- **Goal**: Integrate the `MEMORY_CHECKPOINT_WITH_TEXT` commit authority resolver for diagnostic logging to enable live observability.
+- **Completed Outcome**:
+  - Live observability required runtime diagnostic integration.
+  - Added a diagnostic-only call to the `resolve_memory_checkpoint_with_text_commit_authority` resolver in `_run_checkpoint_stage`.
+  - Reused the existing `_log_board_memory_commit_authority_resolution` helper for logging.
+  - The resolver's `effective_commit` is not consumed, and no runtime behavior was changed.
+  - The default registry remains `legacy`, and the smoke registry remains `compiler` for this branch.
+- **Next**:
+  - Phase 31 — Step 7/10: MEMORY_CHECKPOINT_WITH_TEXT Live Smoke Validation.
+
+---
+
 ### Phase 11: RecoveryStrategy Registry Expansion
 
 - **Goal**: Expand the `CompilerRecoveryRegistry` to cover more structural errors.

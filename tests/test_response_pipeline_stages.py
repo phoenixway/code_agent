@@ -2856,9 +2856,24 @@ class TestResponsePipelineCheckpointStageCharacterization(unittest.TestCase):
             )
         )
 
-        mock_log_commit_authority.assert_called_once()
-        diagnostic = mock_log_commit_authority.call_args.args[0]
+        self.assertGreaterEqual(mock_log_commit_authority.call_count, 2)
+        mco_calls = [
+            call
+            for call in mock_log_commit_authority.call_args_list
+            if getattr(call.args[0], "branch", "") == "board_memory.memory_checkpoint_only"
+        ]
+        self.assertEqual(1, len(mco_calls))
+        diagnostic = mco_calls[0].args[0]
         self.assertEqual("board_memory.memory_checkpoint_only", diagnostic.branch)
+
+        mct_calls = [
+            call
+            for call in mock_log_commit_authority.call_args_list
+            if getattr(call.args[0], "branch", "") == "board_memory.memory_checkpoint_with_text"
+        ]
+        self.assertEqual(1, len(mct_calls))
+        self.assertFalse(mct_calls[0].args[0].candidate_available)
+        self.assertFalse(mct_calls[0].args[0].behavior_changed)
 
     @patch("modules.agent.orchestration.responses.response_pipeline_stages.ResponsePipelineStagesMixin._log_board_memory_commit_authority_resolution")
     def test_checkpoint_stage_logs_memory_commit_authority_from_state_fields(self, mock_log_commit_authority):
@@ -2904,12 +2919,84 @@ class TestResponsePipelineCheckpointStageCharacterization(unittest.TestCase):
             )
         )
 
-        mock_log_commit_authority.assert_called_once()
-        diagnostic = mock_log_commit_authority.call_args.args[0]
+        self.assertGreaterEqual(mock_log_commit_authority.call_count, 2)
+        mco_calls = [
+            call
+            for call in mock_log_commit_authority.call_args_list
+            if getattr(call.args[0], "branch", "") == "board_memory.memory_checkpoint_only"
+        ]
+        self.assertEqual(1, len(mco_calls))
+        diagnostic = mco_calls[0].args[0]
         self.assertEqual("board_memory.memory_checkpoint_only", diagnostic.branch)
         self.assertTrue(diagnostic.candidate_available)
         self.assertTrue(diagnostic.commit_equivalent)
         self.assertFalse(diagnostic.behavior_changed)
+
+        mct_calls = [
+            call
+            for call in mock_log_commit_authority.call_args_list
+            if getattr(call.args[0], "branch", "") == "board_memory.memory_checkpoint_with_text"
+        ]
+        self.assertEqual(1, len(mct_calls))
+        self.assertFalse(mct_calls[0].args[0].candidate_available)
+        self.assertFalse(mct_calls[0].args[0].behavior_changed)
+
+    @patch("modules.agent.orchestration.responses.response_pipeline_stages.ResponsePipelineStagesMixin._log_board_memory_commit_authority_resolution")
+    def test_checkpoint_stage_logs_memory_commit_authority_for_mct(self, mock_log_commit_authority):
+        """Characterizes that the checkpoint stage logs memory commit authority diagnostics for MCT."""
+        self.harness.protocol_compiler.analyze.return_value = SimpleNamespace(
+            shape=SimpleNamespace(name="MEMORY_TEXT"),
+            error=None,
+            ir=SimpleNamespace(
+                has_action=False,
+                action_count=0,
+                has_checkpoint=True,
+                has_memory_tags=True,
+                has_subgoal_tags=False,
+                has_memory_checkpoint=True,
+                has_visible_answer=True,
+                has_pre_action_text=False,
+                visible_text_source="CHECKPOINT_ACCOMPANYING_TEXT",
+            ),
+        )
+        self.harness.plan_board_stage.apply.return_value = SimpleNamespace(
+            handled=False, response_text="<memory_update_done />\nDone."
+        )
+        self.harness.memory_board_stage.apply.return_value = SimpleNamespace(
+            handled=False,
+            response_text="Done.",
+            next_query=None,
+            reason="memory_checkpoint_and_text",
+            source="memory_board",
+            memory_checkpoint_only=False,
+            memory_checkpoint_and_text=True,
+            memory_checkpoint_and_action=False,
+            memory_commit_attempted=True,
+            memory_commit_accepted_count=0,
+            memory_commit_rejected_count=0,
+        )
+
+        asyncio.run(
+            self.harness._run_checkpoint_stage(
+                self.ctx, "<memory_update_done />\nDone.", reflection_repair_pending=False, reflection_repair_kind=""
+            )
+        )
+
+        mct_calls = [
+            call for call in mock_log_commit_authority.call_args_list
+            if getattr(call.args[0], "branch", "") == "board_memory.memory_checkpoint_with_text"
+        ]
+        self.assertEqual(1, len(mct_calls))
+        diagnostic = mct_calls[0].args[0]
+        self.assertEqual("board_memory.memory_checkpoint_with_text", diagnostic.branch)
+        self.assertTrue(diagnostic.candidate_available)
+        self.assertFalse(diagnostic.behavior_changed)
+        self.assertEqual("legacy", diagnostic.switch_value)
+        self.assertEqual("legacy", diagnostic.authority_source)
+        self.assertTrue(diagnostic.response_text_agreement)
+        self.assertTrue(diagnostic.checkpoint_removed_agreement)
+        self.assertTrue(diagnostic.visible_text_preserved_agreement)
+        self.assertTrue(diagnostic.pass_through_agreement)
 
 
 class TestResponsePipelineClassificationStage(unittest.TestCase):
