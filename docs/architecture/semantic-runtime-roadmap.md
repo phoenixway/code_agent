@@ -3578,6 +3578,29 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - No search/path normalization changed.
   - No Angelica/live agent was run.
 - **Next**:
+  - Phase 32 — Step 4.6/8: Runtime-State Recoverable Failure Detection for Extracted Intent Bundles.
+
+---
+
+#### Phase 32 — Step 4.6/8: Runtime-State Recoverable Failure Detection for Extracted Intent Bundles
+
+- **Status**: Done.
+- **Goal**: Make extracted `step.intent_payload` + single valid `ACTION_ONLY` recovery action pass the atomic bundle guard when recoverable failure is recorded in runtime state/context, even if `step.intent_error` is empty.
+- **Allowed**:
+  - Narrow changes to `_reject_invalid_atomic_bundle_before_transition` to recognize recoverable failure from runtime state.
+  - Add regression tests.
+- **Forbidden**:
+  - Broadly disabling guards.
+  - Changing tool execution or search/path normalization.
+- **Completed Outcome**:
+  - New smoke dump showed `step.intent_error` can be empty while recoverable failure exists in runtime state.
+  - `_reject_invalid_atomic_bundle_before_transition` now detects recoverable failure from runtime/context state as well as step intent_error.
+  - Extracted intent payload + single valid ACTION_ONLY recovery action now passes atomic bundle guard in this live shape.
+  - Malformed and unsupported multi-action bundles remain blocked.
+  - No tool execution behavior changed.
+  - No search/path normalization changed.
+  - No Angelica/live agent was run.
+- **Next**:
   - Phase 32 — Step 5/8: Structure-only Think Repair Atomicity Characterization.
 
 ### Phase 11: RecoveryStrategy Registry Expansion

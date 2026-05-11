@@ -30,6 +30,32 @@ class ResponsePipelinePrevalidationMixin:
             return bool(intent_error.get("recoverable"))
         return bool(getattr(intent_error, "recoverable", False))
 
+    def _safe_getattr(self, obj, attr, default=None):
+        if obj is None:
+            return default
+        if isinstance(obj, dict):
+            return obj.get(attr, default)
+        return getattr(obj, attr, default)
+
+    def _has_recoverable_failure_context(self, ctx=None, step=None) -> bool:
+        if step is not None and self._is_recoverable_intent_error(self._safe_getattr(step, "intent_error")):
+            return True
+
+        if self._safe_getattr(self.state, "last_error_recoverable") is True:
+            return True
+
+        if ctx is not None:
+            if self._safe_getattr(ctx, "last_error_recoverable") is True:
+                return True
+            state_machine = self._safe_getattr(ctx, "state_machine")
+            if self._safe_getattr(state_machine, "last_error_recoverable") is True:
+                return True
+            last_action_result = self._safe_getattr(state_machine, "last_action_result")
+            if self._safe_getattr(last_action_result, "recoverable") is True:
+                return True
+
+        return False
+
     COMPILER_DRIVEN_INVALID_KINDS = {
         "malformed_incomplete_think",
         "action_inside_think",
@@ -777,7 +803,7 @@ class ResponsePipelinePrevalidationMixin:
         if payload_mode not in {"activate", "reuse", "replace"}:
             return None
 
-        is_failure_retry = step is not None and self._is_recoverable_intent_error(getattr(step, "intent_error", None))
+        is_failure_retry = self._has_recoverable_failure_context(ctx=ctx, step=step)
         if is_failure_retry:
             parsed_action_count = sum(1 for seg in segments if getattr(seg, "type", "") == "action")
             parsed_intent_count = sum(1 for seg in segments if getattr(seg, "type", "") == "intent")

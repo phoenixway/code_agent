@@ -2100,6 +2100,15 @@ This document is the single source of truth for the current state of the Semanti
     - No tool execution behavior was changed.
     - No search/path normalization was changed.
     - No Angelica/live agent was run.
+- **Phase 32 — Step 4.6/8: Runtime-State Recoverable Failure Detection for Extracted Intent Bundles (Complete)**
+  - **Completed Outcome**:
+    - New smoke dump showed `step.intent_error` can be empty while recoverable failure exists in runtime state.
+    - `_reject_invalid_atomic_bundle_before_transition` now detects recoverable failure from runtime/context state as well as step intent_error.
+    - Extracted intent payload + single valid ACTION_ONLY recovery action now passes atomic bundle guard in this live shape.
+    - Malformed and unsupported multi-action bundles remain blocked.
+    - No tool execution behavior changed.
+    - No search/path normalization changed.
+    - No Angelica/live agent was run.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 
