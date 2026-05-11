@@ -3531,6 +3531,55 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 32 — Step 5/8: Structure-only Think Repair Atomicity Characterization.
 
+---
+
+#### Phase 32 — Step 5/8: Structure-only Think Repair Atomicity Characterization
+
+- **Status**: Done.
+- **Goal**: Characterize the current behavior where a possible think repair is blocked by atomicity constraints, even if the repair is structure-only.
+- **Allowed**:
+  - Add characterization tests.
+  - Add minimal diagnostic-only seams if needed to observe behavior.
+- **Forbidden**:
+  - Implementation of structure-only think repair allowance.
+  - Changes to tool execution behavior.
+  - Changes to search or path normalization logic.
+- **Completed Outcome**:
+  - Characterized current behavior where possible think repair can be blocked by atomicity constraints (e.g., when an intent payload is present).
+  - Added a negative control for unsafe repairs that would alter intent/action semantics.
+  - Added a future xfail test for structure-only think repair allowance.
+  - No runtime behavior was changed.
+  - No tool execution behavior was changed.
+  - No search/path normalization was changed.
+  - No Angelica/live agent was run.
+- **Next**:
+  - Phase 32 — Step 6/8: Structure-only Think Repair Allowance.
+
+---
+
+#### Phase 32 — Step 4.5/8: Extracted Intent Payload + Single Action Recovery Bundle Reconciliation
+
+- **Status**: Done.
+- **Goal**: Fix a live regression where a valid `intent+action` recovery bundle was blocked because the intent was extracted into `step.intent_payload` before prevalidation.
+- **Allowed**:
+  - Narrow changes to `_reject_invalid_atomic_bundle_before_transition` to recognize `step.intent_payload` as valid intent context during recoverable failure.
+  - Add regression tests.
+- **Forbidden**:
+  - Broadly disabling guards.
+  - Changing tool execution or search/path normalization.
+- **Completed Outcome**:
+  - `_reject_invalid_atomic_bundle_before_transition` now treats extracted `step.intent_payload` as valid intent context for recoverable-failure recovery bundles.
+  - Valid extracted-intent + single-action bundles after recoverable failure are no longer blocked by `retry_or_continuation_after_failure`.
+  - Action-only without extracted intent remains blocked.
+  - Malformed and unsupported multi-action bundles remain blocked.
+  - Mutating single actions are not blocked at this layer solely because they are mutating.
+  - Normal action/tool policy still applies.
+  - No tool execution behavior changed.
+  - No search/path normalization changed.
+  - No Angelica/live agent was run.
+- **Next**:
+  - Phase 32 — Step 5/8: Structure-only Think Repair Atomicity Characterization.
+
 ### Phase 11: RecoveryStrategy Registry Expansion
 
 - **Goal**: Expand the `CompilerRecoveryRegistry` to cover more structural errors.

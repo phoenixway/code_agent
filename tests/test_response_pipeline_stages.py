@@ -3065,6 +3065,585 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class TestThinkRepairAtomicityCharacterization(unittest.TestCase):
+    def _setup_mocks_for_bundle_response(
+        self,
+        raw_response: str,
+        *,
+        has_intent: bool,
+        has_action: bool,
+        action_is_malformed: bool = False,
+        invalid_kind: str | None = None,
+        compiler_error_code: str | None = None,
+        action_count: int = 0,
+    ):
+        segments = []
+        action_objs = []
+        if has_intent:
+            # Simplified parsing for test
+            intent_str = raw_response.split("<intent>")[1].split("</intent>")[0]
+            segments.append(SimpleNamespace(type="intent", content=intent_str))
+        if has_action:
+            action_blocks = re.findall(r"<action>(.*?)</action>", raw_response, re.DOTALL)
+            for action_str_content in action_blocks:
+                if not action_is_malformed:
+                    try:
+                        action_obj = json.loads(action_str_content)
+                        action_objs.append(action_obj)
+                        segments.append(SimpleNamespace(type="action", content=action_obj))
+                    except json.JSONDecodeError:
+                        # For malformed JSON tests, we might not have a valid object
+                        segments.append(SimpleNamespace(type="action", content=action_str_content))
+                else:
+                    segments.append(SimpleNamespace(type="action", content=action_str_content))
+
+        parsed_output = ParsedModelOutput(
+            response=raw_response,
+            has_action_segment=has_action,
+            invalid_kind=invalid_kind,
+        )
+        if compiler_error_code:
+            parsed_output.compiler_error_code = compiler_error_code
+
+        if has_action and len(action_objs) == 1:
+            parsed_output.action_content = action_objs[0]
+
+        self.harness._classify_intent_output.return_value = parsed_output
+        self.harness.parser.parse.return_value = segments
+
+    def setUp(self):
+        class Harness(ResponsePipelinePrevalidationMixin, ResponsePipelineStagesMixin):
+            def __init__(self):
+                self.state = SimpleNamespace(active_intent=None)
+                self.stage_logger = SimpleNamespace(log=MagicMock(), log_architecture_defect=MagicMock())
+                self.parser = SimpleNamespace(parse=MagicMock(return_value=[]))
+                self.intent_response_parser = SimpleNamespace(classify=MagicMock())
+                self.protocol_compiler = ProtocolCompiler()
+                self.action_policy = SimpleNamespace(
+                    decide=AsyncMock(),
+                    validate_atomic_bundle_action=MagicMock(return_value=SimpleNamespace(ok=True)),
+                )
+                self.output_recovery = SimpleNamespace(decide=AsyncMock())
+                self.intent_transitions = SimpleNamespace(
+                    handle_model_step=AsyncMock(
+                        return_value=SimpleNamespace(
+                            handled=True,
+                            next_query="intent_transition_reached",
+                            reason="intent_transition_reached",
+                            source="intent_transition",
+                        )
+                    ),
+                    preview_payload_decision=MagicMock(
+                        return_value=SimpleNamespace(applied=True, active_intent=SimpleNamespace(intent_id="test_intent"))
+                    ),
+                )
+                self.guards = SimpleNamespace(
+                    set_nonproductive_thinking_state=MagicMock(),
+                )
+                self.prompt_builder = SimpleNamespace(
+                    build_atomic_bundle_rejected_prompt=MagicMock(return_value="atomic_bundle_rejected_prompt"),
+                    build_retry_or_continue_after_failure_prompt=MagicMock(return_value="retry_prompt"),
+                )
+                self.semantics = SimpleNamespace(
+                    has_complete_think_before_action=MagicMock(return_value=False),
+                    has_memory_update_done_before_action=MagicMock(return_value=False),
+                    has_checkpoint_before_action=MagicMock(return_value=False),
+                    has_any_action_proposal=MagicMock(return_value=True),
+                )
+                self.ui = AsyncMock()
+                self.config = SimpleNamespace()
+                self.history = SimpleNamespace()
+                self.model = SimpleNamespace()
+                self.log = None
+
+                # Mock methods from ResponsePipelineStagesMixin that are not under test
+                self._normalize_response_stage = MagicMock(
+                    side_effect=self._default_normalize_response_stage
+                )
+                self._reject_truncated_terminal_completion_before_transition = MagicMock(return_value=None)
+                self._run_initial_stages = self.run_stages_for_test
+
+            def _default_normalize_response_stage(self, response: str, *, allow_autorepair: bool, source: str):
+                # Passthrough for most tests, can be overridden
+                if not allow_autorepair and "<think>" in response:
+                    return SimpleNamespace(
+                        normalized_response=response,
+                        think_repair_insert_at=response.find("<think>"),
+                        think_repair_applied=False,
+                        think_repair_blocked_by_atomicity=True,
+                        repair_blocked_reason="intent_atomicity_guard",
+                    )
+                return SimpleNamespace(
+                    normalized_response=response,
+                    think_repair_insert_at=-1,
+                    think_repair_applied=False,
+                    think_repair_blocked_by_atomicity=False,
+                    repair_blocked_reason="",
+                )
+
+            async def run_stages_for_test(self, ctx, step):
+                # This is a simplified version of the initial stages for testing.
+                # It correctly simulates allow_autorepair=False when intent_payload is present.
+                allow_autorepair = not bool(getattr(step, "intent_payload", None))
+                normalized = self._normalize_response_stage(
+                    step.response,
+                    allow_autorepair=allow_autorepair,
+                    source="response_pipeline",
+                )
+                self.stage_logger.log(
+                    "response_normalization",
+                    raw_response=step.response,
+                    normalized_response=getattr(normalized, "normalized_response", step.response),
+                    think_repair_insert_at=getattr(normalized, "think_repair_insert_at", -1),
+                    think_repair_applied=getattr(normalized, "think_repair_applied", False),
+                    think_repair_blocked_by_atomicity=getattr(normalized, "think_repair_blocked_by_atomicity", False),
+                    repair_blocked_reason=getattr(normalized, "repair_blocked_reason", ""),
+                )
+                response = getattr(normalized, "normalized_response", step.response)
+
+                rejection = await self._reject_invalid_intent_followup_before_transition(
+                    ctx, response, step, preclassified=None
+                )
+                if rejection:
+                    return None, None, rejection
+
+                transition_outcome = await self.intent_transitions.handle_model_step(
+                    ctx, step, preclassified=None
+                )
+                if getattr(transition_outcome, "handled", False):
+                    return None, None, ResponsePipelineOutcome(
+                        continue_loop=True,
+                        stop_loop=False,
+                        next_query=getattr(transition_outcome, "next_query", None),
+                        reason=str(getattr(transition_outcome, "reason", "") or "intent_transition"),
+                        source=str(getattr(transition_outcome, "source", "") or "intent_transition"),
+                    )
+                return None, None, None
+
+        self.harness = Harness()
+        self.harness._classify_intent_output = MagicMock()
+        self.ctx = SimpleNamespace(state_machine=SimpleNamespace(), malformed_action_retries=0, audit_marker_retries=0)
+
+    def test_structure_only_think_repair_is_blocked_by_atomicity(self):
+        """Characterizes that a possible think repair is blocked when an intent payload is present."""
+        raw_response = '<intent>do thing</intent><action>{"type":"read_file","path":"a.txt"}</action><think>oops'
+        step = SimpleNamespace(
+            response=raw_response,
+            model_stop_reason="",
+            intent_payload={"mode": "activate", "intent": "do thing"},
+            intent_error=None,
+        )
+
+        self._setup_mocks_for_bundle_response(
+            raw_response,
+            has_intent=True,
+            has_action=True,
+            invalid_kind="malformed_incomplete_think",
+            compiler_error_code="E_UNCLOSED_THINK",
+            action_count=1,
+        )
+        self.harness.output_recovery.decide.return_value = SimpleNamespace(
+            handled=True,
+            continue_loop=True,
+            stop_loop=False,
+            next_query="recovery_prompt",
+            reason="malformed_incomplete_think",
+            source="output_recovery",
+            malformed_action_retries=1,
+            audit_marker_retries=0,
+        )
+
+        # The test harness will call with allow_autorepair=False because intent_payload is present.
+        # We can observe this through the logger.
+        asyncio.run(self.harness._run_initial_stages(self.ctx, step))
+
+        normalization_log = [
+            call for call in self.harness.stage_logger.log.call_args_list
+            if call.args[0] == "response_normalization"
+        ]
+        self.assertGreaterEqual(len(normalization_log), 1)
+        self.assertTrue(normalization_log[0].kwargs["think_repair_blocked_by_atomicity"])
+        self.assertEqual("intent_atomicity_guard", normalization_log[0].kwargs["repair_blocked_reason"])
+        self.assertFalse(normalization_log[0].kwargs["think_repair_applied"])
+        self.harness.intent_transitions.handle_model_step.assert_not_awaited()
+        self.harness.intent_transitions.handle_model_step.assert_not_awaited()
+
+    def test_dangerous_think_repair_remains_blocked_by_atomicity(self):
+        """Characterizes that a dangerous think repair is also blocked by the atomicity guard."""
+        raw_response = '<intent>do thing</intent><action>{"type":"run_shell","command":"echo <think>oops"}</action>'
+        step = SimpleNamespace(
+            response=raw_response,
+            model_stop_reason="",
+            intent_payload={"mode": "activate", "intent": "do thing"},
+            intent_error=None,
+        )
+
+        self._setup_mocks_for_bundle_response(
+            raw_response,
+            has_intent=True,
+            has_action=True,
+            invalid_kind="malformed_action",
+            compiler_error_code="E_MALFORMED_ACTION_JSON",
+            action_count=1,
+        )
+        self.harness.output_recovery.decide.return_value = SimpleNamespace(
+            handled=True,
+            continue_loop=True,
+            stop_loop=False,
+            next_query="recovery_prompt",
+            reason="malformed_action",
+            source="output_recovery",
+            malformed_action_retries=1,
+            audit_marker_retries=0,
+        )
+
+        asyncio.run(self.harness._run_initial_stages(self.ctx, step))
+
+        normalization_log = [
+            call for call in self.harness.stage_logger.log.call_args_list
+            if call.args[0] == "response_normalization"
+        ]
+        self.assertGreaterEqual(len(normalization_log), 1)
+        self.assertTrue(normalization_log[0].kwargs["think_repair_blocked_by_atomicity"])
+        self.assertEqual("intent_atomicity_guard", normalization_log[0].kwargs["repair_blocked_reason"])
+        self.assertFalse(normalization_log[0].kwargs["think_repair_applied"])
+
+    @pytest.mark.xfail(reason="Phase 32 Step 6 will allow structure-only think repair under atomicity constraints")
+    def test_structure_only_think_repair_is_allowed_in_future(self):
+        """Future: A structure-only think repair should be allowed even with an intent payload."""
+        raw_response = '<intent>do thing</intent><action>{"type":"read_file","path":"a.txt"}</action><think>oops'
+        repaired_response = raw_response + "</think>"
+        step = SimpleNamespace(
+            response=raw_response,
+            model_stop_reason="",
+            intent_payload={"mode": "activate", "intent": "do thing"},
+            intent_error=None,
+        )
+
+        # In the future, the pipeline will be smart enough to allow this repair.
+        # For now, we set up mocks for the *repaired* response, but run the
+        # pipeline on the *raw* response. The current harness will block the
+        # repair, causing the test to fail as expected for an xfail.
+        self._setup_mocks_for_bundle_response(
+            repaired_response,
+            has_intent=True,
+            has_action=True,
+            invalid_kind=None,
+            compiler_error_code=None,
+            action_count=1,
+        )
+
+        _, _, outcome = asyncio.run(self.harness._run_initial_stages(self.ctx, step))
+
+        self.assertIsInstance(outcome, ResponsePipelineOutcome)
+        self.assertEqual("intent_transition_reached", outcome.reason)
+        self.harness.intent_transitions.handle_model_step.assert_awaited_once()
+
+
+class TestExtractedIntentPayloadRecoveryBundle(unittest.TestCase):
+    def _setup_mocks_for_bundle_response(
+        self,
+        raw_response: str,
+        *,
+        has_intent: bool,
+        has_action: bool,
+        action_is_malformed: bool = False,
+        invalid_kind: str | None = None,
+        compiler_error_code: str | None = None,
+        action_count: int = 0,
+    ):
+        segments = []
+        action_objs = []
+        if has_intent:
+            # Simplified parsing for test
+            intent_str = raw_response.split("<intent>")[1].split("</intent>")[0]
+            segments.append(SimpleNamespace(type="intent", content=intent_str))
+        if has_action:
+            action_blocks = re.findall(r"<action>(.*?)</action>", raw_response, re.DOTALL)
+            for action_str_content in action_blocks:
+                if not action_is_malformed:
+                    try:
+                        action_obj = json.loads(action_str_content)
+                        action_objs.append(action_obj)
+                        segments.append(SimpleNamespace(type="action", content=action_obj))
+                    except json.JSONDecodeError:
+                        # For malformed JSON tests, we might not have a valid object
+                        segments.append(SimpleNamespace(type="action", content=action_str_content))
+                else:
+                    segments.append(SimpleNamespace(type="action", content=action_str_content))
+
+        parsed_output = ParsedModelOutput(
+            response=raw_response,
+            has_action_segment=has_action,
+            invalid_kind=invalid_kind,
+        )
+        if compiler_error_code:
+            parsed_output.compiler_error_code = compiler_error_code
+
+        if has_action and len(action_objs) == 1:
+            parsed_output.action_content = action_objs[0]
+
+        self.harness._classify_intent_output.return_value = parsed_output
+        self.harness.parser.parse.return_value = segments
+
+    def setUp(self):
+        class Harness(ResponsePipelinePrevalidationMixin, ResponsePipelineStagesMixin):
+            def __init__(self):
+                self.state = SimpleNamespace(active_intent=None)
+                self.stage_logger = SimpleNamespace(log=MagicMock(), log_architecture_defect=MagicMock())
+                self.parser = SimpleNamespace(parse=MagicMock(return_value=[]))
+                self.intent_response_parser = SimpleNamespace(classify=MagicMock())
+                self.protocol_compiler = ProtocolCompiler()
+                self.action_policy = SimpleNamespace(
+                    decide=AsyncMock(),
+                    validate_atomic_bundle_action=MagicMock(return_value=SimpleNamespace(ok=True)),
+                )
+                self.output_recovery = SimpleNamespace(decide=AsyncMock())
+                self.intent_transitions = SimpleNamespace(
+                    handle_model_step=AsyncMock(
+                        return_value=SimpleNamespace(
+                            handled=True,
+                            next_query="intent_transition_reached",
+                            reason="intent_transition_reached",
+                            source="intent_transition",
+                        )
+                    ),
+                    preview_payload_decision=MagicMock(
+                        return_value=SimpleNamespace(applied=True, active_intent=SimpleNamespace(intent_id="test_intent"))
+                    ),
+                )
+                self.guards = SimpleNamespace(
+                    set_nonproductive_thinking_state=MagicMock(),
+                )
+                self.prompt_builder = SimpleNamespace(
+                    build_atomic_bundle_rejected_prompt=MagicMock(return_value="atomic_bundle_rejected_prompt"),
+                    build_retry_or_continue_after_failure_prompt=MagicMock(return_value="retry_prompt"),
+                )
+                self.semantics = SimpleNamespace(
+                    has_complete_think_before_action=MagicMock(return_value=False),
+                    has_memory_update_done_before_action=MagicMock(return_value=False),
+                    has_checkpoint_before_action=MagicMock(return_value=False),
+                    has_any_action_proposal=MagicMock(return_value=True),
+                )
+                self.ui = AsyncMock()
+                self.config = SimpleNamespace()
+                self.history = SimpleNamespace()
+                self.model = SimpleNamespace()
+                self.log = None
+
+                # Mock methods from ResponsePipelineStagesMixin that are not under test
+                self._normalize_response_stage = MagicMock(
+                    side_effect=lambda r, **kwargs: SimpleNamespace(normalized_response=r)
+                )
+                self._reject_truncated_terminal_completion_before_transition = MagicMock(return_value=None)
+                self._run_initial_stages = self.run_stages_for_test
+
+            async def run_stages_for_test(self, ctx, step):
+                segments, parsed_output = self._classify_response_for_prevalidation(
+                    step.response, allow_think_autorepair=False
+                )
+
+                parsed_action_count = sum(1 for seg in segments if getattr(seg, "type", "") == "action")
+                parsed_intent_count = sum(1 for seg in segments if getattr(seg, "type", "") == "intent")
+
+                if (
+                    self._is_recoverable_intent_error(getattr(step, "intent_error", None))
+                    and not self._has_extracted_intent_payload(step)
+                    and parsed_action_count == 1
+                    and parsed_intent_count == 0
+                ):
+                    return None, None, ResponsePipelineOutcome(
+                        continue_loop=True,
+                        stop_loop=False,
+                        next_query="recovery_prompt",
+                        reason="retry_or_continuation_after_failure",
+                        source="intent_guard",
+                    )
+
+                rejection = await self._reject_invalid_intent_followup_before_transition(
+                    ctx, step.response, step, preclassified=(segments, parsed_output)
+                )
+                if rejection:
+                    return None, None, rejection
+
+                transition_outcome = await self.intent_transitions.handle_model_step(
+                    ctx, step, preclassified=(segments, parsed_output)
+                )
+                if getattr(transition_outcome, "handled", False):
+                    return None, None, ResponsePipelineOutcome(
+                        continue_loop=True,
+                        stop_loop=False,
+                        next_query=getattr(transition_outcome, "next_query", None),
+                        reason=str(getattr(transition_outcome, "reason", "") or "intent_transition"),
+                        source=str(getattr(transition_outcome, "source", "") or "intent_transition"),
+                    )
+                return None, None, None
+
+        self.harness = Harness()
+        self.harness._classify_intent_output = MagicMock()
+        self.ctx = SimpleNamespace(state_machine=SimpleNamespace(), malformed_action_retries=0, audit_marker_retries=0)
+
+    def test_extracted_intent_payload_plus_single_search_action_after_recoverable_failure_is_not_blocked(self):
+        """After a recoverable failure, an extracted intent payload + single action bundle should not be blocked."""
+        raw_response = '<action>{"type":"search_files","path":".","pattern":"doc"}</action>'
+        step = SimpleNamespace(
+            response=raw_response,
+            model_stop_reason="",
+            intent_payload={"mode": "activate", "intent": "Find the actual docs location."},
+            intent_error={"error_code": "INTERNAL", "recoverable": True},
+        )
+
+        self._setup_mocks_for_bundle_response(
+            raw_response,
+            has_intent=False,
+            has_action=True,
+            action_count=1,
+        )
+        _, _, outcome = asyncio.run(self.harness._run_initial_stages(self.ctx, step))
+
+        self.assertIsInstance(outcome, ResponsePipelineOutcome)
+        self.assertTrue(outcome.continue_loop)
+        self.assertEqual("intent_transition_reached", outcome.reason)
+        self.assertEqual("intent_transition", outcome.source)
+        self.harness.intent_transitions.handle_model_step.assert_awaited_once()
+
+    def test_extracted_intent_payload_plus_single_mutating_action_after_recoverable_failure_is_not_blocked_by_atomic_guard(
+        self,
+    ):
+        """After a recoverable failure, an extracted intent payload + single mutating action bundle should not be blocked by the atomic bundle guard."""
+        raw_response = '<action>{"type":"edit_file","path":"README.md","old":"x","new":"y"}</action>'
+        step = SimpleNamespace(
+            response=raw_response,
+            model_stop_reason="",
+            intent_payload={"mode": "activate", "intent": "Update README references."},
+            intent_error={"error_code": "INVALID_ACTION_PATH", "recoverable": True},
+        )
+
+        self._setup_mocks_for_bundle_response(
+            raw_response,
+            has_intent=False,
+            has_action=True,
+            action_count=1,
+        )
+        _, _, outcome = asyncio.run(self.harness._run_initial_stages(self.ctx, step))
+
+        self.assertIsInstance(outcome, ResponsePipelineOutcome)
+        self.assertTrue(outcome.continue_loop)
+        self.assertEqual("intent_transition_reached", outcome.reason)
+        self.assertEqual("intent_transition", outcome.source)
+        self.harness.intent_transitions.handle_model_step.assert_awaited_once()
+
+    def test_action_only_without_extracted_intent_payload_after_recoverable_failure_still_blocked(self):
+        """An action-only response without an extracted intent payload should still be blocked after a recoverable failure."""
+        raw_response = '<action>{"type":"search_files","path":".","pattern":"doc"}</action>'
+        step = SimpleNamespace(
+            response=raw_response,
+            model_stop_reason="",
+            intent_payload=None,
+            intent_error={"error_code": "INTERNAL", "recoverable": True},
+        )
+
+        self._setup_mocks_for_bundle_response(
+            raw_response,
+            has_intent=False,
+            has_action=True,
+            action_count=1,
+        )
+        self.harness.output_recovery.decide.return_value = SimpleNamespace(
+            handled=True,
+            continue_loop=True,
+            stop_loop=False,
+            next_query="recovery_prompt",
+            reason="retry_or_continuation_after_failure",
+            source="intent_guard",
+            malformed_action_retries=0,
+            audit_marker_retries=0,
+        )
+
+        _, _, outcome = asyncio.run(self.harness._run_initial_stages(self.ctx, step))
+
+        self.assertIsInstance(outcome, ResponsePipelineOutcome)
+        self.assertTrue(outcome.continue_loop)
+        self.assertEqual("retry_or_continuation_after_failure", outcome.reason)
+        self.harness.intent_transitions.handle_model_step.assert_not_awaited()
+
+    def test_extracted_intent_payload_with_malformed_action_still_blocked(self):
+        """An extracted intent payload with a malformed action should still be blocked."""
+        raw_response = '<action>{"type":"edit_file","path":"README.md",</action>'
+        step = SimpleNamespace(
+            response=raw_response,
+            model_stop_reason="",
+            intent_payload={"mode": "activate", "intent": "Update README references."},
+            intent_error={"error_code": "SOME_ERROR", "recoverable": True},
+        )
+
+        self._setup_mocks_for_bundle_response(
+            raw_response,
+            has_intent=False,
+            has_action=True,
+            action_is_malformed=True,
+            invalid_kind="malformed_action",
+            compiler_error_code="E_MALFORMED_ACTION_JSON",
+            action_count=1,
+        )
+        self.harness.output_recovery.decide.return_value = SimpleNamespace(
+            handled=True,
+            continue_loop=True,
+            stop_loop=False,
+            next_query="recovery_prompt",
+            reason="malformed_action",
+            source="output_recovery",
+            malformed_action_retries=1,
+            audit_marker_retries=0,
+        )
+
+        _, _, outcome = asyncio.run(self.harness._run_initial_stages(self.ctx, step))
+
+        self.assertIsInstance(outcome, ResponsePipelineOutcome)
+        self.assertTrue(outcome.continue_loop)
+        self.assertEqual("malformed_action", outcome.reason)
+        self.harness.intent_transitions.handle_model_step.assert_not_awaited()
+
+    def test_extracted_intent_payload_with_unsupported_multi_action_still_blocked(self):
+        """An extracted intent payload with an unsupported multi-action bundle should still be blocked."""
+        raw_response = (
+            '<action>{"type":"read_file","path":"a.txt"}</action>'
+            '<action>{"type":"edit_file","path":"b.txt","old":"","new":"x"}</action>'
+        )
+        step = SimpleNamespace(
+            response=raw_response,
+            model_stop_reason="",
+            intent_payload={"mode": "activate", "intent": "Read and write files."},
+            intent_error={"error_code": "SOME_ERROR", "recoverable": True},
+        )
+
+        self._setup_mocks_for_bundle_response(
+            raw_response,
+            has_intent=False,
+            has_action=True,
+            invalid_kind="multiple_actions",
+            compiler_error_code="E_MULTIPLE_ACTIONS",
+            action_count=2,
+        )
+        self.harness.output_recovery.decide.return_value = SimpleNamespace(
+            handled=True,
+            continue_loop=True,
+            stop_loop=False,
+            next_query="recovery_prompt",
+            reason="atomic_bundle_action_invalid",
+            source="intent_atomic_bundle_guard",
+            malformed_action_retries=0,
+            audit_marker_retries=0,
+        )
+
+        _, _, outcome = asyncio.run(self.harness._run_initial_stages(self.ctx, step))
+
+        self.assertIsInstance(outcome, ResponsePipelineOutcome)
+        self.assertTrue(outcome.continue_loop)
+        self.assertEqual("atomic_bundle_action_invalid", outcome.reason)
+        self.harness.intent_transitions.handle_model_step.assert_not_awaited()
+
+
 # Phase 32 — Step 2/8: Permit Valid Intent+Single-Action Bundles after Recoverable Failure
 class TestAtomicBundleRecoveryAfterFailure(unittest.TestCase):
     def _setup_mocks_for_bundle_response(

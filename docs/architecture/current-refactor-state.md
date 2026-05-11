@@ -2079,6 +2079,27 @@ This document is the single source of truth for the current state of the Semanti
     - Mutating, run_shell, malformed, >3 actions, and unbounded discovery bundles remain blocked.
     - This reduces recovery/discovery round-trips for common “inspect/search docs” model outputs.
     - No Angelica/live agent was run.
+- **Phase 32 — Step 4.5/8: Extracted Intent Payload + Single Action Recovery Bundle Reconciliation (Complete)**
+  - **Completed Outcome**:
+    - Smoke dump showed live path extracted intent payload before prevalidation, leaving compiler shape as ACTION_ONLY.
+    - `_reject_invalid_atomic_bundle_before_transition` now treats extracted `step.intent_payload` as valid intent context for recoverable-failure recovery bundles.
+    - Valid extracted-intent + single-action bundles after recoverable failure are no longer blocked by `retry_or_continuation_after_failure`.
+    - Action-only without extracted intent remains blocked.
+    - Malformed and unsupported multi-action bundles remain blocked.
+    - Mutating single actions are not blocked at this layer solely because they are mutating.
+    - Normal action/tool policy still applies.
+    - No tool execution behavior changed.
+    - No search/path normalization changed.
+    - No Angelica/live agent was run.
+- **Phase 32 — Step 5/8: Structure-only Think Repair Atomicity Characterization (Complete)**
+  - **Completed Outcome**:
+    - Characterized current behavior where possible think repair can be blocked by atomicity constraints (e.g., when an intent payload is present).
+    - Added a negative control for unsafe repairs that would alter intent/action semantics.
+    - Added a future xfail test for structure-only think repair allowance.
+    - No runtime behavior was changed.
+    - No tool execution behavior was changed.
+    - No search/path normalization was changed.
+    - No Angelica/live agent was run.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 

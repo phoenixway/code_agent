@@ -181,8 +181,8 @@ class ResponsePipelinePrevalidationMixin:
         """
         return self.protocol_compiler.analyze(response)
 
-    def _is_bounded_readonly_discovery_bundle(self, parsed_output) -> bool:
-        segments = getattr(parsed_output, "segments", [])
+    def _is_bounded_readonly_discovery_bundle(self, parsed_output, *, segments=None) -> bool:
+        segments = list(segments or getattr(parsed_output, "segments", []) or [])
         if not segments:
             return False
 
@@ -761,26 +761,34 @@ class ResponsePipelinePrevalidationMixin:
             return "Atomic intent/action bundle requires exactly one <action> block."
         return "Atomic intent/action bundle is invalid."
 
+    def _has_extracted_intent_payload(self, step) -> bool:
+        if step is None:
+            return False
+        payload = getattr(step, "intent_payload", None)
+        if not isinstance(payload, dict):
+            return False
+        mode = str(payload.get("mode") or "").strip().lower()
+        return mode in {"activate", "reuse", "replace"}
+
     def _reject_invalid_atomic_bundle_before_transition(self, ctx, payload: dict, parsed_output, segments, *, response: str, step=None):
-        if self._is_bounded_readonly_discovery_bundle(parsed_output):
+        if self._is_bounded_readonly_discovery_bundle(parsed_output, segments=segments):
             return None
         payload_mode = str((payload or {}).get("mode") or "").strip().lower()
         if payload_mode not in {"activate", "reuse", "replace"}:
             return None
 
-        is_failure_retry = (
-            step is not None
-            and getattr(step, "intent_payload", None) is not None
-            and self._is_recoverable_intent_error(getattr(step, "intent_error", None))
-        )
+        is_failure_retry = step is not None and self._is_recoverable_intent_error(getattr(step, "intent_error", None))
         if is_failure_retry:
             parsed_action_count = sum(1 for seg in segments if getattr(seg, "type", "") == "action")
             parsed_intent_count = sum(1 for seg in segments if getattr(seg, "type", "") == "intent")
+            has_extracted_intent = self._has_extracted_intent_payload(step)
+            has_valid_intent_context = parsed_intent_count == 1 or has_extracted_intent
+
             compiler_error_code = getattr(parsed_output, "compiler_error_code", None)
             invalid_kind = getattr(parsed_output, "invalid_kind", None)
 
             is_structurally_valid_single_action_bundle = (
-                parsed_intent_count == 1
+                has_valid_intent_context
                 and parsed_action_count == 1
                 and not invalid_kind
                 and not compiler_error_code
