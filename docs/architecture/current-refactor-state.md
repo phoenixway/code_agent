@@ -2072,6 +2072,13 @@ This document is the single source of truth for the current state of the Semanti
     - The future target is bounded read-only discovery batch support.
     - No tool execution behavior was changed.
     - No Angelica/live agent was run.
+- **Phase 32 — Step 4/8: Read-only Multi-action Discovery Bundle Support (Complete)**
+  - **Completed Outcome**:
+    - Bounded one-intent read-only discovery bundles with 2–3 actions are now protocol-valid.
+    - No tool execution behavior changed.
+    - Mutating, run_shell, malformed, >3 actions, and unbounded discovery bundles remain blocked.
+    - This reduces recovery/discovery round-trips for common “inspect/search docs” model outputs.
+    - No Angelica/live agent was run.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 

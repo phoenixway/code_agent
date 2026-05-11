@@ -3511,6 +3511,26 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 32 — Step 4/8: Read-only Multi-action Discovery Bundle Support
+
+- **Status**: Done.
+- **Goal**: Implement protocol support for bounded read-only multi-action discovery bundles to improve operational speed.
+- **Allowed**:
+  - Narrow changes to protocol validation logic.
+  - Update tests to reflect new valid bundles.
+- **Forbidden**:
+  - Implementation of multi-action tool execution.
+  - Changes to tool execution behavior.
+  - Changes to search or path normalization logic.
+- **Completed Outcome**:
+  - Bounded one-intent read-only discovery bundles with 2–3 actions are now protocol-valid.
+  - Mutating, `run_shell`, malformed, >3 actions, and unbounded discovery bundles remain blocked.
+  - This reduces recovery/discovery round-trips for common “inspect/search docs” model outputs.
+  - No tool execution behavior was changed.
+  - No Angelica/live agent was run.
+- **Next**:
+  - Phase 32 — Step 5/8: Structure-only Think Repair Atomicity Characterization.
+
 ### Phase 11: RecoveryStrategy Registry Expansion
 
 - **Goal**: Expand the `CompilerRecoveryRegistry` to cover more structural errors.

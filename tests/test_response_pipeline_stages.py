@@ -3256,8 +3256,8 @@ class TestAtomicBundleRecoveryAfterFailure(unittest.TestCase):
         self.assertEqual("malformed_action", outcome.reason)
         self.harness.intent_transitions.handle_model_step.assert_not_awaited()
 
-    def test_multi_action_bundle_is_blocked_after_recoverable_failure(self):
-        """A bundle with multiple actions should be blocked."""
+    def test_multi_action_bundle_is_not_blocked_after_recoverable_failure_if_valid_discovery_bundle(self):
+        """A valid read-only discovery bundle should not be blocked after a recoverable failure."""
         raw_response = (
             "<intent>Read two files.</intent>"
             '<action>{"type":"read_file","path":"a.txt"}</action>'
@@ -3274,26 +3274,16 @@ class TestAtomicBundleRecoveryAfterFailure(unittest.TestCase):
             raw_response,
             has_intent=True,
             has_action=True,
-            invalid_kind="multiple_actions",
-            compiler_error_code="E_MULTIPLE_ACTIONS",
-        )
-        self.harness.output_recovery.decide.return_value = SimpleNamespace(
-            handled=True,
-            continue_loop=True,
-            stop_loop=False,
-            next_query="recovery_prompt",
-            reason="multiple_actions",
-            source="output_recovery",
-            malformed_action_retries=0,
-            audit_marker_retries=0,
+            invalid_kind=None,
+            compiler_error_code=None,
         )
 
         _, _, outcome = asyncio.run(self.harness._run_initial_stages(self.ctx, step))
 
         self.assertIsInstance(outcome, ResponsePipelineOutcome)
         self.assertTrue(outcome.continue_loop)
-        self.assertEqual("multiple_actions", outcome.reason)
-        self.harness.intent_transitions.handle_model_step.assert_not_awaited()
+        self.assertEqual("intent_transition_reached", outcome.reason)
+        self.harness.intent_transitions.handle_model_step.assert_awaited_once()
 
 
 # Phase 32 — Step 3/8: E_ACTION_PAYLOAD_ARRAY / Read-only Multi-action Discovery Bundle Characterization
@@ -3405,7 +3395,15 @@ class TestReadonlyMultiActionDiscoveryCharacterization(unittest.TestCase):
                 transition_outcome = await self.intent_transitions.handle_model_step(
                     ctx, step, preclassified=None
                 )
-                return None, None, transition_outcome
+                if getattr(transition_outcome, "handled", False):
+                    return None, None, ResponsePipelineOutcome(
+                        continue_loop=True,
+                        stop_loop=False,
+                        next_query=getattr(transition_outcome, "next_query", None),
+                        reason=str(getattr(transition_outcome, "reason", "") or "intent_transition"),
+                        source=str(getattr(transition_outcome, "source", "") or "intent_transition"),
+                    )
+                return None, None, None
 
         self.harness = Harness()
         self.harness._classify_intent_output = MagicMock()
@@ -3423,8 +3421,8 @@ class TestReadonlyMultiActionDiscoveryCharacterization(unittest.TestCase):
             audit_marker_retries=0,
         )
 
-    def test_three_readonly_actions_bundle_is_currently_blocked_as_multiple_actions(self):
-        """Characterizes that a bundle with 3 read-only actions is currently blocked."""
+    def test_readonly_three_action_discovery_bundle_is_protocol_valid(self):
+        """A bundle with 3 read-only actions should be protocol-valid."""
         raw_response = (
             "<intent>Inspect project documentation structure.</intent>"
             '<action>{"type":"list_directory","path":"."}</action>'
@@ -3438,40 +3436,6 @@ class TestReadonlyMultiActionDiscoveryCharacterization(unittest.TestCase):
             intent_error=None,
         )
 
-        self._setup_mocks_for_bundle_response(
-            raw_response,
-            has_intent=True,
-            action_count=3,
-            invalid_kind="multiple_actions",
-            compiler_error_code="E_ATOMIC_BUNDLE_REQUIRES_EXACTLY_ONE_ACTION",
-        )
-
-        self._mock_output_recovery_rejection("atomic_bundle_action_invalid")
-        _, _, outcome = asyncio.run(self.harness._run_initial_stages(self.ctx, step))
-
-        self.assertIsInstance(outcome, ResponsePipelineOutcome)
-        self.assertTrue(outcome.continue_loop)
-        self.assertEqual("atomic_bundle_action_invalid", outcome.reason)
-        self.assertEqual("intent_atomic_bundle_guard", outcome.source)
-        self.harness.intent_transitions.handle_model_step.assert_not_awaited()
-
-    @pytest.mark.xfail(reason="Phase 32 Step 4 will implement read-only multi-action discovery batch support")
-    def test_readonly_three_action_discovery_bundle_should_be_protocol_valid_future_behavior(self):
-        """Future: a bundle with 3 read-only actions should be valid."""
-        raw_response = (
-            "<intent>Inspect project documentation structure.</intent>"
-            '<action>{"type":"list_directory","path":"."}</action>'
-            '<action>{"type":"search_files","path":".","pattern":"doc"}</action>'
-            '<action>{"type":"search_content","path":".","pattern":"README"}</action>'
-        )
-        step = SimpleNamespace(
-            response=raw_response,
-            model_stop_reason="",
-            intent_payload={"mode": "activate"},
-            intent_error=None,
-        )
-
-        # Future behavior: no invalid_kind, no compiler_error_code
         self._setup_mocks_for_bundle_response(
             raw_response,
             has_intent=True,
@@ -3479,14 +3443,40 @@ class TestReadonlyMultiActionDiscoveryCharacterization(unittest.TestCase):
             invalid_kind=None,
             compiler_error_code=None,
         )
-        # Mock action policy to accept it
-        self.harness.action_policy.validate_atomic_bundle_action.return_value = SimpleNamespace(ok=True)
 
         _, _, outcome = asyncio.run(self.harness._run_initial_stages(self.ctx, step))
 
         self.assertIsInstance(outcome, ResponsePipelineOutcome)
         self.assertTrue(outcome.continue_loop)
-        # This should proceed to intent transition, not be rejected.
+        self.assertEqual("intent_transition_reached", outcome.reason)
+        self.harness.intent_transitions.handle_model_step.assert_awaited_once()
+
+    def test_readonly_two_action_discovery_bundle_is_protocol_valid(self):
+        """A bundle with 2 read-only actions should be protocol-valid."""
+        raw_response = (
+            "<intent>Find documentation files.</intent>"
+            '<action>{"type":"search_files","path":".","pattern":"doc"}</action>'
+            '<action>{"type":"search_content","path":".","pattern":"README"}</action>'
+        )
+        step = SimpleNamespace(
+            response=raw_response,
+            model_stop_reason="",
+            intent_payload={"mode": "activate"},
+            intent_error=None,
+        )
+
+        self._setup_mocks_for_bundle_response(
+            raw_response,
+            has_intent=True,
+            action_count=2,
+            invalid_kind=None,
+            compiler_error_code=None,
+        )
+
+        _, _, outcome = asyncio.run(self.harness._run_initial_stages(self.ctx, step))
+
+        self.assertIsInstance(outcome, ResponsePipelineOutcome)
+        self.assertTrue(outcome.continue_loop)
         self.assertEqual("intent_transition_reached", outcome.reason)
         self.harness.intent_transitions.handle_model_step.assert_awaited_once()
 
@@ -3583,15 +3573,10 @@ class TestReadonlyMultiActionDiscoveryCharacterization(unittest.TestCase):
         self.harness.intent_transitions.handle_model_step.assert_not_awaited()
 
     def test_unbounded_readonly_multi_action_bundle_is_blocked(self):
-        """
-        Characterizes that an unbounded multi-action bundle is blocked.
-        NOTE: The definition of 'unbounded' is policy-dependent. For now, this
-        test ensures that multi-action is blocked. Future implementation will
-        need to define and enforce bounds (e.g., on list_directory).
-        """
+        """A bundle with an unbounded action (e.g., missing pattern) should be blocked."""
         raw_response = (
             "<intent>Inspect project documentation structure.</intent>"
-            '<action>{"type":"list_directory","path":"."}</action>'
+            '<action>{"type":"search_files","path":"."}</action>'
             '<action>{"type":"list_directory","path":"./src"}</action>'
         )
         step = SimpleNamespace(

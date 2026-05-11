@@ -181,6 +181,48 @@ class ResponsePipelinePrevalidationMixin:
         """
         return self.protocol_compiler.analyze(response)
 
+    def _is_bounded_readonly_discovery_bundle(self, parsed_output) -> bool:
+        segments = getattr(parsed_output, "segments", [])
+        if not segments:
+            return False
+
+        # Rule: exactly one intent segment
+        intent_count = sum(1 for seg in segments if getattr(seg, "type", "") == "intent")
+        if intent_count != 1:
+            return False
+
+        # Rule: action count between 2 and 3 inclusive
+        action_segments = [seg for seg in segments if getattr(seg, "type", "") == "action"]
+        if not (2 <= len(action_segments) <= 3):
+            return False
+
+        allowed_readonly_actions = {"list_directory", "search_files", "search_content", "read_file"}
+
+        for seg in action_segments:
+            action_content = getattr(seg, "content", None)
+            if not isinstance(action_content, dict):
+                return False  # Not a JSON object
+
+            action_type = action_content.get("type")
+            if action_type not in allowed_readonly_actions:
+                return False  # Not an allowed read-only action
+
+            # Boundedness checks
+            if action_type == "list_directory":
+                if "path" not in action_content:
+                    return False
+            elif action_type == "search_files":
+                if not str(action_content.get("path") or "").strip() or not str(action_content.get("pattern") or "").strip():
+                    return False
+            elif action_type == "search_content":
+                if not str(action_content.get("path") or "").strip() or not str(action_content.get("pattern") or "").strip():
+                    return False
+            elif action_type == "read_file":
+                if not str(action_content.get("path") or "").strip():
+                    return False
+
+        return True
+
     def _apply_compiler_diagnosis(self, parsed_output, response: str):
         compiler_analysis = self.protocol_compiler.analyze(response)
         parsed_output.compiler_shape = compiler_analysis.shape.name
@@ -188,6 +230,9 @@ class ResponsePipelinePrevalidationMixin:
         parsed_output.compiler_recovery_id = str(getattr(compiler_analysis.error, "recovery_id", "") or "")
         parsed_output.compiler_ir = getattr(compiler_analysis, "ir", None)
         compiler_invalid_kind = self._compiler_invalid_kind(compiler_analysis)
+        if compiler_invalid_kind in {"multiple_actions", "action_payload_array"}:
+            if self._is_bounded_readonly_discovery_bundle(parsed_output):
+                compiler_invalid_kind = ""
         parsed_output.runtime_protocol_semantics = runtime_semantics_from_compiler_analysis(
             compiler_analysis,
             invalid_kind=compiler_invalid_kind,
@@ -717,6 +762,8 @@ class ResponsePipelinePrevalidationMixin:
         return "Atomic intent/action bundle is invalid."
 
     def _reject_invalid_atomic_bundle_before_transition(self, ctx, payload: dict, parsed_output, segments, *, response: str, step=None):
+        if self._is_bounded_readonly_discovery_bundle(parsed_output):
+            return None
         payload_mode = str((payload or {}).get("mode") or "").strip().lower()
         if payload_mode not in {"activate", "reuse", "replace"}:
             return None
