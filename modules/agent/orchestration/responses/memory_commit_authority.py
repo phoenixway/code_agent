@@ -70,24 +70,8 @@ def resolve_memory_checkpoint_only_commit_authority(
     candidate = build_memory_checkpoint_only_commit_candidate(semantic_result)
 
     handled_agreement = candidate.expected_handled == legacy_handled if candidate.candidate_available else False
-
-    is_pass_through_mct = bool(
-        candidate.candidate_available
-        and candidate.branch == "MEMORY_CHECKPOINT_WITH_TEXT"
-        and candidate.expected_handled is False
-        and legacy_handled is False
-    )
-
-    reason_agreement = (
-        True
-        if is_pass_through_mct
-        else candidate.expected_reason == legacy_reason if candidate.candidate_available else False
-    )
-    source_agreement = (
-        True
-        if is_pass_through_mct
-        else candidate.expected_source == legacy_source if candidate.candidate_available else False
-    )
+    reason_agreement = candidate.expected_reason == legacy_reason if candidate.candidate_available else False
+    source_agreement = candidate.expected_source == legacy_source if candidate.candidate_available else False
     commit_attempted_agreement = (
         candidate.expected_commit_attempted == legacy_commit_attempted if candidate.candidate_available else False
     )
