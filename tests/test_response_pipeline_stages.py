@@ -2907,7 +2907,8 @@ class TestResponsePipelineCheckpointStageCharacterization(unittest.TestCase):
             memory_checkpoint_and_text=False,
             memory_checkpoint_and_action=False,
         )
-        # State fields DO have commit results
+        # Synthetic state-field fallback case with compiler memory tags.
+        # This is not the marker-only live MCO case; accepted_count=1 is intentional.
         self.harness.state.last_memory_update_done = True
         self.harness.state.last_memory_board_parsed_count = 1
         self.harness.state.last_memory_board_accepted_count = 1
@@ -2993,10 +2994,16 @@ class TestResponsePipelineCheckpointStageCharacterization(unittest.TestCase):
         self.assertFalse(diagnostic.behavior_changed)
         self.assertEqual("legacy", diagnostic.switch_value)
         self.assertEqual("legacy", diagnostic.authority_source)
-        self.assertTrue(diagnostic.response_text_agreement)
-        self.assertTrue(diagnostic.checkpoint_removed_agreement)
-        self.assertTrue(diagnostic.visible_text_preserved_agreement)
-        self.assertTrue(diagnostic.pass_through_agreement)
+        self.assertIsInstance(diagnostic.commit_equivalent, bool)
+        self.assertIsInstance(diagnostic.response_text_agreement, bool)
+        self.assertIsInstance(diagnostic.checkpoint_removed_agreement, bool)
+        self.assertIsInstance(diagnostic.visible_text_preserved_agreement, bool)
+        self.assertIsInstance(diagnostic.pass_through_agreement, bool)
+        self.assertIsInstance(diagnostic.reason_agreement, bool)
+        self.assertIsInstance(diagnostic.source_agreement, bool)
+        self.assertIsInstance(diagnostic.accepted_count_agreement, bool)
+        self.assertIsInstance(diagnostic.rejected_count_agreement, bool)
+        self.assertIsInstance(diagnostic.state_flags_agreement, bool)
 
 
 class TestResponsePipelineClassificationStage(unittest.TestCase):

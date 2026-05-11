@@ -3373,6 +3373,38 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 31 — Step 7/10: MEMORY_CHECKPOINT_WITH_TEXT Live Smoke Validation
+
+- **Status**: Done.
+- **Goal**: Run a live/integrated smoke test for the `MEMORY_CHECKPOINT_WITH_TEXT` branch to confirm that authority selection is now observable in runtime logs.
+- **Completed Outcome**:
+  - **Result**: NOT A PASS.
+  - Live smoke was run for `<memory_update_done />\nDone.` under the smoke profile.
+  - The `board_memory_commit_authority_resolution` diagnostic was observable, but it reported `commit_equivalent=False` and fell back to legacy.
+  - **Root Cause**: The exact agreement mismatch was not visible in the diagnostic log.
+- **Next**:
+  - Phase 31 — Step 8/10: MEMORY_CHECKPOINT_WITH_TEXT Live Semantics Reconciliation.
+
+---
+
+#### Phase 31 — Step 8/10: MEMORY_CHECKPOINT_WITH_TEXT Live Semantics Reconciliation
+
+- **Status**: In Progress.
+- **Goal**: Reconcile synthetic `MEMORY_CHECKPOINT_WITH_TEXT` equivalence with real live `MemoryBoardStageHandler` behavior by improving diagnostic logging.
+- **Allowed**:
+  - Add per-agreement diagnostic fields to `_log_board_memory_commit_authority_resolution`.
+  - Update tests to assert on the new diagnostic fields.
+- **Forbidden**:
+  - Changing runtime behavior.
+  - Consuming the `effective_commit` from the resolver.
+  - Changing memory/board handler behavior.
+  - Flipping the default registry.
+- **Done When**:
+  - The diagnostic log includes detailed agreement fields.
+  - A manual re-run of live smoke can identify the exact cause of `commit_equivalent=False`.
+
+---
+
 ### Phase 11: RecoveryStrategy Registry Expansion
 
 - **Goal**: Expand the `CompilerRecoveryRegistry` to cover more structural errors.

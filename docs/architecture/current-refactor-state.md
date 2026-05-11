@@ -2021,7 +2021,15 @@ This document is the single source of truth for the current state of the Semanti
   - Reused the existing `_log_board_memory_commit_authority_resolution` helper for logging.
   - The resolver's `effective_commit` is not consumed, and no runtime behavior was changed.
   - The default registry remains `legacy`, and the smoke registry remains `compiler` for this branch.
-  - **Next Step**: `Phase 31 — Step 7/10: MEMORY_CHECKPOINT_WITH_TEXT Live Smoke Validation`.
+- **Phase 31 — Step 7/10: MEMORY_CHECKPOINT_WITH_TEXT Live Smoke Validation (Complete)**
+  - **Result**: NOT A PASS.
+  - Live smoke was run for `<memory_update_done />\nDone.` under the smoke profile.
+  - The `board_memory_commit_authority_resolution` diagnostic was observable, but it reported `commit_equivalent=False` and fell back to legacy.
+  - **Root Cause**: The exact agreement mismatch was not visible in the diagnostic log.
+  - **Next Step**: `Phase 31 — Step 8/10: MEMORY_CHECKPOINT_WITH_TEXT Live Semantics Reconciliation`.
+- **Phase 31 — Step 8/10: MEMORY_CHECKPOINT_WITH_TEXT Live Semantics Reconciliation (In Progress)**
+  - **Goal**: Reconcile synthetic `MEMORY_CHECKPOINT_WITH_TEXT` equivalence with real live `MemoryBoardStageHandler` behavior by improving diagnostic logging.
+  - **Boundary**: This is a diagnostic-only change to expose the exact agreement mismatch. No runtime behavior will be changed.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 

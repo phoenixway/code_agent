@@ -188,4 +188,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 184. Phase 31 — Step 4/10: done. Hardened `MEMORY_CHECKPOINT_WITH_TEXT` commit-equivalence validation. A clean real-handler case now proves full `commit_equivalent=True`, while any mismatch correctly falls back to legacy. No runtime behavior was changed, and no authority was transferred. The smoke switch remains `legacy`.
 185. Phase 31 — Step 5/10: done. Enabled smoke-only compiler switch for `board_memory.memory_checkpoint_with_text`. Clean real-handler MCT selects compiler authority under smoke profile, with fallback on mismatch and for negative controls. No production behavior changed.
 186. Phase 31 — Step 6/10: done. Added diagnostic-only MCT resolver call in `_run_checkpoint_stage` to enable live observability. Resolver `effective_commit` is not consumed. No runtime behavior changed.
-187. Next: Phase 31 — Step 7/10: MEMORY_CHECKPOINT_WITH_TEXT Live Smoke Validation.
+187. Phase 31 — Step 7/10: MEMORY_CHECKPOINT_WITH_TEXT Live Smoke Validation (Complete). Live smoke was run manually. Observability works, but the result was NOT A PASS. `commit_equivalent` was `False`, causing `legacy_fallback`. Runtime behavior was preserved.
+188. Next: Phase 31 — Step 8/10: MEMORY_CHECKPOINT_WITH_TEXT Live Semantics Reconciliation.
