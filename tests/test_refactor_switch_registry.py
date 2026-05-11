@@ -43,15 +43,23 @@ class TestSwitchRegistry(unittest.TestCase):
 
     def test_get_switch_smoke_registry_returns_compiler(self):
         """The smoke registry should return 'compiler' for enabled switches."""
+        original_env = os.environ.get("ANGELICA_REFACTOR_SWITCH_REGISTRY")
         os.environ["ANGELICA_REFACTOR_SWITCH_REGISTRY"] = "modules/agent/orchestration/config/refactor_switches.smoke.toml"
         _load_registry.cache_clear()
-        value_plan_only = get_switch("board_checkpoint.plan_checkpoint_only")
-        self.assertEqual(value_plan_only, "compiler")
-        value_memory_with_text = get_switch("board_memory.memory_checkpoint_with_text")
-        self.assertEqual(value_memory_with_text, "compiler")
-        # Check a legacy one too
-        value_dispatch = get_switch("dispatch.plan_first_single_action")
-        self.assertEqual(value_dispatch, "legacy")
+        try:
+            value_plan_only = get_switch("board_checkpoint.plan_checkpoint_only")
+            self.assertEqual(value_plan_only, "compiler")
+            value_memory_with_text = get_switch("board_memory.memory_checkpoint_with_text")
+            self.assertEqual(value_memory_with_text, "compiler")
+            # Check a legacy one too
+            value_dispatch = get_switch("dispatch.plan_first_single_action")
+            self.assertEqual(value_dispatch, "legacy")
+        finally:
+            if original_env is None:
+                os.environ.pop("ANGELICA_REFACTOR_SWITCH_REGISTRY", None)
+            else:
+                os.environ["ANGELICA_REFACTOR_SWITCH_REGISTRY"] = original_env
+            _load_registry.cache_clear()
 
     def test_get_switch_override_registry_returns_compiler(self):
         """An override registry file should be loaded when the env var is set."""
