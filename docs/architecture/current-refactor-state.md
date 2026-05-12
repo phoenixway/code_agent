@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 32 — Step 8/8: Repeat Broad Search Guard / Path Memory Anchoring Decision
+- **Phase**: Phase 35 — Step 5/10: MEMORY_CHECKPOINT_WITH_ACTION Smoke Switch Validation
 - **Status**: Complete.
-- **Next Step**: Phase 33 — Search/Path Recovery UX Hardening.
-- **Boundary**: Phase 32 is complete. Repeat broad search guard and path memory anchoring are deferred. Broad search hint wording was refined.
+- **Next Step**: Phase 35 — Step 6/10: MEMORY_CHECKPOINT_WITH_ACTION Runtime Diagnostic Integration.
+- **Boundary**: Smoke-only switch coverage for MCTA is complete. The resolver is not yet wired into the runtime.
 
 ## Step 4I Parity Matrix
 
@@ -2195,6 +2195,14 @@ This document is the single source of truth for the current state of the Semanti
     - The resolver is still not wired into the runtime, and its `effective_commit` is not consumed.
     - No registry/switch changes were made.
     - No runtime behavior was changed.
+
+- **Phase 35 — Step 5/10: MEMORY_CHECKPOINT_WITH_ACTION Smoke Switch Validation (Complete)**
+  - **Completed Outcome**:
+    - Added `board_memory.memory_checkpoint_with_action` to the switch registries, with `legacy` as default and `compiler` in the smoke profile.
+    - Added synthetic tests to validate that compiler authority is selected for clean, observed-equivalent MCTA cases under the smoke profile, with fallback for mismatches and negative controls.
+    - The default registry remains `legacy`.
+    - The resolver is not yet wired into the runtime, and `effective_commit` is not consumed.
+    - No production behavior was changed.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 
