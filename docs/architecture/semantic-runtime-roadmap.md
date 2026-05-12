@@ -3839,6 +3839,30 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 35 — Step 6/10: MEMORY_CHECKPOINT_WITH_ACTION Runtime Diagnostic Integration.
 
+---
+
+#### Phase 35 — Step 6/10: MEMORY_CHECKPOINT_WITH_ACTION Runtime Diagnostic Integration
+
+- **Status**: Done.
+- **Goal**: Integrate the `MEMORY_CHECKPOINT_WITH_ACTION` commit authority resolver into the runtime pipeline for diagnostic logging only, without changing behavior.
+- **Allowed**:
+  - Call `resolve_memory_checkpoint_with_action_commit_authority` from the pipeline diagnostic path.
+  - Add diagnostic logging for MCTA using the existing memory commit authority diagnostic pattern.
+  - Add targeted tests proving diagnostics are emitted.
+- **Forbidden**:
+  - Do not change runtime behavior.
+  - Do not consume `decision.effective_commit`.
+  - Do not replace legacy outcomes with compiler values.
+  - Do not change `MemoryBoardStageHandler` behavior.
+  - Do not flip the default registry to `compiler`.
+- **Completed Outcome**:
+  - The `resolve_memory_checkpoint_with_action_commit_authority` resolver is now called from `_run_checkpoint_stage` for diagnostic logging only.
+  - The resolver's `effective_commit` is not consumed, and no runtime behavior was changed.
+  - The default registry remains `legacy`, and the smoke registry remains `compiler` for this branch for validation purposes.
+  - No dispatch, action, or `MemoryBoardStageHandler` behavior was changed.
+- **Next**:
+  - Phase 35 — Step 7/10: MEMORY_CHECKPOINT_WITH_ACTION Live Smoke Validation.
+
 ### Phase 33: Search/Path Recovery UX Hardening
 
 - **Status**: Not started.

@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 35 — Step 5/10: MEMORY_CHECKPOINT_WITH_ACTION Smoke Switch Validation
+- **Phase**: Phase 35 — Step 6/10: MEMORY_CHECKPOINT_WITH_ACTION Runtime Diagnostic Integration
 - **Status**: Complete.
-- **Next Step**: Phase 35 — Step 6/10: MEMORY_CHECKPOINT_WITH_ACTION Runtime Diagnostic Integration.
-- **Boundary**: Smoke-only switch coverage for MCTA is complete. The resolver is not yet wired into the runtime.
+- **Next Step**: Phase 35 — Step 7/10: MEMORY_CHECKPOINT_WITH_ACTION Live Smoke Validation.
+- **Boundary**: The MCTA resolver is now wired into the runtime for diagnostic logging only. `effective_commit` is not consumed.
 
 ## Step 4I Parity Matrix
 
@@ -2203,6 +2203,13 @@ This document is the single source of truth for the current state of the Semanti
     - The default registry remains `legacy`.
     - The resolver is not yet wired into the runtime, and `effective_commit` is not consumed.
     - No production behavior was changed.
+
+- **Phase 35 — Step 6/10: MEMORY_CHECKPOINT_WITH_ACTION Runtime Diagnostic Integration (Complete)**
+  - **Completed Outcome**:
+    - The `resolve_memory_checkpoint_with_action_commit_authority` resolver is now called from `_run_checkpoint_stage` for diagnostic logging only.
+    - The resolver's `effective_commit` is not consumed, and no runtime behavior was changed.
+    - The default registry remains `legacy`, and the smoke registry remains `compiler` for this branch for validation purposes.
+    - No dispatch, action, or `MemoryBoardStageHandler` behavior was changed.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 

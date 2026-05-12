@@ -20,6 +20,7 @@ from .board_checkpoint_semantics import resolve_plan_checkpoint_only_authority
 from .board_checkpoint_semantics import resolve_plan_checkpoint_only_typed_primary
 from .memory_commit_authority import (
     resolve_memory_checkpoint_only_commit_authority,
+    resolve_memory_checkpoint_with_action_commit_authority,
     resolve_memory_checkpoint_with_text_commit_authority,
 )
 from .protocol_decision_bridge import compiler_invalid_kind_for_output, resolve_protocol_authority
@@ -712,6 +713,40 @@ class ResponsePipelineStagesMixin:
             switch_value=mct_switch_value,
         )
         self._log_board_memory_commit_authority_resolution(mct_authority_decision.diagnostic)
+
+        mca_switch_value = get_switch("board_memory.memory_checkpoint_with_action")
+
+        # For diagnostics, compute what the final legacy handled value will be,
+        # without mutating the decision object yet.
+        diag_legacy_handled = bool(getattr(memory_board_decision, "handled", False))
+        if diag_legacy_handled and (effective_memory_checkpoint_and_text or effective_memory_checkpoint_and_action):
+            diag_legacy_handled = False
+
+        mca_cleaned_text = str(mct_after_text or "")
+        mca_pass_through_preserved = (
+            board_checkpoint_semantic_result is not None
+            and getattr(board_checkpoint_semantic_result.kind, "name", "") == "MEMORY_CHECKPOINT_WITH_ACTION"
+            and not diag_legacy_handled
+            and "<action" in mca_cleaned_text
+            and "</action>" in mca_cleaned_text
+        )
+        mca_authority_decision = resolve_memory_checkpoint_with_action_commit_authority(
+            semantic_result=board_checkpoint_semantic_result,
+            legacy_branch=board_checkpoint_semantic_result.kind.name,
+            legacy_handled=diag_legacy_handled,
+            legacy_reason=str(getattr(memory_board_decision, "reason", "") or ""),
+            legacy_source=str(getattr(memory_board_decision, "source", "") or ""),
+            legacy_response_text=mct_after_text,
+            legacy_next_query=getattr(memory_board_decision, "next_query", None),
+            legacy_commit_attempted=legacy_commit_attempted,
+            legacy_accepted_count=legacy_accepted_count,
+            legacy_rejected_count=legacy_rejected_count,
+            legacy_last_memory_update_done=legacy_last_memory_update_done,
+            legacy_pass_through_preserved=mca_pass_through_preserved,
+            legacy_checkpoint_removed=legacy_checkpoint_removed,
+            switch_value=mca_switch_value,
+        )
+        self._log_board_memory_commit_authority_resolution(mca_authority_decision.diagnostic)
 
         self._log_board_checkpoint_structural_parity(
             compiler_analysis,
