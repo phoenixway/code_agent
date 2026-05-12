@@ -61,6 +61,44 @@ def _merge_exts(code_only, include_extensions):
     return exts
 
 
+def _build_histogram_summary(text: str) -> str:
+    lines = text.splitlines()
+    total_matches = len(lines)
+
+    matches_by_file = {}
+    for line in lines:
+        parts = line.split(":", 1)
+        if len(parts) > 1:
+            path = parts[0]
+            matches_by_file.setdefault(path, 0)
+            matches_by_file[path] += 1
+
+    total_files = len(matches_by_file)
+
+    sorted_files = sorted(matches_by_file.items(), key=lambda item: (-item[1], item[0]))
+
+    summary_lines = [
+        f"Search was broad: {total_matches} matches across {total_files} files.",
+        "",
+        "Top files by match count:",
+    ]
+
+    top_n = 10
+    for path, count in sorted_files[:top_n]:
+        label = "match" if count == 1 else "matches"
+        summary_lines.append(f"- {path} — {count} {label}")
+
+    if len(sorted_files) > top_n:
+        summary_lines.append(f"...and {len(sorted_files) - top_n} more files.")
+
+    summary_lines.append("")
+    summary_lines.append(
+        "Hint: This result is broad. Useful narrowing options include reading one listed file, searching within one listed path, requesting a file skeleton, or searching an exact symbol."
+    )
+
+    return "\n".join(summary_lines)
+
+
 def _build_preview(text: str, *, limit_lines: int) -> tuple[str, int]:
     lines = text.splitlines()
     total = len(lines)
@@ -71,6 +109,25 @@ def _build_preview(text: str, *, limit_lines: int) -> tuple[str, int]:
 
 
 def _compact_large_result(kind: str, text: str, *, limit: int, exit_code: int, stderr: str = "") -> dict:
+    if kind == "matches":
+        output = _build_histogram_summary(text)
+        return {
+            "status": "success",
+            "output": output,
+            "exit_code": exit_code,
+            "stdout": output,
+            "stderr": (stderr or "")[:1000],
+            "truncated": True,
+            "result_count": len(text.splitlines()),
+            "history_compact": True,
+            "search_too_broad": True,
+            "result_kind": "broad_search_summary",
+            "suggested_fix": "Narrow the search path/pattern or lower the result limit before retrying.",
+            "raw_output": output,
+            "stdout_full": output,
+            "raw_output_truncated": False,
+        }
+
     preview_limit = min(limit, MAX_HISTORY_PREVIEW_LINES)
     preview, total = _build_preview(text, limit_lines=preview_limit)
     label = "files" if kind == "files" else "matches"

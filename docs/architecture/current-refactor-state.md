@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 30 Step 1: Board/Memory Commit Policy Inventory + Commit-Equivalence Harness Plan
+- **Phase**: Phase 32 — Step 7/8: Broad Search Result Shaping
 - **Status**: Complete.
-- **Next Step**: Phase 30 Step 2: Board/Memory Synthetic Commit-Equivalence Harness.
-- **Boundary**: The checkpoint parity bridge remains diagnostic-only. Legacy board handlers still own commit behavior, the prepass compiler analysis remains observational, and `_apply_compiler_diagnosis` remains the effectful classification-stage path that recomputes on normalized response.
+- **Next Step**: Phase 32 — Step 8/8: Repeat Broad Search Guard / Path Memory Anchoring Decision.
+- **Boundary**: Broad search result shaping is implemented for `search_content`. Small search behavior is unchanged. No search matching semantics or path normalization was changed.
 
 ## Step 4I Parity Matrix
 
@@ -2108,6 +2108,27 @@ This document is the single source of truth for the current state of the Semanti
     - Malformed and unsupported multi-action bundles remain blocked.
     - No tool execution behavior changed.
     - No search/path normalization changed.
+    - No Angelica/live agent was run.
+- **Phase 32 — Step 6/8: Structure-only Think Repair Allowance (Complete)**
+  - **Completed Outcome**:
+    - Structure-only trailing `</think>` repair is now allowed under atomicity constraints when protocol-relevant payloads are unchanged.
+    - The allowance is intentionally narrow: currently only simple trailing think closure is allowed.
+    - Repairs that alter action/intent/file/protocol blocks remain blocked.
+    - Think repair inside action JSON remains blocked.
+    - Malformed reuse/followup atomicity remains protected.
+    - No tool execution behavior changed.
+    - No search/path normalization changed.
+    - No Angelica/live agent was run.
+- **Phase 32 — Step 7/8: Broad Search Result Shaping (Complete)**
+  - **Completed Outcome**:
+    - Broad `search_content` results now return compact path histogram summaries when result volume is too high.
+    - Top files are grouped by match count.
+    - Broad search output includes non-prescriptive narrowing hints.
+    - Small search behavior remains unchanged.
+    - No search matching semantics changed.
+    - No path normalization changed.
+    - No automatic recovery actions were added.
+    - No memory-board anchoring was added.
     - No Angelica/live agent was run.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches

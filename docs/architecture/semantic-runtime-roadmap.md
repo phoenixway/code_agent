@@ -3571,7 +3571,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - No search/path normalization changed.
   - No Angelica/live agent was run.
 - **Next**:
-  - Phase 32 — Step 7/8: Invalid Path Pre-dispatch Blocking / Search Recovery Normalization.
+  - Phase 32 — Step 7/8: Broad Search Result Shaping.
 
 ---
 
@@ -3620,6 +3620,25 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - No Angelica/live agent was run.
 - **Next**:
   - Phase 32 — Step 5/8: Structure-only Think Repair Atomicity Characterization.
+
+---
+
+#### Phase 32 — Step 7/8: Broad Search Result Shaping
+
+- **Status**: Done.
+- **Goal**: When a search result is too broad, return a compact path histogram summary instead of only first raw snippets.
+- **Completed Outcome**:
+  - Broad `search_content` results now return compact path histogram summaries when result volume is too high.
+  - Top files are grouped by match count.
+  - Broad search output includes non-prescriptive narrowing hints.
+  - Small search behavior remains unchanged.
+  - No search matching semantics changed.
+  - No path normalization changed.
+  - No automatic recovery actions were added.
+  - No memory-board anchoring was added.
+  - No Angelica/live agent was run.
+- **Next**:
+  - Phase 32 — Step 8/8: Repeat Broad Search Guard / Path Memory Anchoring Decision.
 
 ### Phase 11: RecoveryStrategy Registry Expansion
 

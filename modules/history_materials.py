@@ -249,6 +249,20 @@ class HistoryMaterialTools:
             )
 
         if kind == "search":
+            if payload.get("result_kind") == "broad_search_summary":
+                if stage <= 1:
+                    # It's already a compact summary, no need to degrade further for stage 1
+                    return payload
+                # For stage 2+, degrade to a marker
+                return {
+                    "tool": tool,
+                    "path": path,
+                    "pattern": str(payload.get("pattern") or ""),
+                    "result_count": int(payload.get("result_count", 0) or 0),
+                    "history_compact": True,
+                    "note": "Broad search summary degraded to marker under context pressure. Rerun the search if needed.",
+                }
+
             pattern = str(payload.get("pattern") or "")
             result_count = int(payload.get("result_count", 0) or 0)
             preferred = self.preferred_text(payload)
