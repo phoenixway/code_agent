@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from ..config.switch_registry import get_switch
 from ..shared.decision_models import AtomicBundlePlan, NormalizedModelResponse, ResponsePipelineOutcome
 from ..runtime.action_policy_models import AtomicBundlePolicyResultKind
@@ -75,20 +77,76 @@ class ResponsePipelinePrevalidationMixin:
         "intent_complete_with_action_not_allowed",
     }
 
+    def _call_model_response_normalizer(self, normalizer, text: str, *, allow_autorepair: bool):
+        try:
+            # The real method in IntentResponseParser uses allow_think_autorepair
+            return normalizer(text, allow_think_autorepair=allow_autorepair)
+        except TypeError:
+            try:
+                # Some mocks or older versions might use allow_autorepair
+                return normalizer(text, allow_autorepair=allow_autorepair)
+            except TypeError:
+                # Fallback for older mocks without the keyword argument
+                if allow_autorepair:
+                    return normalizer(text)
+                else:
+                    # Cannot disable autorepair without the keyword, so we just return un-normalized
+                    return NormalizedModelResponse(raw_response=text, normalized_response=text)
+
+    def _is_structure_only_think_repair_safe(self, raw_response: str, repaired_response: str) -> bool:
+        """
+        A conservative safety check to determine if a think repair is structure-only.
+
+        Returns True only if protocol-relevant payloads (intent, actions, visible text)
+        are unchanged after the repair.
+        """
+        try:
+            # For now, only allow simple append of </think>
+            if repaired_response != raw_response + "</think>":
+                # This is a very conservative check. If we need to support more complex
+                # repairs, this will need to be revisited.
+                return False
+
+            # Raw block comparison is safer than parsed segment comparison for this check.
+            raw_action_blocks = re.findall(r"<action>(.*?)</action>", raw_response, re.DOTALL)
+            repaired_action_blocks = re.findall(r"<action>(.*?)</action>", repaired_response, re.DOTALL)
+            if raw_action_blocks != repaired_action_blocks:
+                return False
+
+            raw_intent_blocks = re.findall(r"<intent[^>]*>(.*?)</intent>", raw_response, re.DOTALL)
+            repaired_intent_blocks = re.findall(r"<intent[^>]*>(.*?)</intent>", repaired_response, re.DOTALL)
+            if raw_intent_blocks != repaired_intent_blocks:
+                return False
+
+            # Also check file_content blocks
+            raw_file_blocks = re.findall(r"<file_content[^>]*>(.*?)</file_content>", raw_response, re.DOTALL)
+            repaired_file_blocks = re.findall(r"<file_content[^>]*>(.*?)</file_content>", repaired_response, re.DOTALL)
+            if raw_file_blocks != repaired_file_blocks:
+                return False
+
+            return True
+        except Exception:
+            return False
+
     def _normalize_response_if_supported(self, response: str, *, allow_autorepair: bool) -> NormalizedModelResponse:
         text = str(response or "")
         normalizer = getattr(self.intent_response_parser, "normalize_model_response", None)
         if callable(normalizer):
             try:
-                result = normalizer(
-                    text,
-                    allow_think_autorepair=allow_autorepair,
-                )
-            except TypeError:
-                try:
-                    result = normalizer(text)
-                except Exception:
-                    return NormalizedModelResponse(raw_response=text, normalized_response=text)
+                result = self._call_model_response_normalizer(normalizer, text, allow_autorepair=allow_autorepair)
+
+                # Phase 32 Step 6: Allow structure-only think repair under atomicity.
+                if bool(getattr(result, "blocked_by_atomicity", False)):
+                    # Only attempt to override atomicity block for full bundles from the model.
+                    # Followup actions that are malformed should go through recovery.
+                    if "<intent>" in text:
+                        # Probe if a repair would have been applied if allowed
+                        repaired_result = self._call_model_response_normalizer(normalizer, text, allow_autorepair=True)
+                        if bool(getattr(repaired_result, "applied", False)):
+                            repaired_text = str(getattr(repaired_result, "response_text", text) or "")
+                            if self._is_structure_only_think_repair_safe(text, repaired_text):
+                                # It's a safe structural repair, so we can use it.
+                                result = repaired_result
             except Exception:
                 return NormalizedModelResponse(raw_response=text, normalized_response=text)
             if isinstance(result, NormalizedModelResponse):

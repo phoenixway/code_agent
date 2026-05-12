@@ -3349,6 +3349,33 @@ class TestExtractedIntentPayloadRuntimeRecoverableFailure(unittest.TestCase):
 
 
 class TestThinkRepairAtomicityCharacterization(unittest.TestCase):
+    def test_is_structure_only_think_repair_safe(self):
+        harness = self.harness
+        # Safe case: trailing think closure
+        raw = '<intent>i</intent><action>{"a":1}</action><think>t'
+        repaired = raw + "</think>"
+        self.assertTrue(harness._is_structure_only_think_repair_safe(raw, repaired))
+
+        # Unsafe: think inside action
+        raw = '<action>{"a":"<think>t"}</action>'
+        repaired = '<action>{"a":"<think>t</think>"}</action>'
+        self.assertFalse(harness._is_structure_only_think_repair_safe(raw, repaired))
+
+        # Unsafe: action content changed
+        raw = '<action>{"a":1}</action><think>t'
+        repaired = '<action>{"a":2}</action><think>t</think>'
+        self.assertFalse(harness._is_structure_only_think_repair_safe(raw, repaired))
+
+        # Unsafe: intent content changed
+        raw = "<intent>i1</intent><think>t"
+        repaired = "<intent>i2</intent><think>t</think>"
+        self.assertFalse(harness._is_structure_only_think_repair_safe(raw, repaired))
+
+        # Unsafe: visible text changed
+        raw = "text1<think>t"
+        repaired = "text2<think>t</think>"
+        self.assertFalse(harness._is_structure_only_think_repair_safe(raw, repaired))
+
     def _setup_mocks_for_bundle_response(
         self,
         raw_response: str,
@@ -3440,29 +3467,8 @@ class TestThinkRepairAtomicityCharacterization(unittest.TestCase):
                 self.log = None
 
                 # Mock methods from ResponsePipelineStagesMixin that are not under test
-                self._normalize_response_stage = MagicMock(
-                    side_effect=self._default_normalize_response_stage
-                )
                 self._reject_truncated_terminal_completion_before_transition = MagicMock(return_value=None)
                 self._run_initial_stages = self.run_stages_for_test
-
-            def _default_normalize_response_stage(self, response: str, *, allow_autorepair: bool, source: str):
-                # Passthrough for most tests, can be overridden
-                if not allow_autorepair and "<think>" in response:
-                    return SimpleNamespace(
-                        normalized_response=response,
-                        think_repair_insert_at=response.find("<think>"),
-                        think_repair_applied=False,
-                        think_repair_blocked_by_atomicity=True,
-                        repair_blocked_reason="intent_atomicity_guard",
-                    )
-                return SimpleNamespace(
-                    normalized_response=response,
-                    think_repair_insert_at=-1,
-                    think_repair_applied=False,
-                    think_repair_blocked_by_atomicity=False,
-                    repair_blocked_reason="",
-                )
 
             async def run_stages_for_test(self, ctx, step):
                 # This is a simplified version of the initial stages for testing.
@@ -3507,59 +3513,26 @@ class TestThinkRepairAtomicityCharacterization(unittest.TestCase):
         self.harness._classify_intent_output = MagicMock()
         self.ctx = SimpleNamespace(state_machine=SimpleNamespace(), malformed_action_retries=0, audit_marker_retries=0)
 
-    def test_structure_only_think_repair_is_blocked_by_atomicity(self):
-        """Characterizes that a possible think repair is blocked when an intent payload is present."""
-        raw_response = '<intent>do thing</intent><action>{"type":"read_file","path":"a.txt"}</action><think>oops'
-        step = SimpleNamespace(
-            response=raw_response,
-            model_stop_reason="",
-            intent_payload={"mode": "activate", "intent": "do thing"},
-            intent_error=None,
-        )
-
-        self._setup_mocks_for_bundle_response(
-            raw_response,
-            has_intent=True,
-            has_action=True,
-            invalid_kind="malformed_incomplete_think",
-            compiler_error_code="E_UNCLOSED_THINK",
-            action_count=1,
-        )
-        self.harness.output_recovery.decide.return_value = SimpleNamespace(
-            handled=True,
-            continue_loop=True,
-            stop_loop=False,
-            next_query="recovery_prompt",
-            reason="malformed_incomplete_think",
-            source="output_recovery",
-            malformed_action_retries=1,
-            audit_marker_retries=0,
-        )
-
-        # The test harness will call with allow_autorepair=False because intent_payload is present.
-        # We can observe this through the logger.
-        asyncio.run(self.harness._run_initial_stages(self.ctx, step))
-
-        normalization_log = [
-            call for call in self.harness.stage_logger.log.call_args_list
-            if call.args[0] == "response_normalization"
-        ]
-        self.assertGreaterEqual(len(normalization_log), 1)
-        self.assertTrue(normalization_log[0].kwargs["think_repair_blocked_by_atomicity"])
-        self.assertEqual("intent_atomicity_guard", normalization_log[0].kwargs["repair_blocked_reason"])
-        self.assertFalse(normalization_log[0].kwargs["think_repair_applied"])
-        self.harness.intent_transitions.handle_model_step.assert_not_awaited()
-        self.harness.intent_transitions.handle_model_step.assert_not_awaited()
-
     def test_dangerous_think_repair_remains_blocked_by_atomicity(self):
         """Characterizes that a dangerous think repair is also blocked by the atomicity guard."""
         raw_response = '<intent>do thing</intent><action>{"type":"run_shell","command":"echo <think>oops"}</action>'
+        repaired_response = raw_response.replace("<think>oops", "<think>oops</think>")
         step = SimpleNamespace(
             response=raw_response,
             model_stop_reason="",
             intent_payload={"mode": "activate", "intent": "do thing"},
             intent_error=None,
         )
+
+        def mock_normalizer(text, allow_think_autorepair):
+            if text == raw_response:
+                if allow_think_autorepair:
+                    return SimpleNamespace(response_text=repaired_response, applied=True, blocked_by_atomicity=False)
+                else:
+                    return SimpleNamespace(response_text=raw_response, applied=False, blocked_by_atomicity=True)
+            return SimpleNamespace(response_text=text, applied=False, blocked_by_atomicity=False)
+
+        self.harness.intent_response_parser.normalize_model_response = mock_normalizer
 
         self._setup_mocks_for_bundle_response(
             raw_response,
@@ -3591,9 +3564,8 @@ class TestThinkRepairAtomicityCharacterization(unittest.TestCase):
         self.assertEqual("intent_atomicity_guard", normalization_log[0].kwargs["repair_blocked_reason"])
         self.assertFalse(normalization_log[0].kwargs["think_repair_applied"])
 
-    @pytest.mark.xfail(reason="Phase 32 Step 6 will allow structure-only think repair under atomicity constraints")
-    def test_structure_only_think_repair_is_allowed_in_future(self):
-        """Future: A structure-only think repair should be allowed even with an intent payload."""
+    def test_structure_only_think_repair_is_allowed_under_atomicity_constraints(self):
+        """A structure-only think repair should be allowed even with an intent payload."""
         raw_response = '<intent>do thing</intent><action>{"type":"read_file","path":"a.txt"}</action><think>oops'
         repaired_response = raw_response + "</think>"
         step = SimpleNamespace(
@@ -3603,10 +3575,16 @@ class TestThinkRepairAtomicityCharacterization(unittest.TestCase):
             intent_error=None,
         )
 
-        # In the future, the pipeline will be smart enough to allow this repair.
-        # For now, we set up mocks for the *repaired* response, but run the
-        # pipeline on the *raw* response. The current harness will block the
-        # repair, causing the test to fail as expected for an xfail.
+        def mock_normalizer(text, allow_think_autorepair):
+            if text == raw_response:
+                if allow_think_autorepair:
+                    return SimpleNamespace(response_text=repaired_response, applied=True, blocked_by_atomicity=False)
+                else:
+                    return SimpleNamespace(response_text=raw_response, applied=False, blocked_by_atomicity=True)
+            return SimpleNamespace(response_text=text, applied=False, blocked_by_atomicity=False)
+
+        self.harness.intent_response_parser.normalize_model_response = mock_normalizer
+
         self._setup_mocks_for_bundle_response(
             repaired_response,
             has_intent=True,
@@ -3617,6 +3595,15 @@ class TestThinkRepairAtomicityCharacterization(unittest.TestCase):
         )
 
         _, _, outcome = asyncio.run(self.harness._run_initial_stages(self.ctx, step))
+
+        normalization_log = [
+            call for call in self.harness.stage_logger.log.call_args_list
+            if call.args[0] == "response_normalization"
+        ]
+        self.assertGreaterEqual(len(normalization_log), 1)
+        self.assertFalse(normalization_log[0].kwargs["think_repair_blocked_by_atomicity"])
+        self.assertEqual("", normalization_log[0].kwargs["repair_blocked_reason"])
+        self.assertTrue(normalization_log[0].kwargs["think_repair_applied"])
 
         self.assertIsInstance(outcome, ResponsePipelineOutcome)
         self.assertEqual("intent_transition_reached", outcome.reason)
