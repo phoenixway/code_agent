@@ -2159,6 +2159,16 @@ This document is the single source of truth for the current state of the Semanti
     - Nested think stack semantics remain out of scope.
     - No Angelica/live agent was run.
 
+- **Phase 35 — Step 1/10: MEMORY_CHECKPOINT_WITH_ACTION Commit Policy Inventory / Harness Plan (Complete)**
+  - **Inventory Outcome**:
+    - **Owner**: `MemoryBoardStageHandler` owns the initial detection of `MEMORY_CHECKPOINT_WITH_ACTION`.
+    - **Behavior**: It detects `<memory_update_done />` and an action, strips the marker, and returns `handled=True`. The pipeline in `_run_checkpoint_stage` then overrides this to `handled=False` to ensure the action is passed through for dispatch.
+    - **Commit Semantics**: A commit is attempted for the marker, resulting in `accepted_count=0` (similar to MCT). `last_memory_update_done` is set to `True`.
+    - **Observation-Boundary Note**: A raw-response semantic pass may retain evidence that a memory checkpoint marker was present, while a post-handler / cleaned-response observation may classify the remaining payload as `ACTION_ONLY` after `MemoryBoardStageHandler` strips the marker. This distinction is critical for proving equivalence.
+    - **Blockers**: The primary blocker is ensuring that any future compiler-driven path perfectly preserves the action and the `handled=False` pass-through behavior that allows dispatch to continue.
+  - **Harness Plan**: The commit-equivalence harness will be extended to capture `MEMORY_CHECKPOINT_WITH_ACTION` snapshots, asserting that the action is preserved and the pipeline continues correctly to dispatch.
+  - **Boundary**: This was a docs-only inventory and planning step. No production code or tests were changed.
+
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 
 As of Phase 10, the semantic runtime refactor adopts a new guiding principle for managing the transition from legacy to compiler-driven authority. The model is:

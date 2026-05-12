@@ -3704,6 +3704,48 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 33 — Search/Path Recovery UX Hardening.
 
+### Phase 35: Board/Memory Commit Policy (MEMORY_CHECKPOINT_WITH_ACTION)
+
+- **Status**: In Progress.
+- **Goal**: Extend the commit-equivalence model to the `MEMORY_CHECKPOINT_WITH_ACTION` branch.
+- **Allowed**:
+  - Inventory `MEMORY_CHECKPOINT_WITH_ACTION` commit paths.
+  - Design and implement synthetic harness coverage.
+  - Define a candidate/resolver model.
+- **Forbidden**:
+  - Behavior changes.
+  - Production authority flips.
+  - Memory commit behavior changes.
+  - Board handler behavior changes.
+  - Dispatch/action behavior changes.
+- **Done When**:
+  - The `MEMORY_CHECKPOINT_WITH_ACTION` branch is smoke-validated with compiler authority.
+
+---
+
+#### Phase 35 — Step 1/10: MEMORY_CHECKPOINT_WITH_ACTION Commit Policy Inventory / Harness Plan
+
+- **Status**: Done.
+- **Goal**: Inventory current legacy behavior for `MEMORY_CHECKPOINT_WITH_ACTION` and write a concrete harness plan for the next step.
+- **Allowed**:
+  - Docs-only inventory and harness plan.
+- **Forbidden**:
+  - No production code or test changes.
+  - No authority transfer.
+  - No default registry changes.
+  - No smoke switch changes.
+  - No runtime diagnostic integration.
+- **Completed Outcome**:
+  - Inventoried legacy behavior for memory checkpoint + action.
+  - The `MemoryBoardStageHandler` detects the marker and action, strips the marker, and returns `handled=True`.
+  - The pipeline overrides this to `handled=False` to ensure the action is passed through for dispatch.
+  - A commit is attempted for the marker, resulting in `accepted_count=0`.
+  - Documented the observation-boundary issue: a raw-response semantic pass may see a memory marker, while a post-handler observation may see `ACTION_ONLY` after the marker is stripped.
+  - A harness plan was documented to add a real-handler snapshot test in the next step.
+  - No production code or tests were changed.
+- **Next**:
+  - Phase 35 — Step 2/10: MEMORY_CHECKPOINT_WITH_ACTION Synthetic Commit-Equivalence Harness.
+
 ### Phase 33: Search/Path Recovery UX Hardening
 
 - **Status**: Not started.
