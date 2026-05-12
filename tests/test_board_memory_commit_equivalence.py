@@ -904,6 +904,38 @@ class TestMemoryCheckpointWithActionAuthority:
         assert candidate.expected_last_memory_update_done is True
         assert candidate.expected_pass_through_preserved is True
 
+    @pytest.mark.parametrize(
+        "response",
+        [
+            None,
+            "",
+            "<think>oops",
+            "<memory_update_done />",
+            "<memory_update_done />\nDone.",
+            '<action>{"type":"read_file","path":"README.md"}</action>',
+            '<subgoal action="mark_in_progress" id="sg_1" />\n<action>{"type":"read_file","path":"README.md"}</action>',
+        ],
+        ids=[
+            "none_response",
+            "empty_response",
+            "compiler_error",
+            "mco",
+            "mct",
+            "action_only",
+            "plan_checkpoint_with_action",
+        ],
+    )
+    def test_candidate_builder_unavailable_for_mcta_negative_controls(self, response):
+        if response is None:
+            candidate = build_memory_checkpoint_with_action_commit_candidate(None)
+            assert candidate.candidate_available is False
+            assert "no_semantic_result" in candidate.blocking_reasons
+            return
+
+        harness, state, outcome, snapshot = _run_commit_equivalence_harness(response)
+        candidate = build_memory_checkpoint_with_action_commit_candidate(state.board_checkpoint_semantic_result)
+        assert candidate.candidate_available is False
+
     def test_resolver_legacy_mode_preserves_legacy_snapshot_for_mcta(self):
         state, snapshot = self._get_mcta_snapshot()
         decision = resolve_memory_checkpoint_with_action_commit_authority(
@@ -973,6 +1005,8 @@ class TestMemoryCheckpointWithActionAuthority:
             ({"legacy_last_memory_update_done": False}, "state_flags_agreement"),
             ({"legacy_branch": "something_else"}, "commit_equivalent"),
             ({"legacy_response_text": "Done."}, "response_text_agreement"),
+            ({"legacy_response_text": "<action>malformed"}, "response_text_agreement"),
+            ({"legacy_handled": True}, "handled_agreement"),
         ],
         ids=[
             "pass_through_mismatch",
@@ -982,7 +1016,9 @@ class TestMemoryCheckpointWithActionAuthority:
             "rejected_count_mismatch",
             "last_memory_update_done_mismatch",
             "branch_mismatch",
-            "response_text_mismatch",
+            "response_text_plaintext_mismatch",
+            "response_text_malformed_action_mismatch",
+            "handled_mismatch",
         ],
     )
     def test_resolver_compiler_mode_falls_back_on_mismatch_for_mcta(

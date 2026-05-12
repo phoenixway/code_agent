@@ -3792,6 +3792,29 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 35 — Step 4/10: MEMORY_CHECKPOINT_WITH_ACTION Commit-Equivalence Hardening.
 
+---
+
+#### Phase 35 — Step 4/10: MEMORY_CHECKPOINT_WITH_ACTION Commit-Equivalence Hardening
+
+- **Status**: Done.
+- **Goal**: Harden the MCTA commit-equivalence model and tests to ensure the resolver only reports `commit_equivalent=True` for truly equivalent legacy behavior.
+- **Allowed**:
+  - Add targeted tests for MCTA equivalence hardening.
+  - Add small resolver hardening only if a new test exposes an actual gap.
+- **Forbidden**:
+  - Wiring the resolver into the runtime pipeline.
+  - Consuming `effective_commit`.
+  - Adding or flipping registry/switch entries.
+  - Adding runtime diagnostic integration.
+- **Completed Outcome**:
+  - Hardened the candidate builder with negative controls for non-MCTA cases.
+  - Hardened the resolver with stricter agreement checks for branch and response text.
+  - Added targeted tests for candidate availability and resolver fallback on various mismatches.
+  - The resolver is still not wired into the runtime.
+  - No production behavior was changed.
+- **Next**:
+  - Phase 35 — Step 5/10: MEMORY_CHECKPOINT_WITH_ACTION Smoke Switch Validation.
+
 ### Phase 33: Search/Path Recovery UX Hardening
 
 - **Status**: Not started.

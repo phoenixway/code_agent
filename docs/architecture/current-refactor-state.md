@@ -2188,6 +2188,14 @@ This document is the single source of truth for the current state of the Semanti
     - The `board_memory.memory_checkpoint_with_action` switch placeholder was not added yet.
     - No runtime behavior was changed, and no authority was transferred.
 
+- **Phase 35 — Step 4/10: MEMORY_CHECKPOINT_WITH_ACTION Commit-Equivalence Hardening (Complete)**
+  - **Completed Outcome**:
+    - Hardened the `MEMORY_CHECKPOINT_WITH_ACTION` candidate builder and resolver with more negative controls and stricter agreement checks.
+    - Added tests for candidate availability negative controls and resolver fallback on various mismatches.
+    - The resolver is still not wired into the runtime, and its `effective_commit` is not consumed.
+    - No registry/switch changes were made.
+    - No runtime behavior was changed.
+
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 
 As of Phase 10, the semantic runtime refactor adopts a new guiding principle for managing the transition from legacy to compiler-driven authority. The model is:
