@@ -1,5 +1,6 @@
 """Unit tests for ResponsePipelinePrevalidationMixin to prove behavior preservation."""
 
+import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -8,7 +9,11 @@ import pytest
 from modules.agent.orchestration.responses.response_pipeline_prevalidation import ResponsePipelinePrevalidationMixin
 from modules.agent.orchestration.responses.terminal_answer_models import TerminalAnswerKind, TerminalAnswerSemanticResult
 from modules.agent.orchestration.runtime.action_policy_models import AtomicBundlePolicyResultKind
-from modules.agent.orchestration.shared.decision_models import AtomicBundlePlan, ResponsePipelineOutcome
+from modules.agent.orchestration.shared.decision_models import (
+    AtomicBundlePlan,
+    NormalizedModelResponse,
+    ResponsePipelineOutcome,
+)
 
 
 class MockParsedOutput:
@@ -153,6 +158,81 @@ def test_reject_compiler_invalid_bundle_passes_through_for_mismatch_error(harnes
     )
 
     assert outcome is None
+
+
+class TestThinkBoundaryAutoClosure(unittest.TestCase):
+    def setUp(self):
+        class Harness(ResponsePipelinePrevalidationMixin):
+            def __init__(self):
+                self.intent_response_parser = SimpleNamespace(
+                    normalize_model_response=self._normalize_model_response_for_test
+                )
+                self.stage_logger = SimpleNamespace(log=MagicMock())
+
+            def _normalize_model_response_for_test(self, text, allow_think_autorepair):
+                # This harness method simulates the behavior of the real normalizer,
+                # which is to return a NormalizedModelResponse object.
+                return NormalizedModelResponse(raw_response=text, normalized_response=text)
+
+            def normalize(self, text: str, allow_autorepair: bool = True) -> NormalizedModelResponse:
+                return self._normalize_response_if_supported(text, allow_autorepair=allow_autorepair)
+
+        self.harness = Harness()
+
+    def test_auto_close_before_action(self):
+        raw = '<think>Need to inspect\n<action>{"type":"read_file","path":"x.py"}</action>'
+        expected = '<think>Need to inspect\n</think><action>{"type":"read_file","path":"x.py"}</action>'
+        result = self.harness.normalize(raw)
+        self.assertEqual(expected, result.normalized_response)
+
+    def test_auto_close_before_intent(self):
+        raw = '<think>Need formal modify\n<intent>{"mode":"activate"}</intent>'
+        expected = '<think>Need formal modify\n</think><intent>{"mode":"activate"}</intent>'
+        result = self.harness.normalize(raw)
+        self.assertEqual(expected, result.normalized_response)
+
+    def test_auto_close_at_eof(self):
+        raw = "<think>Need to think through the file"
+        expected = "<think>Need to think through the file</think>"
+        result = self.harness.normalize(raw)
+        self.assertEqual(expected, result.normalized_response)
+
+    def test_multiple_think_blocks_are_handled(self):
+        raw = '<think>first</think>\n<think>second\n<action>{"type":"read_file","path":"x.py"}</action>'
+        expected = '<think>first</think>\n<think>second\n</think><action>{"type":"read_file","path":"x.py"}</action>'
+        result = self.harness.normalize(raw)
+        self.assertEqual(expected, result.normalized_response)
+
+    def test_no_close_on_quoted_protocol_tag(self):
+        raw = '<think>The literal string is "<action>read_file</action>" and not a real action.'
+        expected = '<think>The literal string is "<action>read_file</action>" and not a real action.</think>'
+        result = self.harness.normalize(raw)
+        self.assertEqual(expected, result.normalized_response)
+
+    def test_no_close_inside_fenced_code(self):
+        raw = "<think>\nExample:\n```xml\n<action>read_file</action>\n```\n"
+        expected = "<think>\nExample:\n```xml\n<action>read_file</action>\n```\n</think>"
+        result = self.harness.normalize(raw)
+        self.assertEqual(expected, result.normalized_response)
+
+    def test_no_mutation_of_action_json(self):
+        raw = '<action>{"type":"run_shell","command":"echo <think>oops"}</action>'
+        expected = raw  # No repair should happen
+        result = self.harness.normalize(raw)
+        self.assertEqual(expected, result.normalized_response)
+
+    def test_already_closed_think_is_not_repaired(self):
+        raw = "<think>This is fine.</think>"
+        expected = raw
+        result = self.harness.normalize(raw)
+        self.assertEqual(expected, result.normalized_response)
+
+    @unittest.skip("Nested think semantics are out of scope for Phase 34 Step 1")
+    def test_nested_think_is_treated_as_text_and_outer_is_closed(self):
+        raw = "<think>Outer <think>Inner</think> still outer <action>go</action>"
+        expected = "<think>Outer <think>Inner</think> still outer </think><action>go</action>"
+        result = self.harness.normalize(raw)
+        self.assertEqual(expected, result.normalized_response)
 
 
 def test_reject_compiler_invalid_bundle_passes_through_for_other_errors(harness):

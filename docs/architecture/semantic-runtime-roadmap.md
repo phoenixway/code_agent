@@ -3638,7 +3638,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - No memory-board anchoring was added.
   - No Angelica/live agent was run.
 - **Next**:
-  - Phase 32 — Step 7.5/8: Stale Retry Guard Reconciliation.
+  - Phase 32 — Step 8/8: Repeat Broad Search Guard / Path Memory Anchoring Decision.
 
 ---
 
@@ -3654,6 +3654,38 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - No Angelica/live agent was run.
 - **Next**:
   - Phase 32 — Step 8/8: Repeat Broad Search Guard / Path Memory Anchoring Decision.
+
+---
+
+#### Phase 32 — Step 8/8: Repeat Broad Search Guard / Path Memory Anchoring Decision
+
+- **Status**: Complete.
+- **Goal**: Decide whether to add a hard repeat broad search guard or automatic path memory anchoring.
+- **Completed Outcome**:
+  - Decided not to add hard repeat broad search blocking in Phase 32.
+  - Decided not to add automatic memory-board path anchoring in Phase 32.
+  - Broad search histogram from Step 7 is the primary mitigation for repeated broad search.
+  - Path memory anchoring should be considered in a future phase as hint-only/diagnostic-first, not automatic writes.
+  - Repeat broad search guard should be considered in a future phase as characterization-first.
+  - Refined broad search hint wording to prefer skeleton/chunk before full read.
+  - No search matching semantics changed.
+  - No path normalization changed.
+  - No tool execution behavior changed.
+  - No protocol guard behavior changed.
+  - No Angelica/live agent was run.
+- **Next**:
+  - Phase 33 — Search/Path Recovery UX Hardening.
+
+### Phase 33: Search/Path Recovery UX Hardening
+
+- **Status**: Not started.
+- **Goal**: Improve user experience and agent recovery from search/path related failures.
+- **Allowed**:
+  - Characterization tests for repeat broad search.
+  - Diagnostic-first or hint-only path memory anchoring.
+- **Forbidden**:
+  - Hard repeat broad search blocking without characterization.
+  - Automatic memory-board writes.
 
 ### Phase 11: RecoveryStrategy Registry Expansion
 

@@ -4,6 +4,13 @@ from __future__ import annotations
 
 import re
 
+from ..parsers.visible_text import (
+    ESCAPED_TAG_RE,
+    FENCED_CODE_RE,
+    INLINE_CODE_RE,
+    XML_COMMENT_RE,
+    _mask_with_spaces,
+)
 from ..config.switch_registry import get_switch
 from ..shared.decision_models import AtomicBundlePlan, NormalizedModelResponse, ResponsePipelineOutcome
 from ..runtime.action_policy_models import AtomicBundlePolicyResultKind
@@ -22,6 +29,111 @@ from .terminal_answer_classifier import (
     _is_safe_short_plaintext_terminal_answer,
 )
 from .terminal_answer_models import TerminalAnswerClassifierInput, TerminalAnswerKind
+
+
+_ACTION_BLOCK_RE = re.compile(r"<action(?:\s+[^>]*)?>.*?</action>", re.IGNORECASE | re.DOTALL)
+_INTENT_BLOCK_RE = re.compile(r"<intent(?:\s+[^>]*)?>.*?</intent>", re.IGNORECASE | re.DOTALL)
+_FILE_CONTENT_RE = re.compile(r"<file_content(?:\s+[^>]*)?>.*?</file_content>", re.IGNORECASE | re.DOTALL)
+_THINK_BLOCK_RE = re.compile(r"<think(?:\s+[^>]*)?>.*?</think>", re.IGNORECASE | re.DOTALL)
+_QUOTED_DOUBLE = re.compile(r'"(?:\\.|[^"\\])*"', re.DOTALL)
+_QUOTED_SINGLE = re.compile(r"'(?:\\.|[^'\\])*'", re.DOTALL)
+
+
+def _auto_close_open_think_before_protocol_boundary(response_text: str) -> tuple[str, bool]:
+    """
+    Auto-closes open <think> blocks before known protocol boundaries or EOF.
+
+    This is a pre-parse normalization step. It is designed to be more aggressive
+    than the original conservative repairer, closing open <think> blocks before
+    any known top-level protocol tag appears. It is context-aware and will not
+    perform repairs inside protected blocks like <action>, quoted strings, or
+    code blocks.
+    """
+    if "<think" not in response_text:
+        return response_text, False
+
+    # Mask for finding valid <think> openings. This masks out everything that
+    # could contain a false positive <think> tag.
+    open_think_mask = response_text
+    for regex in (
+        _ACTION_BLOCK_RE,
+        _INTENT_BLOCK_RE,
+        _FILE_CONTENT_RE,
+        _THINK_BLOCK_RE,
+        XML_COMMENT_RE,
+        FENCED_CODE_RE,
+        _QUOTED_DOUBLE,
+        _QUOTED_SINGLE,
+        INLINE_CODE_RE,
+        ESCAPED_TAG_RE,
+    ):
+        open_think_mask = _mask_with_spaces(open_think_mask, regex)
+
+    # Mask for finding boundaries. This should NOT mask the protocol blocks
+    # themselves, as their opening tags are the boundaries we're looking for.
+    boundary_mask = response_text
+    for regex in (
+        XML_COMMENT_RE,
+        FENCED_CODE_RE,
+        _QUOTED_DOUBLE,
+        _QUOTED_SINGLE,
+        INLINE_CODE_RE,
+        ESCAPED_TAG_RE,
+    ):
+        boundary_mask = _mask_with_spaces(boundary_mask, regex)
+
+    boundary_tags_re = re.compile(
+        r"<(?:intent|action|file_content|memory_update_done|memory_review|fact|finding|decision|preference|progress|path|subgoal)\b"
+    )
+
+    repaired_parts = []
+    last_pos = 0
+    repaired = False
+
+    while True:
+        # Find a <think> tag in the mask that ignores protected blocks.
+        open_match = re.search(r"<think(?:\s+[^>]*)?>", open_think_mask[last_pos:])
+        if not open_match:
+            repaired_parts.append(response_text[last_pos:])
+            break
+
+        open_start_abs = last_pos + open_match.start()
+        open_end_abs = last_pos + open_match.end()
+
+        repaired_parts.append(response_text[last_pos:open_start_abs])
+
+        search_start = open_end_abs
+        # Now, search for boundaries in the less restrictive mask.
+        close_match = re.search(r"</think>", boundary_mask[search_start:])
+        boundary_match = boundary_tags_re.search(boundary_mask[search_start:])
+
+        close_pos_abs = -1
+        if close_match:
+            close_pos_abs = search_start + close_match.start()
+
+        boundary_pos_abs = -1
+        if boundary_match:
+            boundary_pos_abs = search_start + boundary_match.start()
+
+        if close_pos_abs != -1 and (boundary_pos_abs == -1 or close_pos_abs < boundary_pos_abs):
+            # This is a well-formed <think>...</think> block. Keep it as is.
+            end_of_block = search_start + close_match.end()
+            repaired_parts.append(response_text[open_start_abs:end_of_block])
+            last_pos = end_of_block
+        elif boundary_pos_abs != -1:
+            # Found a boundary tag before a closing tag. Auto-close here.
+            repaired_parts.append(response_text[open_start_abs:boundary_pos_abs])
+            repaired_parts.append("</think>")
+            repaired = True
+            last_pos = boundary_pos_abs
+        else:
+            # No closing tag and no boundary tag. Auto-close at EOF.
+            repaired_parts.append(response_text[open_start_abs:])
+            repaired_parts.append("</think>")
+            repaired = True
+            break
+
+    return "".join(repaired_parts), repaired
 
 
 class ResponsePipelinePrevalidationMixin:
@@ -129,76 +241,103 @@ class ResponsePipelinePrevalidationMixin:
             return False
 
     def _normalize_response_if_supported(self, response: str, *, allow_autorepair: bool) -> NormalizedModelResponse:
-        text = str(response or "")
+        original_response = str(response or "")
+        repaired_text, auto_closed = _auto_close_open_think_before_protocol_boundary(original_response)
+        text_for_normalizer = repaired_text
+
+        nmr: NormalizedModelResponse | None = None
         normalizer = getattr(self.intent_response_parser, "normalize_model_response", None)
+
         if callable(normalizer):
             try:
-                result = self._call_model_response_normalizer(normalizer, text, allow_autorepair=allow_autorepair)
-
-                # Phase 32 Step 6: Allow structure-only think repair under atomicity.
+                result = self._call_model_response_normalizer(
+                    normalizer, text_for_normalizer, allow_autorepair=allow_autorepair
+                )
                 if bool(getattr(result, "blocked_by_atomicity", False)):
-                    # Only attempt to override atomicity block for full bundles from the model.
-                    # Followup actions that are malformed should go through recovery.
-                    if "<intent>" in text:
-                        # Probe if a repair would have been applied if allowed
-                        repaired_result = self._call_model_response_normalizer(normalizer, text, allow_autorepair=True)
+                    if "<intent>" in text_for_normalizer:
+                        repaired_result = self._call_model_response_normalizer(
+                            normalizer, text_for_normalizer, allow_autorepair=True
+                        )
                         if bool(getattr(repaired_result, "applied", False)):
-                            repaired_text = str(getattr(repaired_result, "response_text", text) or "")
-                            if self._is_structure_only_think_repair_safe(text, repaired_text):
-                                # It's a safe structural repair, so we can use it.
+                            repaired_text_override = str(getattr(repaired_result, "response_text", text_for_normalizer) or "")
+                            if self._is_structure_only_think_repair_safe(text_for_normalizer, repaired_text_override):
                                 result = repaired_result
             except Exception:
-                return NormalizedModelResponse(raw_response=text, normalized_response=text)
-            if isinstance(result, NormalizedModelResponse):
-                return result
-            repaired = str(getattr(result, "response_text", text) or "")
-            return NormalizedModelResponse(
-                raw_response=text,
-                normalized_response=repaired,
-                think_repair_applied=bool(getattr(result, "applied", False)),
-                think_repair_reason=str(getattr(result, "reason", "") or ""),
-                think_repair_confidence=str(getattr(result, "confidence", "") or ""),
-                think_repair_tag=str(getattr(result, "tag_name", "") or ""),
-                think_repair_insert_at=int(getattr(result, "insert_at", -1) or -1),
-                think_repair_blocked_by_atomicity=bool(getattr(result, "blocked_by_atomicity", False)),
-                repairs_applied=("auto_close_think",) if bool(getattr(result, "applied", False)) else (),
-                repair_blocked_reason="intent_atomicity_guard" if bool(getattr(result, "blocked_by_atomicity", False)) else "",
-                diagnostics={
-                    "think_repair_candidate_tag": str(getattr(result, "tag_name", "") or ""),
-                    "think_repair_insert_at": int(getattr(result, "insert_at", -1) or -1),
-                },
-            )
-        if not allow_autorepair:
-            return NormalizedModelResponse(
-                raw_response=text,
-                normalized_response=text,
-                repair_blocked_reason="intent_atomicity_guard",
-                think_repair_blocked_by_atomicity=True,
-            )
-        repairer = getattr(self.intent_response_parser, "repair_unclosed_think_boundary", None)
-        if not callable(repairer):
-            return NormalizedModelResponse(raw_response=text, normalized_response=text)
-        try:
-            result = repairer(text)
-        except Exception:
-            return NormalizedModelResponse(raw_response=text, normalized_response=text)
-        repaired = str(getattr(result, "response_text", text) or "")
-        return NormalizedModelResponse(
-            raw_response=text,
-            normalized_response=repaired,
-            think_repair_applied=bool(getattr(result, "applied", False)),
-            think_repair_reason=str(getattr(result, "reason", "") or ""),
-            think_repair_confidence=str(getattr(result, "confidence", "") or ""),
-            think_repair_tag=str(getattr(result, "tag_name", "") or ""),
-            think_repair_insert_at=int(getattr(result, "insert_at", -1) or -1),
-            think_repair_blocked_by_atomicity=bool(getattr(result, "blocked_by_atomicity", False)),
-            repairs_applied=("auto_close_think",) if bool(getattr(result, "applied", False)) else (),
-            repair_blocked_reason="intent_atomicity_guard" if bool(getattr(result, "blocked_by_atomicity", False)) else "",
-            diagnostics={
-                "think_repair_candidate_tag": str(getattr(result, "tag_name", "") or ""),
-                "think_repair_insert_at": int(getattr(result, "insert_at", -1) or -1),
-            },
-        )
+                nmr = NormalizedModelResponse(raw_response=original_response, normalized_response=text_for_normalizer)
+
+            if nmr is None:
+                if isinstance(result, NormalizedModelResponse):
+                    nmr = result
+                else:
+                    repaired_by_old = bool(getattr(result, "applied", False))
+                    nmr = NormalizedModelResponse(
+                        raw_response=text_for_normalizer,
+                        normalized_response=str(getattr(result, "response_text", text_for_normalizer) or ""),
+                        think_repair_applied=repaired_by_old,
+                        think_repair_reason=str(getattr(result, "reason", "") or ""),
+                        think_repair_confidence=str(getattr(result, "confidence", "") or ""),
+                        think_repair_tag=str(getattr(result, "tag_name", "") or ""),
+                        think_repair_insert_at=int(getattr(result, "insert_at", -1) or -1),
+                        think_repair_blocked_by_atomicity=bool(getattr(result, "blocked_by_atomicity", False)),
+                        repairs_applied=("auto_close_think",) if repaired_by_old else (),
+                        repair_blocked_reason="intent_atomicity_guard"
+                        if bool(getattr(result, "blocked_by_atomicity", False))
+                        else "",
+                        diagnostics={
+                            "think_repair_candidate_tag": str(getattr(result, "tag_name", "") or ""),
+                            "think_repair_insert_at": int(getattr(result, "insert_at", -1) or -1),
+                        },
+                    )
+        else:
+            if not allow_autorepair:
+                nmr = NormalizedModelResponse(
+                    raw_response=original_response,
+                    normalized_response=text_for_normalizer,
+                    repair_blocked_reason="intent_atomicity_guard",
+                    think_repair_blocked_by_atomicity=True,
+                )
+            else:
+                repairer = getattr(self.intent_response_parser, "repair_unclosed_think_boundary", None)
+                if not callable(repairer):
+                    nmr = NormalizedModelResponse(raw_response=original_response, normalized_response=text_for_normalizer)
+                else:
+                    try:
+                        result = repairer(text_for_normalizer)
+                    except Exception:
+                        nmr = NormalizedModelResponse(raw_response=original_response, normalized_response=text_for_normalizer)
+
+                    if nmr is None:
+                        repaired_by_old = bool(getattr(result, "applied", False))
+                        nmr = NormalizedModelResponse(
+                            raw_response=text_for_normalizer,
+                            normalized_response=str(getattr(result, "response_text", text_for_normalizer) or ""),
+                            think_repair_applied=repaired_by_old,
+                            think_repair_reason=str(getattr(result, "reason", "") or ""),
+                            think_repair_confidence=str(getattr(result, "confidence", "") or ""),
+                            think_repair_tag=str(getattr(result, "tag_name", "") or ""),
+                            think_repair_insert_at=int(getattr(result, "insert_at", -1) or -1),
+                            think_repair_blocked_by_atomicity=bool(getattr(result, "blocked_by_atomicity", False)),
+                            repairs_applied=("auto_close_think",) if repaired_by_old else (),
+                            repair_blocked_reason="intent_atomicity_guard"
+                            if bool(getattr(result, "blocked_by_atomicity", False))
+                            else "",
+                            diagnostics={
+                                "think_repair_candidate_tag": str(getattr(result, "tag_name", "") or ""),
+                                "think_repair_insert_at": int(getattr(result, "insert_at", -1) or -1),
+                            },
+                        )
+
+        nmr.raw_response = original_response
+        if auto_closed:
+            nmr.think_repair_applied = True
+            if not nmr.think_repair_reason:
+                nmr.think_repair_reason = "auto_close_think_boundary"
+            repairs = list(getattr(nmr, "repairs_applied", ()))
+            if "auto_close_think_boundary" not in repairs:
+                repairs.append("auto_close_think_boundary")
+            nmr.repairs_applied = tuple(repairs)
+
+        return nmr
 
     def _normalize_response_stage(
         self,

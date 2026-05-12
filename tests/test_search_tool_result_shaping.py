@@ -27,7 +27,7 @@ class TestSearchToolResultShaping(unittest.TestCase):
         output = result["output"]
         self.assertIn("Search was broad: 6 matches across 3 files.", output)
         self.assertIn("Top files by match count:", output)
-        self.assertIn("Hint: This result is broad.", output)
+        self.assertIn("Hint: This result is broad. Useful narrowing options include requesting a file skeleton, reading a chunk of one listed file", output)
         self.assertNotIn("Next step", output)
 
         # Check order of files

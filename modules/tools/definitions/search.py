@@ -93,7 +93,7 @@ def _build_histogram_summary(text: str) -> str:
 
     summary_lines.append("")
     summary_lines.append(
-        "Hint: This result is broad. Useful narrowing options include reading one listed file, searching within one listed path, requesting a file skeleton, or searching an exact symbol."
+        "Hint: This result is broad. Useful narrowing options include requesting a file skeleton, reading a chunk of one listed file, searching within one listed path, or searching an exact symbol."
     )
 
     return "\n".join(summary_lines)

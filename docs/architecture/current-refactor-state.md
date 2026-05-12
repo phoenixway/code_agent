@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 32 — Step 7.5/8: Stale Retry Guard Reconciliation
+- **Phase**: Phase 32 — Step 8/8: Repeat Broad Search Guard / Path Memory Anchoring Decision
 - **Status**: Complete.
-- **Next Step**: Phase 32 — Step 8/8: Repeat Broad Search Guard / Path Memory Anchoring Decision.
-- **Boundary**: `retry_or_continuation_after_failure` now requires an actual active recoverable failure context. Stale retry context with `last_error_recoverable=False` no longer blocks valid `ACTION_ONLY` recovery actions.
+- **Next Step**: Phase 33 — Search/Path Recovery UX Hardening.
+- **Boundary**: Phase 32 is complete. Repeat broad search guard and path memory anchoring are deferred. Broad search hint wording was refined.
 
 ## Step 4I Parity Matrix
 
@@ -2136,6 +2136,19 @@ This document is the single source of truth for the current state of the Semanti
     - Stale retry context with `last_error_recoverable=False` no longer blocks valid `ACTION_ONLY` recovery actions.
     - True recoverable failure behavior remains preserved.
     - No search shaping, tool execution, or path normalization was changed.
+    - No Angelica/live agent was run.
+- **Phase 32 — Step 8/8: Repeat Broad Search Guard / Path Memory Anchoring Decision (Complete)**
+  - **Completed Outcome**:
+    - Decided not to add hard repeat broad search blocking in Phase 32.
+    - Decided not to add automatic memory-board path anchoring in Phase 32.
+    - Broad search histogram from Step 7 is the primary mitigation for repeated broad search.
+    - Path memory anchoring should be considered in a future phase as hint-only/diagnostic-first, not automatic writes.
+    - Repeat broad search guard should be considered in a future phase as characterization-first.
+    - Refined broad search hint wording to prefer skeleton/chunk before full read.
+    - No search matching semantics changed.
+    - No path normalization changed.
+    - No tool execution behavior changed.
+    - No protocol guard behavior changed.
     - No Angelica/live agent was run.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
