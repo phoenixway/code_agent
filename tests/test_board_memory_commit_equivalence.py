@@ -169,8 +169,10 @@ def _run_commit_equivalence_harness(response: str, *, memory_board_stage=None):
         engine = getattr(harness.memory_board_stage, "memory_board_engine", None)
         memory_commit_accepted_count = int(getattr(harness.state, "last_memory_board_accepted_count", 0) or 0)
         memory_commit_rejected_count = int(getattr(harness.state, "last_memory_board_rejected_count", 0) or 0)
+        is_mct = getattr(getattr(semantic_result, "kind", None), "name", "") == "MEMORY_CHECKPOINT_WITH_TEXT"
+        is_mca = getattr(getattr(semantic_result, "kind", None), "name", "") == "MEMORY_CHECKPOINT_WITH_ACTION"
         if (
-            getattr(getattr(semantic_result, "kind", None), "name", "") == "MEMORY_CHECKPOINT_WITH_TEXT"
+            (is_mct or is_mca)
             and memory_commit_accepted_count == 0
             and memory_commit_rejected_count == 0
         ):
@@ -530,9 +532,9 @@ def test_memory_checkpoint_with_action_real_handler_snapshot():
     assert snapshot.response_text == '<action>{"type":"read_file","path":"README.md"}</action>'
     assert snapshot.visible_text_preserved is True
     assert snapshot.checkpoint_removed_from_visible_response is True
-    # A commit is attempted for the marker.
-    assert snapshot.memory_commit_attempted is True
-    # For a marker-only checkpoint with action, no content is committed.
+    # A commit is not considered "attempted" for a marker-only checkpoint with action,
+    # as no content is committed.
+    assert snapshot.memory_commit_attempted is False
     assert snapshot.memory_commit_accepted_count == 0
     assert snapshot.memory_commit_rejected_count == 0
     assert snapshot.last_memory_update_done is True
@@ -1036,7 +1038,7 @@ class TestMemoryCheckpointWithActionAuthority:
         assert candidate.expected_handled is False
         assert candidate.expected_reason == "memory_checkpoint_and_action"
         assert candidate.expected_source == "memory_board"
-        assert candidate.expected_commit_attempted is True
+        assert candidate.expected_commit_attempted is False
         assert candidate.expected_commit_accepted_count == 0
         assert candidate.expected_commit_rejected_count == 0
         assert candidate.expected_last_memory_update_done is True
@@ -1137,7 +1139,7 @@ class TestMemoryCheckpointWithActionAuthority:
         [
             ({"legacy_pass_through_preserved": False}, "pass_through_agreement"),
             ({"legacy_checkpoint_removed": False}, "checkpoint_removed_agreement"),
-            ({"legacy_commit_attempted": False}, "commit_attempted_agreement"),
+            ({"legacy_commit_attempted": True}, "commit_attempted_agreement"),
             ({"legacy_accepted_count": 1}, "accepted_count_agreement"),
             ({"legacy_rejected_count": 1}, "rejected_count_agreement"),
             ({"legacy_last_memory_update_done": False}, "state_flags_agreement"),
@@ -1193,6 +1195,59 @@ class TestMemoryCheckpointWithActionAuthority:
             assert getattr(diag, expected_mismatch_field) is False
         assert diag.fallback_used is True
         assert diag.behavior_changed is False
+
+    def test_mcta_marker_only_action_does_not_attempt_content_commit(self):
+        """
+        Bare memory checkpoint marker + action does not imply durable memory content commit attempt.
+        A live-equivalent legacy snapshot should result in commit_equivalent=True.
+        A legacy snapshot where commit was attempted should result in fallback.
+        """
+        state, snapshot = self._get_mcta_snapshot()
+        assert snapshot.memory_commit_attempted is False
+
+        # Compiler mode should select compiler when legacy matches live semantics
+        decision_equivalent = resolve_memory_checkpoint_with_action_commit_authority(
+            semantic_result=state.board_checkpoint_semantic_result,
+            legacy_branch=snapshot.branch,
+            legacy_handled=snapshot.handled,
+            legacy_reason=snapshot.reason,
+            legacy_source=snapshot.source,
+            legacy_response_text=snapshot.response_text,
+            legacy_next_query=snapshot.next_query,
+            legacy_commit_attempted=False,
+            legacy_accepted_count=snapshot.memory_commit_accepted_count,
+            legacy_rejected_count=snapshot.memory_commit_rejected_count,
+            legacy_last_memory_update_done=snapshot.last_memory_update_done,
+            legacy_pass_through_preserved=snapshot.pass_through_preserved,
+            legacy_checkpoint_removed=snapshot.checkpoint_removed_from_visible_response,
+            switch_value="compiler",
+        )
+        diag_eq = decision_equivalent.diagnostic
+        assert diag_eq.authority_source == "compiler"
+        assert diag_eq.commit_equivalent is True
+        assert diag_eq.commit_attempted_agreement is True
+
+        # Compiler mode should fall back when legacy commit was attempted
+        decision_fallback = resolve_memory_checkpoint_with_action_commit_authority(
+            semantic_result=state.board_checkpoint_semantic_result,
+            legacy_branch=snapshot.branch,
+            legacy_handled=snapshot.handled,
+            legacy_reason=snapshot.reason,
+            legacy_source=snapshot.source,
+            legacy_response_text=snapshot.response_text,
+            legacy_next_query=snapshot.next_query,
+            legacy_commit_attempted=True,
+            legacy_accepted_count=snapshot.memory_commit_accepted_count,
+            legacy_rejected_count=snapshot.memory_commit_rejected_count,
+            legacy_last_memory_update_done=snapshot.last_memory_update_done,
+            legacy_pass_through_preserved=snapshot.pass_through_preserved,
+            legacy_checkpoint_removed=snapshot.checkpoint_removed_from_visible_response,
+            switch_value="compiler",
+        )
+        diag_fb = decision_fallback.diagnostic
+        assert diag_fb.authority_source == "legacy_fallback"
+        assert diag_fb.commit_equivalent is False
+        assert diag_fb.commit_attempted_agreement is False
 
 
 class TestMemoryCommitEquivalence:

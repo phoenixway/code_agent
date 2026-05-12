@@ -2978,7 +2978,7 @@ class TestResponsePipelineCheckpointStageCharacterization(unittest.TestCase):
             memory_checkpoint_only=False,
             memory_checkpoint_and_text=True,
             memory_checkpoint_and_action=False,
-            memory_commit_attempted=True,
+            memory_commit_attempted=False,
             memory_commit_accepted_count=0,
             memory_commit_rejected_count=0,
         )
@@ -3041,7 +3041,7 @@ class TestResponsePipelineCheckpointStageCharacterization(unittest.TestCase):
             memory_checkpoint_only=False,
             memory_checkpoint_and_text=False,
             memory_checkpoint_and_action=True,
-            memory_commit_attempted=True,
+            memory_commit_attempted=False,
             memory_commit_accepted_count=0,
             memory_commit_rejected_count=0,
         )
@@ -3070,9 +3070,11 @@ class TestResponsePipelineCheckpointStageCharacterization(unittest.TestCase):
         self.assertEqual("legacy", diagnostic.switch_value)
         self.assertEqual("legacy", diagnostic.authority_source)
         self.assertFalse(diagnostic.selected_by_switch)
-        # This test characterizes diagnostic emission and pass-through visibility,
-        # not full real-handler commit equivalence. The harness does not update
-        # state flags, so state_flags_agreement is expected to be False.
+        # This test characterizes diagnostic emission and pass-through visibility.
+        # After reconciliation, commit_attempted_agreement is now True.
+        # The harness does not update state flags, so state_flags_agreement is
+        # expected to be False, causing commit_equivalent to be False.
+        self.assertTrue(diagnostic.commit_attempted_agreement)
         self.assertFalse(diagnostic.state_flags_agreement)
         self.assertFalse(diagnostic.commit_equivalent)
         self.assertTrue(diagnostic.pass_through_agreement)

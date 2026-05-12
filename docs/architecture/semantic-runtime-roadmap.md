@@ -3877,11 +3877,28 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Completed Outcome**:
   - Manual live smoke was run for MCTA under the smoke profile.
   - The `board_memory_commit_authority_resolution` diagnostic was observable.
-  - With `switch_value="compiler"`, the diagnostic reported `authority_source="compiler"` and `commit_equivalent=True`.
+  - **Result**: NOT A PASS. `commit_equivalent` was `False` due to a mismatch in `commit_attempted_agreement`.
   - Runtime behavior was preserved: action pass-through was correct, and no behavior changed.
   - The resolver's `effective_commit` is not consumed.
 - **Next**:
-  - Phase 35 — Step 9/10: MEMORY_CHECKPOINT_WITH_ACTION Live Smoke Closure Decision.
+  - Phase 35 — Step 8/10: MEMORY_CHECKPOINT_WITH_ACTION Live Semantics Reconciliation.
+
+---
+
+#### Phase 35 — Step 8/10: MEMORY_CHECKPOINT_WITH_ACTION Live Semantics Reconciliation
+
+- **Status**: Done.
+- **Goal**: Reconcile the MCTA candidate/resolver expectations with live smoke behavior observed in logs, without changing runtime behavior.
+- **Completed Outcome**:
+  - Live smoke confirmed MCTA diagnostic branch is emitted and action/pass-through behavior is preserved.
+  - Reconciled MCTA commit semantics: bare marker + action does not count as a durable memory content commit attempt.
+  - `expected_commit_attempted` is now `False` for marker-only + action in the candidate model.
+  - No runtime behavior was changed.
+  - `effective_commit` is still not consumed.
+  - Default registry remains `legacy`.
+  - Smoke registry remains `compiler` for validation.
+- **Next**:
+  - Phase 35 — Step 9/10: MEMORY_CHECKPOINT_WITH_ACTION Live Smoke Re-run / Closure Decision.
 
 ### Phase 33: Search/Path Recovery UX Hardening
 
