@@ -2169,6 +2169,17 @@ This document is the single source of truth for the current state of the Semanti
   - **Harness Plan**: The commit-equivalence harness will be extended to capture `MEMORY_CHECKPOINT_WITH_ACTION` snapshots, asserting that the action is preserved and the pipeline continues correctly to dispatch.
   - **Boundary**: This was a docs-only inventory and planning step. No production code or tests were changed.
 
+- **Phase 35 — Step 2/10: MEMORY_CHECKPOINT_WITH_ACTION Synthetic Commit-Equivalence Harness (Complete)**
+  - **Completed Outcome**:
+    - The commit-equivalence harness was extended to cover `MEMORY_CHECKPOINT_WITH_ACTION`.
+    - A real-handler-backed snapshot test using `MemoryBoardStageHandler` with a mocked board engine result now characterizes the branch's behavior, including:
+      - action preservation and pass-through for dispatch (`handled=False`).
+      - marker stripping.
+      - zero-count memory commit (`accepted_count=0`).
+    - The test explicitly documents the observation-boundary issue where the compiler shape is `ACTION_ONLY` even though a memory marker was present in the raw response.
+    - Negative controls were added to ensure other branches are not misclassified.
+    - No production code was changed, and no authority was transferred. Full real-handler / board-engine equivalence proof remains for later hardening steps if needed.
+
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 
 As of Phase 10, the semantic runtime refactor adopts a new guiding principle for managing the transition from legacy to compiler-driven authority. The model is:

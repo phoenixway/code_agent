@@ -493,6 +493,76 @@ def test_memory_checkpoint_with_text_harness_negative_controls(response):
     assert snapshot.branch != "MEMORY_CHECKPOINT_WITH_TEXT"
 
 
+def test_memory_checkpoint_with_action_real_handler_snapshot():
+    """Characterizes a real-handler-backed snapshot with a mocked board engine result."""
+    response = '<memory_update_done />\n<action>{"type":"read_file","path":"README.md"}</action>'
+    mock_agent = SimpleNamespace(
+        state=SimpleNamespace(),
+        memory_board_engine=MagicMock(),
+        log=None,
+    )
+    mock_prompt_builder = SimpleNamespace(_current_active_intent_id=MagicMock(return_value="intent_123"))
+    # For MCTA, the handler strips the marker and returns the action.
+    # The commit is for the marker only, so counts are 0.
+    mock_board_result = SimpleNamespace(
+        parsed_count=0,
+        accepted_count=0,
+        rejected_count=0,
+        clean_text='<action>{"type":"read_file","path":"README.md"}</action>',
+    )
+    mock_agent.memory_board_engine.apply_response_text.return_value = mock_board_result
+    real_handler = MemoryBoardStageHandler(mock_agent, mock_prompt_builder)
+
+    harness, state, outcome, snapshot = _run_commit_equivalence_harness(response, memory_board_stage=real_handler)
+
+    assert snapshot.branch == "MEMORY_CHECKPOINT_WITH_ACTION"
+    # The compiler prepass runs on the raw response, so it sees the memory marker.
+    assert snapshot.compiler_has_memory_checkpoint is True
+    assert snapshot.compiler_has_action is True
+    # The compiler may classify a response with a memory marker and an action as
+    # ACTION_ONLY, treating the marker as metadata. This is an observation-
+    # boundary issue to be aware of, not necessarily a bug.
+    assert snapshot.compiler_shape == "ACTION_ONLY"
+    assert snapshot.legacy_memory_outcome == "checkpoint_and_action"
+    assert snapshot.parity_aligned is True
+    assert snapshot.response_text == '<action>{"type":"read_file","path":"README.md"}</action>'
+    assert snapshot.visible_text_preserved is True
+    assert snapshot.checkpoint_removed_from_visible_response is True
+    # A commit is attempted for the marker.
+    assert snapshot.memory_commit_attempted is True
+    # For a marker-only checkpoint with action, no content is committed.
+    assert snapshot.memory_commit_accepted_count == 0
+    assert snapshot.memory_commit_rejected_count == 0
+    assert snapshot.last_memory_update_done is True
+    # handled=False means pass-through to dispatch.
+    assert snapshot.handled is False
+    assert snapshot.pass_through_preserved is True
+    assert snapshot.dispatch_preserved is True
+    assert snapshot.final_answer_preserved is True
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        "<memory_update_done />",
+        '<action>{"type":"read_file","path":"README.md"}</action>',
+        "Done.",
+        '<subgoal action="mark_in_progress" id="sg_1" />\n<action>{"type":"read_file","path":"README.md"}</action>',
+        "<memory_update_done />\nDone.",
+    ],
+    ids=[
+        "marker_only_mco",
+        "action_only",
+        "plaintext_only",
+        "plan_checkpoint_with_action",
+        "memory_checkpoint_with_text",
+    ],
+)
+def test_memory_checkpoint_with_action_harness_negative_controls(response):
+    harness, state, outcome, snapshot = _run_commit_equivalence_harness(response)
+    assert snapshot.branch != "MEMORY_CHECKPOINT_WITH_ACTION"
+
+
 class TestMemoryCommitAuthority:
     def test_candidate_builder_for_real_handler_mco(self):
         response = "<memory_update_done />"

@@ -3746,6 +3746,27 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 35 — Step 2/10: MEMORY_CHECKPOINT_WITH_ACTION Synthetic Commit-Equivalence Harness.
 
+---
+
+#### Phase 35 — Step 2/10: MEMORY_CHECKPOINT_WITH_ACTION Synthetic Commit-Equivalence Harness
+
+- **Status**: Done.
+- **Goal**: Extend the commit-equivalence harness to characterize `MEMORY_CHECKPOINT_WITH_ACTION` using synthetic coverage.
+- **Allowed**:
+  - Test-only changes to `tests/test_board_memory_commit_equivalence.py`.
+- **Forbidden**:
+  - No production code changes.
+  - No authority transfer.
+  - No registry/switch changes.
+- **Completed Outcome**:
+  - Added a real-handler-backed snapshot test to characterize `MEMORY_CHECKPOINT_WITH_ACTION` using `MemoryBoardStageHandler` with a mocked board engine result.
+  - The test confirms action preservation, pass-through behavior, and zero-count commit semantics.
+  - The test explicitly documents the observation-boundary issue where the compiler shape is `ACTION_ONLY` after the handler strips the memory marker.
+  - Added negative controls to prevent misclassification.
+  - No production code was changed.
+- **Next**:
+  - Phase 35 — Step 3/10: MEMORY_CHECKPOINT_WITH_ACTION Candidate Model / Resolver Design.
+
 ### Phase 33: Search/Path Recovery UX Hardening
 
 - **Status**: Not started.
