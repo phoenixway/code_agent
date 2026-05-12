@@ -3895,10 +3895,57 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - `expected_commit_attempted` is now `False` for marker-only + action in the candidate model.
   - No runtime behavior was changed.
   - `effective_commit` is still not consumed.
-  - Default registry remains `legacy`.
-  - Smoke registry remains `compiler` for validation.
 - **Next**:
   - Phase 35 — Step 9/10: MEMORY_CHECKPOINT_WITH_ACTION Live Smoke Re-run / Closure Decision.
+
+---
+
+#### Phase 35 — Step 9/10: MEMORY_CHECKPOINT_WITH_ACTION Live Smoke Re-run / Closure Decision
+
+- **Status**: Done.
+- **Goal**: Re-run live/integrated smoke for the `MEMORY_CHECKPOINT_WITH_ACTION` branch to confirm that `commit_equivalent` is now `True` and decide whether to close the slice.
+- **Completed Outcome**:
+  - Manual live smoke re-run passed.
+  - MCTA diagnostic showed `switch_value="compiler"`, `authority_source="compiler"`, `selected_by_switch=True`, `candidate_available=True`, and `commit_equivalent=True`.
+  - All detailed agreement fields relevant to MCTA were `True`.
+  - Runtime behavior was preserved: `behavior_changed=False`, `shadow_only=True`.
+  - The resolver's `effective_commit` is still not consumed.
+- **Next**:
+  - Phase 35 — Step 10/10: MEMORY_CHECKPOINT_WITH_ACTION Closure / Next Branch Selection.
+
+---
+
+#### Phase 35 — Step 10/10: MEMORY_CHECKPOINT_WITH_ACTION Closure / Next Branch Selection
+
+- **Status**: Done.
+- **Goal**: Close Phase 35 for MEMORY_CHECKPOINT_WITH_ACTION and record the final state after successful live smoke re-run.
+- **Completed Outcome**:
+  - Phase 35 is complete.
+  - MCTA branch is validated through live smoke.
+  - Clean bare marker + action MCTA reaches compiler authority in smoke profile with `commit_equivalent=True`.
+  - Runtime behavior remains legacy/default-safe.
+  - `effective_commit` is not consumed.
+  - Default registry remains `legacy`.
+  - Smoke registry remains `compiler`.
+  - Live semantics reconciliation recorded:
+    bare marker + action does not count as durable memory content commit attempt.
+  - For real memory-content commit + action cases, current model safely falls back unless separately characterized in a future branch.
+- **Next**:
+  - Phase 36 — MEMORY_CONTENT_WITH_ACTION Commit Policy Characterization.
+
+### Phase 36: MEMORY_CONTENT_WITH_ACTION Commit Policy Characterization
+
+- **Status**: Not started.
+- **Goal**: Characterize the commit policy for memory checkpoints that have both durable content and an action.
+- **Allowed**:
+  - Characterization-first.
+- **Forbidden**:
+  - No production behavior change.
+  - No authority transfer.
+  - No `effective_commit` consumption.
+  - No default registry flip.
+- **Done When**:
+  - The commit policy for memory content with action is characterized.
 
 ### Phase 33: Search/Path Recovery UX Hardening
 

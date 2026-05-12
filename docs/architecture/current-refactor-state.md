@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 35 — Step 7/10: MEMORY_CHECKPOINT_WITH_ACTION Live Smoke Validation
+- **Phase**: Phase 35 — Step 10/10: MEMORY_CHECKPOINT_WITH_ACTION Closure / Next Branch Selection
 - **Status**: Complete.
-- **Next Step**: Phase 35 — Step 9/10: MEMORY_CHECKPOINT_WITH_ACTION Live Smoke Closure Decision.
-- **Boundary**: Live smoke validation passed. The MCTA resolver diagnostic is observable and does not change runtime behavior.
+- **Next Step**: Phase 36 — MEMORY_CONTENT_WITH_ACTION Commit Policy Characterization.
+- **Boundary**: Phase 35 is complete. MCTA branch is validated through live smoke. Default registry remains legacy. Smoke registry remains compiler. `effective_commit` is not consumed. Runtime behavior unchanged.
 
 ## Step 4I Parity Matrix
 
@@ -2215,9 +2215,29 @@ This document is the single source of truth for the current state of the Semanti
   - **Completed Outcome**:
     - Manual live smoke was run for MCTA under the smoke profile.
     - The `board_memory_commit_authority_resolution` diagnostic was observable.
-    - With `switch_value="compiler"`, the diagnostic reported `authority_source="compiler"` and `commit_equivalent=True`.
+    - **Result**: NOT A PASS. `commit_equivalent` was `False` due to a mismatch in `commit_attempted_agreement`.
     - Runtime behavior was preserved: action pass-through was correct, and no behavior changed.
     - The resolver's `effective_commit` is not consumed.
+- **Phase 35 — Step 8/10: MEMORY_CHECKPOINT_WITH_ACTION Live Semantics Reconciliation (Complete)**
+  - **Completed Outcome**:
+    - Live smoke confirmed MCTA diagnostic branch is emitted and action/pass-through behavior is preserved.
+    - Reconciled MCTA commit semantics: bare marker + action does not count as a durable memory content commit attempt.
+    - `expected_commit_attempted` is now `False` for marker-only + action in the candidate model.
+    - No runtime behavior was changed.
+    - `effective_commit` is still not consumed.
+- **Phase 35 — Step 9/10: MEMORY_CHECKPOINT_WITH_ACTION Live Smoke Re-run / Closure Decision (Complete)**
+  - **Completed Outcome**:
+    - Manual live smoke re-run passed.
+    - MCTA diagnostic showed `switch_value="compiler"`, `authority_source="compiler"`, `selected_by_switch=True`, `candidate_available=True`, and `commit_equivalent=True`.
+    - All detailed agreement fields relevant to MCTA were `True`.
+    - Runtime behavior was preserved: `behavior_changed=False`, `shadow_only=True`.
+    - The resolver's `effective_commit` is still not consumed.
+- **Phase 35 — Step 10/10: MEMORY_CHECKPOINT_WITH_ACTION Closure (Complete)**
+  - Phase 35 is complete.
+  - Clean bare marker + action reaches compiler authority in smoke profile with `commit_equivalent=True`.
+  - Live semantics reconciliation recorded: bare marker + action does not count as durable memory content commit attempt.
+  - Real memory-content commit + action remains separate future characterization.
+  - No production behavior changed.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 
