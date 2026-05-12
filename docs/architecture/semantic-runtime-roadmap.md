@@ -3935,8 +3935,8 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ### Phase 36: MEMORY_CONTENT_WITH_ACTION Commit Policy Characterization
 
-- **Status**: Not started.
-- **Goal**: Characterize the commit policy for memory checkpoints that have both durable content and an action.
+- **Status**: In Progress.
+- **Goal**: Characterize the commit policy for checkpoints with a durable memory content tag and an action.
 - **Allowed**:
   - Characterization-first.
 - **Forbidden**:
@@ -3946,6 +3946,20 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - No default registry flip.
 - **Done When**:
   - The commit policy for memory content with action is characterized.
+
+---
+
+#### Phase 36 — Step 1/N: MEMORY_CONTENT_WITH_ACTION Commit Policy Characterization / Inventory
+
+- **Status**: Done.
+- **Goal**: Characterize the distinct live/runtime case where a checkpoint includes a durable memory content tag and an action.
+- **Completed Outcome**:
+  - Inventoried the distinct live/runtime case where a checkpoint includes a durable memory content tag and an action.
+  - This case is distinct from the Phase 35 bare-marker MCTA because it involves a durable content commit (`accepted_count=1`).
+  - Added a characterization test to `tests/test_board_memory_commit_equivalence.py` to snapshot the legacy behavior.
+  - No production behavior was changed.
+- **Next**:
+  - Phase 36 — Step 2/N: Design a candidate/resolver model for memory content + action.
 
 ### Phase 33: Search/Path Recovery UX Hardening
 

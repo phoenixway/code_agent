@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 35 — Step 10/10: MEMORY_CHECKPOINT_WITH_ACTION Closure / Next Branch Selection
+- **Phase**: Phase 36 — Step 1/N: MEMORY_CONTENT_WITH_ACTION Commit Policy Characterization / Inventory
 - **Status**: Complete.
-- **Next Step**: Phase 36 — MEMORY_CONTENT_WITH_ACTION Commit Policy Characterization.
-- **Boundary**: Phase 35 is complete. MCTA branch is validated through live smoke. Default registry remains legacy. Smoke registry remains compiler. `effective_commit` is not consumed. Runtime behavior unchanged.
+- **Next Step**: Phase 36 — Step 2/N: Design a candidate/resolver model for memory content + action.
+- **Boundary**: Phase 36 Step 1 characterized durable memory content tag + action. This is distinct from Phase 35 bare `<memory_update_done />` marker + action. No production behavior change. No authority transfer. No `effective_commit` consumption. No default registry flip.
 
 ## Step 4I Parity Matrix
 
@@ -2238,6 +2238,11 @@ This document is the single source of truth for the current state of the Semanti
   - Live semantics reconciliation recorded: bare marker + action does not count as durable memory content commit attempt.
   - Real memory-content commit + action remains separate future characterization.
   - No production behavior changed.
+- **Phase 36 — Step 1/N: MEMORY_CONTENT_WITH_ACTION Commit Policy Characterization / Inventory (Complete)**
+  - Inventoried the distinct live/runtime case where a checkpoint includes a durable memory content tag and an action.
+  - This case is distinct from the Phase 35 bare-marker MCTA because it involves a durable content commit (`accepted_count=1`).
+  - Added a characterization test to `tests/test_board_memory_commit_equivalence.py` to snapshot the legacy behavior.
+  - No production behavior was changed.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 

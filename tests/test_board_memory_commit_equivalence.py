@@ -567,6 +567,49 @@ def test_memory_checkpoint_with_action_harness_negative_controls(response):
     assert snapshot.branch != "MEMORY_CHECKPOINT_WITH_ACTION"
 
 
+def test_memory_content_with_action_real_handler_snapshot():
+    """Characterizes a real-handler-backed snapshot for memory content + action."""
+    response = '<fact>some fact</fact>\n<action>{"type":"read_file","path":"README.md"}</action>'
+    mock_agent = SimpleNamespace(
+        state=SimpleNamespace(),
+        memory_board_engine=MagicMock(),
+        log=None,
+    )
+    mock_prompt_builder = SimpleNamespace(_current_active_intent_id=MagicMock(return_value="intent_123"))
+    # For MCTA with content, the handler strips the memory tag and returns the action.
+    # The commit is for the content, so counts are 1.
+    mock_board_result = SimpleNamespace(
+        parsed_count=1,
+        accepted_count=1,
+        rejected_count=0,
+        clean_text='<action>{"type":"read_file","path":"README.md"}</action>',
+    )
+    mock_agent.memory_board_engine.apply_response_text.return_value = mock_board_result
+    real_handler = MemoryBoardStageHandler(mock_agent, mock_prompt_builder)
+
+    harness, state, outcome, snapshot = _run_commit_equivalence_harness(response, memory_board_stage=real_handler)
+
+    assert snapshot.branch == "MEMORY_CHECKPOINT_WITH_ACTION"
+    # <fact>...</fact> is durable memory content, not the bare <memory_update_done /> marker.
+    # The legacy memory board classifies this as checkpoint_and_action, but
+    # compiler_has_memory_checkpoint remains False because it is specific to the marker.
+    assert snapshot.compiler_has_memory_checkpoint is False
+    assert snapshot.compiler_has_action is True
+    assert snapshot.legacy_memory_outcome == "checkpoint_and_action"
+    assert snapshot.parity_aligned is True
+    assert snapshot.response_text == '<action>{"type":"read_file","path":"README.md"}</action>'
+    assert snapshot.visible_text_preserved is True
+    assert snapshot.checkpoint_removed_from_visible_response is False  # No <memory_update_done />
+    assert snapshot.memory_commit_attempted is True
+    assert snapshot.memory_commit_accepted_count == 1
+    assert snapshot.memory_commit_rejected_count == 0
+    assert snapshot.last_memory_update_done is False  # No <memory_update_done />
+    assert snapshot.handled is False
+    assert snapshot.pass_through_preserved is True
+    assert snapshot.dispatch_preserved is True
+    assert snapshot.final_answer_preserved is True
+
+
 class TestMemoryCommitAuthority:
     def test_candidate_builder_for_real_handler_mco(self):
         response = "<memory_update_done />"

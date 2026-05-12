@@ -215,4 +215,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 211. Phase 35 — Step 8/10: MEMORY_CHECKPOINT_WITH_ACTION Live Semantics Reconciliation (Complete). Reconciled MCTA commit semantics: bare marker + action does not count as a durable memory content commit attempt. `expected_commit_attempted` is now `False` for marker-only + action. No runtime behavior changed.
 212. Phase 35 — Step 9/10: MEMORY_CHECKPOINT_WITH_ACTION Live Smoke Re-run / Closure Decision (Complete). Manual live smoke re-run passed. MCTA diagnostic showed `commit_equivalent=True` and `authority_source="compiler"`. Runtime behavior was preserved.
 213. Phase 35 — Step 10/10: MEMORY_CHECKPOINT_WITH_ACTION Closure / Next Branch Selection (Complete). Phase 35 is complete. MCTA branch is validated. Default registry remains legacy. No production behavior changed.
-214. Next: Phase 36 — MEMORY_CONTENT_WITH_ACTION Commit Policy Characterization.
+214. Phase 36 — Step 1/N: MEMORY_CONTENT_WITH_ACTION Commit Policy Characterization / Inventory (Complete). Inventoried the distinct live/runtime case where a checkpoint includes a durable memory content tag and an action. Added a characterization test. No production behavior changed.
+215. Next: Phase 36 — Step 2/N: Design a candidate/resolver model for memory content + action.
