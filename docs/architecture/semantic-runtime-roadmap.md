@@ -3767,6 +3767,31 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 35 — Step 3/10: MEMORY_CHECKPOINT_WITH_ACTION Candidate Model / Resolver Design.
 
+---
+
+#### Phase 35 — Step 3/10: MEMORY_CHECKPOINT_WITH_ACTION Candidate Model / Resolver Design
+
+- **Status**: Done.
+- **Goal**: Add a typed candidate model and resolver for `MEMORY_CHECKPOINT_WITH_ACTION` without changing runtime behavior.
+- **Allowed**:
+  - Add `build_memory_checkpoint_with_action_commit_candidate`.
+  - Add `resolve_memory_checkpoint_with_action_commit_authority`.
+  - Add targeted unit tests for the new candidate/resolver.
+- **Forbidden**:
+  - Wiring the resolver into the runtime pipeline.
+  - Consuming `effective_commit`.
+  - Changing registry/switch defaults.
+  - Adding a smoke switch for this branch.
+  - Adding runtime diagnostic integration.
+- **Completed Outcome**:
+  - Added a candidate builder and resolver for `MEMORY_CHECKPOINT_WITH_ACTION`.
+  - The new components model the characterized legacy behavior, including action preservation and pass-through for dispatch.
+  - Added targeted unit tests for the new candidate and resolver, including legacy mode and compiler-mode fallback on mismatch.
+  - The resolver is not yet consumed by the runtime.
+  - No production behavior was changed.
+- **Next**:
+  - Phase 35 — Step 4/10: MEMORY_CHECKPOINT_WITH_ACTION Commit-Equivalence Hardening.
+
 ### Phase 33: Search/Path Recovery UX Hardening
 
 - **Status**: Not started.

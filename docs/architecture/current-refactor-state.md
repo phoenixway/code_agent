@@ -2180,6 +2180,14 @@ This document is the single source of truth for the current state of the Semanti
     - Negative controls were added to ensure other branches are not misclassified.
     - No production code was changed, and no authority was transferred. Full real-handler / board-engine equivalence proof remains for later hardening steps if needed.
 
+- **Phase 35 — Step 3/10: MEMORY_CHECKPOINT_WITH_ACTION Candidate Model / Resolver Design (Complete)**
+  - **Completed Outcome**:
+    - Added a typed `MemoryCommitCandidate` model and a `resolve_memory_checkpoint_with_action_commit_authority` resolver.
+    - The candidate model and resolver cover action preservation, pass-through behavior, and zero-count commit semantics for marker-with-action.
+    - The resolver is not yet wired into the runtime pipeline, and its `effective_commit` is not consumed.
+    - The `board_memory.memory_checkpoint_with_action` switch placeholder was not added yet.
+    - No runtime behavior was changed, and no authority was transferred.
+
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 
 As of Phase 10, the semantic runtime refactor adopts a new guiding principle for managing the transition from legacy to compiler-driven authority. The model is:
