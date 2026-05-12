@@ -3557,6 +3557,24 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 32 — Step 6/8: Structure-only Think Repair Allowance
+
+- **Status**: Done.
+- **Goal**: Allow local think-closure repair under atomicity constraints when the repair is provably structure-only.
+- **Completed Outcome**:
+  - Structure-only trailing `</think>` repair is now allowed under atomicity constraints when protocol-relevant payloads are unchanged.
+  - The allowance is intentionally narrow: currently only simple trailing think closure is allowed.
+  - Repairs that alter action/intent/file/protocol blocks remain blocked.
+  - Think repair inside action JSON remains blocked.
+  - Malformed reuse/followup atomicity remains protected.
+  - No tool execution behavior changed.
+  - No search/path normalization changed.
+  - No Angelica/live agent was run.
+- **Next**:
+  - Phase 32 — Step 7/8: Invalid Path Pre-dispatch Blocking / Search Recovery Normalization.
+
+---
+
 #### Phase 32 — Step 4.5/8: Extracted Intent Payload + Single Action Recovery Bundle Reconciliation
 
 - **Status**: Done.

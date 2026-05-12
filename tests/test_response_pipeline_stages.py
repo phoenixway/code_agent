@@ -3061,10 +3061,6 @@ class TestResponsePipelineClassificationStage(unittest.TestCase):
         self.harness.protocol_compiler.analyze.assert_called_once_with("normalized_response")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestExtractedIntentPayloadRuntimeRecoverableFailure(unittest.TestCase):
     def _setup_mocks_for_bundle_response(
         self,
@@ -3268,6 +3264,7 @@ class TestExtractedIntentPayloadRuntimeRecoverableFailure(unittest.TestCase):
         self.assertTrue(outcome.continue_loop)
         self.assertEqual("atomic_bundle_action_invalid", outcome.reason)
         self.harness.intent_transitions.handle_model_step.assert_not_awaited()
+
 
     def test_malformed_action_with_runtime_recoverable_context_is_blocked(self):
         """A malformed action with runtime recoverable context should still be blocked."""
@@ -4450,3 +4447,7 @@ class TestReadonlyMultiActionDiscoveryCharacterization(unittest.TestCase):
         self.assertTrue(outcome.continue_loop)
         self.assertEqual("atomic_bundle_action_invalid", outcome.reason)
         self.harness.intent_transitions.handle_model_step.assert_not_awaited()
+
+
+if __name__ == "__main__":
+    unittest.main()
