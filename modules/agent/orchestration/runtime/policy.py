@@ -166,6 +166,19 @@ class IntentGuard:
             return bool(getattr(state, "last_error_recoverable", False))
         return True
 
+    def _state_has_active_recoverable_failure(self, state) -> bool:
+        explicit = getattr(state, "last_error_recoverable", None)
+        if explicit is False:
+            return False
+        if explicit is True:
+            return True
+
+        has_retry_context = getattr(state, "has_retry_context", None)
+        if callable(has_retry_context):
+            return bool(has_retry_context())
+
+        return False
+
     def _should_require_new_intent_after_failure(self, command: dict, state) -> bool:
         """
         Failure-aware gate:
@@ -175,8 +188,7 @@ class IntentGuard:
         - if runtime explicitly says current intent can continue, allow continuation
         - otherwise require formal retry/continuation intent
         """
-        has_retry_context = getattr(state, "has_retry_context", None)
-        if not callable(has_retry_context) or not has_retry_context():
+        if not self._state_has_active_recoverable_failure(state):
             return False
 
         if self._current_intent_allows_action(command, state) and self._is_soft_recoverable_retry_context(state):

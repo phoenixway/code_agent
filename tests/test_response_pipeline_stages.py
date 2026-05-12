@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from modules.agent.orchestration.protocol import ProtocolCompiler
+from modules.agent.orchestration.runtime.policy import IntentGuard
 from modules.agent.orchestration.responses.response_pipeline_prevalidation import ResponsePipelinePrevalidationMixin
 from modules.agent.orchestration.responses.board_checkpoint_models import (
     BoardCheckpointKind,
@@ -4447,6 +4448,66 @@ class TestReadonlyMultiActionDiscoveryCharacterization(unittest.TestCase):
         self.assertTrue(outcome.continue_loop)
         self.assertEqual("atomic_bundle_action_invalid", outcome.reason)
         self.harness.intent_transitions.handle_model_step.assert_not_awaited()
+
+
+class TestStaleRetryGuard(unittest.TestCase):
+    def setUp(self):
+        self.guard = IntentGuard()
+        self.command = {"type": "read_file", "path": "a.txt"}
+        self.state = SimpleNamespace(
+            active_intent=None,
+            has_retry_context=lambda: True,
+            last_error_recoverable=None,
+            can_continue_current_intent_after_failure=lambda: False,
+        )
+        # Mock methods on guard that are not under test
+        self.guard._current_intent_allows_action = MagicMock(return_value=False)
+        self.guard._is_soft_recoverable_retry_context = MagicMock(return_value=False)
+
+    def test_stale_retry_context_is_blocked(self):
+        """A stale retry context (last_error_recoverable=False) should not trigger the retry guard."""
+        self.state.last_error_recoverable = False
+
+        requires_intent, reason = self.guard.action_requires_intent(
+            self.command, self.state, batch_size=1, current_user_input=""
+        )
+
+        self.assertFalse(requires_intent)
+        self.assertNotEqual("retry_or_continuation_after_failure", reason)
+
+    def test_true_recoverable_failure_still_triggers_retry_guard(self):
+        """A true recoverable failure (last_error_recoverable=True) should still trigger the retry guard."""
+        self.state.last_error_recoverable = True
+
+        requires_intent, reason = self.guard.action_requires_intent(
+            self.command, self.state, batch_size=1, current_user_input=""
+        )
+
+        self.assertTrue(requires_intent)
+        self.assertEqual("retry_or_continuation_after_failure", reason)
+
+    def test_backward_compatibility_without_last_error_recoverable(self):
+        """When last_error_recoverable is absent, has_retry_context() should be used."""
+        # last_error_recoverable is None by default in setUp
+
+        requires_intent, reason = self.guard.action_requires_intent(
+            self.command, self.state, batch_size=1, current_user_input=""
+        )
+
+        self.assertTrue(requires_intent)
+        self.assertEqual("retry_or_continuation_after_failure", reason)
+
+    def test_no_retry_context_at_all(self):
+        """When there is no retry context at all, the guard should not trigger."""
+        self.state.has_retry_context = lambda: False
+        self.state.last_error_recoverable = None
+
+        requires_intent, reason = self.guard.action_requires_intent(
+            self.command, self.state, batch_size=1, current_user_input=""
+        )
+
+        self.assertFalse(requires_intent)
+        self.assertNotEqual("retry_or_continuation_after_failure", reason)
 
 
 if __name__ == "__main__":

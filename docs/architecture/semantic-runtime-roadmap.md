@@ -3638,6 +3638,21 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - No memory-board anchoring was added.
   - No Angelica/live agent was run.
 - **Next**:
+  - Phase 32 — Step 7.5/8: Stale Retry Guard Reconciliation.
+
+---
+
+#### Phase 32 — Step 7.5/8: Stale Retry Guard Reconciliation
+
+- **Status**: Complete.
+- **Goal**: Ensure `retry_or_continuation_after_failure` only triggers when there is an actual active recoverable failure context.
+- **Completed Outcome**:
+  - `retry_or_continuation_after_failure` now requires an actual active recoverable failure context when `last_error_recoverable` is explicitly available.
+  - Stale retry context with `last_error_recoverable=False` no longer blocks valid `ACTION_ONLY` recovery actions.
+  - True recoverable failure behavior remains preserved.
+  - No search shaping, tool execution, or path normalization was changed.
+  - No Angelica/live agent was run.
+- **Next**:
   - Phase 32 — Step 8/8: Repeat Broad Search Guard / Path Memory Anchoring Decision.
 
 ### Phase 11: RecoveryStrategy Registry Expansion

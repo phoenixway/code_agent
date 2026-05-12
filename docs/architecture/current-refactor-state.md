@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 32 — Step 7/8: Broad Search Result Shaping
+- **Phase**: Phase 32 — Step 7.5/8: Stale Retry Guard Reconciliation
 - **Status**: Complete.
 - **Next Step**: Phase 32 — Step 8/8: Repeat Broad Search Guard / Path Memory Anchoring Decision.
-- **Boundary**: Broad search result shaping is implemented for `search_content`. Small search behavior is unchanged. No search matching semantics or path normalization was changed.
+- **Boundary**: `retry_or_continuation_after_failure` now requires an actual active recoverable failure context. Stale retry context with `last_error_recoverable=False` no longer blocks valid `ACTION_ONLY` recovery actions.
 
 ## Step 4I Parity Matrix
 
@@ -2129,6 +2129,13 @@ This document is the single source of truth for the current state of the Semanti
     - No path normalization changed.
     - No automatic recovery actions were added.
     - No memory-board anchoring was added.
+    - No Angelica/live agent was run.
+- **Phase 32 — Step 7.5/8: Stale Retry Guard Reconciliation (Complete)**
+  - **Completed Outcome**:
+    - `retry_or_continuation_after_failure` now requires an actual active recoverable failure context when `last_error_recoverable` is explicitly available.
+    - Stale retry context with `last_error_recoverable=False` no longer blocks valid `ACTION_ONLY` recovery actions.
+    - True recoverable failure behavior remains preserved.
+    - No search shaping, tool execution, or path normalization was changed.
     - No Angelica/live agent was run.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
