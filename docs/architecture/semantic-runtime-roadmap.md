@@ -3863,6 +3863,26 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 35 — Step 7/10: MEMORY_CHECKPOINT_WITH_ACTION Live Smoke Validation.
 
+---
+
+#### Phase 35 — Step 7/10: MEMORY_CHECKPOINT_WITH_ACTION Live Smoke Validation
+
+- **Status**: Done.
+- **Goal**: Validate the MCTA runtime diagnostic integration with a manual/live smoke run.
+- **Allowed**:
+  - Run smoke tests with the smoke profile.
+  - Analyze logs for diagnostic correctness and runtime behavior preservation.
+- **Forbidden**:
+  - Code changes, unless a concrete mismatch is found and a hotfix is approved.
+- **Completed Outcome**:
+  - Manual live smoke was run for MCTA under the smoke profile.
+  - The `board_memory_commit_authority_resolution` diagnostic was observable.
+  - With `switch_value="compiler"`, the diagnostic reported `authority_source="compiler"` and `commit_equivalent=True`.
+  - Runtime behavior was preserved: action pass-through was correct, and no behavior changed.
+  - The resolver's `effective_commit` is not consumed.
+- **Next**:
+  - Phase 35 — Step 9/10: MEMORY_CHECKPOINT_WITH_ACTION Live Smoke Closure Decision.
+
 ### Phase 33: Search/Path Recovery UX Hardening
 
 - **Status**: Not started.

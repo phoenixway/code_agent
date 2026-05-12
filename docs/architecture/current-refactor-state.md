@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 35 — Step 6/10: MEMORY_CHECKPOINT_WITH_ACTION Runtime Diagnostic Integration
+- **Phase**: Phase 35 — Step 7/10: MEMORY_CHECKPOINT_WITH_ACTION Live Smoke Validation
 - **Status**: Complete.
-- **Next Step**: Phase 35 — Step 7/10: MEMORY_CHECKPOINT_WITH_ACTION Live Smoke Validation.
-- **Boundary**: The MCTA resolver is now wired into the runtime for diagnostic logging only. `effective_commit` is not consumed.
+- **Next Step**: Phase 35 — Step 9/10: MEMORY_CHECKPOINT_WITH_ACTION Live Smoke Closure Decision.
+- **Boundary**: Live smoke validation passed. The MCTA resolver diagnostic is observable and does not change runtime behavior.
 
 ## Step 4I Parity Matrix
 
@@ -2210,6 +2210,14 @@ This document is the single source of truth for the current state of the Semanti
     - The resolver's `effective_commit` is not consumed, and no runtime behavior was changed.
     - The default registry remains `legacy`, and the smoke registry remains `compiler` for this branch for validation purposes.
     - No dispatch, action, or `MemoryBoardStageHandler` behavior was changed.
+
+- **Phase 35 — Step 7/10: MEMORY_CHECKPOINT_WITH_ACTION Live Smoke Validation (Complete)**
+  - **Completed Outcome**:
+    - Manual live smoke was run for MCTA under the smoke profile.
+    - The `board_memory_commit_authority_resolution` diagnostic was observable.
+    - With `switch_value="compiler"`, the diagnostic reported `authority_source="compiler"` and `commit_equivalent=True`.
+    - Runtime behavior was preserved: action pass-through was correct, and no behavior changed.
+    - The resolver's `effective_commit` is not consumed.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 
