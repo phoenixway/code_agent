@@ -3673,6 +3673,34 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - No tool execution behavior changed.
   - No protocol guard behavior changed.
   - No Angelica/live agent was run.
+
+
+### Phase 34: Protocol Hardening
+
+- **Status**: In Progress.
+- **Goal**: Harden runtime protocol parsing and recovery against common, recoverable model errors.
+- **Allowed**:
+  - Narrow, behavior-preserving protocol normalization and repair.
+  - Characterization tests for recovery blockers.
+- **Forbidden**:
+  - Broad changes to action validation or intent handling.
+  - Changes to tool execution behavior.
+- **Done When**:
+  - Key recovery gaps are closed with narrow, tested fixes.
+
+---
+
+#### Phase 34 — Step 1/N: Think Boundary Auto-Closure Normalization
+
+- **Status**: Complete.
+- **Goal**: Make runtime protocol parsing tolerant to common unclosed `<think>` boundary errors by auto-closing open `<think>` blocks before known protocol boundary tags or at EOF.
+- **Completed Outcome**:
+  - Safe open `<think>` is auto-closed before known top-level protocol boundary tags and at EOF.
+  - This intentionally changes prior E_UNCLOSED_THINK recovery behavior for safe boundary-repairable cases.
+  - Protected contexts remain safe: action JSON, intent payloads, file_content, quoted strings, fenced code, inline code, comments.
+  - Repair is normalization only; compiler/prevalidation/action policy still decide validity/dispatch.
+  - Nested think stack semantics remain out of scope.
+  - No Angelica/live agent was run.
 - **Next**:
   - Phase 33 — Search/Path Recovery UX Hardening.
 

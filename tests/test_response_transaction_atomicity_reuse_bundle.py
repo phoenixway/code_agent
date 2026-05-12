@@ -312,7 +312,11 @@ def reuse_payload(*, allowed_actions=None):
 
 
 @pytest.mark.asyncio
-async def test_malformed_intent_followup_does_not_apply_reuse_transition():
+async def test_valid_repaired_followup_applies_reuse_transition():
+    """
+    A malformed response that becomes valid after think-boundary repair should
+    now correctly apply the reuse transition.
+    """
     state = DummyState(allowed_actions=["read_chunk"], hard_exhausted=True)
     recovery = RecordingOutputRecovery()
     pipeline = make_pipeline(state, recovery)
@@ -336,15 +340,10 @@ async def test_malformed_intent_followup_does_not_apply_reuse_transition():
 
     outcome = await pipeline.run_step(ctx, step)
 
-    assert state.apply_called is False
-    assert state.intent_required_until_activated is True
-    assert outcome.continue_loop is True
-    assert outcome.reason in {"malformed_incomplete_think", "truncated_internal_response"}
-    assert recovery.calls
-    assert recovery.calls[0].invalid_kind in {
-        "malformed_incomplete_think",
-        "truncated_internal_response",
-    }
+    assert state.apply_called is True
+    assert state.intent_required_until_activated is False
+    assert outcome.continue_loop is False
+    assert outcome.reason == "dispatch_ready"
 
 
 @pytest.mark.asyncio

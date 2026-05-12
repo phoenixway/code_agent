@@ -83,7 +83,8 @@ def _auto_close_open_think_before_protocol_boundary(response_text: str) -> tuple
         boundary_mask = _mask_with_spaces(boundary_mask, regex)
 
     boundary_tags_re = re.compile(
-        r"<(?:intent|action|file_content|memory_update_done|memory_review|fact|finding|decision|preference|progress|path|subgoal)\b"
+        r"<(?:intent|action|file_content|memory_update_done|memory_review|fact|finding|decision|preference|progress|path|subgoal)\b",
+        re.IGNORECASE,
     )
 
     repaired_parts = []

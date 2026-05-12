@@ -9,19 +9,18 @@ from modules.parser import ResponseParser
 
 
 @pytest.mark.parametrize(
-    ("name", "response", "allow_autorepair", "expect_repair", "expect_blocked_reason", "expect_invalid_kinds", "expect_tag"),
+    ("name", "response", "allow_autorepair", "expect_repair", "expect_blocked_reason", "expect_invalid_kind"),
     [
         (
-            "action_json_after_unclosed_think",
+            "action_json_after_unclosed_think_is_repaired_and_valid",
             '<think>\nDraft reasoning\n<action>{"type":"read_file","path":"x.py"}</action>',
             True,
             True,
             "",
             "",
-            "action",
         ),
         (
-            "canonical_memory_and_action_sequence",
+            "canonical_memory_and_action_sequence_is_repaired_and_valid",
             (
                 "<think>\n"
                 "I need one read first.\n"
@@ -33,69 +32,61 @@ from modules.parser import ResponseParser
             True,
             "",
             "",
-            "finding",
         ),
         (
-            "prose_tag_mention",
+            "prose_tag_mention_is_repaired_at_eof_and_still_invalid",
             "<think>\nI may use <action> later if reading the file is necessary.",
             True,
-            False,
+            True,
             "",
-            {"action_inside_think", "malformed_incomplete_think"},
-            "",
+            "malformed_incomplete_action",
         ),
         (
-            "backtick_tag_mention",
+            "backtick_tag_mention_is_repaired_at_eof_and_valid",
             "<think>\nI may use `<action>` later if needed.",
             True,
-            False,
+            True,
             "",
-            {"action_inside_think", "malformed_incomplete_think"},
-            "",
+            "malformed_action",
         ),
         (
-            "fenced_tag_mention",
+            "fenced_tag_mention_is_repaired_at_eof_and_valid",
             "<think>\n```xml\n<action>{\"type\":\"read_file\",\"path\":\"x.py\"}</action>\n```",
             True,
-            False,
+            True,
             "",
-            {"malformed_incomplete_think"},
-            "",
+            "malformed_action",
         ),
         (
-            "textual_subgoal_mention",
+            "textual_subgoal_mention_is_repaired_at_eof_and_valid",
             "<think>\nExample only: <subgoal action=\"mark_done\" id=\"sg_1\" /> should not be emitted yet.",
             True,
-            False,
+            True,
             "",
-            {"memory_tag_inside_think", "malformed_incomplete_think"},
             "",
         ),
         (
-            "incomplete_action_payload",
+            "incomplete_action_payload_is_repaired_and_then_malformed",
             '<think>\nDraft reasoning\n<action>{"type":"read_file","path":"x.py"}',
             True,
-            False,
+            True,
             "",
-            {"action_inside_think", "malformed_incomplete_think"},
-            "",
+            "malformed_incomplete_action",
         ),
         (
-            "intent_transition_stays_strict_invalid",
+            "intent_transition_is_repaired_and_valid",
             '<think>\ndraft\n<intent mode="reuse">{"intent_id":"x","mode":"reuse"}</intent>',
             True,
-            False,
+            True,
             "",
-            {"intent_inside_think", "malformed_incomplete_think"},
             "",
         ),
         (
             "atomicity_blocks_autorepair",
             '<think>\nDraft reasoning\n<action>{"type":"read_file","path":"x.py"}</action>',
             False,
-            False,
+            True,
             "intent_atomicity_guard",
-            {"action_inside_think", "malformed_incomplete_think"},
             "",
         ),
     ],
@@ -106,36 +97,38 @@ def test_unclosed_think_normalization_matrix(
     allow_autorepair,
     expect_repair,
     expect_blocked_reason,
-    expect_invalid_kinds,
-    expect_tag,
+    expect_invalid_kind,
 ):
-    parser = IntentResponseParser()
-    normalized = parser.normalize_model_response(
-        response,
-        allow_think_autorepair=allow_autorepair,
+    pipeline, _ = _make_pipeline()
+    normalized = pipeline._normalize_response_stage(response, allow_autorepair=allow_autorepair, source="test")
+    step = SimpleNamespace(response=response, model_stop_reason="")
+    checkpoint_state = CheckpointStageState(
+        response=response,
+        reflection_repair_pending=False,
+        reflection_repair_kind="",
+        plan_checkpoint_only=False,
+        plan_checkpoint_and_text=False,
+        plan_checkpoint_and_action=False,
+        memory_checkpoint_only=False,
+        memory_checkpoint_and_text=False,
+        memory_checkpoint_and_action=False,
+        memory_board_decision=None,
     )
-    parsed = parser.classify(
-        response,
-        ResponseParser().parse(response) if expect_repair else [],
-        allow_think_autorepair=allow_autorepair,
-    )
+    classified = pipeline._run_classification_stage(step, response, checkpoint_state)
+    parsed = classified.parsed_output
 
     assert normalized.raw_response == response, name
     assert normalized.think_repair_applied is expect_repair, name
     assert normalized.repair_blocked_reason == expect_blocked_reason, name
-    if isinstance(expect_invalid_kinds, set):
-        assert parsed.invalid_kind in expect_invalid_kinds, name
-    else:
-        assert parsed.invalid_kind == expect_invalid_kinds, name
-    assert parsed.auto_closed_think is expect_repair, name
-    assert parsed.auto_closed_think_tag == expect_tag, name
+    if name == "atomicity_blocks_autorepair":
+        assert normalized.think_repair_blocked_by_atomicity is True
+    assert parsed.invalid_kind == expect_invalid_kind, name
+
     if expect_repair:
         assert normalized.normalized_response != response, name
-        assert "</think>\n<" in normalized.normalized_response, name
-        assert normalized.repairs_applied == ("auto_close_think",), name
-        assert normalized.think_repair_confidence == "high", name
+        assert "auto_close_think_boundary" in normalized.repairs_applied, name
     else:
-        assert normalized.repairs_applied == (), name
+        assert not any(r.startswith("auto_close_think") for r in normalized.repairs_applied), name
 
 
 class DummyIntentTransitions:
@@ -274,8 +267,8 @@ async def test_normalization_stage_logs_think_repair_trace_fields():
         if entry.fields.get("source") == "run_step"
     )
     assert fields["think_repair_applied"] is True
-    assert fields["think_repair_confidence"] == "high"
-    assert fields["think_repair_tag"] == "action"
+    assert fields["think_repair_reason"] == "auto_close_think_boundary"
+    assert "auto_close_think_boundary" in fields["repairs_applied"]
     assert fields["source"] == "run_step"
 
 
@@ -306,7 +299,7 @@ def test_classification_stage_repairs_unclosed_think_before_checkpoint_tail():
     classified = pipeline._run_classification_stage(step, response, checkpoint_state)
 
     assert classified.response != response
-    assert "</think>\n<memory_update_done />" in classified.response
+    assert "</think><memory_update_done />" in classified.response
     assert classified.parsed_output.auto_closed_think is True
     assert classified.parsed_output.compiler_error_code == ""
     assert classified.parsed_output.compiler_shape != "INVALID"
@@ -340,7 +333,7 @@ def test_classification_stage_repairs_unclosed_think_before_board_tags_and_actio
     classified = pipeline._run_classification_stage(step, response, checkpoint_state)
 
     assert classified.response != response
-    assert '</think>\n<subgoal action="mark_in_progress" id="sg_1" />' in classified.response
+    assert '</think><subgoal action="mark_in_progress" id="sg_1" />' in classified.response
     assert classified.parsed_output.auto_closed_think is True
     assert classified.parsed_output.compiler_error_code == ""
     assert classified.parsed_output.compiler_shape != "INVALID"

@@ -2150,6 +2150,14 @@ This document is the single source of truth for the current state of the Semanti
     - No tool execution behavior changed.
     - No protocol guard behavior changed.
     - No Angelica/live agent was run.
+- **Phase 34 — Step 1/N: Think Boundary Auto-Closure Normalization (Complete)**
+  - **Completed Outcome**:
+    - Safe open `<think>` is auto-closed before known top-level protocol boundary tags and at EOF.
+    - This intentionally changes prior E_UNCLOSED_THINK recovery behavior for safe boundary-repairable cases.
+    - Protected contexts remain safe: action JSON, intent payloads, file_content, quoted strings, fenced code, inline code, comments.
+    - Repair is normalization only; compiler/prevalidation/action policy still decide validity/dispatch.
+    - Nested think stack semantics remain out of scope.
+    - No Angelica/live agent was run.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 

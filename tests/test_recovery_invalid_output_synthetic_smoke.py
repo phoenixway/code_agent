@@ -235,20 +235,20 @@ def _run_intent_prevalidation_smoke_with_smoke_registry(response: str, *, mode: 
         _restore_registry(previous)
 
 
-def test_unclosed_think_logs_invalid_mapping_and_preserves_recovery_behavior():
+def test_unclosed_think_is_repaired_and_becomes_missing_action_or_answer():
     harness, classified, outcome = _run_full_path_smoke("<think>\nI am still thinking")
 
     assert classified.parsed_output.compiler_shape == "INVALID"
-    assert classified.parsed_output.compiler_error_code == "E_UNCLOSED_THINK"
-    assert classified.parsed_output.invalid_kind == "malformed_incomplete_think"
+    assert classified.parsed_output.compiler_error_code == "E_AMBIGUOUS_PROTOCOL_SYNTAX"
+    assert classified.parsed_output.invalid_kind == "missing_action_or_answer"
     assert outcome.continue_loop is True
-    assert outcome.reason == "malformed_incomplete_think"
+    assert outcome.reason == "missing_action_or_answer"
     diagnostic = _recovery_authority_calls(harness, "recovery.compiler_invalid_kind_mapping")[-1].kwargs
     assert diagnostic["switch_value"] == "legacy"
     assert diagnostic["authority_source"] == "legacy"
-    assert diagnostic["effective_source"] == "compiler"
+    assert diagnostic["effective_source"] == "legacy"
     assert diagnostic["selected_by_switch"] is False
-    assert diagnostic["effective_invalid_kind"] == "malformed_incomplete_think"
+    assert diagnostic["effective_invalid_kind"] == "missing_action_or_answer"
     assert diagnostic["behavior_changed"] is False
     assert diagnostic["branch_active"] is True
 
@@ -390,31 +390,31 @@ def test_invalid_truncated_terminal_text_is_inactive_for_negative_controls(respo
     assert diagnostic["typed_invalid_truncated_eligible"] is False
 
 
-def test_memory_tag_inside_think_is_characterized_as_invalid_without_checkpoint_authority():
+def test_memory_tag_after_unclosed_think_is_repaired_and_becomes_checkpoint_only():
     harness, classified, outcome = _run_full_path_smoke("<think>\n<memory_update_done />")
 
-    assert classified.parsed_output.compiler_shape == "INVALID"
-    assert classified.parsed_output.compiler_error_code
-    assert outcome.continue_loop is True
+    assert classified.parsed_output.compiler_shape == "CHECKPOINT_ONLY"
+    assert not classified.parsed_output.compiler_error_code
+    assert outcome.reason == "missing_action_or_answer"
     diagnostic = _recovery_authority_calls(harness, "recovery.compiler_invalid_kind_mapping")[-1].kwargs
     assert diagnostic["switch_value"] == "legacy"
-    assert diagnostic["compiler_error_code"]
-    assert diagnostic["effective_invalid_kind"] == "malformed_incomplete_think"
-    assert diagnostic["has_checkpoint"] is False
+    assert not diagnostic["compiler_error_code"]
+    assert diagnostic["effective_invalid_kind"] == "missing_action_or_answer"
+    assert diagnostic["has_checkpoint"] is True
     assert diagnostic["behavior_changed"] is False
 
 
-def test_checkpoint_tag_inside_think_is_characterized_as_invalid_without_checkpoint_authority():
+def test_checkpoint_tag_after_unclosed_think_is_repaired_and_becomes_checkpoint_only():
     harness, classified, outcome = _run_full_path_smoke('<think>\n<subgoal action="mark_in_progress" id="sg_1" />')
 
-    assert classified.parsed_output.compiler_shape == "INVALID"
-    assert classified.parsed_output.compiler_error_code
-    assert outcome.continue_loop is True
+    assert classified.parsed_output.compiler_shape == "CHECKPOINT_ONLY"
+    assert not classified.parsed_output.compiler_error_code
+    assert outcome.reason == "missing_action_or_answer"
     diagnostic = _recovery_authority_calls(harness, "recovery.compiler_invalid_kind_mapping")[-1].kwargs
     assert diagnostic["switch_value"] == "legacy"
-    assert diagnostic["compiler_error_code"]
-    assert diagnostic["effective_invalid_kind"] == "malformed_incomplete_think"
-    assert diagnostic["has_checkpoint"] is False
+    assert not diagnostic["compiler_error_code"]
+    assert diagnostic["effective_invalid_kind"] == "missing_action_or_answer"
+    assert diagnostic["has_checkpoint"] is True
     assert diagnostic["behavior_changed"] is False
 
 
@@ -468,74 +468,72 @@ def test_internal_summary_recovery_is_characterized_without_terminal_authority_t
     assert not _recovery_authority_calls(harness, "recovery.leaked_system_result")
 
 
-def test_mixed_visible_answer_and_invalid_protocol_is_characterized_as_recovery():
+def test_mixed_visible_answer_and_unclosed_think_is_repaired_and_recovers():
     response = "Done.\n<think>\nstill thinking"
     harness, classified, outcome = _run_full_path_smoke(response)
 
-    assert classified.parsed_output.compiler_error_code == "E_UNCLOSED_THINK"
+    assert not classified.parsed_output.compiler_error_code
+    assert outcome.reason == "mixed_visible_text_and_control_protocol"
     assert outcome.continue_loop is True
-    assert outcome.reason == "malformed_incomplete_think"
     diagnostic = _recovery_authority_calls(harness, "recovery.compiler_invalid_kind_mapping")[-1].kwargs
     assert diagnostic["switch_value"] == "legacy"
-    assert diagnostic["effective_invalid_kind"] == "malformed_incomplete_think"
+    assert diagnostic["effective_invalid_kind"] == "mixed_visible_text_and_control_protocol"
     assert diagnostic["has_visible_text"] is True
     assert diagnostic["behavior_changed"] is False
 
 
-def test_unclosed_think_under_intent_prevalidation_preserves_current_recovery_behavior():
+def test_unclosed_think_under_intent_prevalidation_is_repaired_and_becomes_missing_action():
     harness, outcome = _run_intent_prevalidation_smoke("<think>\nI am still thinking")
 
     assert outcome is not None
     assert outcome.continue_loop is True
-    assert outcome.reason == "malformed_incomplete_think"
+    assert outcome.reason == "missing_action_or_answer"
     diagnostic = _recovery_authority_calls(harness, "recovery.prevalidation_reject_invalid_output")[-1].kwargs
     assert diagnostic["switch_value"] == "legacy"
-    assert diagnostic["effective_invalid_kind"] == "malformed_incomplete_think"
-    assert diagnostic["recovery_action"] == "malformed_incomplete_think"
+    assert diagnostic["effective_invalid_kind"] == "missing_action_or_answer"
+    assert diagnostic["recovery_action"] == "missing_action_or_answer"
     assert diagnostic["compiler_decision_available"] is False
     assert diagnostic["guard_triggered"] is True
     assert diagnostic["behavior_changed"] is False
 
 
-def test_memory_tag_inside_think_under_intent_prevalidation_preserves_current_recovery_behavior():
+def test_memory_tag_after_unclosed_think_under_intent_prevalidation_is_repaired_and_passes():
     harness, outcome = _run_intent_prevalidation_smoke("<think>\n<memory_update_done />")
 
     assert outcome is not None
-    assert outcome.continue_loop is True
-    assert outcome.reason == "malformed_incomplete_think"
+    assert outcome.reason == "missing_action_or_answer"
     diagnostic = _recovery_authority_calls(harness, "recovery.prevalidation_reject_invalid_output")[-1].kwargs
-    assert diagnostic["switch_value"] == "legacy"
-    assert diagnostic["effective_invalid_kind"] == "malformed_incomplete_think"
-    assert diagnostic["compiler_decision_available"] is False
-    assert diagnostic["has_checkpoint"] is False
+    assert diagnostic["effective_invalid_kind"] == "missing_action_or_answer"
+    assert diagnostic["has_checkpoint"] is True
+    assert diagnostic["branch_active"] is True
+    assert diagnostic["recovery_action"] == "missing_action_or_answer"
     assert diagnostic["behavior_changed"] is False
 
 
-def test_checkpoint_tag_inside_think_under_intent_prevalidation_preserves_current_recovery_behavior():
+def test_checkpoint_tag_after_unclosed_think_under_intent_prevalidation_is_repaired_and_passes():
     harness, outcome = _run_intent_prevalidation_smoke('<think>\n<subgoal action="mark_in_progress" id="sg_1" />')
 
     assert outcome is not None
-    assert outcome.continue_loop is True
-    assert outcome.reason == "malformed_incomplete_think"
+    assert outcome.reason == "missing_action_or_answer"
     diagnostic = _recovery_authority_calls(harness, "recovery.prevalidation_reject_invalid_output")[-1].kwargs
-    assert diagnostic["switch_value"] == "legacy"
-    assert diagnostic["effective_invalid_kind"] == "malformed_incomplete_think"
-    assert diagnostic["compiler_decision_available"] is False
-    assert diagnostic["has_checkpoint"] is False
+    assert diagnostic["effective_invalid_kind"] == "missing_action_or_answer"
+    assert diagnostic["has_checkpoint"] is True
+    assert diagnostic["branch_active"] is True
+    assert diagnostic["recovery_action"] == "missing_action_or_answer"
     assert diagnostic["behavior_changed"] is False
 
 
-def test_mixed_visible_answer_and_invalid_protocol_under_intent_prevalidation_preserves_behavior():
+def test_mixed_visible_answer_and_unclosed_think_under_intent_prevalidation_is_repaired_and_recovers():
     harness, outcome = _run_intent_prevalidation_smoke("Done.\n<think>\nstill thinking")
 
     assert outcome is not None
     assert outcome.continue_loop is True
-    assert outcome.reason == "malformed_incomplete_think"
+    assert outcome.reason == "mixed_visible_text_and_control_protocol"
     diagnostic = _recovery_authority_calls(harness, "recovery.prevalidation_reject_invalid_output")[-1].kwargs
     assert diagnostic["switch_value"] == "legacy"
     assert diagnostic["has_visible_text"] is True
-    assert diagnostic["effective_invalid_kind"] == "malformed_incomplete_think"
-    assert diagnostic["compiler_decision_available"] is False
+    assert diagnostic["effective_invalid_kind"] == "mixed_visible_text_and_control_protocol"
+    assert diagnostic["compiler_decision_available"] is True
     assert diagnostic["behavior_changed"] is False
 
 
@@ -607,7 +605,7 @@ def test_unclosed_think_without_leak_does_not_select_leaked_system_result_branch
     harness, classified, outcome = _run_full_path_smoke("<think>\nI am still thinking")
 
     assert outcome.continue_loop is True
-    assert outcome.reason == "malformed_incomplete_think"
+    assert outcome.reason == "missing_action_or_answer"
     assert not _recovery_authority_calls(harness, "recovery.leaked_system_result")
 
 
@@ -1259,41 +1257,41 @@ def test_smoke_registry_surrounding_text_leak_falls_back_without_behavior_change
     assert leak_authority["behavior_changed"] is False
 
 
-def test_smoke_registry_unclosed_think_selects_compiler_without_behavior_change():
+def test_smoke_registry_unclosed_think_is_repaired_and_recovers():
     harness, classified, outcome = _run_full_path_smoke_with_smoke_registry("<think>\nI am still thinking")
 
-    assert classified.parsed_output.invalid_kind == "malformed_incomplete_think"
-    assert outcome.reason == "malformed_incomplete_think"
+    assert classified.parsed_output.invalid_kind == "missing_action_or_answer"
+    assert outcome.reason == "missing_action_or_answer"
     diagnostic = _recovery_authority_calls(harness, "recovery.compiler_invalid_kind_mapping")[-1].kwargs
     assert diagnostic["switch_value"] == "compiler"
-    assert diagnostic["authority_source"] == "compiler"
-    assert diagnostic["effective_source"] == "compiler"
-    assert diagnostic["selected_by_switch"] is True
+    assert diagnostic["authority_source"] == "legacy_fallback"
+    assert diagnostic["effective_source"] == "legacy"
+    assert diagnostic["selected_by_switch"] is False
     assert diagnostic["behavior_changed"] is False
 
 
-def test_smoke_registry_memory_tag_inside_think_selects_compiler_without_behavior_change():
+def test_smoke_registry_memory_tag_after_think_is_repaired_and_becomes_checkpoint():
     harness, classified, outcome = _run_full_path_smoke_with_smoke_registry("<think>\n<memory_update_done />")
 
-    assert classified.parsed_output.invalid_kind == "malformed_incomplete_think"
-    assert outcome.continue_loop is True
+    assert classified.parsed_output.invalid_kind == "missing_action_or_answer"
+    assert outcome.reason == "missing_action_or_answer"
     diagnostic = _recovery_authority_calls(harness, "recovery.compiler_invalid_kind_mapping")[-1].kwargs
     assert diagnostic["switch_value"] == "compiler"
-    assert diagnostic["authority_source"] == "compiler"
-    assert diagnostic["effective_invalid_kind"] == "malformed_incomplete_think"
-    assert diagnostic["has_checkpoint"] is False
+    assert diagnostic["authority_source"] == "legacy_fallback"
+    assert diagnostic["effective_invalid_kind"] == "missing_action_or_answer"
+    assert diagnostic["has_checkpoint"] is True
     assert diagnostic["behavior_changed"] is False
 
 
-def test_smoke_registry_checkpoint_tag_inside_think_selects_compiler_without_behavior_change():
+def test_smoke_registry_checkpoint_tag_after_think_is_repaired_and_becomes_checkpoint():
     harness, classified, outcome = _run_full_path_smoke_with_smoke_registry('<think>\n<subgoal action="mark_in_progress" id="sg_1" />')
 
-    assert classified.parsed_output.invalid_kind == "malformed_incomplete_think"
-    assert outcome.continue_loop is True
+    assert classified.parsed_output.invalid_kind == "missing_action_or_answer"
+    assert outcome.reason == "missing_action_or_answer"
     diagnostic = _recovery_authority_calls(harness, "recovery.compiler_invalid_kind_mapping")[-1].kwargs
     assert diagnostic["switch_value"] == "compiler"
-    assert diagnostic["authority_source"] == "compiler"
-    assert diagnostic["effective_invalid_kind"] == "malformed_incomplete_think"
+    assert diagnostic["authority_source"] == "legacy_fallback"
+    assert diagnostic["effective_invalid_kind"] == "missing_action_or_answer"
     assert diagnostic["behavior_changed"] is False
 
 
@@ -1330,7 +1328,7 @@ def test_smoke_registry_malformed_action_with_pre_action_text_selects_compiler_w
     assert diagnostic["behavior_changed"] is False
 
 
-def test_smoke_registry_unclosed_think_under_intent_prevalidation_falls_back_without_behavior_change():
+def test_smoke_registry_unclosed_think_under_intent_prevalidation_is_repaired_and_recovers():
     harness, outcome = _run_intent_prevalidation_smoke_with_smoke_registry("<think>\nI am still thinking")
 
     assert outcome is not None
@@ -1342,46 +1340,50 @@ def test_smoke_registry_unclosed_think_under_intent_prevalidation_falls_back_wit
     assert diagnostic["compiler_decision_available"] is False
     assert "no_compiler_decision_path" in diagnostic["blocking_reasons"]
     assert diagnostic["behavior_changed"] is False
+    assert diagnostic["effective_invalid_kind"] == "missing_action_or_answer"
 
 
-def test_smoke_registry_memory_tag_inside_think_under_intent_prevalidation_falls_back_without_behavior_change():
+def test_smoke_registry_memory_tag_after_think_under_intent_prevalidation_is_repaired_and_passes():
     harness, outcome = _run_intent_prevalidation_smoke_with_smoke_registry("<think>\n<memory_update_done />")
 
     assert outcome is not None
-    assert outcome.continue_loop is True
+    assert outcome.reason == "missing_action_or_answer"
     diagnostic = _recovery_authority_calls(harness, "recovery.prevalidation_reject_invalid_output")[-1].kwargs
-    assert diagnostic["switch_value"] == "compiler"
     assert diagnostic["authority_source"] == "legacy_fallback"
-    assert diagnostic["selected_by_switch"] is False
-    assert diagnostic["compiler_decision_available"] is False
+    assert diagnostic["effective_invalid_kind"] == "missing_action_or_answer"
+    assert diagnostic["has_checkpoint"] is True
+    assert diagnostic["branch_active"] is True
+    assert diagnostic["recovery_action"] == "missing_action_or_answer"
     assert "no_compiler_decision_path" in diagnostic["blocking_reasons"]
-    assert diagnostic["has_checkpoint"] is False
     assert diagnostic["behavior_changed"] is False
 
 
-def test_smoke_registry_checkpoint_tag_inside_think_under_intent_prevalidation_falls_back_without_behavior_change():
+def test_smoke_registry_checkpoint_tag_after_think_under_intent_prevalidation_is_repaired_and_passes():
     harness, outcome = _run_intent_prevalidation_smoke_with_smoke_registry('<think>\n<subgoal action="mark_in_progress" id="sg_1" />')
 
     assert outcome is not None
-    assert outcome.continue_loop is True
+    assert outcome.reason == "missing_action_or_answer"
     diagnostic = _recovery_authority_calls(harness, "recovery.prevalidation_reject_invalid_output")[-1].kwargs
-    assert diagnostic["switch_value"] == "compiler"
     assert diagnostic["authority_source"] == "legacy_fallback"
-    assert diagnostic["selected_by_switch"] is False
-    assert diagnostic["compiler_decision_available"] is False
+    assert diagnostic["effective_invalid_kind"] == "missing_action_or_answer"
+    assert diagnostic["has_checkpoint"] is True
+    assert diagnostic["branch_active"] is True
+    assert diagnostic["recovery_action"] == "missing_action_or_answer"
     assert "no_compiler_decision_path" in diagnostic["blocking_reasons"]
-    assert diagnostic["has_checkpoint"] is False
     assert diagnostic["behavior_changed"] is False
 
 
-def test_smoke_registry_mixed_visible_answer_and_invalid_protocol_preserves_behavior():
+def test_smoke_registry_mixed_visible_answer_and_unclosed_think_is_repaired_and_recovers():
     harness, classified, outcome = _run_full_path_smoke_with_smoke_registry("Done.\n<think>\nstill thinking")
 
-    assert classified.parsed_output.invalid_kind == "malformed_incomplete_think"
-    assert outcome.reason == "malformed_incomplete_think"
+    assert classified.parsed_output.invalid_kind == "mixed_visible_text_and_control_protocol"
+    assert outcome.reason == "mixed_visible_text_and_control_protocol"
+    assert outcome.continue_loop is True
     diagnostic = _recovery_authority_calls(harness, "recovery.compiler_invalid_kind_mapping")[-1].kwargs
     assert diagnostic["switch_value"] == "compiler"
-    assert diagnostic["authority_source"] == "compiler"
+    assert diagnostic["authority_source"] == "legacy_fallback"
+    assert diagnostic["selected_by_switch"] is False
+    assert diagnostic["effective_invalid_kind"] == "mixed_visible_text_and_control_protocol"
     assert diagnostic["behavior_changed"] is False
 
 
@@ -1392,7 +1394,7 @@ def test_smoke_registry_empty_output_under_intent_prevalidation_keeps_branch_ina
     assert not _recovery_authority_calls(harness, "recovery.prevalidation_reject_invalid_output")
 
 
-def test_smoke_registry_clean_plaintext_under_intent_prevalidation_selects_compiler_without_behavior_change():
+def test_smoke_registry_clean_plaintext_under_intent_prevalidation_recovers_as_mixed_answer():
     harness, outcome = _run_intent_prevalidation_smoke_with_smoke_registry("Done.")
 
     assert outcome is not None
