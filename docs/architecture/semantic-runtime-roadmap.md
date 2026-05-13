@@ -4868,6 +4868,29 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 42 — Step 6/N: Deprecated Metadata Helper Removal / Retention Decision.
 
+---
+
+#### Phase 42 — Step 6/N: Deprecated Metadata Helper Removal / Retention Decision
+
+- **Status**: Done.
+- **Goal**: Decide whether to remove the deprecated `output_recovery_compiler_metadata(...)` helper after routing import cleanup.
+- **Decision**: Retain the deprecated helper for now.
+- **Rationale**:
+  - The active output-recovery routing path already uses `semantic_accessors.get_compiler_metadata(...)`.
+  - `output_recovery_compiler_metadata(...)` still serves as an explicit parity oracle in characterization tests.
+  - Keeping the helper documents the old fallback contract while broader semantic-runtime cleanup remains in progress.
+  - Removing it now would collapse the old-vs-new comparison point too early.
+- **Completed Outcome**:
+  - Deprecated helper removal is deferred.
+  - The helper remains in `runtime_protocol_semantics.py` as a temporary parity/fallback fixture.
+  - The narrow metadata consolidation is complete for the active routing path.
+  - No production behavior changed.
+  - No compatibility shim was removed.
+  - No output recovery behavior changed.
+  - No recovery, dispatch, ActionPolicy, final-answer, or authority behavior changed.
+- **Next**:
+  - Phase 42 — Step 7/N: Consumer Map / Metadata Consolidation Closure.
+
 ### Phase 11: RecoveryStrategy Registry Expansion
 
 - **Goal**: Expand the `CompilerRecoveryRegistry` to cover more structural errors.
