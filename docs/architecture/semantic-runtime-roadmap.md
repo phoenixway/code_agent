@@ -4798,6 +4798,37 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 42 — Step 3/N: Cleanup Candidate Selection / Defer Decision.
 
+---
+
+#### Phase 42 — Step 3/N: Cleanup Candidate Selection / Defer Decision
+
+- **Status**: Done.
+- **Goal**: Decide whether any cleanup candidate is safe to advance from the risk matrix.
+- **Decision**: Select exactly one narrow candidate for characterization only: output-recovery compiler metadata fallback consolidation.
+- **Selected Candidate**:
+  - Candidate: consolidate `runtime_protocol_semantics.output_recovery_compiler_metadata(...)` into `semantic_accessors.get_compiler_metadata(...)`.
+  - Scope: characterization and parity proof first.
+  - Rationale: both helpers serve the same metadata-access concern for compiler error code, recovery id, and invalid kind, but fallback/source behavior must be proven equivalent before any implementation.
+- **Deferred**:
+  - `ResponseSemantics.has_any_action_proposal(...)` and `has_any_action_proposal_compat(...)` remain protected compatibility/recovery-evidence surfaces.
+  - `ParsedModelOutput.has_action_segment`, `invalid_kind`, `action_content`, compiler metadata fields, compiler IR, and attached typed semantic results remain active compatibility surfaces.
+  - ActionPolicy and dispatch-adjacent consumers remain high-risk and out of scope.
+  - final-answer, terminal-answer, output-recovery behavior, and recovery behavior changes remain out of scope.
+  - selected direct compiler metadata reads remain deferred until the helper consolidation candidate is characterized.
+- **Forbidden**:
+  - No implementation in this step.
+  - No cleanup or deletion.
+  - No compatibility shim removal.
+  - No production behavior change.
+  - No authority transfer.
+  - No switch changes.
+  - No dispatch behavior changes.
+  - No final-answer stop/continue behavior changes.
+  - No `ActionPolicy` changes.
+  - No recovery behavior changes.
+- **Next**:
+  - Phase 42 — Step 4/N: Output-Recovery Compiler Metadata Fallback Parity Characterization.
+
 ### Phase 11: RecoveryStrategy Registry Expansion
 
 - **Goal**: Expand the `CompilerRecoveryRegistry` to cover more structural errors.
