@@ -169,6 +169,46 @@ async def test_compiler_code_routes_file_content_pairing_recovery_without_legacy
 
 
 @pytest.mark.asyncio
+async def test_compiler_strategy_path_emits_diagnostic_semantic_decision_record():
+    handler = ModelOutputRecoveryHandler(DummyAgent(), DummyPromptBuilder())
+    captured = []
+    handler.stage_logger.log = lambda *args, **kwargs: captured.append((args, kwargs))
+
+    decision = await handler.decide(
+        ParsedModelOutput(
+            response='<action>{"type":"read_file","path":"a.py"}</action>\n<file_content>body</file_content>',
+            invalid_kind="",
+            compiler_error_code="E_FILE_CONTENT_ACTION_MISMATCH",
+            compiler_recovery_id="file_content_must_follow_action",
+        ),
+        malformed_action_retries=0,
+        audit_marker_retries=0,
+    )
+
+    assert decision.reason == "file_content_must_follow_action"
+    records = [
+        kwargs["semantic_decision_record"]
+        for _args, kwargs in captured
+        if kwargs.get("source") == "semantic_decision_record"
+    ]
+    assert len(records) == 1
+    record = records[0]
+    assert record["domain"] == "output_recovery"
+    assert record["stage"] == "output_recovery"
+    assert record["decision"] == "compiler_strategy_resolved"
+    assert record["reason"] == "file_content_must_follow_action"
+    assert record["source"] == "compiler_recovery_strategy"
+    assert record["diagnostic_only"] is True
+    assert record["authority_affecting"] is False
+    assert record["behavior_affecting"] is False
+    assert record["compiler_metadata"]["error_code"] == "E_FILE_CONTENT_ACTION_MISMATCH"
+    assert record["registry_resolution"]["strategy_id"] == "file_content_action_mismatch"
+    assert record["registry_resolution"]["handler_key"] == "file_content_order"
+    assert record["effective_decision"]["outcome_kind"] == "continue"
+    assert record["effective_decision"]["prompt_family"] == "file_content_order"
+
+
+@pytest.mark.asyncio
 async def test_compiler_code_routes_file_content_action_mismatch_without_legacy_invalid_kind():
     handler = ModelOutputRecoveryHandler(DummyAgent(), DummyPromptBuilder())
     parsed = ParsedModelOutput(

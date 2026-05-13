@@ -6038,6 +6038,30 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 44 — Step 9/N: Output-Recovery Compiler Strategy Semantic Record Diagnostic Wiring
+
+- **Status**: Done.
+- **Goal**: Wire diagnostic-only semantic decision record emission into the output-recovery compiler strategy path.
+- **Completed Outcome**:
+  - Added diagnostic-only semantic record construction in the resolved compiler strategy path.
+  - Emitted the record as a JSON-serializable field through existing `stage_logger.log(...)` output.
+  - Added targeted test coverage proving a resolved compiler strategy emits one semantic decision record.
+  - The emitted record captures output-recovery domain/stage, compiler metadata, registry resolution, effective decision, and diagnostic-safe flags.
+  - Existing recovery decision reason/source/prompt/return behavior is preserved.
+  - No replay implementation was added.
+  - No state mutation was added.
+  - No trace export integration was added.
+  - No protocol shadow integration was added.
+  - No production behavior changed.
+  - No dispatch behavior changed.
+  - No ActionPolicy behavior changed.
+  - No final-answer stop/continue behavior changed.
+  - No authority transfer, switch change, or legacy cleanup was added.
+- **Next**:
+  - Phase 44 — Step 10/N: Output-Recovery Semantic Diagnostic Wiring Closure / Replay Preflight Decision.
+
+---
+
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.

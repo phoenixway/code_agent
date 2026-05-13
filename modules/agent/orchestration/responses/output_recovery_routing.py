@@ -9,6 +9,7 @@ from .protocol_decision_bridge import COMPILER_INVALID_KIND_BY_CODE, compiler_in
 from .recovery_authority import resolve_compiler_invalid_kind_mapping_authority
 from .runtime_protocol_semantics import output_recovery_structural_parity
 from .semantic_accessors import get_compiler_metadata
+from .output_recovery_semantic_record import build_output_recovery_semantic_decision_record
 
 
 class OutputRecoveryRoutingMixin:
@@ -739,6 +740,24 @@ class OutputRecoveryRoutingMixin:
         handler = getattr(self, f"_compiler_strategy_{strategy.handler_key}", None)
         if not callable(handler):
             return None
+        semantic_record = build_output_recovery_semantic_decision_record(
+            decision="compiler_strategy_resolved",
+            compiler_meta=compiler_meta,
+            registry_strategy=strategy,
+            reason=strategy_invalid_kind,
+            source="compiler_recovery_strategy",
+            outcome_kind="continue",
+            prompt_family=strategy.handler_key,
+            details={"invalid_kind_argument": invalid_kind},
+        )
+        self.stage_logger.log(
+            "output_recovery",
+            "diagnostic",
+            reason=strategy_invalid_kind,
+            source="semantic_decision_record",
+            universe=self._intent_universe_label(),
+            semantic_decision_record=semantic_record.to_dict(),
+        )
         return handler(
             parsed_output,
             invalid_kind=invalid_kind,
