@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 36 — Step 7/N: MEMORY_CONTENT_WITH_ACTION Live Smoke Closure / Reconciliation Decision
+- **Phase**: Phase 36 — Step 8/N: MEMORY_CONTENT_WITH_ACTION Closure / Next Branch Selection
 - **Status**: Complete.
-- **Next Step**: Phase 36 — Step 8/N: Closure / Next Branch Selection.
-- **Boundary**: Live smoke passed for `board_memory.memory_content_with_action` under the smoke profile. Compiler authority was selected diagnostically with `commit_equivalent=True`; runtime behavior remained unchanged and `effective_commit` is not consumed.
+- **Next Step**: Phase 37 — Board/Memory Remaining Branch Selection / Next Slice Planning.
+- **Boundary**: Phase 36 is complete. Durable memory content + action is validated under the smoke profile. Default registry remains `legacy`; smoke registry remains `compiler`. Runtime behavior remains unchanged and `effective_commit` is not consumed.
 
 ## Step 4I Parity Matrix
 
@@ -2277,6 +2277,16 @@ This document is the single source of truth for the current state of the Semanti
   - The diagnostic branch-name delta is documented and expected for compiler-selected `MEMORY_CONTENT_WITH_ACTION` because the legacy branch remains `MEMORY_CHECKPOINT_WITH_ACTION`.
   - Runtime behavior remains legacy/default-safe, and no production authority flip occurred.
   - Phase 35 MCTA semantics remain unchanged.
+
+- **Phase 36 — Step 8/N: MEMORY_CONTENT_WITH_ACTION Closure / Next Branch Selection (Complete)**
+  - Phase 36 is complete.
+  - Durable memory content + action is characterized, modeled, smoke-switch validated, wired for diagnostic-only runtime logging, and live-smoke validated.
+  - Clean durable memory content + action reaches compiler authority in the smoke profile with `commit_equivalent=True`.
+  - The diagnostic-only branch-name delta remains expected and documented.
+  - Runtime behavior remains legacy/default-safe, and `effective_commit` is not consumed.
+  - Default registry remains `legacy`; smoke registry remains `compiler`.
+  - Phase 35 MCTA semantics remain unchanged.
+  - Next work should select the remaining board/memory branch or decide whether to close the board/memory commit-policy slice.
 
 - **Phase 36 — Step 4/N: MEMORY_CONTENT_WITH_ACTION Smoke Switch Registration / Validation (Complete)**
   - Added the `board_memory.memory_content_with_action` switch key to the registries.

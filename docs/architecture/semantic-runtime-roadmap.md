@@ -4102,6 +4102,25 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 36 — Step 8/N: Closure / Next Branch Selection.
 
+---
+
+#### Phase 36 — Step 8/N: MEMORY_CONTENT_WITH_ACTION Closure / Next Branch Selection
+
+- **Status**: Done.
+- **Goal**: Close the MEMORY_CONTENT_WITH_ACTION slice and select the next board/memory direction.
+- **Completed Outcome**:
+  - Phase 36 is complete.
+  - Durable memory content + action is characterized, modeled, smoke-switch validated, wired for diagnostic-only runtime logging, and live-smoke validated.
+  - Clean durable memory content + action reaches compiler authority in the smoke profile with `commit_equivalent=True`.
+  - Runtime behavior remains legacy/default-safe.
+  - `effective_commit` is not consumed.
+  - Default registry remains `legacy`.
+  - Smoke registry remains `compiler`.
+  - The diagnostic-only branch-name delta is expected and documented.
+  - Phase 35 MCTA semantics remain unchanged.
+- **Next**:
+  - Phase 37 — Board/Memory Remaining Branch Selection / Next Slice Planning.
+
 ### Phase 33: Search/Path Recovery UX Hardening
 
 - **Status**: Not started.
