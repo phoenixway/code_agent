@@ -5898,6 +5898,34 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 44 — Step 5/N: Semantic Decision Record Schema Scaffolding Implementation
+
+- **Status**: Done.
+- **Goal**: Implement passive semantic decision record data models and tests without runtime wiring.
+- **Completed Outcome**:
+  - Added `modules/agent/orchestration/responses/semantic_decision_record.py`.
+  - Added passive dataclasses for:
+    - `CompilerMetadataSnapshot`.
+    - `RegistryResolutionSnapshot`.
+    - `EffectiveDecisionSnapshot`.
+    - `AuthorityResolutionSnapshot`.
+    - `SemanticDecisionRecord`.
+  - Added `to_dict()` serialization helpers for JSON-serializable output.
+  - Added unit tests for diagnostic-safe defaults.
+  - Added unit tests for compiler metadata, registry resolution, effective decision, and authority resolution snapshots.
+  - Added a JSON serialization test.
+  - Confirmed tests do not require pipeline execution.
+  - No runtime integration was added.
+  - No stage logger integration was added.
+  - No protocol shadow integration was added.
+  - No trace export integration was added.
+  - No replay tool was added.
+  - No production behavior changed.
+- **Next**:
+  - Phase 44 — Step 6/N: Semantic Decision Record Scaffolding Closure / First Wiring Candidate Review.
+
+---
+
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.
