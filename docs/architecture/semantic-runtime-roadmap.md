@@ -5046,6 +5046,32 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 11 — Step 5/N: Mixed Intent Transition / Visible Answer Registry Strategy Parity Test Design
+
+- **Status**: Done.
+- **Goal**: Design the parity proof required before implementing a dedicated `CompilerRecoveryRegistry` strategy for `mixed_intent_transition_and_visible_answer`.
+- **Designed Strategy Contract**:
+  - `error_code`: `E_VISIBLE_TEXT_AFTER_INTENT`.
+  - `recovery_id`: `mixed_intent_transition_and_visible_answer`.
+  - `invalid_kind`: `mixed_intent_transition_and_visible_answer`.
+  - `handler_key`: a dedicated handler key for the mixed intent-transition / visible-answer branch, rather than reusing the ordinary `mixed_visible_control` handler implicitly.
+  - Prompt expectation: use `build_mixed_intent_transition_and_visible_answer_prompt()`.
+  - Decision reason expectation: `mixed_intent_transition_and_visible_answer`.
+  - Source expectation: preserve existing output-recovery / compiler-registry routing source conventions without changing recovery behavior.
+- **Required Parity Tests Before Implementation**:
+  - Add a registry test proving the future tuple resolves to the intended dedicated strategy contract.
+  - Add a routing/contract test proving compiler metadata can route this branch without legacy `invalid_kind` while preserving prompt and decision reason.
+  - Add or preserve a current-behavior test proving the existing legacy/prevalidation path still returns `mixed_intent_transition_and_visible_answer` and uses the dedicated prompt.
+  - Negative control: do not affect `mixed_visible_text_and_control_protocol` / `mixed_visible_control` routing.
+- **Boundary Notes**:
+  - This remains boundary-sensitive because it touches transition/final-answer territory.
+  - The test design must not approve `FOLLOWUP_PLAINTEXT`, `get_visible_text`, terminal-answer authority, or final-answer stop/continue behavior changes.
+  - Registry implementation is still forbidden until the parity characterization step is green.
+- **Next**:
+  - Phase 11 — Step 6/N: Mixed Intent Transition / Visible Answer Registry Strategy Parity Characterization.
+
+---
+
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.
