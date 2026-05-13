@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 33 — Step 5/N: Repeat Broad Search Guard / Hint Hardening Decision
+- **Phase**: Phase 33 — Step 6/N: Invalid-Path Recovery Prompt Hardening Decision
 - **Status**: Complete.
-- **Next Step**: Phase 33 — Step 6/N: Invalid-Path Recovery Prompt Hardening Decision.
-- **Boundary**: Repeat broad-search hardening remains prompt-only. No hard repeat-search blocking, repeat detector/state, automatic memory-board path anchoring, path normalization change, search matching change, tool execution behavior change, recovery authority change, or broad recovery rewrite was added.
+- **Next Step**: Phase 33 — Step 7/N: Hint-Only Path Anchoring / Closure Decision.
+- **Boundary**: Invalid-path recovery hardening remains prompt-only. No automatic path anchoring, memory-board writes, path normalization change, search matching change, tool execution behavior change, recovery authority change, hard blocking, or broad recovery rewrite was added.
 
 ## Step 4I Parity Matrix
 

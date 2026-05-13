@@ -389,7 +389,9 @@ class RecoveryPromptBuilderMixin:
                     f"The previous filesystem path is invalid: {failed_path}. "
                     "Do not reuse the failed path. "
                     "Do not derive sibling, child, or package paths from the failed path. "
-                    "Do not guess Android/Kotlin package roots."
+                    "Do not guess Android/Kotlin package roots. "
+                    "Do not substitute another guessed replacement path. "
+                    "First prove a valid root with an allowed read-only action."
                 ),
                 next_step=(
                     f"first establish a valid root with list_directory on {known_root}, "

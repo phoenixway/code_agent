@@ -106,6 +106,8 @@ class PromptBuilderInvalidPathRecoveryTests(unittest.TestCase):
         self.assertIn("Do not reuse the failed path", prompt)
         self.assertIn("Do not derive sibling, child, or package paths", prompt)
         self.assertIn("Do not guess Android/Kotlin package roots", prompt)
+        self.assertIn("Do not substitute another guessed replacement path", prompt)
+        self.assertIn("First prove a valid root with an allowed read-only action", prompt)
         self.assertIn('"type":"list_directory","path":"."', prompt.replace(" ", ""))
 
     def test_invalid_path_recovery_uses_known_existing_parent_when_available(self):

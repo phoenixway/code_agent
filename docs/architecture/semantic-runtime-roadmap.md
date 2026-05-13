@@ -4456,6 +4456,29 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 33 — Step 6/N: Invalid-Path Recovery Prompt Hardening Decision.
 
+---
+
+#### Phase 33 — Step 6/N: Invalid-Path Recovery Prompt Hardening Decision
+
+- **Status**: Done.
+- **Goal**: Decide whether invalid-path recovery needs additional hardening and keep any change prompt-only.
+- **Decision**: Use minimal prompt-only hardening. Do not add automatic path anchoring or runtime behavior changes.
+- **Completed Outcome**:
+  - Strengthened the existing `INVALID_ACTION_PATH_RECOVERY` prompt.
+  - The prompt already forbids reusing the failed path, deriving sibling/child/package paths from it, and guessing Android/Kotlin package roots.
+  - The prompt now also forbids substituting another guessed replacement path.
+  - The prompt now explicitly requires proving a valid root with an allowed read-only action first.
+  - Existing invalid-path prompt tests now lock this prompt-only behavior.
+  - No automatic memory-board path anchoring was added.
+  - No memory-board writes were added.
+  - No path normalization behavior changed.
+  - No search matching behavior changed.
+  - No tool execution behavior changed.
+  - No recovery authority changed.
+  - No hard blocking was added.
+- **Next**:
+  - Phase 33 — Step 7/N: Hint-Only Path Anchoring / Closure Decision.
+
 ### Phase 11: RecoveryStrategy Registry Expansion
 
 - **Goal**: Expand the `CompilerRecoveryRegistry` to cover more structural errors.
