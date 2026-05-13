@@ -6457,6 +6457,57 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Phase 48 — Step 2/N: Replay Readback Model Scaffolding Decision.
 
 ---
+
+#### Phase 48 — Step 2/N: Replay Readback Model Scaffolding Decision
+
+- **Status**: Done.
+- **Goal**: Decide whether to implement passive replay/readback data models and helper functions after the replay/readback contract design.
+- **Decision**: GO for narrow passive scaffolding only.
+- **Approved Implementation Scope**:
+  - Add passive replay/readback data structures and helpers for semantic decision records already present in trace-shaped data.
+  - Suggested module path: `modules/agent/orchestration/replay_readback.py`.
+  - Add a readback summary model or dataclass, e.g. `ReplayReadbackSummary`.
+  - Add a compact per-record model or dictionary helper, e.g. `SemanticDecisionReadbackItem`.
+  - Add a pure function that accepts either:
+    - a trace snapshot list shaped like `snapshot_trace(state)` output, or
+    - a runtime artifacts dict containing `"orchestration_trace"`.
+  - The helper may scan for `fields["semantic_decision_record"]` and summarize records.
+  - Add unit tests for trace-list input, runtime-artifacts input, missing/malformed records, and diagnostic safety flag summaries.
+- **Initial Output Scope**:
+  - record count.
+  - domains.
+  - stages.
+  - decisions.
+  - reasons.
+  - sources.
+  - diagnostic-only count.
+  - authority-affecting count.
+  - behavior-affecting count.
+  - compact per-record items.
+- **Required Safety Properties**:
+  - Pure readback only.
+  - No runtime policy execution.
+  - No parser/compiler execution.
+  - No recovery routing execution.
+  - No dispatch execution.
+  - No ActionPolicy execution.
+  - No authority resolver or switch registry access.
+  - No state mutation.
+  - No trace export implementation change.
+  - Missing or malformed semantic records are skipped or reported as skipped diagnostic data.
+- **Forbidden**:
+  - No replay tool CLI.
+  - No replay execution of runtime decisions.
+  - No production behavior change.
+  - No protocol shadow integration.
+  - No trace export schema change.
+  - No semantic record state/container storage.
+  - No authority transfer or switch change.
+  - No legacy cleanup.
+- **Next**:
+  - Phase 48 — Step 3/N: Replay Readback Model Scaffolding Implementation.
+
+---
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.
