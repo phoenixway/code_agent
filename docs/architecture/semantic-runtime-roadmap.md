@@ -4549,6 +4549,63 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 40 — Step 2/N: Select Next Active Slice.
 
+---
+
+#### Phase 40 — Step 2/N: Select Next Active Slice
+
+- **Status**: Done.
+- **Goal**: Select the next active semantic-runtime refactor slice after candidate inventory.
+- **Decision**: Select Terminal Answer Deferred / Final-Answer Migration Review as the next active slice.
+- **Rationale**:
+  - Terminal Answer work already has a long prior migration trail and an explicit deferred final-answer path.
+  - The slice can start safely with preflight, inventory, and consumer mapping before any implementation.
+  - Final-answer behavior is high-value for live-agent quality, but must remain guarded because stop/continue behavior is sensitive.
+  - Dispatch/action boundary work remains deferred because dispatch side effects are higher risk.
+  - Recovery deferred branch review remains available as a later candidate.
+  - Legacy/compatibility cleanup remains deferred until a consumer map exists.
+- **Stop Lines for Phase 41**:
+  - `TerminalAnswerClassifier` is not sole final-answer authority.
+  - No final-answer stop/continue behavior changes.
+  - No dispatch behavior changes.
+  - No `ActionPolicy` changes.
+  - No recovery behavior changes.
+  - No production authority transfer.
+  - No legacy cleanup or deletion.
+  - No migration without a consumer map and characterization tests.
+- **Next**:
+  - Phase 41 — Terminal Answer Deferred Final-Answer Path Preflight.
+
+---
+
+### Phase 41: Terminal Answer Deferred Final-Answer Path Preflight
+
+- **Status**: Not started.
+- **Goal**: Review the deferred terminal-answer final-answer path and decide whether a narrow, behavior-preserving migration candidate exists.
+- **Allowed**:
+  - Docs-only inventory and preflight.
+  - Consumer map for final-answer-related legacy paths.
+  - Risk boundary review for stop-gates, policy, dispatch, and recovery.
+  - Design-only proposals for narrow behavior-preserving migration candidates.
+- **Forbidden**:
+  - No final-answer stop/continue behavior changes.
+  - No dispatch behavior changes.
+  - No `ActionPolicy` changes.
+  - No recovery behavior changes.
+  - No production authority transfer.
+  - No legacy cleanup or deletion.
+  - Do not make `TerminalAnswerClassifier` sole final-answer authority.
+- **Done When**:
+  - Deferred final-answer path state is inventoried.
+  - Remaining final-answer-related consumers are mapped.
+  - The slice records whether a safe narrow migration candidate exists.
+
+---
+
+#### Phase 41 — Step 1/N: Terminal Answer Deferred Final-Answer Path Preflight / Inventory
+
+- **Status**: Not started.
+- **Goal**: Inventory the current Terminal Answer deferred final-answer path state and locate remaining final-answer-related legacy consumers before any migration design.
+
 ### Phase 11: RecoveryStrategy Registry Expansion
 
 - **Goal**: Expand the `CompilerRecoveryRegistry` to cover more structural errors.

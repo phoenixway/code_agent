@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 40 — Step 1/N: Next Semantic Runtime Slice Selection / Candidate Inventory
+- **Phase**: Phase 40 — Step 2/N: Select Next Active Slice
 - **Status**: Complete.
-- **Next Step**: Phase 40 — Step 2/N: Select Next Active Slice.
-- **Boundary**: Phase 33 is closed. This step inventories candidate next slices only. No production behavior change, switch registry change, diagnostic wiring, authority transfer, dispatch behavior change, recovery behavior change, or legacy cleanup is allowed.
+- **Next Step**: Phase 41 — Step 1/N: Terminal Answer Deferred Final-Answer Path Preflight / Inventory.
+- **Boundary**: Terminal Answer deferred/final-answer migration review is selected as the next active slice. The next work is preflight/inventory only. No final-answer stop/continue behavior change, dispatch behavior change, ActionPolicy change, recovery behavior change, authority transfer, or legacy cleanup is allowed.
 
 ## Step 4I Parity Matrix
 
