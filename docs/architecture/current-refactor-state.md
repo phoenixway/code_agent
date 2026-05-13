@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 11 — Step 18/N: E_FILE_CONTENT_ACTION_MISMATCH Registry Strategy Parity Characterization
+- **Phase**: Phase 11 — Step 19/N: E_FILE_CONTENT_ACTION_MISMATCH Registry Strategy Implementation Decision
 - **Status**: Complete.
-- **Next Step**: Phase 11 — Step 19/N: E_FILE_CONTENT_ACTION_MISMATCH Registry Strategy Implementation Decision.
-- **Boundary**: Current behavior for `E_FILE_CONTENT_ACTION_MISMATCH` is locked by test-only characterization. The branch preserves reason `file_content_must_follow_action` and the file-content-order prompt. No registry implementation, recovery behavior change, production behavior change, authority transfer, switch change, dispatch behavior change, final-answer stop/continue behavior change, ActionPolicy change, bundle validator behavior change, parser/compiler behavior change, or legacy cleanup was added.
+- **Next Step**: Phase 11 — Step 20/N: E_FILE_CONTENT_ACTION_MISMATCH Registry Strategy Implementation.
+- **Boundary**: Narrow implementation is approved only for a dedicated compiler recovery strategy for `E_FILE_CONTENT_ACTION_MISMATCH` that reuses the existing `file_content_order` handler. No broad recovery rewrite, bundle validator behavior change, parser/compiler behavior change, dispatch behavior change, ActionPolicy change, final-answer stop/continue behavior change, authority transfer, switch change, or legacy cleanup is allowed.
 
 ## Step 4I Parity Matrix
 

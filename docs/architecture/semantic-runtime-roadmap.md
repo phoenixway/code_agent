@@ -5496,6 +5496,44 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 11 — Step 19/N: E_FILE_CONTENT_ACTION_MISMATCH Registry Strategy Implementation Decision
+
+- **Status**: Done.
+- **Goal**: Decide whether the `E_FILE_CONTENT_ACTION_MISMATCH` registry strategy may be implemented after parity characterization.
+- **Decision**: GO for narrow implementation only.
+- **Approved Implementation Scope**:
+  - Add one dedicated `CompilerRecoveryStrategy` for `E_FILE_CONTENT_ACTION_MISMATCH`.
+  - Expected strategy contract:
+    - `id`: `file_content_action_mismatch`.
+    - `error_codes`: `("E_FILE_CONTENT_ACTION_MISMATCH",)`.
+    - `recovery_ids`: `("file_content_must_follow_action",)`.
+    - `invalid_kind`: `file_content_must_follow_action`.
+    - `handler_key`: `file_content_order`.
+  - Reuse the existing `_compiler_strategy_file_content_order(...)` handler.
+  - Add registry resolution coverage for the new strategy tuple.
+  - Add compiler-driven routing coverage proving `E_FILE_CONTENT_ACTION_MISMATCH` routes from compiler metadata without legacy `invalid_kind`.
+  - Preserve the existing `E_FILE_CONTENT_REQUIRES_ACTION` registry/routing behavior as sibling control.
+  - Preserve existing bundle semantic validator tests showing both file-content error codes remain `INVALID_FILE_CONTENT_PAIRING`.
+- **Required Behavior Preservation**:
+  - Decision reason remains `file_content_must_follow_action`.
+  - Prompt remains `build_file_content_must_follow_action_prompt()`.
+  - Recovery source follows existing compiler strategy conventions.
+  - Existing `E_FILE_CONTENT_REQUIRES_ACTION` strategy remains unchanged.
+- **Forbidden**:
+  - No broad recovery rewrite.
+  - No bundle semantic validator behavior change.
+  - No parser/compiler behavior change.
+  - No dispatch behavior change.
+  - No ActionPolicy change.
+  - No final-answer stop/continue behavior change.
+  - No transition policy change.
+  - No authority transfer or switch change.
+  - No legacy cleanup.
+- **Next**:
+  - Phase 11 — Step 20/N: E_FILE_CONTENT_ACTION_MISMATCH Registry Strategy Implementation.
+
+---
+
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.
