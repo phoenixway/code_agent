@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 44 — Step 5/N: Semantic Decision Record Schema Scaffolding Implementation
+- **Phase**: Phase 44 — Step 6/N: Semantic Decision Record Scaffolding Closure / First Implementation Candidate Decision
 - **Status**: Complete.
-- **Next Step**: Phase 44 — Step 6/N: Semantic Decision Record Scaffolding Closure / First Wiring Candidate Review.
-- **Boundary**: Passive semantic decision record data models and tests are implemented. No diagnostic wiring, replay implementation, production behavior change, dispatch behavior change, recovery behavior change, ActionPolicy change, final-answer stop/continue behavior change, authority transfer, switch change, or legacy cleanup was added.
+- **Next Step**: Phase 44 — Step 7/N: Output-Recovery Semantic Decision Record Builder Implementation.
+- **Boundary**: Semantic decision record scaffolding is closed and the first implementation candidate is selected. Next code work is limited to a pure output-recovery semantic decision record builder and tests. No runtime diagnostic wiring, replay implementation, production behavior change, dispatch behavior change, recovery behavior change, ActionPolicy change, final-answer stop/continue behavior change, authority transfer, switch change, or legacy cleanup is allowed.
 
 ## Step 4I Parity Matrix
 

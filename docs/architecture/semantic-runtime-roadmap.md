@@ -5926,6 +5926,53 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 44 — Step 6/N: Semantic Decision Record Scaffolding Closure / First Implementation Candidate Decision
+
+- **Status**: Done.
+- **Goal**: Close semantic decision record scaffolding and choose the first implementation candidate in one pre-code step.
+- **Completed Outcome**:
+  - Closed the passive `SemanticDecisionRecord` scaffolding sub-slice after green tests.
+  - Confirmed the record model remains passive data only.
+  - Confirmed there is still no runtime integration, stage logger integration, protocol shadow integration, trace export integration, replay tool, or production behavior change.
+  - Reviewed first implementation candidates:
+    - Output-recovery compiler strategy decision record builder.
+    - Compiler metadata extraction record helper.
+    - Protocol-shadow diagnostic record emission.
+    - Trace export integration.
+  - Selected the output-recovery compiler strategy decision record builder as the first implementation candidate.
+- **Decision**: GO for a narrow pure-helper implementation only.
+- **Approved Implementation Scope for Step 7**:
+  - Add a pure helper that builds a `SemanticDecisionRecord` for output-recovery compiler strategy decisions from already-computed facts.
+  - The helper may accept compiler metadata, registry strategy data, effective decision fields, and optional details.
+  - The helper must not call runtime policy, dispatch, recovery decision logic, parser/compiler, stage logger, protocol shadow, trace export, or replay code.
+  - The helper must not mutate state.
+  - The helper must not affect runtime behavior.
+  - Add unit tests proving it builds diagnostic-safe records for resolved and unresolved registry-strategy cases.
+- **Initial Record Scope**:
+  - `domain`: `output_recovery`.
+  - `stage`: `output_recovery`.
+  - Compiler metadata snapshot.
+  - Registry resolution snapshot.
+  - Effective decision snapshot when a decision exists.
+  - Diagnostic-safe flags.
+- **Forbidden for Step 7**:
+  - No runtime diagnostic wiring.
+  - No stage logger integration.
+  - No protocol shadow integration.
+  - No trace export integration.
+  - No replay implementation.
+  - No production behavior change.
+  - No dispatch behavior change.
+  - No recovery behavior change.
+  - No ActionPolicy change.
+  - No final-answer stop/continue behavior change.
+  - No authority transfer or switch change.
+  - No legacy cleanup.
+- **Next**:
+  - Phase 44 — Step 7/N: Output-Recovery Semantic Decision Record Builder Implementation.
+
+---
+
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.
