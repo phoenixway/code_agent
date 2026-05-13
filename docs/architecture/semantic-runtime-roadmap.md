@@ -6108,6 +6108,56 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+### Phase 45: Next Semantic Runtime Slice Selection
+
+- **Status**: In Progress.
+- **Goal**: Select the next safe semantic-runtime refactor slice after closing Phase 44 Semantic Observability / Replay Preflight.
+- **Allowed**:
+  - Docs-only inventory and decision work.
+  - Compare remaining candidate slices by safety, live-agent value, observability value, and refactor risk.
+  - Select the next active slice without changing runtime behavior.
+- **Forbidden**:
+  - No production behavior change.
+  - No trace export integration yet.
+  - No protocol shadow integration yet.
+  - No replay implementation yet.
+  - No state mutation or semantic record storage.
+  - No dispatch behavior change.
+  - No recovery behavior change.
+  - No ActionPolicy change.
+  - No final-answer stop/continue behavior change.
+  - No authority transfer or switch change.
+  - No legacy cleanup.
+- **Done When**:
+  - Candidate next slices are listed.
+  - The selected next active slice is recorded.
+  - Stop lines for the selected slice are documented.
+
+---
+
+#### Phase 45 — Step 1/N: Next Semantic Runtime Slice Selection / Candidate Inventory
+
+- **Status**: Done.
+- **Goal**: Inventory candidate next slices after closing Phase 44.
+- **Completed Outcome**:
+  - Confirmed that Phase 44 closed after delivering passive semantic decision records, a pure output-recovery record builder, and diagnostic-only stage logger emission in the resolved output-recovery compiler strategy path.
+  - Identified candidate next slices:
+    - Trace Export Integration Preflight.
+    - Protocol Shadow Semantic Record Integration Preflight.
+    - Dispatch Metadata Observability Follow-up.
+    - Legacy Cleanup Preflight Refresh after Phase 44.
+    - Replay Tool Design, without implementation yet.
+  - Observed that Trace Export Integration Preflight is a natural next candidate because semantic records now exist in diagnostic logger output but are not yet surfaced through an explicit export/readback path.
+  - Observed that Protocol Shadow integration is useful but should wait until record/export shape is clearer.
+  - Observed that Dispatch Metadata observability remains valuable but higher-risk because dispatch side effects must remain untouched.
+  - Observed that Replay Tool Design should remain design-only until trace/export surfaces are better understood.
+  - Observed that Legacy Cleanup remains deferred because new observability surfaces are still young and should not trigger cleanup yet.
+  - No production behavior was changed.
+- **Next**:
+  - Phase 45 — Step 2/N: Select Next Active Slice.
+
+---
+
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.

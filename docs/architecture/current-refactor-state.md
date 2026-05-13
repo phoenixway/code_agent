@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 44 — Step 10/N: Semantic Observability / Replay Preflight Closure Review
+- **Phase**: Phase 45 — Step 1/N: Next Semantic Runtime Slice Selection / Candidate Inventory
 - **Status**: Complete.
-- **Next Step**: Phase 45 — Next Semantic Runtime Slice Selection.
-- **Boundary**: Phase 44 is closed after delivering passive semantic decision records, an output-recovery record builder, and diagnostic-only output-recovery compiler strategy record emission through existing stage logger output. No replay implementation, trace export integration, protocol shadow integration, state mutation, production behavior change, dispatch behavior change, recovery behavior change, ActionPolicy change, final-answer stop/continue behavior change, authority transfer, switch change, or legacy cleanup was added.
+- **Next Step**: Phase 45 — Step 2/N: Select Next Active Slice.
+- **Boundary**: Phase 44 is closed. This step inventories candidate next slices only. No production behavior change, trace export integration, protocol shadow integration, replay implementation, dispatch behavior change, recovery behavior change, ActionPolicy change, final-answer stop/continue behavior change, authority transfer, switch change, state mutation, or legacy cleanup is allowed.
 
 ## Step 4I Parity Matrix
 
