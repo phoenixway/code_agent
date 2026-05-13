@@ -6982,6 +6982,44 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Phase 53 — Step 4/N: Plan Review Marker Compiler Support Decision.
 
 ---
+
+#### Phase 53 — Step 4/N: Plan Review Marker Compiler Support Decision
+
+- **Status**: Done.
+- **Goal**: Decide whether to add first-class compiler/protocol support for `<plan_review_done />` after test-only characterization proved the current gap.
+- **Decision**: GO for narrow compiler/protocol support.
+- **Approved Implementation Scope**:
+  - Add `plan_review_done` as a self-closing protocol marker.
+  - Parse `<plan_review_done />` as a first-class node or marker variant instead of literal text.
+  - Lower it into passive compiler/runtime semantic facts.
+  - Add a passive semantic fact such as `has_plan_review_checkpoint`.
+  - Ensure `<plan_review_done />` alone can compile as checkpoint-only protocol.
+  - Ensure `<plan_review_done />` before an action is treated as structural checkpoint protocol, not pre-action text.
+  - Update characterization tests to the new intended behavior.
+- **Required Safety Properties**:
+  - Compiler/protocol recognition only.
+  - Passive semantic facts only.
+  - No runtime gate yet.
+  - No dispatch behavior change.
+  - No ActionPolicy change.
+  - No production behavior change beyond marker classification.
+  - No state mutation.
+  - No recovery branch yet.
+  - No repeat-edit guard yet.
+  - No automatic intent completion.
+  - No authority transfer or switch change.
+  - No legacy cleanup.
+- **Forbidden**:
+  - Do not set `plan_review_required_after_state_change` yet.
+  - Do not reject actions missing `<plan_review_done />` yet.
+  - Do not infer subgoal completion from the marker alone.
+  - Do not make `<plan_review_done />` commit subgoal changes.
+  - Do not alter `memory_update_done` behavior.
+  - Do not alter existing `<subgoal ... />` mutation semantics.
+- **Next**:
+  - Phase 53 — Step 5/N: Plan Review Marker Compiler Support Implementation.
+
+---
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.
