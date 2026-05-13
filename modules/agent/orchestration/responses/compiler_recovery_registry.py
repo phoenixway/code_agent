@@ -65,6 +65,14 @@ class CompilerRecoveryRegistry:
                 allowed_next_shapes=("PLAINTEXT_ONLY", "ACTION_ONLY", "INTENT_ONLY", "INTENT_ACTION_BUNDLE"),
             ),
             CompilerRecoveryStrategy(
+                id="mixed_intent_transition_visible_answer",
+                error_codes=("E_VISIBLE_TEXT_AFTER_INTENT",),
+                recovery_ids=("mixed_intent_transition_and_visible_answer",),
+                invalid_kind="mixed_intent_transition_and_visible_answer",
+                handler_key="mixed_intent_transition_visible_answer",
+                allowed_next_shapes=("PLAINTEXT_ONLY", "INTENT_ONLY", "INTENT_ACTION_BUNDLE"),
+            ),
+            CompilerRecoveryStrategy(
                 id="file_content_requires_action",
                 error_codes=("E_FILE_CONTENT_REQUIRES_ACTION",),
                 recovery_ids=("file_content_requires_action",),

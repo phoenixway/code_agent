@@ -5127,6 +5127,69 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 11 — Step 8/N: Mixed Intent Transition / Visible Answer Registry Strategy Implementation
+
+- **Status**: Done.
+- **Goal**: Implement the approved narrow compiler recovery strategy for `mixed_intent_transition_and_visible_answer`.
+- **Completed Outcome**:
+  - Added a dedicated `CompilerRecoveryStrategy` for `mixed_intent_transition_and_visible_answer`.
+  - Added a dedicated compiler strategy handler using `build_mixed_intent_transition_and_visible_answer_prompt()`.
+  - Added registry resolution coverage for `E_VISIBLE_TEXT_AFTER_INTENT` / `mixed_intent_transition_and_visible_answer`.
+  - Added compiler-driven routing coverage proving the branch routes from compiler metadata without legacy `invalid_kind`.
+  - Preserved existing current-behavior contract coverage.
+  - Preserved ordinary `mixed_visible_text_and_control_protocol` negative-control behavior.
+  - Decision reason remains `mixed_intent_transition_and_visible_answer`.
+  - Recovery source follows existing compiler strategy conventions.
+  - No broad recovery rewrite was added.
+  - No final-answer stop/continue behavior changed.
+  - No transition policy changed.
+  - No dispatch behavior changed.
+  - No ActionPolicy behavior changed.
+  - No authority transfer, switch change, or legacy cleanup was added.
+- **Next**:
+  - Phase 11 — Step 9/N: Mixed Intent Transition / Visible Answer Registry Strategy Closure Review.
+
+---
+
+#### Phase 11 — Step 9/N: Mixed Intent Transition / Visible Answer Registry Strategy Closure Review
+
+- **Status**: Done.
+- **Goal**: Close the completed `mixed_intent_transition_and_visible_answer` registry expansion sub-slice and decide how to continue Phase 11 efficiently.
+- **Completed Outcome**:
+  - The `mixed_intent_transition_and_visible_answer` sub-slice is closed.
+  - Green targeted tests confirmed registry resolution, compiler-driven routing, current behavior contract, and mixed-visible negative-control coverage.
+  - The completed branch preserves the expected reason, dedicated prompt, and compiler-strategy source conventions.
+  - No final-answer stop/continue behavior changed.
+  - No transition policy changed.
+  - No dispatch behavior changed.
+  - No ActionPolicy behavior changed.
+  - No authority transfer, switch change, or legacy cleanup was added.
+- **Decision**: Keep Phase 11 open and move to a fast multi-candidate structural recovery review instead of selecting only one next candidate.
+- **Candidate Batch for Review**:
+  - `conflicting_intent_transitions`.
+  - `intent_complete_with_action_not_allowed`.
+  - `protocol_tag_in_json_string`.
+  - `file_content_must_follow_action` / file-content order family, only if inventory shows registry coverage is incomplete.
+- **Review Rules for Step 10**:
+  - Classify each candidate as already-covered, safe-for-design, characterization-needed, boundary-sensitive, or no-go.
+  - Prefer small structural candidates that already have legacy prompt paths and compiler metadata.
+  - Do not implement registry strategies during the review step.
+  - Do not batch implementation until each candidate has parity expectations for reason, prompt, source, and negative controls.
+- **Forbidden for Step 10**:
+  - No registry implementation.
+  - No broad recovery rewrite.
+  - No final-answer stop/continue behavior change.
+  - No transition policy change.
+  - No `FOLLOWUP_PLAINTEXT` or `get_visible_text` migration.
+  - No dispatch behavior change.
+  - No ActionPolicy change.
+  - No authority transfer or switch change.
+  - No legacy cleanup.
+- **Next**:
+  - Phase 11 — Step 10/N: Multi-Candidate Structural Recovery Review.
+
+---
+
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.

@@ -15,6 +15,20 @@ def test_registry_resolves_unclosed_think_strategy():
     assert strategy.id == "unclosed_think"
 
 
+def test_registry_resolves_mixed_intent_transition_visible_answer_strategy():
+    registry = CompilerRecoveryRegistry()
+
+    strategy = registry.resolve(
+        error_code="E_VISIBLE_TEXT_AFTER_INTENT",
+        recovery_id="mixed_intent_transition_and_visible_answer",
+        invalid_kind="mixed_intent_transition_and_visible_answer",
+    )
+
+    assert strategy is not None
+    assert strategy.id == "mixed_intent_transition_visible_answer"
+    assert strategy.handler_key == "mixed_intent_transition_visible_answer"
+
+
 def test_registry_resolves_action_array_and_multiple_actions_separately():
     registry = CompilerRecoveryRegistry()
 

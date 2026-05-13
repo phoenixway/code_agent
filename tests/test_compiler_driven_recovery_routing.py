@@ -49,6 +49,9 @@ class DummyPromptBuilder:
     def build_mixed_visible_text_and_control_protocol_prompt(self):
         return "MIXED VISIBLE CONTROL"
 
+    def build_mixed_intent_transition_and_visible_answer_prompt(self):
+        return "MIXED INTENT TRANSITION VISIBLE ANSWER"
+
     def build_control_tag_leak_recovery_prompt(self):
         return "CONTROL TAG LEAK"
 
@@ -91,6 +94,23 @@ async def test_compiler_code_routes_mixed_visible_control_recovery_without_legac
 
     assert decision.reason == "mixed_visible_text_and_control_protocol"
     assert decision.next_query == "MIXED VISIBLE CONTROL"
+
+
+@pytest.mark.asyncio
+async def test_compiler_code_routes_mixed_intent_transition_visible_answer_without_legacy_invalid_kind():
+    handler = ModelOutputRecoveryHandler(DummyAgent(), DummyPromptBuilder())
+    parsed = ParsedModelOutput(
+        response='<intent>{"mode":"complete","intent_id":"i1"}</intent>\nDone.',
+        invalid_kind="",
+        compiler_error_code="E_VISIBLE_TEXT_AFTER_INTENT",
+        compiler_recovery_id="mixed_intent_transition_and_visible_answer",
+    )
+
+    decision = await handler.decide(parsed, malformed_action_retries=0, audit_marker_retries=0)
+
+    assert decision.reason == "mixed_intent_transition_and_visible_answer"
+    assert decision.next_query == "MIXED INTENT TRANSITION VISIBLE ANSWER"
+    assert decision.source == "compiler_recovery_strategy"
 
 
 @pytest.mark.asyncio
