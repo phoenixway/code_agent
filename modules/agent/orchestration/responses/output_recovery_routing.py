@@ -925,60 +925,6 @@ class OutputRecoveryRoutingMixin:
             audit_marker_retries=audit_marker_retries,
         )
 
-    def _compiler_strategy_mixed_intent_transition_visible_answer(
-        self,
-        parsed_output: ParsedModelOutput,
-        *,
-        invalid_kind: str,
-        malformed_action_retries: int,
-        audit_marker_retries: int,
-        compiler_meta: dict,
-    ) -> OutputRecoveryDecision:
-        repeat_fingerprint = self._compiler_repeat_fingerprint(
-            invalid_kind=invalid_kind,
-            compiler_meta=compiler_meta,
-        )
-        repeat_count = self._note_compiler_recovery_fingerprint(repeat_fingerprint)
-        builder = getattr(self.prompt_builder, "build_mixed_intent_transition_and_visible_answer_prompt", None)
-        prompt = (
-            builder()
-            if callable(builder)
-            else (
-                "SYSTEM: Your response mixed an intent transition with user-visible answer text in the same step.\n"
-                "Choose exactly one valid shape:\n"
-                "1. Return only the required top-level <intent> transition.\n"
-                "2. Or return only the final plain-text answer, with no <intent>, <action>, or other control tags.\n"
-                "3. Or return a valid atomic intent/action bundle if the next step truly needs tool use.\n"
-                "Do not put user-visible prose after an intent transition.\n"
-                "Return the corrected response from the beginning."
-            )
-        )
-        if repeat_count >= 2:
-            prompt += (
-                "\nSYSTEM: This same intent-transition / visible-answer shape error happened again."
-                "\nReturn exactly one valid shape only."
-                "\nDo not mix user-visible prose with an intent transition."
-            )
-        if repeat_count >= 3:
-            return self._terminal_recovery_loop_decision(invalid_kind)
-        self.stage_logger.log(
-            "output_recovery",
-            "continue",
-            reason=invalid_kind,
-            source="compiler_recovery_strategy",
-            universe=self._intent_universe_label(),
-            repeat_count=repeat_count,
-            repeat_fingerprint=repeat_fingerprint,
-            compiler_error_code=compiler_meta["error_code"],
-            compiler_recovery_id=compiler_meta["recovery_id"],
-        )
-        return OutputRecoveryDecision.continue_with(
-            prompt,
-            reason=invalid_kind,
-            source="compiler_recovery_strategy",
-            malformed_action_retries=malformed_action_retries,
-            audit_marker_retries=audit_marker_retries,
-        )
 
     def _compiler_strategy_file_content_order(
         self,
