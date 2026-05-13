@@ -5693,6 +5693,54 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 44 — Step 1/N: Semantic Observability / Replay Preflight Inventory
+
+- **Status**: Done.
+- **Goal**: Inventory existing semantic observability, trace, diagnostic, authority-resolution, and replay-adjacent surfaces before any implementation.
+- **Completed Outcome**:
+  - Confirmed the active slice is observability/replay preflight after Phase 11 registry expansion.
+  - Identified existing trace/export surfaces:
+    - `modules/agent/orchestration/shared/trace.py`.
+    - `modules/agent/orchestration/trace_export.py`.
+    - `orchestration_trace` state entries and trace helper tests.
+  - Identified existing stage-level logging surfaces:
+    - `stage_logger.log(...)` calls in response pipeline and output recovery routing.
+    - `output_recovery` continue/terminal diagnostics.
+    - `protocol_shadow` diagnostic logs.
+  - Identified existing authority/diagnostic resolver surfaces:
+    - `recovery_authority.py`.
+    - `terminal_answer_authority.py`.
+    - `memory_commit_authority.py`.
+    - `protocol_decision_bridge.py`.
+  - Identified semantic accessor/snapshot surfaces:
+    - `runtime_protocol_semantics.py`.
+    - `semantic_accessors.py`.
+    - compiler metadata helpers and semantic snapshots.
+  - Identified replay-adjacent tests and docs:
+    - compiler replay trace tests.
+    - protocol shadow tests.
+    - runtime protocol semantics tests.
+    - orchestration trace schema/helper tests.
+    - roadmap history of diagnostic-only authority slices.
+  - Identified high-value future replay decision points:
+    - compiler metadata extraction.
+    - compiler error-code to invalid-kind mapping.
+    - recovery registry resolution.
+    - output recovery decision construction.
+    - terminal-answer classifier/shadow results.
+    - authority resolver inputs/outputs.
+    - dispatch candidate metadata and parity diagnostics.
+    - board/memory commit authority diagnostics.
+  - Observed that diagnostic and trace surfaces already exist, but are distributed across multiple domains rather than represented by one replayable semantic decision record.
+  - Observed that the first implementation slice should be narrow and diagnostic-only, likely centered on collecting already-computed semantic decision facts rather than changing decision flow.
+  - No production behavior was changed.
+  - No diagnostic wiring was added.
+  - No replay implementation was added.
+- **Next**:
+  - Phase 44 — Step 2/N: Semantic Observability / Replay Surface Classification.
+
+---
+
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.

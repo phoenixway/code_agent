@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 43 — Step 2/N: Select Next Active Slice
+- **Phase**: Phase 44 — Step 1/N: Semantic Observability / Replay Preflight Inventory
 - **Status**: Complete.
-- **Next Step**: Phase 44 — Step 1/N: Semantic Observability / Replay Preflight Inventory.
-- **Boundary**: Semantic Observability / Replay Preflight is selected as the next active slice. The next work is docs-only inventory. No production behavior change, diagnostic wiring, replay implementation, dispatch behavior change, recovery behavior change, ActionPolicy change, final-answer stop/continue behavior change, authority transfer, switch change, or legacy cleanup is allowed yet.
+- **Next Step**: Phase 44 — Step 2/N: Semantic Observability / Replay Surface Classification.
+- **Boundary**: Current semantic observability surfaces are inventoried. No production behavior change, diagnostic wiring, replay implementation, dispatch behavior change, recovery behavior change, ActionPolicy change, final-answer stop/continue behavior change, authority transfer, switch change, or legacy cleanup was added.
 
 ## Step 4I Parity Matrix
 
