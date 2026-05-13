@@ -5795,6 +5795,62 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 44 — Step 3/N: Semantic Decision Record Schema Design
+
+- **Status**: Done.
+- **Goal**: Design a small, stable semantic decision record schema before any model implementation, diagnostic wiring, or replay tool work.
+- **Decision**: Use a minimal generic record that can describe already-computed semantic decisions across domains without becoming runtime authority.
+- **Designed Record Name**:
+  - `SemanticDecisionRecord`.
+- **Designed Core Fields**:
+  - `domain`: semantic area, e.g. `output_recovery`, `protocol_authority`, `terminal_answer`, `dispatch_metadata`, `board_memory_commit`.
+  - `stage`: pipeline or component stage that produced the record, e.g. `output_recovery`, `prevalidation`, `post_classification`, `checkpoint_stage`.
+  - `decision`: short decision label, e.g. `continue`, `terminal`, `legacy_fallback`, `compiler_strategy_resolved`, `strategy_missing`.
+  - `reason`: existing runtime reason string when available.
+  - `source`: existing runtime source string when available.
+  - `diagnostic_only`: boolean. True means the record must not affect runtime behavior.
+  - `authority_affecting`: boolean. True only if the decision changes selected authority. Initial records should normally be false.
+  - `behavior_affecting`: boolean. True only if the decision changes observable behavior. Initial records should normally be false.
+  - `compiler_metadata`: optional compiler metadata snapshot with `error_code`, `recovery_id`, `invalid_kind`, and metadata source.
+  - `registry_resolution`: optional recovery registry snapshot with `strategy_id`, `handler_key`, `resolved`, and optional `allowed_next_shapes`.
+  - `effective_decision`: optional effective outcome snapshot with `outcome_kind`, `reason`, `source`, and optional `prompt_family`.
+  - `authority_resolution`: optional authority resolver snapshot with `branch`, `switch_value`, `authority_source`, `selected_by_switch`, and fallback reason fields when available.
+  - `details`: optional dictionary for domain-specific, JSON-serializable details.
+- **Initial Domain Scope**:
+  - First implementation should target `output_recovery` only, because Phase 11 expanded compiler recovery routing and the relevant data is already computed there.
+  - Other domains should remain design-only until the first record model is stable.
+- **Replay Concept**:
+  - A record is not a replay engine.
+  - A record is replay input material: enough structured evidence to later explain why a semantic branch selected a reason/source/outcome.
+  - Replay tooling must remain deferred until records can be produced and tested without behavior changes.
+- **Schema Rules**:
+  - Records must be plain data, deterministic, and JSON-serializable.
+  - Records must not call runtime policy or dispatch code.
+  - Records must not mutate state.
+  - Records must not decide authority.
+  - Records must preserve existing runtime strings instead of inventing new behavior labels when a reason/source already exists.
+  - Domain-specific fields belong in `details` unless they become stable enough for a future typed sub-record.
+- **Testing Expectations for Future Scaffolding**:
+  - Unit tests should prove default flags are diagnostic-safe.
+  - Unit tests should prove `compiler_metadata`, `registry_resolution`, and `effective_decision` can be represented without requiring runtime objects.
+  - Unit tests should prove the record can be converted to a JSON-serializable dictionary.
+  - Tests must not require pipeline execution.
+- **Forbidden**:
+  - No model implementation in this step.
+  - No diagnostic wiring.
+  - No replay implementation.
+  - No production behavior change.
+  - No dispatch behavior change.
+  - No recovery behavior change.
+  - No ActionPolicy change.
+  - No final-answer stop/continue behavior change.
+  - No authority transfer or switch change.
+  - No legacy cleanup.
+- **Next**:
+  - Phase 44 — Step 4/N: Semantic Decision Record Schema Scaffolding Decision.
+
+---
+
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.
