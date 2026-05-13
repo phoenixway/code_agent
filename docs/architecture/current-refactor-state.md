@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 44 — Step 3/N: Semantic Decision Record Schema Design
+- **Phase**: Phase 44 — Step 4/N: Semantic Decision Record Schema Scaffolding Decision
 - **Status**: Complete.
-- **Next Step**: Phase 44 — Step 4/N: Semantic Decision Record Schema Scaffolding Decision.
-- **Boundary**: A schema for semantic decision records is designed, but not implemented. No production behavior change, diagnostic wiring, replay implementation, dispatch behavior change, recovery behavior change, ActionPolicy change, final-answer stop/continue behavior change, authority transfer, switch change, or legacy cleanup was added.
+- **Next Step**: Phase 44 — Step 5/N: Semantic Decision Record Schema Scaffolding Implementation.
+- **Boundary**: Narrow schema scaffolding is approved for plain semantic decision record data models and tests only. No diagnostic wiring, replay implementation, production behavior change, dispatch behavior change, recovery behavior change, ActionPolicy change, final-answer stop/continue behavior change, authority transfer, switch change, or legacy cleanup is allowed.
 
 ## Step 4I Parity Matrix
 

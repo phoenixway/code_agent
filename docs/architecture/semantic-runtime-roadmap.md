@@ -5851,6 +5851,53 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 44 — Step 4/N: Semantic Decision Record Schema Scaffolding Decision
+
+- **Status**: Done.
+- **Goal**: Decide whether to implement the designed semantic decision record schema as plain data scaffolding.
+- **Decision**: GO for narrow schema scaffolding only.
+- **Approved Implementation Scope**:
+  - Add a new plain-data semantic decision record module.
+  - Suggested module path: `modules/agent/orchestration/responses/semantic_decision_record.py`.
+  - Add dataclasses or equivalent plain typed records for:
+    - `CompilerMetadataSnapshot`.
+    - `RegistryResolutionSnapshot`.
+    - `EffectiveDecisionSnapshot`.
+    - `AuthorityResolutionSnapshot`.
+    - `SemanticDecisionRecord`.
+  - Add serialization helper(s) that return JSON-serializable dictionaries.
+  - Add unit tests for defaults, nested snapshots, and serialization.
+- **Initial Implementation Scope**:
+  - Model/scaffold only.
+  - No runtime integration.
+  - No stage logger integration.
+  - No protocol shadow integration.
+  - No trace export integration.
+  - No replay tool.
+- **Required Safety Properties**:
+  - Defaults are diagnostic-safe:
+    - `diagnostic_only=True`.
+    - `authority_affecting=False`.
+    - `behavior_affecting=False`.
+  - Records are passive data and do not call runtime policy, dispatch, recovery, parser/compiler, or authority code.
+  - Records preserve existing reason/source strings when supplied.
+  - Serialization omits or safely represents absent optional snapshots.
+  - Tests must not require pipeline execution.
+- **Forbidden**:
+  - No diagnostic wiring.
+  - No replay implementation.
+  - No production behavior change.
+  - No dispatch behavior change.
+  - No recovery behavior change.
+  - No ActionPolicy change.
+  - No final-answer stop/continue behavior change.
+  - No authority transfer or switch change.
+  - No legacy cleanup.
+- **Next**:
+  - Phase 44 — Step 5/N: Semantic Decision Record Schema Scaffolding Implementation.
+
+---
+
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.
