@@ -4652,6 +4652,38 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 41 — Step 3/N: Final-Answer Risk Boundary Review / Migration Candidate Decision.
 
+---
+
+#### Phase 41 — Step 3/N: Final-Answer Risk Boundary Review / Migration Candidate Decision
+
+- **Status**: Done.
+- **Goal**: Decide whether any final-answer migration candidate is safe after consumer mapping.
+- **Decision**: NO-GO for real final-answer migration in this step. Proceed only to design-only candidate review.
+- **Rationale**:
+  - `PLAINTEXT_TERMINAL_ANSWER` remains tied to final-answer authority, intent-completion finalization, visible-text handling, evidence sufficiency, and stop/continue behavior.
+  - Prevalidation terminal-text consumers can affect retry/continue behavior and therefore are not safe for direct migration without a separate characterization gate.
+  - Recovery-adjacent terminal branches such as leaked-system-result, invalid/truncated terminal text, and internal-summary-like text are already recovery/output paths and must not be merged into final-answer authority.
+  - Dispatch/action boundaries remain out of scope for this slice.
+  - `ActionPolicy` remains out of scope for this slice.
+  - Legacy cleanup remains forbidden before a stronger consumer map and migration plan exists.
+- **Approved Next Work**:
+  - Design-only review of whether a narrow final-answer migration candidate exists.
+  - Candidate review may inspect diagnostics, parity evidence, and consumer-map gaps.
+  - Candidate review must produce either a narrow design proposal or a renewed NO-GO.
+- **Forbidden**:
+  - No production behavior change.
+  - No final-answer stop/continue behavior change.
+  - No final-answer sufficiency policy change.
+  - No dispatch behavior change.
+  - No `ActionPolicy` change.
+  - No recovery behavior change.
+  - No production authority transfer.
+  - No switch changes.
+  - No legacy cleanup or deletion.
+  - Do not make `TerminalAnswerClassifier` sole final-answer authority.
+- **Next**:
+  - Phase 41 — Step 4/N: Design-Only Final-Answer Migration Candidate Review.
+
 ### Phase 11: RecoveryStrategy Registry Expansion
 
 - **Goal**: Expand the `CompilerRecoveryRegistry` to cover more structural errors.

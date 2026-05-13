@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 41 — Step 2/N: Final-Answer Consumer Map
+- **Phase**: Phase 41 — Step 3/N: Final-Answer Risk Boundary Review / Migration Candidate Decision
 - **Status**: Complete.
-- **Next Step**: Phase 41 — Step 3/N: Final-Answer Risk Boundary Review / Migration Candidate Decision.
-- **Boundary**: Final-answer-related consumers are mapped. No migration is approved yet. No final-answer stop/continue behavior change, dispatch behavior change, ActionPolicy change, recovery behavior change, authority transfer, switch change, or legacy cleanup is allowed.
+- **Next Step**: Phase 41 — Step 4/N: Design-Only Final-Answer Migration Candidate Review.
+- **Boundary**: Final-answer risk boundary review is complete. Real final-answer migration remains NO-GO. Only design-only candidate review is allowed next. No final-answer stop/continue behavior change, dispatch behavior change, ActionPolicy change, recovery behavior change, authority transfer, switch change, or legacy cleanup is allowed.
 
 ## Step 4I Parity Matrix
 
