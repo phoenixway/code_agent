@@ -6508,6 +6508,37 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Phase 48 — Step 3/N: Replay Readback Model Scaffolding Implementation.
 
 ---
+
+#### Phase 48 — Step 3/N: Replay Readback Model Scaffolding Implementation
+
+- **Status**: Done.
+- **Goal**: Implement passive replay/readback model/helper scaffolding for semantic decision records already present in trace-shaped data.
+- **Completed Outcome**:
+  - Added `modules/agent/orchestration/replay_readback.py`.
+  - Added passive dataclasses:
+    - `SemanticDecisionReadbackItem`.
+    - `ReplayReadbackSummary`.
+  - Added `summarize_semantic_decision_records(...)` as a pure helper.
+  - The helper accepts either a trace snapshot list or runtime artifacts dict containing `"orchestration_trace"`.
+  - The helper scans for `fields["semantic_decision_record"]` and returns explanation-only summary data.
+  - Added tests for trace-list input.
+  - Added tests for runtime-artifacts input.
+  - Added tests for missing and malformed semantic decision records.
+  - Added tests for diagnostic safety flag summaries.
+  - Added JSON serialization coverage.
+  - No replay execution was added.
+  - No runtime policy execution was added.
+  - No parser/compiler execution was added.
+  - No recovery routing execution was added.
+  - No dispatch or ActionPolicy execution was added.
+  - No authority resolver or switch registry access was added.
+  - No state mutation was added.
+  - No trace export implementation change was added.
+  - No production behavior changed.
+- **Next**:
+  - Phase 48 — Step 4/N: Replay Readback Scaffolding Closure / Implementation Decision.
+
+---
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.
