@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 45 — Step 2/N: Select Next Active Slice
+- **Phase**: Phase 46 — Step 1/N: Trace Export Integration Preflight Inventory / Export Surface Decision
 - **Status**: Complete.
-- **Next Step**: Phase 46 — Step 1/N: Trace Export Integration Preflight Inventory.
-- **Boundary**: Trace Export Integration Preflight is selected as the next active slice. The next work is docs-only inventory. No production behavior change, trace export integration, protocol shadow integration, replay implementation, dispatch behavior change, recovery behavior change, ActionPolicy change, final-answer stop/continue behavior change, authority transfer, switch change, state mutation, or legacy cleanup is allowed yet.
+- **Next Step**: Phase 46 — Step 2/N: Semantic Decision Record Trace Export Characterization.
+- **Boundary**: Trace/export surfaces are inventoried and the first safe export/readback candidate is selected. Next code work is limited to test-only characterization proving existing trace export can surface semantic decision records already emitted through stage logger output. No production behavior change, trace export integration change, protocol shadow integration, replay implementation, dispatch behavior change, recovery behavior change, ActionPolicy change, final-answer stop/continue behavior change, authority transfer, switch change, state mutation, or legacy cleanup is allowed.
 
 ## Step 4I Parity Matrix
 
