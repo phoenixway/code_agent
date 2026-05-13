@@ -6578,6 +6578,75 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Phase 49 — Next Semantic Runtime Slice Selection.
 
 ---
+
+### Phase 49: Next Semantic Runtime Slice Selection
+
+- **Status**: Complete.
+- **Goal**: Select the next safe semantic-runtime slice after closing Phase 48 Replay Tool Design Preflight.
+- **Candidate Slices Reviewed**:
+  - Protocol Shadow Semantic Record Integration Preflight.
+  - Dispatch Metadata Observability Follow-up.
+  - Replay CLI / Operator Workflow Design.
+  - Trace Export Helper Implementation.
+  - Legacy Cleanup Preflight Refresh.
+- **Decision**: Select Protocol Shadow Semantic Record Integration Preflight as the next active slice.
+- **Rationale**:
+  - Phase 44 introduced passive semantic decision records and diagnostic-only output-recovery record emission.
+  - Phase 46 proved those records survive existing trace/export structured-output surfaces.
+  - Phase 48 added passive replay/readback summaries without runtime execution.
+  - Protocol-shadow diagnostics have historically been used around parity and authority evidence, so the next safe question is whether semantic records should interact with that diagnostic surface.
+  - Dispatch metadata observability remains useful but higher-risk because dispatch side effects must remain untouched.
+  - Replay CLI remains deferred until an operator workflow is clearer.
+  - Trace export helper remains deferred because existing structured export and readback summary are already sufficient for the current slice.
+  - Legacy cleanup remains deferred because these observability/readback surfaces are still young.
+- **Selected Next Phase**:
+  - Phase 50 — Protocol Shadow Semantic Record Integration Preflight.
+- **Next**:
+  - Phase 50 — Step 1/N: Protocol Shadow Semantic Record Integration Preflight Inventory / Decision.
+
+---
+
+### Phase 50: Protocol Shadow Semantic Record Integration Preflight
+
+- **Status**: Complete.
+- **Goal**: Decide whether protocol-shadow diagnostics should consume, mirror, link to, or stay separate from semantic decision records.
+- **Completed Outcome**:
+  - Inventoried available protocol-shadow and semantic-record signals from current code, tests, and architecture notes.
+  - Confirmed there is no obvious dedicated `protocol_shadow.py` integration surface in the current file inventory.
+  - Confirmed `protocol_shadow` appears primarily as a diagnostic stage/convention in existing architecture history and logs, especially around authority-resolution and parity evidence.
+  - Confirmed semantic decision records already have a complete passive diagnostic path:
+    - `SemanticDecisionRecord` data model.
+    - output-recovery semantic record builder.
+    - diagnostic-only `stage_logger.log(...)` emission.
+    - preservation in `orchestration_trace`.
+    - structured trace export via existing runtime artifacts.
+    - passive replay/readback summary through `summarize_semantic_decision_records(...)`.
+  - Confirmed semantic records and protocol-shadow diagnostics overlap conceptually around explanation/authority evidence, but semantic records are currently broader and trace-shaped, while protocol-shadow is a stage/logging convention for specific diagnostic comparisons.
+- **Decision**: NO-GO for protocol-shadow semantic record integration in this slice.
+- **Rationale**:
+  - There is no clear separate protocol-shadow integration surface to target safely.
+  - Semantic records are already visible through stage logger, orchestration trace, trace export, and passive readback.
+  - Mirroring semantic records into protocol-shadow now would duplicate diagnostic data without a concrete consumer.
+  - Linking protocol-shadow to semantic records now risks blurring parity/comparator diagnostics with semantic decision readback.
+  - Keeping the surfaces separate preserves clarity: protocol-shadow remains branch/parity/authority diagnostic evidence; semantic records remain trace/readback artifacts.
+- **Deferred / Not Approved**:
+  - Protocol-shadow semantic record mirroring.
+  - Protocol-shadow semantic record consumption.
+  - Protocol-shadow links to readback summaries.
+  - Replay implementation.
+  - Runtime policy execution.
+  - Trace export implementation changes.
+  - State mutation or semantic record storage.
+  - Dispatch behavior changes.
+  - Recovery behavior changes.
+  - ActionPolicy changes.
+  - Final-answer stop/continue behavior changes.
+  - Authority transfer or switch changes.
+  - Legacy cleanup.
+- **Next**:
+  - Phase 51 — Next Semantic Runtime Slice Selection.
+
+---
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.
