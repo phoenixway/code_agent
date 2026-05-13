@@ -96,6 +96,13 @@ class CompilerRecoveryRegistry:
                 handler_key="file_content_order",
             ),
             CompilerRecoveryStrategy(
+                id="file_content_action_mismatch",
+                error_codes=("E_FILE_CONTENT_ACTION_MISMATCH",),
+                recovery_ids=("file_content_must_follow_action",),
+                invalid_kind="file_content_must_follow_action",
+                handler_key="file_content_order",
+            ),
+            CompilerRecoveryStrategy(
                 id="action_payload_array",
                 error_codes=("E_ACTION_PAYLOAD_ARRAY",),
                 recovery_ids=("action_payload_array",),

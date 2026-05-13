@@ -51,6 +51,20 @@ def test_registry_resolves_transition_conflict_strategies():
     assert complete_with_action.handler_key == "intent_complete_with_action_not_allowed"
 
 
+def test_registry_resolves_file_content_action_mismatch_strategy():
+    registry = CompilerRecoveryRegistry()
+
+    strategy = registry.resolve(
+        error_code="E_FILE_CONTENT_ACTION_MISMATCH",
+        recovery_id="file_content_must_follow_action",
+        invalid_kind="file_content_must_follow_action",
+    )
+
+    assert strategy is not None
+    assert strategy.id == "file_content_action_mismatch"
+    assert strategy.handler_key == "file_content_order"
+
+
 def test_registry_resolves_action_array_and_multiple_actions_separately():
     registry = CompilerRecoveryRegistry()
 

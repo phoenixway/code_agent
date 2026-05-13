@@ -5534,6 +5534,32 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 11 — Step 20/N: E_FILE_CONTENT_ACTION_MISMATCH Registry Strategy Implementation
+
+- **Status**: Done.
+- **Goal**: Implement the approved narrow compiler recovery strategy for `E_FILE_CONTENT_ACTION_MISMATCH`.
+- **Completed Outcome**:
+  - Added a dedicated `CompilerRecoveryStrategy` for `E_FILE_CONTENT_ACTION_MISMATCH`.
+  - Reused the existing `file_content_order` compiler strategy handler.
+  - Added registry resolution coverage for `E_FILE_CONTENT_ACTION_MISMATCH` / `file_content_must_follow_action`.
+  - Added compiler-driven routing coverage proving the branch routes from compiler metadata without legacy `invalid_kind`.
+  - Preserved existing `E_FILE_CONTENT_REQUIRES_ACTION` registry/routing behavior.
+  - Preserved existing current-behavior contract coverage.
+  - Preserved existing bundle semantic validator tests owning `INVALID_FILE_CONTENT_PAIRING` classification.
+  - Decision reason remains `file_content_must_follow_action`.
+  - Recovery source follows existing compiler strategy conventions.
+  - No broad recovery rewrite was added.
+  - No bundle semantic validator behavior changed.
+  - No parser/compiler behavior changed.
+  - No dispatch behavior changed.
+  - No ActionPolicy behavior changed.
+  - No final-answer stop/continue behavior changed.
+  - No authority transfer, switch change, or legacy cleanup was added.
+- **Next**:
+  - Phase 11 — Step 21/N: RecoveryStrategy Registry Expansion Closure Review.
+
+---
+
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.

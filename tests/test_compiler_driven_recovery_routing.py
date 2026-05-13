@@ -169,6 +169,23 @@ async def test_compiler_code_routes_file_content_pairing_recovery_without_legacy
 
 
 @pytest.mark.asyncio
+async def test_compiler_code_routes_file_content_action_mismatch_without_legacy_invalid_kind():
+    handler = ModelOutputRecoveryHandler(DummyAgent(), DummyPromptBuilder())
+    parsed = ParsedModelOutput(
+        response='<action>{"type":"read_file","path":"a.py"}</action>\n<file_content>body</file_content>',
+        invalid_kind="",
+        compiler_error_code="E_FILE_CONTENT_ACTION_MISMATCH",
+        compiler_recovery_id="file_content_must_follow_action",
+    )
+
+    decision = await handler.decide(parsed, malformed_action_retries=0, audit_marker_retries=0)
+
+    assert decision.reason == "file_content_must_follow_action"
+    assert decision.next_query == "FILE CONTENT ORDER"
+    assert decision.source == "compiler_recovery_strategy"
+
+
+@pytest.mark.asyncio
 async def test_compiler_code_routes_action_array_recovery_without_legacy_invalid_kind():
     handler = ModelOutputRecoveryHandler(DummyAgent(), DummyPromptBuilder())
     parsed = ParsedModelOutput(

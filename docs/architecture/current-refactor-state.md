@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 11 — Step 19/N: E_FILE_CONTENT_ACTION_MISMATCH Registry Strategy Implementation Decision
+- **Phase**: Phase 11 — Step 20/N: E_FILE_CONTENT_ACTION_MISMATCH Registry Strategy Implementation
 - **Status**: Complete.
-- **Next Step**: Phase 11 — Step 20/N: E_FILE_CONTENT_ACTION_MISMATCH Registry Strategy Implementation.
-- **Boundary**: Narrow implementation is approved only for a dedicated compiler recovery strategy for `E_FILE_CONTENT_ACTION_MISMATCH` that reuses the existing `file_content_order` handler. No broad recovery rewrite, bundle validator behavior change, parser/compiler behavior change, dispatch behavior change, ActionPolicy change, final-answer stop/continue behavior change, authority transfer, switch change, or legacy cleanup is allowed.
+- **Next Step**: Phase 11 — Step 21/N: RecoveryStrategy Registry Expansion Closure Review.
+- **Boundary**: Dedicated compiler recovery strategy implementation for `E_FILE_CONTENT_ACTION_MISMATCH` is complete. The branch routes from compiler metadata without legacy `invalid_kind` through the existing `file_content_order` handler and preserves reason `file_content_must_follow_action`. No broad recovery rewrite, bundle validator behavior change, parser/compiler behavior change, dispatch behavior change, ActionPolicy change, final-answer stop/continue behavior change, authority transfer, switch change, or legacy cleanup was added.
 
 ## Step 4I Parity Matrix
 
