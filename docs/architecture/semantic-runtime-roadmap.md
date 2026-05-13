@@ -6808,6 +6808,47 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Phase 52 — Step 3/N: Dispatch Metadata Observability Closure / Readback Helper Decision.
 
 ---
+
+#### Phase 52 — Step 3/N: Dispatch Metadata Observability Closure / Readback Helper Decision
+
+- **Status**: Done.
+- **Goal**: Close the Dispatch Metadata Observability Follow-up slice and decide whether to implement a dispatch metadata readback helper immediately.
+- **Completed Outcome**:
+  - Reviewed the Step 2 trace/export characterization results.
+  - Confirmed existing orchestration trace fields can carry compact `ExecutionPlan` metadata through `execution_plan`.
+  - Confirmed existing orchestration trace fields can carry compact `ExecutionCommit` metadata through `execution_commit`.
+  - Confirmed existing `OrchestrationTraceExporter.runtime_artifacts(...)` preserves those compact dispatch metadata fields through structured `orchestration_trace` output.
+  - Confirmed runtime artifacts also expose serialized `last_execution_plan` and `last_execution_commit`.
+  - Confirmed dispatch metadata is already readback-visible without production-code changes.
+  - Confirmed `ExecutionPlan.action_dispatched` remains observational/unused and must not be treated as dispatch authority.
+  - Confirmed `PlanDispatchCandidate` remains diagnostic metadata/bridge evidence only, not dispatcher input.
+  - Confirmed actual dispatch remains segment-driven.
+  - Confirmed `processed_segs`, `DispatchOutcomeHandler`, and `ExecutionCommit` remain segment-shaped side-effect boundary artifacts.
+- **Decision**: Close Phase 52 without implementing a dispatch metadata readback helper.
+- **Rationale**:
+  - The immediate observability question was answered by test-only characterization: existing trace/export/runtime-artifact surfaces already preserve dispatch metadata.
+  - A new helper would be premature until there is a concrete consumer or operator workflow requiring dispatch-specific summaries.
+  - Closing now avoids drifting from observability into dispatch migration, synthetic segment adapters, or candidate-driven dispatcher input.
+- **Deferred / Not Approved**:
+  - Dispatch metadata readback helper.
+  - Dispatch adapter implementation.
+  - Synthetic segment adapter.
+  - Candidate-driven dispatcher input.
+  - PlanDispatchCandidate authority expansion.
+  - ActionPolicy changes.
+  - Replay execution or CLI.
+  - Protocol-shadow integration.
+  - Trace export implementation changes.
+  - State mutation or semantic record storage.
+  - Recovery behavior changes.
+  - Final-answer stop/continue behavior changes.
+  - Authority transfer or switch changes.
+  - Production behavior changes.
+  - Legacy cleanup.
+- **Next**:
+  - Phase 53 — Next Semantic Runtime Slice Selection.
+
+---
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.
