@@ -21,6 +21,7 @@ plan_first_single_action = "legacy"
 memory_checkpoint_only = "compiler"
 memory_checkpoint_with_text = "compiler"
 memory_checkpoint_with_action = "compiler"
+memory_content_with_action = "compiler"
 
 [recovery]
 compiler_invalid_kind_mapping = "compiler"

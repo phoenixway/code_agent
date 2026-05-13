@@ -4017,6 +4017,35 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 36 — Step 4/N: Smoke Switch Registration / Validation.
 
+---
+
+#### Phase 36 — Step 4/N: MEMORY_CONTENT_WITH_ACTION Smoke Switch Registration / Validation
+
+- **Status**: Done.
+- **Goal**: Add smoke-switch registration and validation coverage for MEMORY_CONTENT_WITH_ACTION candidate/resolver authority, without changing runtime behavior.
+- **Allowed**:
+  - Add the `board_memory.memory_content_with_action` switch key to registries.
+  - Add smoke validation tests for compiler selection and fallback.
+- **Forbidden**:
+  - Do not change runtime behavior.
+  - Do not wire the resolver into the runtime pipeline.
+  - Do not consume `effective_commit`.
+  - Do not change `MemoryBoardStageHandler`.
+  - Do not change existing switch defaults.
+  - Do not add runtime diagnostic integration.
+- **Done When**:
+  - The switch key is added to registries.
+  - Smoke validation tests are implemented and passing.
+  - No runtime behavior has changed.
+- **Completed Outcome**:
+  - Added the `board_memory.memory_content_with_action` switch key to the registries.
+  - The default registry remains `legacy`, while the smoke registry uses `compiler`.
+  - Added smoke validation tests for compiler selection and fallback.
+  - No runtime behavior was changed, no diagnostic wiring was added, and `effective_commit` is not consumed.
+  - Phase 35 MCTA semantics remain unchanged.
+- **Next**:
+  - Phase 36 — Step 5/N: Runtime Diagnostic Integration.
+
 ### Phase 33: Search/Path Recovery UX Hardening
 
 - **Status**: Not started.

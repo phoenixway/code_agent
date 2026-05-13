@@ -2257,6 +2257,13 @@ This document is the single source of truth for the current state of the Semanti
   - No runtime behavior was changed, no diagnostic wiring was added, and `effective_commit` is not consumed.
   - Phase 35 MCTA semantics remain unchanged.
 
+- **Phase 36 — Step 4/N: MEMORY_CONTENT_WITH_ACTION Smoke Switch Registration / Validation (Complete)**
+  - Added the `board_memory.memory_content_with_action` switch key to the registries.
+  - The default registry remains `legacy`, while the smoke registry uses `compiler`.
+  - Added smoke validation tests for compiler selection and fallback.
+  - No runtime behavior was changed, no diagnostic wiring was added, and `effective_commit` is not consumed.
+  - Phase 35 MCTA semantics remain unchanged.
+
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 
 As of Phase 10, the semantic runtime refactor adopts a new guiding principle for managing the transition from legacy to compiler-driven authority. The model is:

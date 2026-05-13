@@ -1085,6 +1085,38 @@ def test_default_legacy_mode_preserves_legacy_authority_for_mcta():
     assert diag.behavior_changed is False
 
 
+def test_default_legacy_mode_preserves_legacy_authority_for_mca_content():
+    state, snapshot = _get_mca_content_snapshot_for_test()
+    # Ensure we are not in smoke mode
+    assert get_switch("board_memory.memory_content_with_action") == "legacy"
+
+    decision = resolve_memory_content_with_action_commit_authority(
+        semantic_result=state.board_checkpoint_semantic_result,
+        legacy_branch=snapshot.branch,
+        legacy_handled=snapshot.handled,
+        legacy_reason=snapshot.reason,
+        legacy_source=snapshot.source,
+        legacy_response_text=snapshot.response_text,
+        legacy_next_query=snapshot.next_query,
+        legacy_commit_attempted=snapshot.memory_commit_attempted,
+        legacy_accepted_count=snapshot.memory_commit_accepted_count,
+        legacy_rejected_count=snapshot.memory_commit_rejected_count,
+        legacy_last_memory_update_done=snapshot.last_memory_update_done,
+        legacy_pass_through_preserved=snapshot.pass_through_preserved,
+        legacy_checkpoint_removed=snapshot.checkpoint_removed_from_visible_response,
+        switch_value="legacy",
+    )
+
+    diag = decision.diagnostic
+    assert diag.branch == "board_memory.memory_content_with_action"
+    assert diag.authority_source == "legacy"
+    assert diag.selected_by_switch is False
+    assert diag.candidate_available is True
+    assert diag.commit_equivalent is True
+    assert diag.fallback_used is False
+    assert diag.behavior_changed is False
+
+
 class TestMemoryCheckpointWithActionAuthority:
     def _get_mcta_snapshot(self):
         return _get_mcta_snapshot_for_test()
@@ -1311,6 +1343,120 @@ class TestMemoryCheckpointWithActionAuthority:
         assert diag_fb.authority_source == "legacy_fallback"
         assert diag_fb.commit_equivalent is False
         assert diag_fb.commit_attempted_agreement is False
+
+
+@pytest.mark.usefixtures("smoke_registry_override")
+class TestMemoryContentWithActionSmokeValidation:
+    def _get_mca_content_snapshot(self):
+        return _get_mca_content_snapshot_for_test()
+
+    def test_smoke_compiler_authority_selected_for_mca_content(self):
+        state, snapshot = self._get_mca_content_snapshot()
+        switch_value = get_switch("board_memory.memory_content_with_action")
+        assert switch_value == "compiler"
+
+        decision = resolve_memory_content_with_action_commit_authority(
+            semantic_result=state.board_checkpoint_semantic_result,
+            legacy_branch=snapshot.branch,
+            legacy_handled=snapshot.handled,
+            legacy_reason=snapshot.reason,
+            legacy_source=snapshot.source,
+            legacy_response_text=snapshot.response_text,
+            legacy_next_query=snapshot.next_query,
+            legacy_commit_attempted=snapshot.memory_commit_attempted,
+            legacy_accepted_count=snapshot.memory_commit_accepted_count,
+            legacy_rejected_count=snapshot.memory_commit_rejected_count,
+            legacy_last_memory_update_done=snapshot.last_memory_update_done,
+            legacy_pass_through_preserved=snapshot.pass_through_preserved,
+            legacy_checkpoint_removed=snapshot.checkpoint_removed_from_visible_response,
+            switch_value=switch_value,
+        )
+
+        diag = decision.diagnostic
+        assert diag.branch == "board_memory.memory_content_with_action"
+        assert diag.switch_value == "compiler"
+        assert diag.authority_source == "compiler"
+        assert diag.selected_by_switch is True
+        assert diag.candidate_available is True
+        assert diag.commit_equivalent is True
+        assert diag.fallback_used is False
+        # This is a diagnostic-only branch-name delta, not runtime behavior transfer.
+        assert diag.behavior_changed is True
+
+    def test_smoke_compiler_authority_falls_back_on_mismatch_for_mca_content(self):
+        state, snapshot = self._get_mca_content_snapshot()
+        switch_value = get_switch("board_memory.memory_content_with_action")
+        assert switch_value == "compiler"
+
+        decision = resolve_memory_content_with_action_commit_authority(
+            semantic_result=state.board_checkpoint_semantic_result,
+            legacy_branch=snapshot.branch,
+            legacy_handled=snapshot.handled,
+            legacy_reason=snapshot.reason,
+            legacy_source=snapshot.source,
+            legacy_response_text="mismatched text",
+            legacy_next_query=snapshot.next_query,
+            legacy_commit_attempted=snapshot.memory_commit_attempted,
+            legacy_accepted_count=snapshot.memory_commit_accepted_count,
+            legacy_rejected_count=snapshot.memory_commit_rejected_count,
+            legacy_last_memory_update_done=snapshot.last_memory_update_done,
+            legacy_pass_through_preserved=snapshot.pass_through_preserved,
+            legacy_checkpoint_removed=snapshot.checkpoint_removed_from_visible_response,
+            switch_value=switch_value,
+        )
+
+        diag = decision.diagnostic
+        assert diag.authority_source == "legacy_fallback"
+        assert diag.selected_by_switch is False
+        assert diag.commit_equivalent is False
+        assert diag.response_text_agreement is False
+        assert diag.fallback_used is True
+        assert diag.behavior_changed is False
+
+    @pytest.mark.parametrize(
+        "response",
+        [
+            '<memory_update_done />\n<action>{"type":"read_file","path":"README.md"}</action>',
+            '<action>{"type":"read_file","path":"README.md"}</action>',
+            "<fact>some fact</fact>",
+            '<memory_update_done />\n<fact>some fact</fact>\n<action>{"type":"read_file","path":"README.md"}</action>',
+        ],
+        ids=[
+            "bare_marker_mcta",
+            "action_only",
+            "memory_content_without_action",
+            "mixed_marker_content_action",
+        ],
+    )
+    def test_smoke_compiler_authority_not_used_for_mca_content_negative_controls(self, response):
+        harness, state, outcome, snapshot = _run_commit_equivalence_harness(response)
+        switch_value = get_switch("board_memory.memory_content_with_action")
+        assert switch_value == "compiler"
+
+        decision = resolve_memory_content_with_action_commit_authority(
+            semantic_result=state.board_checkpoint_semantic_result,
+            legacy_branch=snapshot.branch,
+            legacy_handled=snapshot.handled,
+            legacy_reason=snapshot.reason,
+            legacy_source=snapshot.source,
+            legacy_response_text=snapshot.response_text,
+            legacy_next_query=snapshot.next_query,
+            legacy_commit_attempted=snapshot.memory_commit_attempted,
+            legacy_accepted_count=snapshot.memory_commit_accepted_count,
+            legacy_rejected_count=snapshot.memory_commit_rejected_count,
+            legacy_last_memory_update_done=snapshot.last_memory_update_done,
+            legacy_pass_through_preserved=snapshot.pass_through_preserved,
+            legacy_checkpoint_removed=snapshot.checkpoint_removed_from_visible_response,
+            switch_value=switch_value,
+        )
+
+        diag = decision.diagnostic
+        assert diag.candidate_available is False
+        assert diag.authority_source == "legacy_fallback"
+        assert diag.selected_by_switch is False
+        assert diag.fallback_used is True
+        assert diag.commit_equivalent is False
+        assert diag.behavior_changed is False
 
 
 class TestMemoryContentWithActionAuthority:
