@@ -5741,6 +5741,60 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 44 — Step 2/N: Semantic Observability / Replay Surface Classification
+
+- **Status**: Done.
+- **Goal**: Classify existing semantic observability and replay-adjacent surfaces by safety, usefulness, and implementation risk before choosing the first design target.
+- **Surface Classification**:
+  - **Safe / docs-design first**:
+    - A small semantic decision record schema that describes already-computed facts without changing runtime decisions.
+    - Compiler metadata extraction facts: `error_code`, `recovery_id`, `invalid_kind`, and metadata source.
+    - Invalid-kind mapping facts from `protocol_decision_bridge.py`.
+    - Recovery registry resolution facts: selected strategy id, handler key, and whether a strategy was found.
+    - Output recovery decision facts: decision reason, source, continue/terminal outcome, and prompt family identity.
+  - **Safe but later / diagnostic-only wiring candidate**:
+    - Emitting a semantic decision record through existing trace/stage logger surfaces.
+    - Adding structured fields to existing `protocol_shadow` diagnostics when the data is already computed.
+    - Exporting already-collected semantic decision records via existing trace export paths.
+  - **Useful but higher-risk / design later**:
+    - End-to-end replay tool execution.
+    - Runtime pipeline integration that records every semantic decision across stages.
+    - Dispatch/action boundary replay because dispatch side effects must remain untouched.
+    - Board/memory commit authority replay because commit equivalence and handler snapshots are domain-specific.
+    - Terminal-answer replay because it overlaps final-answer stop/continue and sufficiency policy.
+  - **Not approved in this slice**:
+    - Any authority selection change.
+    - Any switch behavior change.
+    - Any new replay execution path that can affect runtime decisions.
+    - Any broad production logging expansion without a small schema and tests.
+- **Decision**: Select Semantic Decision Record Schema Design as the first safe design target.
+- **Rationale**:
+  - Existing observability data is useful but scattered across `stage_logger`, `orchestration_trace`, `protocol_shadow`, authority resolvers, semantic accessors, and domain-specific tests.
+  - A stable record schema can unify the vocabulary before any wiring or replay implementation.
+  - A schema-only step can be validated with tests without changing runtime behavior.
+  - The record should initially describe facts already available in recovery routing and compiler metadata paths, especially after Phase 11 expanded registry coverage.
+- **Initial Schema Scope for Next Step**:
+  - Decision domain, e.g. `output_recovery`, `protocol_authority`, `terminal_answer`, `dispatch_metadata`, `board_memory_commit`.
+  - Compiler metadata snapshot: `error_code`, `recovery_id`, `invalid_kind`, source.
+  - Registry resolution snapshot: strategy id, handler key, resolved/not resolved.
+  - Effective decision: reason, source, outcome kind, and prompt family when applicable.
+  - Boundary flags: diagnostic-only, authority-affecting, behavior-affecting.
+  - Optional free-form details for future domain-specific fields.
+- **Forbidden for Next Step**:
+  - No runtime diagnostic wiring yet.
+  - No replay tool implementation.
+  - No production behavior change.
+  - No dispatch behavior change.
+  - No recovery behavior change.
+  - No ActionPolicy change.
+  - No final-answer stop/continue behavior change.
+  - No authority transfer or switch change.
+  - No legacy cleanup.
+- **Next**:
+  - Phase 44 — Step 3/N: Semantic Decision Record Schema Design.
+
+---
+
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.
