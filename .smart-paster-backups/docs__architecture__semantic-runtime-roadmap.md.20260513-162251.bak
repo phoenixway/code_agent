@@ -4391,26 +4391,6 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 33 — Step 3/N: Repeat Broad Search / Invalid Path Gap Decision.
 
----
-
-#### Phase 33 — Step 3/N: Repeat Broad Search / Invalid Path Gap Decision
-
-- **Status**: Done.
-- **Goal**: Decide which Phase 33 gap should be handled first after current-behavior characterization.
-- **Decision**: Handle repeat broad-search characterization first.
-- **Rationale**:
-  - Phase 32 explicitly deferred hard repeat broad-search blocking and automatic path memory anchoring.
-  - Phase 32 broad-search histogram is already the primary mitigation, so the next safe step is to characterize repeated broad-search behavior before considering any guard.
-  - Repeat broad-search characterization is narrower and safer than path anchoring because it does not require memory-board writes or persistent path state.
-  - Invalid-path recovery prompt behavior is already partially hardened and characterized, so it can remain a follow-up gap after repeat broad-search behavior is pinned down.
-- **Deferred Gaps**:
-  - Invalid-path recovery prompt hardening remains available as a later Phase 33 step.
-  - Hint-only path anchoring design remains available as a later Phase 33 step.
-  - Hard repeat-search blocking remains forbidden until characterization proves the exact failure mode and safe intervention point.
-  - Automatic memory-board path anchoring remains forbidden.
-- **Next**:
-  - Phase 33 — Step 4/N: Repeat Broad Search Characterization.
-
 ### Phase 11: RecoveryStrategy Registry Expansion
 
 - **Goal**: Expand the `CompilerRecoveryRegistry` to cover more structural errors.
