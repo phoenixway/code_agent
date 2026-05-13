@@ -5474,6 +5474,28 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 11 — Step 18/N: E_FILE_CONTENT_ACTION_MISMATCH Registry Strategy Parity Characterization
+
+- **Status**: Done.
+- **Goal**: Add test-only characterization for current `E_FILE_CONTENT_ACTION_MISMATCH` behavior before any registry implementation.
+- **Completed Outcome**:
+  - Added a current-behavior contract test for `E_FILE_CONTENT_ACTION_MISMATCH`.
+  - The test proves the branch preserves decision reason `file_content_must_follow_action`.
+  - The test proves the branch uses the same file-content-order prompt as `E_FILE_CONTENT_REQUIRES_ACTION`.
+  - The test verifies that the branch does not accidentally use action-array or transition-conflict prompt language.
+  - Existing `E_FILE_CONTENT_REQUIRES_ACTION` registry/routing behavior remains the sibling control.
+  - Existing bundle semantic validator tests continue to own `INVALID_FILE_CONTENT_PAIRING` classification.
+  - No `CompilerRecoveryRegistry` strategy was added.
+  - No compiler metadata routing behavior was changed.
+  - No bundle semantic validator behavior changed.
+  - No parser/compiler behavior changed.
+  - No recovery behavior changed.
+  - No production behavior changed.
+- **Next**:
+  - Phase 11 — Step 19/N: E_FILE_CONTENT_ACTION_MISMATCH Registry Strategy Implementation Decision.
+
+---
+
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.

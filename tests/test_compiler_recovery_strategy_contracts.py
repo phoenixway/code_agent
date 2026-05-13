@@ -199,6 +199,29 @@ async def test_unclosed_think_strategy_contract():
 
 
 @pytest.mark.asyncio
+async def test_file_content_action_mismatch_current_contract():
+    decision = await _handler().decide(
+        ParsedModelOutput(
+            response='<action>{"type":"read_file","path":"a.py"}</action>\n<file_content>body</file_content>',
+            invalid_kind="file_content_must_follow_action",
+            compiler_error_code="E_FILE_CONTENT_ACTION_MISMATCH",
+            compiler_recovery_id="file_content_must_follow_action",
+        ),
+        malformed_action_retries=0,
+        audit_marker_retries=0,
+    )
+
+    prompt = decision.next_query or ""
+    assert decision.reason == "file_content_must_follow_action"
+    assert "The <file_content> block must appear immediately after </action>" in prompt
+    assert "<file_content>\nraw content\n</file_content>" in prompt
+    assert "do not put <file_content> inside <action>, before <action>" in prompt
+    assert "return action first, then the raw file_content block in the required order" in prompt
+    assert "JSON array" not in prompt
+    assert "conflicting intent transitions" not in prompt
+
+
+@pytest.mark.asyncio
 async def test_file_content_pairing_strategy_contract():
     decision = await _handler().decide(
         ParsedModelOutput(
