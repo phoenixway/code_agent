@@ -6158,6 +6158,68 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 45 — Step 2/N: Select Next Active Slice
+
+- **Status**: Done.
+- **Goal**: Select the next active semantic-runtime slice after candidate inventory.
+- **Decision**: Select Trace Export Integration Preflight as the next active slice.
+- **Rationale**:
+  - Phase 44 introduced passive semantic decision records and diagnostic-only output-recovery compiler-strategy record emission.
+  - Semantic decision records now exist in diagnostic logger output, but there is no explicit export/readback path for analyzing them as artifacts.
+  - Trace Export Integration Preflight can start docs-first and inventory-only without changing production behavior.
+  - Trace/export work is lower risk than protocol-shadow integration, dispatch observability, or replay tooling because it can first classify existing export/readback surfaces before any wiring.
+  - Replay Tool Design remains deferred until trace/export surfaces are understood.
+  - Protocol Shadow integration remains deferred until record shape and export/readback needs are clearer.
+  - Dispatch Metadata observability remains deferred because dispatch side effects must remain untouched.
+  - Legacy Cleanup remains deferred because new observability surfaces are still young.
+- **Selected Next Phase**:
+  - Phase 46 — Trace Export Integration Preflight.
+- **Forbidden for Next Phase Start**:
+  - No production behavior change.
+  - No trace export integration yet.
+  - No protocol shadow integration.
+  - No replay implementation.
+  - No state mutation or semantic record storage.
+  - No dispatch behavior change.
+  - No recovery behavior change.
+  - No ActionPolicy change.
+  - No final-answer stop/continue behavior change.
+  - No authority transfer or switch change.
+  - No legacy cleanup.
+- **Next**:
+  - Phase 46 — Step 1/N: Trace Export Integration Preflight Inventory.
+
+---
+
+### Phase 46: Trace Export Integration Preflight
+
+- **Status**: In Progress.
+- **Goal**: Design a safe path for exporting or reading back semantic decision records from existing trace/log surfaces before implementing trace export integration.
+- **Allowed**:
+  - Docs-only inventory and design work.
+  - Inventory existing trace export code and tests.
+  - Inventory how `stage_logger` output is represented in traces or logs.
+  - Identify whether semantic decision records can be exported from existing diagnostic output without new runtime state.
+  - Classify candidate export/readback surfaces by safety and implementation risk.
+- **Forbidden**:
+  - No production behavior change.
+  - No trace export integration yet.
+  - No protocol shadow integration.
+  - No replay implementation.
+  - No state mutation or semantic record storage.
+  - No dispatch behavior change.
+  - No recovery behavior change.
+  - No ActionPolicy change.
+  - No final-answer stop/continue behavior change.
+  - No authority transfer or switch change.
+  - No legacy cleanup.
+- **Done When**:
+  - Existing trace export/readback surfaces are inventoried.
+  - Candidate semantic decision record export paths are classified.
+  - The first safe export/readback implementation slice is selected or deferred.
+
+---
+
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.

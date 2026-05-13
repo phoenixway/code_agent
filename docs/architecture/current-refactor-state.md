@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 45 — Step 1/N: Next Semantic Runtime Slice Selection / Candidate Inventory
+- **Phase**: Phase 45 — Step 2/N: Select Next Active Slice
 - **Status**: Complete.
-- **Next Step**: Phase 45 — Step 2/N: Select Next Active Slice.
-- **Boundary**: Phase 44 is closed. This step inventories candidate next slices only. No production behavior change, trace export integration, protocol shadow integration, replay implementation, dispatch behavior change, recovery behavior change, ActionPolicy change, final-answer stop/continue behavior change, authority transfer, switch change, state mutation, or legacy cleanup is allowed.
+- **Next Step**: Phase 46 — Step 1/N: Trace Export Integration Preflight Inventory.
+- **Boundary**: Trace Export Integration Preflight is selected as the next active slice. The next work is docs-only inventory. No production behavior change, trace export integration, protocol shadow integration, replay implementation, dispatch behavior change, recovery behavior change, ActionPolicy change, final-answer stop/continue behavior change, authority transfer, switch change, state mutation, or legacy cleanup is allowed yet.
 
 ## Step 4I Parity Matrix
 
