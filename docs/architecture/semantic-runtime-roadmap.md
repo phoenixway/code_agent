@@ -5231,6 +5231,43 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 11 — Step 11/N: Transition-Conflict Registry Strategy Batch Design
+
+- **Status**: Done.
+- **Goal**: Design registry strategy contracts for the selected transition-conflict candidates before any implementation.
+- **Designed Strategy Contract: `conflicting_intent_transitions`**:
+  - `id`: `conflicting_intent_transitions`.
+  - `error_codes`: `("E_MULTIPLE_INTENTS",)`.
+  - `recovery_ids`: `("conflicting_intent_transitions",)`.
+  - `invalid_kind`: `conflicting_intent_transitions`.
+  - `handler_key`: `conflicting_intent_transitions`.
+  - Prompt expectation: use `build_conflicting_intent_transitions_prompt()`.
+  - Decision reason expectation: `conflicting_intent_transitions`.
+  - Source expectation: preserve existing compiler strategy source conventions.
+- **Designed Strategy Contract: `intent_complete_with_action_not_allowed`**:
+  - `id`: `intent_complete_with_action_not_allowed`.
+  - `error_codes`: `("E_INTENT_COMPLETE_WITH_ACTION",)`.
+  - `recovery_ids`: `("intent_complete_with_action_not_allowed",)`.
+  - `invalid_kind`: `intent_complete_with_action_not_allowed`.
+  - `handler_key`: `intent_complete_with_action_not_allowed`.
+  - Prompt expectation: use `build_completion_with_action_not_allowed_prompt()`.
+  - Decision reason expectation: `intent_complete_with_action_not_allowed`.
+  - Source expectation: preserve existing compiler strategy source conventions.
+- **Required Parity Tests Before Implementation**:
+  - Add registry tests proving both future tuples resolve to the intended strategy contracts.
+  - Add compiler-driven routing tests proving both branches can route from compiler metadata without legacy `invalid_kind`.
+  - Add or preserve current-behavior tests proving existing legacy paths return the same reasons and prompts.
+  - Negative control: preserve the already implemented `mixed_intent_transition_and_visible_answer` and `mixed_visible_text_and_control_protocol` paths.
+- **Boundary Notes**:
+  - Both candidates are boundary-sensitive because they touch transition territory.
+  - This design does not approve `FOLLOWUP_PLAINTEXT`, `get_visible_text`, terminal-answer authority, final-answer stop/continue behavior changes, or transition policy changes.
+  - `E_INTENT_COMPLETE_WITH_ACTION` remains deferred/UNKNOWN in the bundle semantic validator; this step does not change that validator boundary.
+  - Registry implementation is still forbidden until parity characterization is green.
+- **Next**:
+  - Phase 11 — Step 12/N: Transition-Conflict Registry Strategy Batch Parity Characterization.
+
+---
+
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.

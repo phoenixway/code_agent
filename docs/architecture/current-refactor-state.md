@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 11 — Step 10/N: Multi-Candidate Structural Recovery Review
+- **Phase**: Phase 11 — Step 11/N: Transition-Conflict Registry Strategy Batch Design
 - **Status**: Complete.
-- **Next Step**: Phase 11 — Step 11/N: Transition-Conflict Registry Strategy Batch Design.
-- **Boundary**: Multi-candidate review is complete. `conflicting_intent_transitions` and `intent_complete_with_action_not_allowed` are selected for design-only batch review. No registry implementation, recovery behavior change, production behavior change, authority transfer, switch change, dispatch behavior change, final-answer stop/continue behavior change, ActionPolicy change, transition policy change, or legacy cleanup is allowed yet.
+- **Next Step**: Phase 11 — Step 12/N: Transition-Conflict Registry Strategy Batch Parity Characterization.
+- **Boundary**: Registry strategy contracts are designed for `conflicting_intent_transitions` and `intent_complete_with_action_not_allowed`, but not implemented. Next work is test-only parity characterization. No registry implementation, recovery behavior change, production behavior change, authority transfer, switch change, dispatch behavior change, final-answer stop/continue behavior change, ActionPolicy change, transition policy change, or legacy cleanup is allowed yet.
 
 ## Step 4I Parity Matrix
 
