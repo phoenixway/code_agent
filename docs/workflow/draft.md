@@ -216,4 +216,5 @@ If this file conflicts with docs/architecture/*, docs/architecture wins.
 212. Phase 35 — Step 9/10: MEMORY_CHECKPOINT_WITH_ACTION Live Smoke Re-run / Closure Decision (Complete). Manual live smoke re-run passed. MCTA diagnostic showed `commit_equivalent=True` and `authority_source="compiler"`. Runtime behavior was preserved.
 213. Phase 35 — Step 10/10: MEMORY_CHECKPOINT_WITH_ACTION Closure / Next Branch Selection (Complete). Phase 35 is complete. MCTA branch is validated. Default registry remains legacy. No production behavior changed.
 214. Phase 36 — Step 1/N: MEMORY_CONTENT_WITH_ACTION Commit Policy Characterization / Inventory (Complete). Inventoried the distinct live/runtime case where a checkpoint includes a durable memory content tag and an action. Added a characterization test. No production behavior changed.
-215. Next: Phase 36 — Step 2/N: Design a candidate/resolver model for memory content + action.
+215. Phase 36 — Step 2/N: MEMORY_CONTENT_WITH_ACTION Candidate / Resolver Model Design (Complete). Added a candidate/resolver model for durable memory content + action, distinct from Phase 35 bare-marker MCTA. No runtime behavior changed.
+216. Next: Phase 36 — Step 3/N: Commit-Equivalence Hardening / Smoke Switch Planning.

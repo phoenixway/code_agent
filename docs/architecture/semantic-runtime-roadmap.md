@@ -3961,6 +3961,34 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 36 — Step 2/N: Design a candidate/resolver model for memory content + action.
 
+---
+
+#### Phase 36 — Step 2/N: MEMORY_CONTENT_WITH_ACTION Candidate / Resolver Model Design
+
+- **Status**: Done.
+- **Goal**: Design and add a typed candidate/resolver model for the distinct memory content tag + action case, without changing runtime behavior.
+- **Allowed**:
+  - Add a new candidate builder and resolver for memory content + action.
+  - Add targeted tests for candidate/resolver behavior.
+- **Forbidden**:
+  - Do not change runtime behavior.
+  - Do not wire the new resolver into the runtime pipeline.
+  - Do not consume `effective_commit`.
+  - Do not change `MemoryBoardStageHandler`.
+  - Do not change switch registry or flip defaults.
+- **Done When**:
+  - The candidate/resolver model is implemented with tests.
+  - No runtime behavior has changed.
+- **Completed Outcome**:
+  - Added a candidate builder and resolver for the distinct durable memory content + action case.
+  - The model is distinct from the Phase 35 bare-marker MCTA model and uses `compiler_has_memory_tags` and the absence of `compiler_has_memory_checkpoint` to distinguish.
+  - Added targeted tests for the new candidate/resolver, including negative controls for the bare-marker MCTA case.
+  - No runtime behavior was changed.
+  - No runtime diagnostic wiring was added, and `effective_commit` is not consumed.
+  - No registry or default switch changes were made.
+- **Next**:
+  - Phase 36 — Step 3/N: Commit-Equivalence Hardening / Smoke Switch Planning.
+
 ### Phase 33: Search/Path Recovery UX Hardening
 
 - **Status**: Not started.

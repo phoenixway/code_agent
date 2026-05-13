@@ -14,9 +14,11 @@ from modules.agent.orchestration.responses.memory_commit_authority import (
     build_memory_checkpoint_only_commit_candidate,
     build_memory_checkpoint_with_action_commit_candidate,
     build_memory_checkpoint_with_text_commit_candidate,
+    build_memory_content_with_action_commit_candidate,
     resolve_memory_checkpoint_only_commit_authority,
     resolve_memory_checkpoint_with_action_commit_authority,
     resolve_memory_checkpoint_with_text_commit_authority,
+    resolve_memory_content_with_action_commit_authority,
 )
 from modules.agent.orchestration.responses.response_pipeline_prevalidation import ResponsePipelinePrevalidationMixin
 from modules.agent.orchestration.responses.response_pipeline_stages import ResponsePipelineStagesMixin
@@ -1018,6 +1020,24 @@ class TestMemoryCheckpointWithTextSmokeValidation:
         assert diag.behavior_changed is False
 
 
+def _get_mca_content_snapshot_for_test():
+    response = '<fact>some fact</fact>\n<action>{"type":"read_file","path":"README.md"}</action>'
+    mock_agent = SimpleNamespace(state=SimpleNamespace(), memory_board_engine=MagicMock(), log=None)
+    mock_prompt_builder = SimpleNamespace(_current_active_intent_id=MagicMock(return_value="intent_123"))
+    mock_board_result = SimpleNamespace(
+        parsed_count=1,
+        accepted_count=1,
+        rejected_count=0,
+        clean_text='<action>{"type":"read_file","path":"README.md"}</action>',
+    )
+    mock_agent.memory_board_engine.apply_response_text.return_value = mock_board_result
+    real_handler = MemoryBoardStageHandler(mock_agent, mock_prompt_builder)
+    harness, state, outcome, snapshot = _run_commit_equivalence_harness(
+        response, memory_board_stage=real_handler
+    )
+    return state, snapshot
+
+
 def _get_mcta_snapshot_for_test():
     response = '<memory_update_done />\n<action>{"type":"read_file","path":"README.md"}</action>'
     mock_agent = SimpleNamespace(state=SimpleNamespace(), memory_board_engine=MagicMock(), log=None)
@@ -1291,6 +1311,194 @@ class TestMemoryCheckpointWithActionAuthority:
         assert diag_fb.authority_source == "legacy_fallback"
         assert diag_fb.commit_equivalent is False
         assert diag_fb.commit_attempted_agreement is False
+
+
+class TestMemoryContentWithActionAuthority:
+    def _get_mca_content_snapshot(self):
+        return _get_mca_content_snapshot_for_test()
+
+    def test_candidate_builder_for_real_handler_mca_content(self):
+        state, snapshot = self._get_mca_content_snapshot()
+        candidate = build_memory_content_with_action_commit_candidate(state.board_checkpoint_semantic_result)
+
+        assert candidate.candidate_available is True
+        assert candidate.branch == "MEMORY_CONTENT_WITH_ACTION"
+        assert candidate.has_memory_checkpoint is False
+        assert candidate.has_action is True
+        assert candidate.has_visible_text is False
+        assert candidate.expected_handled is False
+        assert candidate.expected_reason == "memory_checkpoint_and_action"
+        assert candidate.expected_source == "memory_board"
+        assert candidate.expected_commit_attempted is True
+        assert candidate.expected_commit_accepted_count == 1
+        assert candidate.expected_commit_rejected_count == 0
+        assert candidate.expected_last_memory_update_done is False
+        assert candidate.expected_pass_through_preserved is True
+
+    @pytest.mark.parametrize(
+        "response",
+        [
+            None,
+            "",
+            "<think>oops",
+            "<memory_update_done />",
+            "<memory_update_done />\nDone.",
+            '<action>{"type":"read_file","path":"README.md"}</action>',
+            '<subgoal action="mark_in_progress" id="sg_1" />\n<action>{"type":"read_file","path":"README.md"}</action>',
+            '<memory_update_done />\n<action>{"type":"read_file","path":"README.md"}</action>',
+        ],
+        ids=[
+            "none_response",
+            "empty_response",
+            "compiler_error",
+            "mco",
+            "mct",
+            "action_only",
+            "plan_checkpoint_with_action",
+            "bare_marker_mcta",
+        ],
+    )
+    def test_candidate_builder_unavailable_for_mca_content_negative_controls(self, response):
+        if response is None:
+            candidate = build_memory_content_with_action_commit_candidate(None)
+            assert candidate.candidate_available is False
+            assert "no_semantic_result" in candidate.blocking_reasons
+            return
+
+        harness, state, outcome, snapshot = _run_commit_equivalence_harness(response)
+        candidate = build_memory_content_with_action_commit_candidate(state.board_checkpoint_semantic_result)
+        assert candidate.candidate_available is False
+
+    def test_resolver_legacy_mode_preserves_legacy_snapshot_for_mca_content(self):
+        state, snapshot = self._get_mca_content_snapshot()
+        decision = resolve_memory_content_with_action_commit_authority(
+            semantic_result=state.board_checkpoint_semantic_result,
+            legacy_branch=snapshot.branch,
+            legacy_handled=snapshot.handled,
+            legacy_reason=snapshot.reason,
+            legacy_source=snapshot.source,
+            legacy_response_text=snapshot.response_text,
+            legacy_next_query=snapshot.next_query,
+            legacy_commit_attempted=snapshot.memory_commit_attempted,
+            legacy_accepted_count=snapshot.memory_commit_accepted_count,
+            legacy_rejected_count=snapshot.memory_commit_rejected_count,
+            legacy_last_memory_update_done=snapshot.last_memory_update_done,
+            legacy_pass_through_preserved=snapshot.pass_through_preserved,
+            legacy_checkpoint_removed=snapshot.checkpoint_removed_from_visible_response,
+            switch_value="legacy",
+        )
+
+        diag = decision.diagnostic
+        assert diag.branch == "board_memory.memory_content_with_action"
+        assert diag.switch_value == "legacy"
+        assert diag.authority_source == "legacy"
+        assert diag.selected_by_switch is False
+        assert diag.candidate_available is True
+        assert diag.commit_equivalent is True
+        assert diag.fallback_used is False
+        assert diag.behavior_changed is False  # legacy branch != candidate branch
+
+    def test_resolver_compiler_mode_selects_compiler_on_agreement_for_mca_content(self):
+        state, snapshot = self._get_mca_content_snapshot()
+        decision = resolve_memory_content_with_action_commit_authority(
+            semantic_result=state.board_checkpoint_semantic_result,
+            legacy_branch=snapshot.branch,
+            legacy_handled=snapshot.handled,
+            legacy_reason=snapshot.reason,
+            legacy_source=snapshot.source,
+            legacy_response_text=snapshot.response_text,
+            legacy_next_query=snapshot.next_query,
+            legacy_commit_attempted=snapshot.memory_commit_attempted,
+            legacy_accepted_count=snapshot.memory_commit_accepted_count,
+            legacy_rejected_count=snapshot.memory_commit_rejected_count,
+            legacy_last_memory_update_done=snapshot.last_memory_update_done,
+            legacy_pass_through_preserved=snapshot.pass_through_preserved,
+            legacy_checkpoint_removed=snapshot.checkpoint_removed_from_visible_response,
+            switch_value="compiler",
+        )
+
+        diag = decision.diagnostic
+        assert diag.branch == "board_memory.memory_content_with_action"
+        assert diag.switch_value == "compiler"
+        assert diag.authority_source == "compiler"
+        assert diag.selected_by_switch is True
+        assert diag.candidate_available is True
+        assert diag.commit_equivalent is True
+        assert diag.fallback_used is False
+        # Diagnostic-only branch-name delta: compiler-selected MCA content uses
+        # candidate_branch MEMORY_CONTENT_WITH_ACTION while legacy_branch remains
+        # MEMORY_CHECKPOINT_WITH_ACTION. The resolver is not wired into runtime and
+        # effective_commit is not consumed, so this does not represent runtime behavior transfer.
+        assert diag.behavior_changed is True
+
+    @pytest.mark.parametrize(
+        "mismatch_kwargs, expected_mismatch_field",
+        [
+            ({"legacy_pass_through_preserved": False}, "pass_through_agreement"),
+            ({"legacy_checkpoint_removed": True}, "checkpoint_removed_agreement"),
+            ({"legacy_commit_attempted": False}, "commit_attempted_agreement"),
+            ({"legacy_accepted_count": 0}, "accepted_count_agreement"),
+            ({"legacy_rejected_count": 1}, "rejected_count_agreement"),
+            ({"legacy_last_memory_update_done": True}, "state_flags_agreement"),
+            ({"legacy_branch": "something_else"}, "commit_equivalent"),
+            ({"legacy_response_text": "Done."}, "response_text_agreement"),
+            ({"legacy_response_text": "<action>malformed"}, "response_text_agreement"),
+            ({"legacy_handled": True}, "handled_agreement"),
+        ],
+        ids=[
+            "pass_through_mismatch",
+            "checkpoint_removed_mismatch",
+            "commit_attempted_mismatch",
+            "accepted_count_mismatch",
+            "rejected_count_mismatch",
+            "last_memory_update_done_mismatch",
+            "branch_mismatch",
+            "response_text_plaintext_mismatch",
+            "response_text_malformed_action_mismatch",
+            "handled_mismatch",
+        ],
+    )
+    def test_resolver_compiler_mode_falls_back_on_mismatch_for_mca_content(
+        self, mismatch_kwargs, expected_mismatch_field
+    ):
+        state, snapshot = self._get_mca_content_snapshot()
+        legacy_kwargs = {
+            "legacy_branch": snapshot.branch,
+            "legacy_handled": snapshot.handled,
+            "legacy_reason": snapshot.reason,
+            "legacy_source": snapshot.source,
+            "legacy_response_text": snapshot.response_text,
+            "legacy_next_query": snapshot.next_query,
+            "legacy_commit_attempted": snapshot.memory_commit_attempted,
+            "legacy_accepted_count": snapshot.memory_commit_accepted_count,
+            "legacy_rejected_count": snapshot.memory_commit_rejected_count,
+            "legacy_last_memory_update_done": snapshot.last_memory_update_done,
+            "legacy_pass_through_preserved": snapshot.pass_through_preserved,
+            "legacy_checkpoint_removed": snapshot.checkpoint_removed_from_visible_response,
+        }
+        legacy_kwargs.update(mismatch_kwargs)
+
+        decision = resolve_memory_content_with_action_commit_authority(
+            semantic_result=state.board_checkpoint_semantic_result,
+            switch_value="compiler",
+            **legacy_kwargs,
+        )
+
+        diag = decision.diagnostic
+        assert diag.authority_source == "legacy_fallback"
+        assert diag.selected_by_switch is False
+        assert diag.commit_equivalent is False
+        if expected_mismatch_field != "commit_equivalent":
+            assert getattr(diag, expected_mismatch_field) is False
+        assert diag.fallback_used is True
+        assert diag.behavior_changed is False
+
+    def test_bare_marker_mcta_is_not_mca_content(self):
+        """Ensures the Phase 35 bare marker + action case is not misclassified as content+action."""
+        state, snapshot = _get_mcta_snapshot_for_test()
+        candidate = build_memory_content_with_action_commit_candidate(state.board_checkpoint_semantic_result)
+        assert candidate.candidate_available is False
+        assert "not_clean_memory_content_with_action" in candidate.blocking_reasons
 
 
 class TestMemoryCommitEquivalence:

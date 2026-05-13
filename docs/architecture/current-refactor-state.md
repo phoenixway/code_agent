@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 36 — Step 1/N: MEMORY_CONTENT_WITH_ACTION Commit Policy Characterization / Inventory
+- **Phase**: Phase 36 — Step 2/N: MEMORY_CONTENT_WITH_ACTION Candidate / Resolver Model Design
 - **Status**: Complete.
-- **Next Step**: Phase 36 — Step 2/N: Design a candidate/resolver model for memory content + action.
-- **Boundary**: Phase 36 Step 1 characterized durable memory content tag + action. This is distinct from Phase 35 bare `<memory_update_done />` marker + action. No production behavior change. No authority transfer. No `effective_commit` consumption. No default registry flip.
+- **Next Step**: Phase 36 — Step 3/N: Commit-Equivalence Hardening / Smoke Switch Planning.
+- **Boundary**: Phase 36 Step 2 added a candidate/resolver model for durable memory content + action, distinct from Phase 35 bare-marker MCTA. No production behavior change. No authority transfer. No `effective_commit` consumption. No default registry flip. No runtime diagnostic wiring.
 
 ## Step 4I Parity Matrix
 
@@ -2243,6 +2243,13 @@ This document is the single source of truth for the current state of the Semanti
   - This case is distinct from the Phase 35 bare-marker MCTA because it involves a durable content commit (`accepted_count=1`).
   - Added a characterization test to `tests/test_board_memory_commit_equivalence.py` to snapshot the legacy behavior.
   - No production behavior was changed.
+- **Phase 36 — Step 2/N: MEMORY_CONTENT_WITH_ACTION Candidate / Resolver Model Design (Complete)**
+  - Added a candidate builder and resolver for the distinct durable memory content + action case.
+  - The model is distinct from the Phase 35 bare-marker MCTA model and uses `compiler_has_memory_tags` and the absence of `compiler_has_memory_checkpoint` to distinguish.
+  - Added targeted tests for the new candidate/resolver, including negative controls for the bare-marker MCTA case.
+  - No runtime behavior was changed.
+  - No runtime diagnostic wiring was added, and `effective_commit` is not consumed.
+  - No registry or default switch changes were made.
 
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 
