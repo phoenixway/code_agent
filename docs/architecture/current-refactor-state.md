@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 39 — Step 1/N: Next Semantic Runtime Slice Selection / Candidate Inventory
+- **Phase**: Phase 39 — Step 2/N: Select Next Active Slice
 - **Status**: Complete.
-- **Next Step**: Phase 39 — Step 2/N: Select Next Active Slice.
-- **Boundary**: Board/checkpoint and board-memory authority slices are closed for the currently characterized branches. This step inventories candidate next slices only. No production behavior change, switch registry change, diagnostic wiring, or authority transfer is allowed.
+- **Next Step**: Phase 33 — Step 1/N: Search/Path Recovery UX Hardening Inventory.
+- **Boundary**: Phase 33 is selected as the next active slice. The work must proceed characterization-first and diagnostic/hint-first. No hard repeat-search blocking, automatic memory-board path anchoring, production authority transfer, or broad recovery rewrite is allowed.
 
 ## Step 4I Parity Matrix
 

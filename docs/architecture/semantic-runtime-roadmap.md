@@ -4282,6 +4282,29 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 39 — Step 2/N: Select Next Active Slice.
 
+---
+
+#### Phase 39 — Step 2/N: Select Next Active Slice
+
+- **Status**: Done.
+- **Goal**: Select the next active semantic-runtime refactor slice after candidate inventory.
+- **Decision**: Select Phase 33 — Search/Path Recovery UX Hardening as the next active slice.
+- **Rationale**:
+  - Phase 33 is already present in the roadmap as Not started.
+  - Search/path failures are live-agent pain points and directly affect recovery speed and quality.
+  - The slice can proceed safely with characterization-first and diagnostic/hint-first work.
+  - The slice does not require production authority transfer, switch default flips, or `effective_commit` consumption.
+  - Terminal-answer, recovery-deferred, dispatch/action, and legacy cleanup candidates remain deferred until after the search/path slice or a new selection review.
+- **Stop Lines for Phase 33**:
+  - No hard repeat broad-search blocking without characterization.
+  - No automatic memory-board path anchoring.
+  - No tool execution behavior change without explicit characterization and tests.
+  - No broad recovery rewrite.
+  - No production authority transfer.
+  - No legacy cleanup.
+- **Next**:
+  - Phase 33 — Step 1/N: Search/Path Recovery UX Hardening Inventory.
+
 ### Phase 33: Search/Path Recovery UX Hardening
 
 - **Status**: Not started.
