@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 11 — Step 16/N: E_FILE_CONTENT_ACTION_MISMATCH Coverage-Gap Review
+- **Phase**: Phase 11 — Step 17/N: E_FILE_CONTENT_ACTION_MISMATCH Registry Strategy Design
 - **Status**: Complete.
-- **Next Step**: Phase 11 — Step 17/N: E_FILE_CONTENT_ACTION_MISMATCH Registry Strategy Design.
-- **Boundary**: `E_FILE_CONTENT_ACTION_MISMATCH` is classified as a narrow registry coverage gap and safe for design-only work. No registry implementation, recovery behavior change, production behavior change, authority transfer, switch change, dispatch behavior change, final-answer stop/continue behavior change, ActionPolicy change, bundle validator behavior change, or legacy cleanup was added.
+- **Next Step**: Phase 11 — Step 18/N: E_FILE_CONTENT_ACTION_MISMATCH Registry Strategy Parity Characterization.
+- **Boundary**: A registry strategy contract is designed for `E_FILE_CONTENT_ACTION_MISMATCH`, but not implemented. Next work is test-only parity characterization. No registry implementation, recovery behavior change, production behavior change, authority transfer, switch change, dispatch behavior change, final-answer stop/continue behavior change, ActionPolicy change, bundle validator behavior change, parser/compiler behavior change, or legacy cleanup is allowed yet.
 
 ## Step 4I Parity Matrix
 

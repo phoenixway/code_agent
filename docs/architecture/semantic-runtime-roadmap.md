@@ -5444,6 +5444,36 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 11 — Step 17/N: E_FILE_CONTENT_ACTION_MISMATCH Registry Strategy Design
+
+- **Status**: Done.
+- **Goal**: Design the registry strategy contract for `E_FILE_CONTENT_ACTION_MISMATCH` before any implementation.
+- **Designed Strategy Contract**:
+  - `id`: `file_content_action_mismatch`.
+  - `error_codes`: `("E_FILE_CONTENT_ACTION_MISMATCH",)`.
+  - `recovery_ids`: `("file_content_must_follow_action",)`.
+  - `invalid_kind`: `file_content_must_follow_action`.
+  - `handler_key`: `file_content_order`.
+  - Prompt expectation: reuse `build_file_content_must_follow_action_prompt()`.
+  - Decision reason expectation: `file_content_must_follow_action`.
+  - Source expectation: preserve existing compiler strategy source conventions.
+- **Required Parity Tests Before Implementation**:
+  - Add a current-behavior characterization test for `E_FILE_CONTENT_ACTION_MISMATCH` proving the same reason and file-content-order prompt.
+  - Add a registry test proving the future tuple resolves to `file_content_action_mismatch` with handler key `file_content_order`.
+  - Add a compiler-driven routing test proving `E_FILE_CONTENT_ACTION_MISMATCH` can route from compiler metadata without legacy `invalid_kind`.
+  - Preserve existing `E_FILE_CONTENT_REQUIRES_ACTION` registry/routing behavior as a negative-control sibling.
+  - Preserve existing bundle semantic validator tests showing both file-content error codes remain `INVALID_FILE_CONTENT_PAIRING`.
+- **Boundary Notes**:
+  - This is registry coverage only, not parser/compiler behavior work.
+  - This design does not approve any bundle semantic validator behavior change.
+  - This design does not approve any file-content parser behavior change.
+  - This design does not approve dispatch, ActionPolicy, final-answer, authority, switch, or legacy cleanup changes.
+  - Registry implementation is still forbidden until parity characterization is green.
+- **Next**:
+  - Phase 11 — Step 18/N: E_FILE_CONTENT_ACTION_MISMATCH Registry Strategy Parity Characterization.
+
+---
+
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.
