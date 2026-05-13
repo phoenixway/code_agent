@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 33 — Step 7/N: Search/Path Recovery UX Hardening Closure
+- **Phase**: Phase 40 — Step 1/N: Next Semantic Runtime Slice Selection / Candidate Inventory
 - **Status**: Complete.
-- **Next Step**: Phase 40 — Next Semantic Runtime Slice Selection.
-- **Boundary**: Phase 33 is closed. Search/path UX hardening was limited to characterization and prompt-only guidance. No hard repeat-search blocking, automatic path anchoring, memory-board writes, path normalization change, search matching change, tool execution behavior change, recovery authority change, production authority transfer, or broad recovery rewrite was added.
+- **Next Step**: Phase 40 — Step 2/N: Select Next Active Slice.
+- **Boundary**: Phase 33 is closed. This step inventories candidate next slices only. No production behavior change, switch registry change, diagnostic wiring, authority transfer, dispatch behavior change, recovery behavior change, or legacy cleanup is allowed.
 
 ## Step 4I Parity Matrix
 

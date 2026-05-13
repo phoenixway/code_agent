@@ -4505,6 +4505,50 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 40 — Next Semantic Runtime Slice Selection.
 
+---
+
+### Phase 40: Next Semantic Runtime Slice Selection
+
+- **Status**: In Progress.
+- **Goal**: Select the next safe semantic-runtime refactor slice after closing Phase 33 Search/Path Recovery UX Hardening.
+- **Allowed**:
+  - Docs-only inventory and decision work.
+  - Compare remaining candidate slices by safety, live-agent value, and refactor risk.
+  - Select the next active slice without changing runtime behavior.
+- **Forbidden**:
+  - No production behavior change.
+  - No switch registry changes.
+  - No runtime diagnostic wiring.
+  - No authority transfer.
+  - No dispatch behavior changes.
+  - No recovery behavior changes.
+  - No legacy cleanup or deletion before a consumer map exists.
+- **Done When**:
+  - Candidate next slices are listed.
+  - The selected next active slice is recorded.
+  - Stop lines for the selected slice are documented.
+
+---
+
+#### Phase 40 — Step 1/N: Next Semantic Runtime Slice Selection / Candidate Inventory
+
+- **Status**: Done.
+- **Goal**: Inventory candidate next slices after closing the search/path UX hardening slice.
+- **Completed Outcome**:
+  - Confirmed that Phase 33 is closed and remained limited to characterization and prompt-only guidance.
+  - Identified candidate next slices:
+    - Terminal Answer deferred/final-answer migration review.
+    - Dispatch/action boundary review.
+    - RecoveryStrategy registry expansion or deferred recovery branch review.
+    - Consumer map before legacy/compatibility cleanup.
+  - Observed that Terminal Answer work already has a long prior migration trail and an explicit deferred final-answer path.
+  - Observed that dispatch/action boundary work is high-value but higher risk because dispatch side effects must remain untouched unless a narrow diagnostic/metadata-only slice is selected.
+  - Observed that recovery work is useful for live-agent quality but should avoid broad recovery rewrites.
+  - Observed that legacy cleanup should remain deferred until a consumer map exists.
+  - No production behavior was changed.
+- **Next**:
+  - Phase 40 — Step 2/N: Select Next Active Slice.
+
 ### Phase 11: RecoveryStrategy Registry Expansion
 
 - **Goal**: Expand the `CompilerRecoveryRegistry` to cover more structural errors.
