@@ -6917,6 +6917,53 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Phase 53 — Step 2/N: Plan Review Gate Runtime Surface Characterization.
 
 ---
+
+#### Phase 53 — Step 2/N: Plan Review Gate Runtime Surface Characterization
+
+- **Status**: Done.
+- **Goal**: Characterize the existing runtime/protocol surfaces needed for a future post-state-change plan review gate.
+- **Completed Outcome**:
+  - Confirmed `modules/agent/planner.py` already owns the subgoal-board XML protocol.
+  - Confirmed subgoal mutations already support `mark_done` with required concrete `evidence`.
+  - Confirmed the existing plan board runtime snapshot is canonical active-intent state and can continue to present active/stale subgoals to the model.
+  - Confirmed the future checkpoint should not carry subgoal data itself; `<subgoal ... />` mutations remain the data-bearing protocol.
+  - Confirmed the current protocol specification has first-class entries for `memory_update_done`, `memory_review`, and `subgoal`, but not yet for `plan_review_done`.
+  - Confirmed the current parser treats known self-closing checkpoint/board tags specially, while unknown self-closing tags become literal protocol tags.
+  - Confirmed the lowerer currently derives checkpoint/board semantics from memory nodes, subgoal nodes, and memory marker nodes only.
+  - Confirmed `RuntimeProtocolSemantics` exposes memory and subgoal operations, but has no plan-review marker fact yet.
+  - Confirmed older state-machine tests already reference state-changing operations and previously performed action concepts, giving useful precedent for the eventual repeat-edit guard.
+  - Confirmed the safest next step is test-only compiler/parser characterization for `<plan_review_done />` before adding any new parser/compiler behavior.
+- **Surface Classification**:
+  - **Ready / existing**:
+    - subgoal board mutation protocol.
+    - subgoal `mark_done` evidence requirement.
+    - board checkpoint compiler facts for subgoal/memory markers.
+    - task board runtime snapshot for active intent context.
+  - **Gap / must characterize first**:
+    - `<plan_review_done />` is not currently a first-class protocol marker.
+    - no `has_plan_review_checkpoint` fact exists yet.
+    - no `plan_review_required_after_state_change` runtime flag exists yet.
+    - no `missing_plan_review_after_state_change` recovery branch exists yet.
+  - **Future runtime gate target**:
+    - successful state-changing dispatch should eventually set a review-required flag.
+    - next action should eventually be blocked/recovered if review-required is set and no plan-review checkpoint was emitted.
+  - **Do not touch yet**:
+    - dispatch behavior.
+    - ActionPolicy behavior.
+    - automatic intent completion.
+    - repeat-edit hard guard.
+    - history.py.
+- **Decision**: Do test-only compiler/parser characterization next.
+- **Approved Scope for Step 3**:
+  - Add characterization tests for current `<plan_review_done />` behavior.
+  - Prove the marker is not yet treated as a valid checkpoint/board marker.
+  - Prove the marker is not yet surfaced as a runtime semantic fact.
+  - Do not change compiler/parser behavior yet.
+  - Do not add runtime gate behavior yet.
+- **Next**:
+  - Phase 53 — Step 3/N: Plan Review Marker Compiler Characterization.
+
+---
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.
