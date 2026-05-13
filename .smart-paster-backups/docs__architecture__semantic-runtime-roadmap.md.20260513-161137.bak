@@ -4307,49 +4307,14 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ### Phase 33: Search/Path Recovery UX Hardening
 
-- **Status**: In Progress.
+- **Status**: Not started.
 - **Goal**: Improve user experience and agent recovery from search/path related failures.
 - **Allowed**:
   - Characterization tests for repeat broad search.
   - Diagnostic-first or hint-only path memory anchoring.
-  - Search/path recovery inventory and current-behavior characterization.
-  - Hint wording and diagnostic improvements that do not change search matching, path normalization, tool execution, or recovery authority.
 - **Forbidden**:
   - Hard repeat broad search blocking without characterization.
   - Automatic memory-board writes.
-  - Automatic path memory anchoring.
-  - Broad recovery rewrites.
-  - Production authority transfer.
-  - Tool execution behavior changes without explicit characterization and tests.
-- **Done When**:
-  - Search/path recovery behavior is inventoried.
-  - Repeat broad search and invalid path recovery behavior are characterized.
-  - Any UX/hint hardening is proven behavior-preserving or explicitly documented as a controlled behavior change.
-
----
-
-#### Phase 33 — Step 1/N: Search/Path Recovery UX Hardening Inventory
-
-- **Status**: Done.
-- **Goal**: Inventory existing search/path recovery work and identify the files/tests needed for current-behavior characterization.
-- **Completed Outcome**:
-  - Confirmed Phase 32 already completed broad `search_content` result shaping with compact path histogram summaries and non-prescriptive narrowing hints.
-  - Confirmed Phase 32 deliberately deferred hard repeat broad-search blocking and automatic path memory anchoring.
-  - Identified candidate implementation areas:
-    - `modules/agent/orchestration/runtime/filesystem_path_failure.py`.
-    - `modules/agent/orchestration/runtime/filesystem_path_validation.py`.
-    - `modules/agent/orchestration/runtime/search_quality.py`.
-    - `modules/agent/orchestration/prompts/recovery_prompt_builder.py`.
-    - `modules/agent/orchestration/runtime/recovery_state.py`.
-    - `modules/tools/definitions/search.py`.
-  - Identified candidate characterization tests:
-    - `tests/test_filesystem_path_failure_recovery.py`.
-    - `tests/test_search_quality.py`.
-    - `tests/test_search_tool_result_shaping.py`.
-    - recovery prompt and recoverable-failure tests that mention `search_content`, `search_files`, and path validation.
-  - No production behavior was changed.
-- **Next**:
-  - Phase 33 — Step 2/N: Search/Path Current Behavior Characterization.
 
 ### Phase 11: RecoveryStrategy Registry Expansion
 
