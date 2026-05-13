@@ -5998,6 +5998,46 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 44 — Step 8/N: Output-Recovery Semantic Decision Record Builder Closure / First Diagnostic Wiring Candidate Decision
+
+- **Status**: Done.
+- **Goal**: Close the pure output-recovery semantic record builder sub-slice and choose the first diagnostic wiring candidate in one pre-code step.
+- **Completed Outcome**:
+  - Closed the pure output-recovery semantic decision record builder sub-slice after green tests.
+  - Confirmed the builder remains passive and only packages already-computed facts.
+  - Confirmed no runtime integration, stage logger integration, protocol shadow integration, trace export integration, replay tool, or production behavior change was added in Step 7.
+  - Reviewed first diagnostic wiring candidates:
+    - Diagnostic-only stage logger enrichment in `_compiler_strategy_decision(...)` / compiler strategy path.
+    - Protocol-shadow semantic record emission.
+    - Trace export integration.
+    - State/container storage for semantic records.
+  - Rejected state/container storage as a first slice because it risks creating a hidden runtime surface.
+  - Deferred protocol-shadow and trace export integration until one narrow stage logger path proves the record shape is useful.
+- **Decision**: GO for narrow diagnostic-only stage logger enrichment in the output-recovery compiler strategy path.
+- **Approved Implementation Scope for Step 9**:
+  - In the compiler strategy path, build an output-recovery `SemanticDecisionRecord` from already-computed compiler metadata, registry strategy data, and effective decision facts.
+  - Add the record to existing stage logger output as a JSON-serializable diagnostic field.
+  - Preserve existing decision reason, source, prompt, retry counters, and return path.
+  - Add tests proving the diagnostic record is emitted for resolved compiler strategies.
+  - Add tests proving unresolved or missing strategy paths do not change behavior.
+- **Required Safety Properties**:
+  - Diagnostic-only only.
+  - No replay implementation.
+  - No state mutation.
+  - No trace export integration.
+  - No protocol shadow integration.
+  - No production behavior change.
+  - No recovery behavior change.
+  - No dispatch behavior change.
+  - No ActionPolicy change.
+  - No final-answer stop/continue behavior change.
+  - No authority transfer or switch change.
+  - No legacy cleanup.
+- **Next**:
+  - Phase 44 — Step 9/N: Output-Recovery Compiler Strategy Semantic Record Diagnostic Wiring.
+
+---
+
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.
