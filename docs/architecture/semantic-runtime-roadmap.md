@@ -4160,6 +4160,28 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 37 — Step 2/N: Board/Memory Commit-Policy Closure / Cross-Slice Boundary Review.
 
+---
+
+#### Phase 37 — Step 2/N: Board/Memory Commit-Policy Closure / Cross-Slice Boundary Review
+
+- **Status**: Done.
+- **Goal**: Close the board-memory commit-policy line and define the cross-slice boundary before selecting the next refactor slice.
+- **Completed Outcome**:
+  - Board-memory commit-policy work is closed for the currently characterized branches:
+    - `board_memory.memory_checkpoint_only`.
+    - `board_memory.memory_checkpoint_with_text`.
+    - `board_memory.memory_checkpoint_with_action`.
+    - `board_memory.memory_content_with_action`.
+  - The completed board-memory branches remain default-legacy and smoke-compiler where validated.
+  - Runtime behavior remains legacy/default-safe.
+  - `effective_commit` is not consumed by the runtime.
+  - No switch registry changes were made.
+  - No runtime diagnostic wiring was added in this step.
+  - `board_checkpoint.plan_checkpoint_only`, `board_checkpoint.plan_checkpoint_with_text`, and `board_checkpoint.plan_checkpoint_with_action` remain a separate authority slice.
+  - The next slice should start with boundary review rather than direct production-code changes.
+- **Next**:
+  - Phase 38 — Board-Checkpoint Plan Authority Boundary Review / Next Slice Selection.
+
 ### Phase 33: Search/Path Recovery UX Hardening
 
 - **Status**: Not started.

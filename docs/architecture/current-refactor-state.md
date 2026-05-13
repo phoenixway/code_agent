@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 37 — Step 1/N: Board/Memory Remaining Branch Selection / Next Slice Planning
+- **Phase**: Phase 37 — Step 2/N: Board/Memory Commit-Policy Closure / Cross-Slice Boundary Review
 - **Status**: Complete.
-- **Next Step**: Phase 37 — Step 2/N: Board/Memory Commit-Policy Closure / Cross-Slice Boundary Review.
-- **Boundary**: Board-memory commit-policy branches are now covered by the Phase 31, Phase 35, and Phase 36 slices. The remaining `board_checkpoint.plan_*` authority branches are a separate slice and must not be folded into board-memory commit-policy closure. No production behavior change.
+- **Next Step**: Phase 38 — Board-Checkpoint Plan Authority Boundary Review / Next Slice Selection.
+- **Boundary**: Board-memory commit-policy work is closed. Completed board-memory branches remain default-legacy and smoke-compiler where validated. `board_checkpoint.plan_*` authority work is explicitly separate and must be handled as its own slice. No production behavior change.
 
 ## Step 4I Parity Matrix
 
