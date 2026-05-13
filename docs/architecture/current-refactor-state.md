@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 33 — Step 6/N: Invalid-Path Recovery Prompt Hardening Decision
+- **Phase**: Phase 33 — Step 7/N: Search/Path Recovery UX Hardening Closure
 - **Status**: Complete.
-- **Next Step**: Phase 33 — Step 7/N: Hint-Only Path Anchoring / Closure Decision.
-- **Boundary**: Invalid-path recovery hardening remains prompt-only. No automatic path anchoring, memory-board writes, path normalization change, search matching change, tool execution behavior change, recovery authority change, hard blocking, or broad recovery rewrite was added.
+- **Next Step**: Phase 40 — Next Semantic Runtime Slice Selection.
+- **Boundary**: Phase 33 is closed. Search/path UX hardening was limited to characterization and prompt-only guidance. No hard repeat-search blocking, automatic path anchoring, memory-board writes, path normalization change, search matching change, tool execution behavior change, recovery authority change, production authority transfer, or broad recovery rewrite was added.
 
 ## Step 4I Parity Matrix
 

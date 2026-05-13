@@ -4307,7 +4307,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ### Phase 33: Search/Path Recovery UX Hardening
 
-- **Status**: In Progress.
+- **Status**: Done.
 - **Goal**: Improve user experience and agent recovery from search/path related failures.
 - **Allowed**:
   - Characterization tests for repeat broad search.
@@ -4477,7 +4477,33 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - No recovery authority changed.
   - No hard blocking was added.
 - **Next**:
-  - Phase 33 — Step 7/N: Hint-Only Path Anchoring / Closure Decision.
+  - Phase 33 — Step 7/N: Search/Path Recovery UX Hardening Closure.
+
+---
+
+#### Phase 33 — Step 7/N: Search/Path Recovery UX Hardening Closure
+
+- **Status**: Done.
+- **Goal**: Close Phase 33 after characterization and prompt-only UX hardening.
+- **Decision**: Close Phase 33. Do not add hint-only path anchoring in this slice.
+- **Completed Outcome**:
+  - Phase 33 is complete.
+  - Search/path recovery behavior was inventoried and characterized.
+  - Repeat broad-search behavior was characterized at the prompt level.
+  - Repeat broad-search recovery was hardened with prompt-only guidance.
+  - Invalid-path recovery was hardened with prompt-only guidance.
+  - Hard repeat-search blocking remains forbidden without a future characterization-first slice.
+  - Hint-only path anchoring is deferred to a future slice because it risks introducing hidden stateful path memory.
+  - Automatic memory-board path anchoring remains forbidden.
+  - No memory-board writes were added.
+  - No path normalization behavior changed.
+  - No search matching behavior changed.
+  - No tool execution behavior changed.
+  - No recovery authority changed.
+  - No production authority transfer occurred.
+  - No broad recovery rewrite was added.
+- **Next**:
+  - Phase 40 — Next Semantic Runtime Slice Selection.
 
 ### Phase 11: RecoveryStrategy Registry Expansion
 
