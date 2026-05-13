@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 37 — Step 2/N: Board/Memory Commit-Policy Closure / Cross-Slice Boundary Review
+- **Phase**: Phase 38 — Step 1/N: Board-Checkpoint Plan Authority Boundary Review / Inventory
 - **Status**: Complete.
-- **Next Step**: Phase 38 — Board-Checkpoint Plan Authority Boundary Review / Next Slice Selection.
-- **Boundary**: Board-memory commit-policy work is closed. Completed board-memory branches remain default-legacy and smoke-compiler where validated. `board_checkpoint.plan_*` authority work is explicitly separate and must be handled as its own slice. No production behavior change.
+- **Next Step**: Phase 38 — Step 2/N: Board-Checkpoint Plan Authority Closure / Remaining Work Decision.
+- **Boundary**: The `board_checkpoint.plan_*` authority branches were already validated as a separate plan-domain slice in Phase 27. This step is docs-only inventory and does not change runtime behavior, switch registry values, diagnostics, or authority consumption.
 
 ## Step 4I Parity Matrix
 

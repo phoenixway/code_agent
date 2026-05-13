@@ -4182,6 +4182,42 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 38 — Board-Checkpoint Plan Authority Boundary Review / Next Slice Selection.
 
+---
+
+### Phase 38: Board-Checkpoint Plan Authority Boundary Review / Next Slice Selection
+
+- **Status**: In Progress.
+- **Goal**: Reconcile the current roadmap state for `board_checkpoint.plan_*` authority branches and decide whether any plan-domain board-checkpoint work remains before selecting the next refactor slice.
+- **Allowed**:
+  - Docs-only inventory and boundary review.
+  - Confirm prior synthetic and live smoke coverage for `board_checkpoint.plan_checkpoint_only`, `board_checkpoint.plan_checkpoint_with_text`, and `board_checkpoint.plan_checkpoint_with_action`.
+  - Decide whether this slice is already closed by Phase 27 or needs a narrow follow-up.
+- **Forbidden**:
+  - No production behavior change.
+  - No switch registry changes.
+  - No runtime diagnostic wiring.
+  - No authority transfer.
+  - Do not merge board-checkpoint plan authority with board-memory commit-policy work.
+- **Done When**:
+  - Prior plan-domain coverage is summarized.
+  - The remaining work decision is recorded.
+  - The next slice is selected.
+
+---
+
+#### Phase 38 — Step 1/N: Board-Checkpoint Plan Authority Boundary Review / Inventory
+
+- **Status**: Done.
+- **Goal**: Inventory the existing `board_checkpoint.plan_*` authority state before deciding whether this slice needs new work.
+- **Completed Outcome**:
+  - Confirmed that the default registry keeps `board_checkpoint.plan_checkpoint_only`, `board_checkpoint.plan_checkpoint_with_text`, and `board_checkpoint.plan_checkpoint_with_action` on `legacy`.
+  - Confirmed that the smoke registry keeps those same plan-domain branches on `compiler` for continued validation.
+  - Confirmed that Phase 27 already validated the plan-domain board/checkpoint smoke slice, including synthetic smoke coverage, authority diagnostics, and live Angelica smoke for the plan checkpoint branches.
+  - Confirmed that Phase 27 closure explicitly kept default authority on `legacy` and avoided memory checkpoint authority transfer.
+  - No production behavior was changed.
+- **Next**:
+  - Phase 38 — Step 2/N: Board-Checkpoint Plan Authority Closure / Remaining Work Decision.
+
 ### Phase 33: Search/Path Recovery UX Hardening
 
 - **Status**: Not started.
