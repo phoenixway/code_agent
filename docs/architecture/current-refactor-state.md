@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 11 — Step 12/N: Transition-Conflict Registry Strategy Batch Parity Characterization
+- **Phase**: Phase 11 — Step 13/N: Transition-Conflict Registry Strategy Batch Implementation Decision
 - **Status**: Complete.
-- **Next Step**: Phase 11 — Step 13/N: Transition-Conflict Registry Strategy Batch Implementation Decision.
-- **Boundary**: Current behavior for `conflicting_intent_transitions` and `intent_complete_with_action_not_allowed` is locked by test-only characterization. The branches preserve their expected reasons and dedicated prompts. No registry implementation, recovery behavior change, production behavior change, authority transfer, switch change, dispatch behavior change, final-answer stop/continue behavior change, ActionPolicy change, transition policy change, or legacy cleanup was added.
+- **Next Step**: Phase 11 — Step 14/N: Transition-Conflict Registry Strategy Batch Implementation.
+- **Boundary**: Narrow batch implementation is approved only for dedicated compiler recovery strategies for `conflicting_intent_transitions` and `intent_complete_with_action_not_allowed`. No broad recovery rewrite, final-answer stop/continue behavior change, transition policy change, dispatch behavior change, ActionPolicy change, authority transfer, switch change, bundle validator behavior change, or legacy cleanup is allowed.
 
 ## Step 4I Parity Matrix
 

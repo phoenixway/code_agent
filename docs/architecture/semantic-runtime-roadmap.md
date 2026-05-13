@@ -5289,6 +5289,53 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 11 — Step 13/N: Transition-Conflict Registry Strategy Batch Implementation Decision
+
+- **Status**: Done.
+- **Goal**: Decide whether the transition-conflict registry strategy batch may be implemented after parity characterization.
+- **Decision**: GO for narrow batch implementation only.
+- **Approved Implementation Scope**:
+  - Add a dedicated `CompilerRecoveryStrategy` for `conflicting_intent_transitions`.
+  - Expected `conflicting_intent_transitions` contract:
+    - `id`: `conflicting_intent_transitions`.
+    - `error_codes`: `("E_MULTIPLE_INTENTS",)`.
+    - `recovery_ids`: `("conflicting_intent_transitions",)`.
+    - `invalid_kind`: `conflicting_intent_transitions`.
+    - `handler_key`: `conflicting_intent_transitions`.
+  - Add a dedicated `CompilerRecoveryStrategy` for `intent_complete_with_action_not_allowed`.
+  - Expected `intent_complete_with_action_not_allowed` contract:
+    - `id`: `intent_complete_with_action_not_allowed`.
+    - `error_codes`: `("E_INTENT_COMPLETE_WITH_ACTION",)`.
+    - `recovery_ids`: `("intent_complete_with_action_not_allowed",)`.
+    - `invalid_kind`: `intent_complete_with_action_not_allowed`.
+    - `handler_key`: `intent_complete_with_action_not_allowed`.
+  - Add dedicated compiler strategy handlers that use:
+    - `build_conflicting_intent_transitions_prompt()`.
+    - `build_completion_with_action_not_allowed_prompt()`.
+  - Add registry resolution coverage for both new strategy tuples.
+  - Add compiler-driven routing coverage proving both branches route from compiler metadata without legacy `invalid_kind`.
+  - Preserve existing current-behavior contract tests.
+  - Preserve negative-control separation from `mixed_intent_transition_and_visible_answer` and `mixed_visible_text_and_control_protocol`.
+- **Required Behavior Preservation**:
+  - Decision reasons remain `conflicting_intent_transitions` and `intent_complete_with_action_not_allowed`.
+  - Prompts remain the dedicated transition-conflict prompts.
+  - Recovery source follows existing compiler strategy conventions.
+  - Existing mixed-visible and mixed-intent/visible-answer routes remain unchanged.
+- **Forbidden**:
+  - No broad recovery rewrite.
+  - No final-answer stop/continue behavior change.
+  - No transition policy change.
+  - No `FOLLOWUP_PLAINTEXT` or `get_visible_text` migration.
+  - No dispatch behavior change.
+  - No ActionPolicy change.
+  - No bundle semantic validator behavior change.
+  - No authority transfer or switch change.
+  - No legacy cleanup.
+- **Next**:
+  - Phase 11 — Step 14/N: Transition-Conflict Registry Strategy Batch Implementation.
+
+---
+
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.
