@@ -1,9 +1,9 @@
-from modules.agent.orchestration.protocol.classifier import ProtocolClassifier
+from modules.agent.orchestration.protocol.classifier import ProtocolCompiler
 from modules.agent.orchestration.protocol.models import ResponseShape
 
 
 def _analyze(response: str):
-    return ProtocolClassifier().analyze(response)
+    return ProtocolCompiler().analyze(response)
 
 
 def test_memory_update_done_remains_recognized_checkpoint_control():
