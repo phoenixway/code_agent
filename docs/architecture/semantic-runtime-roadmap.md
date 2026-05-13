@@ -5560,6 +5560,39 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 11 — Step 21/N: RecoveryStrategy Registry Expansion Closure Review
+
+- **Status**: Done.
+- **Goal**: Close Phase 11 after completing the selected narrow RecoveryStrategy registry expansion work.
+- **Completed Outcome**:
+  - Closed the `mixed_intent_transition_and_visible_answer` registry expansion sub-slice.
+  - Closed the transition-conflict registry expansion batch:
+    - `conflicting_intent_transitions`.
+    - `intent_complete_with_action_not_allowed`.
+  - Closed the `E_FILE_CONTENT_ACTION_MISMATCH` registry coverage-gap sub-slice.
+  - Added targeted registry resolution coverage for all newly added strategies.
+  - Added targeted compiler-driven routing coverage proving the completed branches route from compiler metadata without legacy `invalid_kind`.
+  - Preserved current-behavior contract tests for the affected recovery branches.
+  - Preserved negative-control separation across mixed-visible, mixed-intent/visible-answer, transition-conflict, action-array, and file-content-order paths.
+  - Preserved existing bundle semantic validator ownership for `INVALID_FILE_CONTENT_PAIRING` classification.
+  - Preserved parser/compiler behavior.
+  - Preserved dispatch behavior.
+  - Preserved ActionPolicy behavior.
+  - Preserved final-answer stop/continue behavior.
+  - No authority transfer, switch change, broad recovery rewrite, or legacy cleanup was added.
+- **Closure Decision**: Close Phase 11.
+- **Deferred / Not Approved**:
+  - Broad recovery rewrite.
+  - Cleanup or deletion of legacy recovery paths.
+  - Any authority transfer or switch change.
+  - Bundle semantic validator behavior changes.
+  - Parser/compiler behavior changes.
+  - Dispatch, ActionPolicy, or final-answer behavior changes.
+- **Next**:
+  - Phase 43 — Next Semantic Runtime Slice Selection.
+
+---
+
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.
