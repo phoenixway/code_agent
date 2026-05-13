@@ -3012,6 +3012,75 @@ class TestResponsePipelineCheckpointStageCharacterization(unittest.TestCase):
         self.assertIsInstance(diagnostic.state_flags_agreement, bool)
 
     @patch("modules.agent.orchestration.responses.response_pipeline_stages.ResponsePipelineStagesMixin._log_board_memory_commit_authority_resolution")
+    def test_checkpoint_stage_logs_memory_commit_authority_for_mca_content(self, mock_log_commit_authority):
+        """Characterizes that the checkpoint stage logs memory commit authority diagnostics for MCA content."""
+        self.harness.protocol_compiler.analyze.return_value = SimpleNamespace(
+            shape=SimpleNamespace(name="ACTION_ONLY"),
+            error=None,
+            ir=SimpleNamespace(
+                has_action=True,
+                action_count=1,
+                has_checkpoint=True,
+                has_memory_tags=True,
+                has_subgoal_tags=False,
+                has_memory_checkpoint=False,  # No marker
+                has_visible_answer=False,
+                has_pre_action_text=False,
+                visible_text_source="NONE",
+            ),
+        )
+        self.harness.plan_board_stage.apply.return_value = SimpleNamespace(
+            handled=False, response_text='<fact>some fact</fact>\n<action>{"type":"read_file","path":"a.txt"}</action>'
+        )
+        self.harness.memory_board_stage.apply.return_value = SimpleNamespace(
+            handled=True,
+            response_text='<action>{"type":"read_file","path":"a.txt"}</action>',
+            next_query=None,
+            reason="memory_checkpoint_and_action",
+            source="memory_board",
+            memory_checkpoint_only=False,
+            memory_checkpoint_and_text=False,
+            memory_checkpoint_and_action=True,
+            memory_commit_attempted=True,
+            memory_commit_accepted_count=1,
+            memory_commit_rejected_count=0,
+        )
+        self.harness.state.last_memory_update_done = False
+
+        state, outcome = asyncio.run(
+            self.harness._run_checkpoint_stage(
+                self.ctx,
+                '<fact>some fact</fact>\n<action>{"type":"read_file","path":"a.txt"}</action>',
+                reflection_repair_pending=False,
+                reflection_repair_kind="",
+            )
+        )
+
+        self.assertIsNone(outcome)  # Pass-through behavior is preserved
+
+        mca_content_calls = [
+            call
+            for call in mock_log_commit_authority.call_args_list
+            if getattr(call.args[0], "branch", "") == "board_memory.memory_content_with_action"
+        ]
+        self.assertEqual(1, len(mca_content_calls))
+        diagnostic = mca_content_calls[0].args[0]
+        self.assertEqual("board_memory.memory_content_with_action", diagnostic.branch)
+        self.assertTrue(diagnostic.candidate_available)
+        self.assertFalse(diagnostic.behavior_changed)
+        self.assertEqual("legacy", diagnostic.switch_value)
+        self.assertEqual("legacy", diagnostic.authority_source)
+        self.assertFalse(diagnostic.selected_by_switch)
+        self.assertTrue(diagnostic.commit_equivalent)
+        self.assertTrue(diagnostic.commit_attempted_agreement)
+        self.assertTrue(diagnostic.accepted_count_agreement)
+        self.assertTrue(diagnostic.rejected_count_agreement)
+        self.assertTrue(diagnostic.response_text_agreement)
+        self.assertTrue(diagnostic.checkpoint_removed_agreement)
+        self.assertTrue(diagnostic.pass_through_agreement)
+        self.assertTrue(diagnostic.state_flags_agreement)
+
+    @patch("modules.agent.orchestration.responses.response_pipeline_stages.ResponsePipelineStagesMixin._log_board_memory_commit_authority_resolution")
     def test_checkpoint_stage_logs_memory_commit_authority_for_mca(self, mock_log_commit_authority):
         """Characterizes that the checkpoint stage logs memory commit authority diagnostics for MCTA."""
         self.harness.protocol_compiler.analyze.return_value = SimpleNamespace(
@@ -3078,6 +3147,14 @@ class TestResponsePipelineCheckpointStageCharacterization(unittest.TestCase):
         self.assertFalse(diagnostic.state_flags_agreement)
         self.assertFalse(diagnostic.commit_equivalent)
         self.assertTrue(diagnostic.pass_through_agreement)
+
+        mca_content_calls = [
+            call
+            for call in mock_log_commit_authority.call_args_list
+            if getattr(call.args[0], "branch", "") == "board_memory.memory_content_with_action"
+        ]
+        self.assertEqual(1, len(mca_content_calls))
+        self.assertFalse(mca_content_calls[0].args[0].candidate_available)
 
 
 class TestResponsePipelineClassificationStage(unittest.TestCase):

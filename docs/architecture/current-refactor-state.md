@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 36 — Step 4/N: MEMORY_CONTENT_WITH_ACTION Smoke Switch Registration / Validation
+- **Phase**: Phase 36 — Step 5/N: MEMORY_CONTENT_WITH_ACTION Runtime Diagnostic Integration
 - **Status**: Complete.
-- **Next Step**: Phase 36 — Step 5/N: Runtime Diagnostic Integration.
-- **Boundary**: Phase 36 Step 4 added `board_memory.memory_content_with_action` switch registration and smoke validation. Default registry remains `legacy`; smoke registry uses `compiler`. No runtime behavior change. No diagnostic wiring. No `effective_commit` consumption.
+- **Next Step**: Phase 36 — Step 6/N: Runtime Diagnostic Smoke Validation.
+- **Boundary**: Phase 36 Step 5 added diagnostic-only wiring for `board_memory.memory_content_with_action`. Default registry remains `legacy`; smoke registry uses `compiler`. No runtime behavior change. No `effective_commit` consumption.
 
 ## Step 4I Parity Matrix
 
@@ -2255,6 +2255,13 @@ This document is the single source of truth for the current state of the Semanti
   - Strengthened commit-equivalence tests and negative controls for the durable memory content + action case.
   - Documented the smoke switch plan for `board_memory.memory_content_with_action` without adding registry entries.
   - No runtime behavior was changed, no diagnostic wiring was added, and `effective_commit` is not consumed.
+  - Phase 35 MCTA semantics remain unchanged.
+
+- **Phase 36 — Step 5/N: MEMORY_CONTENT_WITH_ACTION Runtime Diagnostic Integration (Complete)**
+  - The `resolve_memory_content_with_action_commit_authority` resolver is now called from `_run_checkpoint_stage` for diagnostic logging only.
+  - The resolver's `effective_commit` is not consumed, and no runtime behavior was changed.
+  - The default registry remains `legacy`, and the smoke registry remains `compiler` for this branch for validation purposes.
+  - No dispatch, action, or `MemoryBoardStageHandler` behavior was changed.
   - Phase 35 MCTA semantics remain unchanged.
 
 - **Phase 36 — Step 4/N: MEMORY_CONTENT_WITH_ACTION Smoke Switch Registration / Validation (Complete)**

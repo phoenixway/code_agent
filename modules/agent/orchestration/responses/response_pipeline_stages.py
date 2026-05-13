@@ -22,6 +22,7 @@ from .memory_commit_authority import (
     resolve_memory_checkpoint_only_commit_authority,
     resolve_memory_checkpoint_with_action_commit_authority,
     resolve_memory_checkpoint_with_text_commit_authority,
+    resolve_memory_content_with_action_commit_authority,
 )
 from .protocol_decision_bridge import compiler_invalid_kind_for_output, resolve_protocol_authority
 from .semantic_accessors import is_leaked_system_result
@@ -723,7 +724,7 @@ class ResponsePipelineStagesMixin:
             diag_legacy_handled = False
 
         mca_cleaned_text = str(mct_after_text or "")
-        mca_pass_through_preserved = (
+        checkpoint_action_pass_through_preserved = (
             board_checkpoint_semantic_result is not None
             and getattr(board_checkpoint_semantic_result.kind, "name", "") == "MEMORY_CHECKPOINT_WITH_ACTION"
             and not diag_legacy_handled
@@ -742,11 +743,30 @@ class ResponsePipelineStagesMixin:
             legacy_accepted_count=legacy_accepted_count,
             legacy_rejected_count=legacy_rejected_count,
             legacy_last_memory_update_done=legacy_last_memory_update_done,
-            legacy_pass_through_preserved=mca_pass_through_preserved,
+            legacy_pass_through_preserved=checkpoint_action_pass_through_preserved,
             legacy_checkpoint_removed=legacy_checkpoint_removed,
             switch_value=mca_switch_value,
         )
         self._log_board_memory_commit_authority_resolution(mca_authority_decision.diagnostic)
+
+        mca_content_switch_value = get_switch("board_memory.memory_content_with_action")
+        mca_content_authority_decision = resolve_memory_content_with_action_commit_authority(
+            semantic_result=board_checkpoint_semantic_result,
+            legacy_branch=board_checkpoint_semantic_result.kind.name,
+            legacy_handled=diag_legacy_handled,
+            legacy_reason=str(getattr(memory_board_decision, "reason", "") or ""),
+            legacy_source=str(getattr(memory_board_decision, "source", "") or ""),
+            legacy_response_text=mct_after_text,
+            legacy_next_query=getattr(memory_board_decision, "next_query", None),
+            legacy_commit_attempted=legacy_commit_attempted,
+            legacy_accepted_count=legacy_accepted_count,
+            legacy_rejected_count=legacy_rejected_count,
+            legacy_last_memory_update_done=legacy_last_memory_update_done,
+            legacy_pass_through_preserved=checkpoint_action_pass_through_preserved,
+            legacy_checkpoint_removed=legacy_checkpoint_removed,
+            switch_value=mca_content_switch_value,
+        )
+        self._log_board_memory_commit_authority_resolution(mca_content_authority_decision.diagnostic)
 
         self._log_board_checkpoint_structural_parity(
             compiler_analysis,

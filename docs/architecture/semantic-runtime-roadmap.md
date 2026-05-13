@@ -4046,6 +4046,30 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 36 — Step 5/N: Runtime Diagnostic Integration.
 
+---
+
+#### Phase 36 — Step 5/N: MEMORY_CONTENT_WITH_ACTION Runtime Diagnostic Integration
+
+- **Status**: Done.
+- **Goal**: Integrate the MEMORY_CONTENT_WITH_ACTION resolver into `_run_checkpoint_stage` for diagnostic logging only, without changing runtime behavior.
+- **Allowed**:
+  - Call `resolve_memory_content_with_action_commit_authority` from the pipeline diagnostic path.
+  - Log the diagnostic using existing patterns.
+  - Add targeted tests proving the diagnostic is emitted.
+- **Forbidden**:
+  - Do not change runtime behavior.
+  - Do not consume `effective_commit`.
+  - Do not change `MemoryBoardStageHandler` behavior.
+  - Do not flip the default registry to `compiler`.
+- **Completed Outcome**:
+  - The `resolve_memory_content_with_action_commit_authority` resolver is now called from `_run_checkpoint_stage` for diagnostic logging only.
+  - The resolver's `effective_commit` is not consumed, and no runtime behavior was changed.
+  - The default registry remains `legacy`, and the smoke registry remains `compiler` for this branch for validation purposes.
+  - No dispatch, action, or `MemoryBoardStageHandler` behavior was changed.
+  - Phase 35 MCTA semantics remain unchanged.
+- **Next**:
+  - Phase 36 — Step 6/N: Runtime Diagnostic Smoke Validation.
+
 ### Phase 33: Search/Path Recovery UX Hardening
 
 - **Status**: Not started.
