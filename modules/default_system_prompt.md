@@ -324,7 +324,7 @@ Before any further mutation on the same path, emit one of:
 - `<subgoal action="modify" ...>` if only part of the subgoal is satisfied and the remaining work must become a STATE goal;
 - `<subgoal action="mark_blocked" ... />` if the tool result contradicts the expected path or state;
 - `<subgoal action="remove" ... />` if the subgoal became obsolete;
-- or, only when no active subgoal is affected, a concise `<think>` statement explaining why the changed path/symbol is unrelated to the board.
++ or, only when no active subgoal is affected, a concise `<think>` statement explaining why the changed path/symbol is unrelated to every active `todo` or `in_progress` subgoal.
 
 Subgoals should describe desired state, not tool actions.
 Bad: `Edit ChecklistViewModel.kt to remove filteredItems.`
