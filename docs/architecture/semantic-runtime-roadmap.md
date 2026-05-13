@@ -6235,6 +6235,81 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Confirmed semantic decision record emission currently happens through existing `stage_logger.log(...)` output in the resolved output-recovery compiler strategy path.
   - Confirmed no explicit semantic record state/container storage currently exists or is desired as a first export slice.
   - Confirmed no protocol-shadow integration or replay tool exists for semantic decision records yet.
+  - Observed that semantic decision records already traverse the existing trace surface as stage logger fields, so the first safe code step should characterize existing export/readback behavior rather than add new integration.
+- **Surface Classification**:
+  - **Safe first code target / test-only**:
+    - Characterize that a stage logger entry containing `semantic_decision_record` is preserved by the existing trace snapshot/export path.
+    - Use existing trace/state/export helpers only.
+    - Do not add new runtime wiring.
+  - **Safe later / small implementation candidate**:
+    - Add a tiny extractor/filter helper for semantic decision records from exported trace snapshots, if characterization proves the field is already present.
+  - **Defer**:
+    - Protocol-shadow semantic record integration.
+    - Trace export schema changes.
+    - New semantic record state/container storage.
+    - Replay tool implementation.
+    - Broad production logging expansion.
+  - **No-go in this slice**:
+    - Any trace/export path that mutates runtime behavior or changes decision flow.
+- **Decision**: Select test-only trace export characterization as the first safe code step.
+- **Approved Implementation Scope for Step 2**:
+  - Add characterization tests proving a `semantic_decision_record` field emitted through `OrchestrationStageLogger` is preserved in `orchestration_trace` and `trace_export` structured output.
+  - Use existing trace/export APIs only.
+  - Do not modify `trace_export.py` yet.
+  - Do not modify `shared/trace.py` yet.
+  - Do not add semantic record storage.
+  - Do not add replay tooling.
+- **Required Safety Properties**:
+  - Test-only characterization.
+  - No production behavior change.
+  - No trace export implementation change.
+  - No protocol shadow integration.
+  - No replay implementation.
+  - No state mutation or semantic record storage.
+  - No dispatch behavior change.
+  - No recovery behavior change.
+  - No ActionPolicy change.
+  - No final-answer stop/continue behavior change.
+  - No authority transfer or switch change.
+  - No legacy cleanup.
+- **Next**:
+  - Phase 46 — Step 2/N: Semantic Decision Record Trace Export Characterization.
+
+---
+
+#### Phase 46 — Step 2/N: Semantic Decision Record Trace Export Characterization
+
+- **Status**: Done.
+- **Goal**: Characterize whether semantic decision record fields already survive existing stage logger, orchestration trace, and trace export surfaces without implementation changes.
+- **Completed Outcome**:
+  - Added test-only characterization proving `OrchestrationStageLogger` preserves a `semantic_decision_record` field in `orchestration_trace` entry fields.
+  - Added test-only characterization proving existing `OrchestrationTraceExporter` structured output preserves the same `semantic_decision_record` field through `runtime_artifacts(...)["orchestration_trace"]`.
+  - Confirmed the existing trace/export path can surface semantic decision records as ordinary stage logger fields.
+  - Confirmed no `trace_export.py` implementation change was required.
+  - Confirmed no `shared/trace.py` implementation change was required.
+  - Confirmed no semantic record state/container storage was required.
+  - Confirmed no replay tooling was required.
+  - No production behavior changed.
+- **Next**:
+  - Phase 46 — Step 3/N: Trace Export Surface Closure / Export Helper Decision.
+
+---
+
+#### Phase 46 — Step 1/N: Trace Export Integration Preflight Inventory / Export Surface Decision
+
+- **Status**: Done.
+- **Goal**: Inventory trace/export/readback surfaces and choose the first safe semantic decision record export characterization target in one pre-code step.
+- **Completed Outcome**:
+  - Confirmed the active slice is Trace Export Integration Preflight after Phase 44.
+  - Identified current trace/export files:
+    - `modules/agent/orchestration/shared/trace.py`.
+    - `modules/agent/orchestration/trace_export.py`.
+  - Confirmed `trace_export.py` is an export adapter over the shared trace layer.
+  - Confirmed `trace_export.py` already exposes structured trace via `snapshot_trace(state)` and rendered trace text.
+  - Confirmed stage logger usage is widespread and stage logger entries are represented through `orchestration_trace` state entries.
+  - Confirmed semantic decision record emission currently happens through existing `stage_logger.log(...)` output in the resolved output-recovery compiler strategy path.
+  - Confirmed no explicit semantic record state/container storage currently exists or is desired as a first export slice.
+  - Confirmed no protocol-shadow integration or replay tool exists for semantic decision records yet.
   - Observed that semantic decision records likely already traverse the existing trace surface as stage logger fields, so the first safe code step should characterize existing export/readback behavior rather than add new integration.
 - **Surface Classification**:
   - **Safe first code target / test-only**:
