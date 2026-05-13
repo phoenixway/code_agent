@@ -4891,12 +4891,109 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 42 — Step 7/N: Consumer Map / Metadata Consolidation Closure.
 
+---
+
+#### Phase 42 — Step 7/N: Consumer Map / Metadata Consolidation Closure
+
+- **Status**: Done.
+- **Goal**: Close the semantic-runtime consumer map / legacy cleanup preflight slice and select the next refactor direction.
+- **Completed Outcome**:
+  - Phase 42 is complete.
+  - Built the semantic-runtime consumer map for legacy helpers, compatibility fields, transitional accessors, and visible consumer groups.
+  - Classified consumers by risk and cleanup readiness.
+  - Confirmed that broad legacy cleanup is not yet approved.
+  - Selected exactly one narrow cleanup candidate: output-recovery compiler metadata fallback consolidation.
+  - Added parity characterization proving `semantic_accessors.get_compiler_metadata(...)` matches `runtime_protocol_semantics.output_recovery_compiler_metadata(...)` for legacy/fallback metadata cases.
+  - Confirmed that active output-recovery routing already uses `get_compiler_metadata(...)`.
+  - Removed the stale unused import of `output_recovery_compiler_metadata(...)` from `output_recovery_routing.py`.
+  - Retained `output_recovery_compiler_metadata(...)` as a temporary parity oracle and fallback-contract fixture.
+  - No production behavior changed.
+  - No compatibility shim was removed.
+  - No recovery, dispatch, ActionPolicy, final-answer, switch, or authority behavior changed.
+- **Deferred**:
+  - Broad legacy cleanup.
+  - `ResponseSemantics` removal.
+  - `ParsedModelOutput` compatibility field removal.
+  - `has_action_segment` cleanup.
+  - `has_any_action_proposal` / `has_any_action_proposal_compat` cleanup.
+  - Deprecated metadata helper removal.
+  - Any dispatch, ActionPolicy, final-answer, or recovery behavior migration.
+- **Next**:
+  - Phase 11 — RecoveryStrategy Registry Expansion.
+
 ### Phase 11: RecoveryStrategy Registry Expansion
 
+- **Status**: In Progress.
 - **Goal**: Expand the `CompilerRecoveryRegistry` to cover more structural errors.
-- **Allowed**: Add new strategies for errors currently handled by legacy `invalid_kind` routing.
-- **Forbidden**: Adding strategies for runtime-owned policy decisions.
-- **Done When**: All purely structural `invalid_kind`s are routed through the compiler registry.
+- **Allowed**:
+  - Inventory structural compiler recovery strategies and legacy invalid-kind routing.
+  - Add new strategies for errors currently handled by legacy `invalid_kind` routing, only after characterization.
+  - Keep registry expansion narrow and behavior-preserving.
+- **Forbidden**:
+  - No runtime-owned policy decisions.
+  - No broad recovery rewrite.
+  - No recovery behavior change without explicit characterization.
+  - No dispatch behavior changes.
+  - No ActionPolicy changes.
+  - No final-answer stop/continue behavior changes.
+  - No authority transfer or switch changes in inventory steps.
+- **Done When**:
+  - All purely structural `invalid_kind`s are routed through the compiler registry.
+
+---
+
+#### Phase 11 — Step 1/N: RecoveryStrategy Registry Expansion Inventory
+
+- **Status**: Done.
+- **Goal**: Inventory current compiler recovery registry coverage, legacy invalid-kind routing, and safe candidate boundaries before adding any strategy.
+- **Completed Outcome**:
+  - Inventoried `CompilerRecoveryRegistry` and existing strategy coverage.
+  - Confirmed registry coverage already includes structural compiler recovery strategies for:
+    - unclosed / malformed think family: `unclosed_think`, `action_inside_think`, `intent_inside_think`, `file_content_inside_think`;
+    - file-content structure: `file_content_unclosed`, `file_content_requires_action`;
+    - mixed visible/control protocol: `mixed_visible_control`;
+    - action payload shape: `action_payload_array`, `action_payload_xml_fields`, `action_payload_tool_code`, `action_payload_not_object`;
+    - atomic bundle / multiple actions behavior through compiler-routed invalid-kind tests.
+  - Inventoried active routing path:
+    - `OutputRecoveryRoutingMixin._compiler_strategy_decision(...)` uses compiler metadata via `get_compiler_metadata(...)`.
+    - `COMPILER_ROUTED_INVALID_KINDS` gates which invalid kinds may use compiler strategy routing.
+    - `resolve_compiler_invalid_kind_mapping_authority(...)` preserves legacy fallback behavior on conflicts.
+  - Inventoried test coverage:
+    - `tests/test_compiler_recovery_registry.py` covers direct registry resolution.
+    - `tests/test_compiler_driven_recovery_routing.py` covers compiler-code routing without legacy `invalid_kind`.
+    - `tests/test_recovery_invalid_output_synthetic_smoke.py` covers resolver fallback and legacy-preserving behavior.
+  - Initial boundary decision:
+    - Purely structural compiler errors are candidate territory.
+    - Runtime-owned policy decisions, final-answer/recovery-sensitive branches, dispatch behavior, and ActionPolicy remain out of scope.
+  - No registry change was made.
+  - No recovery behavior changed.
+  - No production behavior changed.
+- **Next**:
+  - Phase 11 — Step 2/N: Structural Recovery Candidate Selection.
+
+---
+
+#### Phase 11 — Step 2/N: Structural Recovery Candidate Selection
+
+- **Status**: Done.
+- **Goal**: Select one structural recovery candidate for characterization before any registry expansion.
+- **Decision**: Select `mixed_intent_transition_and_visible_answer` for characterization only.
+- **Rationale**:
+  - The action-payload family is already covered by `CompilerRecoveryRegistry` and `COMPILER_ROUTED_INVALID_KINDS`, including `action_payload_array`, `action_payload_xml_fields`, `action_payload_tool_code`, and `action_payload_not_object`.
+  - `multiple_actions` / atomic bundle behavior is already represented through compiler-routed invalid-kind tests and registry strategies.
+  - `mixed_intent_transition_and_visible_answer` is already present in `COMPILER_ROUTED_INVALID_KINDS` but is not represented as a dedicated strategy in the inventoried `CompilerRecoveryRegistry`.
+  - The candidate appears structural because it describes a protocol-shape conflict between an intent transition and visible answer text.
+  - The candidate remains boundary-sensitive because it touches transition/final-answer territory, so the next step must be characterization only.
+- **Forbidden for Next Step**:
+  - No registry change.
+  - No recovery behavior change.
+  - No authority transfer or switch change.
+  - No final-answer stop/continue behavior change.
+  - No dispatch behavior change.
+  - No ActionPolicy change.
+  - No broad recovery rewrite.
+- **Next**:
+  - Phase 11 — Step 3/N: Mixed Intent Transition / Visible Answer Recovery Characterization.
 
 ---
 

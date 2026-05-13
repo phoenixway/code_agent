@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 42 — Step 6/N: Deprecated Metadata Helper Removal / Retention Decision
+- **Phase**: Phase 11 — Step 2/N: Structural Recovery Candidate Selection
 - **Status**: Complete.
-- **Next Step**: Phase 42 — Step 7/N: Consumer Map / Metadata Consolidation Closure.
-- **Boundary**: The deprecated `output_recovery_compiler_metadata(...)` helper is retained for now as a parity oracle and fallback-contract fixture. The narrow metadata consolidation is complete for the active routing path. No helper removal, compatibility shim removal, output recovery behavior change, production authority transfer, switch change, dispatch behavior change, final-answer stop/continue behavior change, ActionPolicy change, or recovery behavior change was added.
+- **Next Step**: Phase 11 — Step 3/N: Mixed Intent Transition / Visible Answer Recovery Characterization.
+- **Boundary**: Selected `mixed_intent_transition_and_visible_answer` as a characterization-only recovery registry expansion candidate. No registry changes, recovery behavior changes, production behavior changes, authority transfer, switch changes, dispatch behavior changes, final-answer stop/continue behavior changes, ActionPolicy changes, or legacy cleanup are allowed yet.
 
 ## Step 4I Parity Matrix
 
