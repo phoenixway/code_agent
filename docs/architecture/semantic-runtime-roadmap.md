@@ -4603,8 +4603,54 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 41 — Step 1/N: Terminal Answer Deferred Final-Answer Path Preflight / Inventory
 
-- **Status**: Not started.
+- **Status**: Done.
 - **Goal**: Inventory the current Terminal Answer deferred final-answer path state and locate remaining final-answer-related legacy consumers before any migration design.
+- **Completed Outcome**:
+  - Confirmed that Terminal Answer work has a long prior migration trail from Phase 8, Phase 28, and related recovery slices.
+  - Confirmed that `TerminalAnswerClassifier` exists and is used as typed/shadow/parity evidence, but must not become sole final-answer authority.
+  - Confirmed that Phase 8 Step 4O recorded a NO-GO for `PLAINTEXT_TERMINAL_ANSWER` migration in that slice and deferred final-answer-path migration.
+  - Confirmed that Phase 28 later smoke-validated `terminal_answer.plaintext_terminal_answer` under the smoke profile while keeping default production behavior legacy.
+  - Confirmed that `terminal_answer.checkpoint_only` was later marked NO-GO / DEFER because marker-only turns are practically owned by board/memory checkpoint handling, not terminal final-answer routing.
+  - Confirmed that `terminal_answer.checkpoint_with_visible_text` and other action-bearing or recovery-sensitive branches remain deferred.
+  - Confirmed that recovery-adjacent terminal branches such as leaked system result and invalid/truncated terminal text were handled separately and must not be merged into final-answer authority without a new boundary review.
+  - Confirmed that remaining final-answer-related work is sensitive because it overlaps stop/continue behavior, intent completion, evidence sufficiency, visible text, and recovery boundaries.
+  - No migration candidate is approved yet.
+  - No production behavior was changed.
+- **Next**:
+  - Phase 41 — Step 2/N: Final-Answer Consumer Map.
+
+---
+
+#### Phase 41 — Step 2/N: Final-Answer Consumer Map
+
+- **Status**: Done.
+- **Goal**: Map final-answer-related consumers before deciding whether any narrow migration candidate is safe.
+- **Completed Outcome**:
+  - Mapped classifier/model/shadow consumers:
+    - `TerminalAnswerClassifier` and `TerminalAnswerKind` provide typed evidence.
+    - `terminal_answer_classifier_shadow` remains parity/comparator diagnostics unless a later slice explicitly approves a narrower consumer migration.
+  - Mapped prevalidation and terminal-text consumers:
+    - `terminal_plaintext_completion_status(...)` remains relevant for invalid/truncated terminal plaintext handling.
+    - `_reject_truncated_terminal_completion_before_transition` remains a sensitive prevalidation boundary because it can affect continue/retry behavior.
+  - Mapped response pipeline recovery/final-answer boundaries:
+    - leaked-system-result handling already uses typed evidence in a recovery-owned path and must not be merged into final-answer authority.
+    - invalid/truncated terminal text remains recovery-adjacent and diagnostic/guard-sensitive.
+    - plain final-answer/visible-text paths remain tied to stop/continue and sufficiency policy.
+  - Mapped output-recovery/internal-summary consumers:
+    - internal-summary-like text remains a recovery/output path, not a final-answer authority transfer target by default.
+    - output recovery must not be changed without separate characterization.
+  - Mapped prompt-only final-answer guidance:
+    - final-answer formatting prompts and build-fix final-answer prompts are user-facing guidance, not authority migration targets.
+  - Mapped adjacent board/memory visible-text preservation tests:
+    - board/memory visible-text preservation coverage is adjacent evidence only and must not be treated as final-answer authority.
+  - Risk classification:
+    - Low risk: docs-only inventory, diagnostics, consumer map maintenance.
+    - Medium risk: prompt-only final-answer formatting guidance, provided behavior remains unchanged.
+    - High risk: any stop/continue decision, final-answer sufficiency policy, `ActionPolicy`, dispatch, output recovery, or legacy deletion.
+  - No migration candidate is approved yet.
+  - No production behavior was changed.
+- **Next**:
+  - Phase 41 — Step 3/N: Final-Answer Risk Boundary Review / Migration Candidate Decision.
 
 ### Phase 11: RecoveryStrategy Registry Expansion
 
