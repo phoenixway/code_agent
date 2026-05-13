@@ -6539,6 +6539,45 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Phase 48 — Step 4/N: Replay Readback Scaffolding Closure / Implementation Decision.
 
 ---
+
+#### Phase 48 — Step 4/N: Replay Readback Scaffolding Closure / Implementation Decision
+
+- **Status**: Done.
+- **Goal**: Close the Replay Tool Design Preflight slice and decide whether to proceed immediately to a replay CLI or runtime replay implementation.
+- **Completed Outcome**:
+  - Reviewed the passive replay/readback scaffolding delivered in Step 3.
+  - Confirmed the readback helper is explanation-only and operates on trace-shaped data, not live runtime state.
+  - Confirmed the helper summarizes semantic decision records already present under `fields["semantic_decision_record"]`.
+  - Confirmed the helper supports both trace snapshot list input and runtime artifacts dict input containing `"orchestration_trace"`.
+  - Confirmed missing and malformed semantic decision records are handled as diagnostic readback cases rather than runtime failures.
+  - Confirmed the output is a summary of record count, domains, stages, decisions, reasons, sources, diagnostic safety flags, and compact per-record items.
+  - Confirmed no replay execution, runtime policy execution, parser/compiler execution, recovery routing, dispatch, ActionPolicy, authority resolver/switch access, state mutation, trace export change, protocol-shadow integration, or production behavior change was added.
+- **Decision**: Close Phase 48 without implementing a replay CLI or runtime replay tool.
+- **Rationale**:
+  - Phase 48 achieved the safe core objective: replay/readback now has a passive contract and a pure summary helper.
+  - A CLI or end-to-end replay workflow should wait until there is a concrete operator workflow and more evidence from real traces.
+  - Closing now prevents passive readback from drifting into runtime simulation or decision execution.
+- **Deferred / Not Approved**:
+  - Replay tool CLI.
+  - End-to-end replay workflow.
+  - Runtime decision replay.
+  - Parser/compiler replay execution.
+  - Recovery routing replay execution.
+  - Dispatch/action replay.
+  - ActionPolicy replay.
+  - Final-answer stop/continue replay.
+  - Authority resolver or switch registry access from replay code.
+  - Protocol-shadow integration.
+  - Trace export schema changes.
+  - Semantic record state/container storage.
+  - Broad production logging expansion.
+  - Any authority transfer or switch change.
+  - Any production behavior change.
+  - Legacy cleanup.
+- **Next**:
+  - Phase 49 — Next Semantic Runtime Slice Selection.
+
+---
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.

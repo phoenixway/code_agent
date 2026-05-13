@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 48 — Step 3/N: Replay Readback Model Scaffolding Implementation
+- **Phase**: Phase 48 — Step 4/N: Replay Readback Scaffolding Closure / Implementation Decision
 - **Status**: Complete.
-- **Next Step**: Phase 48 — Step 4/N: Replay Readback Scaffolding Closure / Implementation Decision.
-- **Boundary**: Passive replay readback model/helper scaffolding and tests are implemented. The helper reads trace-shaped data and summarizes semantic decision records without replay execution, runtime policy execution, production behavior change, trace export implementation change, protocol shadow integration, state mutation, dispatch behavior change, recovery behavior change, ActionPolicy change, final-answer stop/continue behavior change, authority transfer, switch change, or legacy cleanup.
+- **Next Step**: Phase 49 — Next Semantic Runtime Slice Selection.
+- **Boundary**: Phase 48 is closed after delivering passive replay/readback contract design, passive readback models, and a pure semantic decision record summary helper. No replay tool CLI, replay execution, runtime policy execution, parser/compiler execution, recovery routing, dispatch execution, ActionPolicy execution, authority resolver/switch access, state mutation, trace export implementation change, protocol shadow integration, production behavior change, or legacy cleanup was added.
 
 ## Step 4I Parity Matrix
 
