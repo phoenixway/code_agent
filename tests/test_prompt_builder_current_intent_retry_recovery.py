@@ -103,6 +103,41 @@ class PromptBuilderCurrentIntentRetryRecoveryTests(unittest.TestCase):
         self.assertIn("targeted edit_file", out)
         self.assertNotIn("think about", out)
 
+    def test_low_value_broad_search_repeat_recovery_is_prompt_only_characterization(self):
+        active_intent = SimpleNamespace(
+            intent_id="search_path_inventory",
+            intent_type="INVESTIGATE",
+            goal="Find the implementation files for search/path recovery behavior.",
+            allowed_actions=["read_chunk", "search_content", "read_file_skeleton", "search_files"],
+        )
+        builder = self._builder(active_intent)
+
+        stop_info = {
+            "reason": "low_value_broad_search_repeat",
+            "recoverable": True,
+            "next_actions": ["read_chunk", "search_content", "read_file_skeleton", "search_files"],
+            "command": {
+                "type": "search_content",
+                "path": ".",
+                "pattern": "search_content|search_files|INVALID_ACTION_PATH",
+            },
+        }
+
+        out = builder.build_orchestrated_recovery_prompt(stop_info)
+
+        self.assertIn("Your last search was too broad or a low-value repeat", out)
+        self.assertIn("A single bounded reconnaissance search is allowed", out)
+        self.assertIn("must use at least two of", out)
+        self.assertIn("targeted read (`read_file`, `read_chunk`, `read_file_skeleton`)", out)
+        self.assertIn("not another broad search", out)
+        self.assertIn("Use a more specific path instead of the root", out)
+        self.assertIn("Use a more specific pattern", out)
+        self.assertIn("include_extensions", out)
+        self.assertIn("Spend the next action on the shortest path to concrete evidence", out)
+        self.assertIn("<action>", out)
+        self.assertNotIn("memory-board", out.lower())
+        self.assertNotIn("blocked", out.lower())
+
     def test_missing_file_content_block_recovery_uses_strict_template_without_plan_language(self):
         active_intent = SimpleNamespace(
             intent_id="new_file_write",

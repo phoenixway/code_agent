@@ -4411,6 +4411,29 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 33 — Step 4/N: Repeat Broad Search Characterization.
 
+---
+
+#### Phase 33 — Step 4/N: Repeat Broad Search Characterization
+
+- **Status**: Done.
+- **Goal**: Characterize current repeat broad-search recovery behavior without changing runtime behavior.
+- **Completed Outcome**:
+  - Added a prompt-level characterization test for `low_value_broad_search_repeat`.
+  - Confirmed that repeat broad-search recovery is currently UX guidance, not a hard runtime block.
+  - Confirmed that the recovery prompt warns that the last search was too broad or a low-value repeat.
+  - Confirmed that the prompt allows only a bounded reconnaissance search when exact files are unknown.
+  - Confirmed that the prompt requires at least two bounds for bounded reconnaissance: specific path, specific pattern, `include_extensions`, or `exclude_dirs`.
+  - Confirmed that if candidate paths are already available, the next step should be a targeted read on those paths, not another broad search.
+  - Confirmed that the prompt encourages narrower path/pattern/extension/exclude choices and the shortest path to concrete evidence.
+  - No hard repeat-search blocking was added.
+  - No automatic memory-board path anchoring was added.
+  - No search matching behavior changed.
+  - No path normalization behavior changed.
+  - No tool execution behavior changed.
+  - No recovery authority changed.
+- **Next**:
+  - Phase 33 — Step 5/N: Repeat Broad Search Guard / Hint Hardening Decision.
+
 ### Phase 11: RecoveryStrategy Registry Expansion
 
 - **Goal**: Expand the `CompilerRecoveryRegistry` to cover more structural errors.

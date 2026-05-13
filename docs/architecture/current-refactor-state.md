@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 33 — Step 3/N: Repeat Broad Search / Invalid Path Gap Decision
+- **Phase**: Phase 33 — Step 4/N: Repeat Broad Search Characterization
 - **Status**: Complete.
-- **Next Step**: Phase 33 — Step 4/N: Repeat Broad Search Characterization.
-- **Boundary**: Gap decision is complete. The next active gap is repeat broad-search characterization. No hard repeat-search blocking, automatic memory-board path anchoring, path normalization change, search matching change, tool execution behavior change, recovery authority change, or broad recovery rewrite is allowed.
+- **Next Step**: Phase 33 — Step 5/N: Repeat Broad Search Guard / Hint Hardening Decision.
+- **Boundary**: Repeat broad-search recovery behavior is characterized at the prompt level. No hard repeat-search blocking, automatic memory-board path anchoring, path normalization change, search matching change, tool execution behavior change, recovery authority change, or broad recovery rewrite was added.
 
 ## Step 4I Parity Matrix
 
