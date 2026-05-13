@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 46 — Step 3/N: Trace Export Surface Closure / Export Helper Decision
+- **Phase**: Phase 48 — Step 1/N: Replay Tool Design Preflight Inventory / Contract Design
 - **Status**: Complete.
-- **Next Step**: Phase 47 — Next Semantic Runtime Slice Selection.
-- **Boundary**: Phase 46 is closed after test-only characterization proved semantic decision records already survive existing stage logger, orchestration trace, and trace export structured-output surfaces. No export helper, trace export implementation change, protocol shadow integration, replay implementation, production behavior change, dispatch behavior change, recovery behavior change, ActionPolicy change, final-answer stop/continue behavior change, authority transfer, switch change, state mutation, or legacy cleanup was added.
+- **Next Step**: Phase 48 — Step 2/N: Replay Readback Model Scaffolding Decision.
+- **Boundary**: Replay/readback input and output contracts are designed. Next work may only decide whether to add passive replay readback data models and tests. No replay implementation, runtime policy execution, production behavior change, trace export implementation change, protocol shadow integration, state mutation, dispatch behavior change, recovery behavior change, ActionPolicy change, final-answer stop/continue behavior change, authority transfer, switch change, or legacy cleanup was added.
 
 ## Step 4I Parity Matrix
 

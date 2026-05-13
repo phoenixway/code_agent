@@ -6220,8 +6220,6 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
----
-
 #### Phase 46 — Step 1/N: Trace Export Integration Preflight Inventory / Export Surface Decision
 
 - **Status**: Done.
@@ -6279,8 +6277,6 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
----
-
 #### Phase 46 — Step 2/N: Semantic Decision Record Trace Export Characterization
 
 - **Status**: Done.
@@ -6296,8 +6292,6 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - No production behavior changed.
 - **Next**:
   - Phase 46 — Step 3/N: Trace Export Surface Closure / Export Helper Decision.
-
----
 
 ---
 
@@ -6332,8 +6326,6 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Legacy cleanup.
 - **Next**:
   - Phase 47 — Next Semantic Runtime Slice Selection.
-
----
 
 ---
 
@@ -6376,6 +6368,73 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+### Phase 48: Replay Tool Design Preflight
+
+- **Status**: In Progress.
+- **Goal**: Design a safe replay/readback contract for semantic decision records before implementing any replay tooling.
+- **Allowed**:
+  - Docs-only inventory and contract design.
+  - Define replay/readback inputs from existing trace export structured output.
+  - Define replay/readback outputs as explanations or summaries only.
+  - Classify which semantic decision domains are safe for replay/readback first.
+  - Identify what a future replay tool must never execute.
+- **Forbidden**:
+  - No replay implementation yet.
+  - No production behavior change.
+  - No runtime policy execution from replay code.
+  - No dispatch execution or synthetic dispatch.
+  - No recovery decision execution.
+  - No ActionPolicy execution.
+  - No final-answer stop/continue decision execution.
+  - No authority transfer or switch change.
+  - No trace export implementation change.
+  - No protocol shadow integration.
+  - No state mutation or semantic record storage.
+  - No legacy cleanup.
+- **Done When**:
+  - Replay/readback input and output contracts are designed.
+  - Safe first replay domain is selected or deferred.
+  - The first implementation slice is either approved narrowly or explicitly deferred.
+
+---
+
+### Phase 47: Next Semantic Runtime Slice Selection
+
+- **Status**: Complete.
+- **Goal**: Select the next safe semantic-runtime slice after closing Phase 46 Trace Export Integration Preflight.
+- **Candidate Slices Reviewed**:
+  - Replay Tool Design Preflight.
+  - Protocol Shadow Semantic Record Integration Preflight.
+  - Dispatch Metadata Observability Follow-up.
+  - Legacy Cleanup Preflight Refresh.
+  - Trace Export Helper Implementation.
+- **Decision**: Select Replay Tool Design Preflight as the next active slice.
+- **Rationale**:
+  - Phase 44 introduced passive semantic decision records and diagnostic-only output-recovery semantic record emission.
+  - Phase 46 proved those records already survive existing stage logger, orchestration trace, and trace export structured-output surfaces.
+  - The next highest-value step is to design how replay/readback should consume existing exported facts without executing runtime logic.
+  - Protocol-shadow integration should wait until replay/readback contracts clarify what fields are actually needed.
+  - Dispatch metadata observability remains useful but higher-risk because dispatch side effects must remain untouched.
+  - Legacy cleanup remains deferred because the semantic record and export surfaces are still new.
+  - Trace export helper implementation remains deferred because Phase 46 proved existing export output already carries the needed field.
+- **Selected Next Phase**:
+  - Phase 48 — Replay Tool Design Preflight.
+- **Forbidden for Next Phase Start**:
+  - No replay implementation yet.
+  - No production behavior change.
+  - No runtime decision execution from replay code.
+  - No trace export implementation change.
+  - No protocol shadow integration.
+  - No state mutation or semantic record storage.
+  - No dispatch behavior change.
+  - No recovery behavior change.
+  - No ActionPolicy change.
+  - No final-answer stop/continue behavior change.
+  - No authority transfer or switch change.
+  - No legacy cleanup.
+- **Next**:
+  - Phase 48 — Step 1/N: Replay Tool Design Preflight Inventory / Contract Design.
+
 ---
 
 ### Phase 48: Replay Tool Design Preflight
@@ -6408,55 +6467,63 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
----
-
-#### Phase 48 — Step 1/N: Replay Tool Design Preflight Inventory / Contract Design
+#### Phase 46 — Step 1/N: Trace Export Integration Preflight Inventory / Export Surface Decision
 
 - **Status**: Done.
-- **Goal**: Design the first safe replay/readback contract for semantic decision records without implementing replay tooling.
+- **Goal**: Inventory trace/export/readback surfaces and choose the first safe semantic decision record export characterization target in one pre-code step.
 - **Completed Outcome**:
-  - Confirmed replay/readback should consume existing structured trace export output, especially `orchestration_trace` entries from `OrchestrationTraceExporter.runtime_artifacts(...)`.
-  - Confirmed semantic decision records can already appear as ordinary trace fields under `fields["semantic_decision_record"]`.
-  - Confirmed replay/readback must be explanation-only and must not execute runtime policy, dispatch, recovery decisions, ActionPolicy, final-answer stop/continue logic, authority resolvers, or switch logic.
-  - Confirmed the first safe replay/readback domain is `output_recovery` because Phase 44 and Phase 46 already established passive records, builder coverage, diagnostic emission, and trace-export preservation for that domain.
-  - Deferred dispatch, terminal-answer, board/memory, protocol-shadow, and multi-domain replay until the first readback contract is stable.
-- **Designed Replay Input Contract**:
-  - Input is a structured trace snapshot or runtime artifact dictionary, not live runtime state.
-  - Initial accepted input shapes:
-    - `list[dict]` trace snapshot entries shaped like `snapshot_trace(state)` output.
-    - `dict` from `OrchestrationTraceExporter.runtime_artifacts(state)` containing `"orchestration_trace"`.
-  - Replay/readback code may scan entries for `entry["fields"]["semantic_decision_record"]`.
-  - Replay/readback code may treat missing or malformed records as skipped diagnostic data, not runtime errors.
-  - Replay/readback code must not call model pipeline, parser/compiler, recovery routing, dispatch, ActionPolicy, authority resolvers, or switch registry.
-- **Designed Replay Output Contract**:
-  - Output is an explanation/readback summary, not a runtime decision.
-  - Initial output should include:
-    - number of semantic decision records found.
-    - domains represented.
-    - stages represented.
-    - decisions represented.
-    - reasons and sources represented.
-    - diagnostic safety flags summary.
-    - optional per-record compact summaries.
-  - Output must not claim authority over runtime decisions.
-  - Output must preserve original reason/source strings from records.
-- **First Safe Domain**:
-  - `output_recovery` semantic decision records.
-- **Not Approved Yet**:
-  - End-to-end replay tool CLI.
-  - Replay execution of runtime decisions.
-  - Trace export schema changes.
-  - Protocol-shadow integration.
-  - State/container storage for semantic records.
-  - Dispatch/action replay.
-  - Terminal-answer replay.
-  - Board/memory commit replay.
-  - Any authority transfer or switch change.
-- **Decision**: Design is sufficient to consider passive replay readback model scaffolding next.
+  - Confirmed the active slice is Trace Export Integration Preflight after Phase 44.
+  - Identified current trace/export files:
+    - `modules/agent/orchestration/shared/trace.py`.
+    - `modules/agent/orchestration/trace_export.py`.
+  - Confirmed `trace_export.py` is an export adapter over the shared trace layer.
+  - Confirmed `trace_export.py` already exposes structured trace via `snapshot_trace(state)` and rendered trace text.
+  - Confirmed stage logger usage is widespread and stage logger entries are represented through `orchestration_trace` state entries.
+  - Confirmed semantic decision record emission currently happens through existing `stage_logger.log(...)` output in the resolved output-recovery compiler strategy path.
+  - Confirmed no explicit semantic record state/container storage currently exists or is desired as a first export slice.
+  - Confirmed no protocol-shadow integration or replay tool exists for semantic decision records yet.
+  - Observed that semantic decision records likely already traverse the existing trace surface as stage logger fields, so the first safe code step should characterize existing export/readback behavior rather than add new integration.
+- **Surface Classification**:
+  - **Safe first code target / test-only**:
+    - Characterize that a stage logger entry containing `semantic_decision_record` is preserved by the existing trace snapshot/export path.
+    - Use existing trace/state/export helpers only.
+    - Do not add new runtime wiring.
+  - **Safe later / small implementation candidate**:
+    - Add a tiny extractor/filter helper for semantic decision records from exported trace snapshots, if characterization proves the field is already present.
+  - **Defer**:
+    - Protocol-shadow semantic record integration.
+    - Trace export schema changes.
+    - New semantic record state/container storage.
+    - Replay tool implementation.
+    - Broad production logging expansion.
+  - **No-go in this slice**:
+    - Any trace/export path that mutates runtime behavior or changes decision flow.
+- **Decision**: Select test-only trace export characterization as the first safe code step.
+- **Approved Implementation Scope for Step 2**:
+  - Add characterization tests proving a `semantic_decision_record` field emitted through `OrchestrationStageLogger` is preserved in `orchestration_trace` and `trace_export` structured output.
+  - Use existing trace/export APIs only.
+  - Do not modify `trace_export.py` yet.
+  - Do not modify `shared/trace.py` yet.
+  - Do not add semantic record storage.
+  - Do not add replay tooling.
+- **Required Safety Properties**:
+  - Test-only characterization.
+  - No production behavior change.
+  - No trace export implementation change.
+  - No protocol shadow integration.
+  - No replay implementation.
+  - No state mutation or semantic record storage.
+  - No dispatch behavior change.
+  - No recovery behavior change.
+  - No ActionPolicy change.
+  - No final-answer stop/continue behavior change.
+  - No authority transfer or switch change.
+  - No legacy cleanup.
 - **Next**:
-  - Phase 48 — Step 2/N: Replay Readback Model Scaffolding Decision.
+  - Phase 46 — Step 2/N: Semantic Decision Record Trace Export Characterization.
 
 ---
+
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.
