@@ -7,7 +7,7 @@ from ..shared.decision_models import OutputRecoveryDecision, ParsedModelOutput
 from .terminal_answer_models import TerminalAnswerKind
 from .protocol_decision_bridge import COMPILER_INVALID_KIND_BY_CODE, compiler_invalid_kind_for_output
 from .recovery_authority import resolve_compiler_invalid_kind_mapping_authority
-from .runtime_protocol_semantics import output_recovery_compiler_metadata, output_recovery_structural_parity
+from .runtime_protocol_semantics import output_recovery_structural_parity
 from .semantic_accessors import get_compiler_metadata
 
 

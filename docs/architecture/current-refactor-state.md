@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 42 — Step 4/N: Output-Recovery Compiler Metadata Fallback Parity Characterization
+- **Phase**: Phase 42 — Step 5/N: Output-Recovery Compiler Metadata Consolidation Implementation Decision
 - **Status**: Complete.
-- **Next Step**: Phase 42 — Step 5/N: Output-Recovery Compiler Metadata Consolidation Implementation Decision.
-- **Boundary**: Parity characterization for `output_recovery_compiler_metadata(...)` versus `get_compiler_metadata(...)` is complete for legacy/fallback metadata cases. No implementation, cleanup, compatibility shim removal, production behavior change, authority transfer, switch change, dispatch behavior change, final-answer stop/continue behavior change, ActionPolicy change, or recovery behavior change was added.
+- **Next Step**: Phase 42 — Step 6/N: Deprecated Metadata Helper Removal / Retention Decision.
+- **Boundary**: The output-recovery routing path already uses `get_compiler_metadata(...)`; the stale unused import of `output_recovery_compiler_metadata(...)` was removed. The deprecated helper itself remains in place as a parity oracle and fallback surface. No output recovery behavior, compatibility shim removal, production authority transfer, switch change, dispatch behavior change, final-answer stop/continue behavior change, ActionPolicy change, or recovery behavior change was added.
 
 ## Step 4I Parity Matrix
 
