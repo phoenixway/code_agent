@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 43 — Step 1/N: Next Semantic Runtime Slice Selection / Candidate Inventory
+- **Phase**: Phase 43 — Step 2/N: Select Next Active Slice
 - **Status**: Complete.
-- **Next Step**: Phase 43 — Step 2/N: Select Next Active Slice.
-- **Boundary**: Phase 11 is closed. This step inventories candidate next slices only. No production behavior change, diagnostic wiring, replay implementation, dispatch behavior change, recovery behavior change, ActionPolicy change, final-answer stop/continue behavior change, authority transfer, switch change, or legacy cleanup is allowed.
+- **Next Step**: Phase 44 — Step 1/N: Semantic Observability / Replay Preflight Inventory.
+- **Boundary**: Semantic Observability / Replay Preflight is selected as the next active slice. The next work is docs-only inventory. No production behavior change, diagnostic wiring, replay implementation, dispatch behavior change, recovery behavior change, ActionPolicy change, final-answer stop/continue behavior change, authority transfer, switch change, or legacy cleanup is allowed yet.
 
 ## Step 4I Parity Matrix
 

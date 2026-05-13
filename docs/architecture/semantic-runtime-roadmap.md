@@ -5639,6 +5639,60 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 43 — Step 2/N: Select Next Active Slice
+
+- **Status**: Done.
+- **Goal**: Select the next active semantic-runtime slice after candidate inventory.
+- **Decision**: Select Semantic Observability / Replay Preflight as the next active slice.
+- **Rationale**:
+  - Phase 11 expanded compiler-driven recovery routing across several structural branches.
+  - The runtime now needs clearer semantic decision tracing before further dispatch, cleanup, or final-answer boundary work.
+  - Observability/replay work can start docs-first without production behavior changes.
+  - Better observability will improve later debugging for compiler metadata, registry resolution, recovery routing, authority decisions, and compatibility surfaces.
+  - Dispatch/action boundary work remains valuable but should wait until decision tracing is clearer.
+  - Legacy cleanup remains deferred until observability and consumer maps make compatibility surfaces safer to classify.
+  - Terminal-answer deferred boundaries remain high-risk because they overlap final-answer stop/continue behavior and sufficiency policy.
+- **Selected Next Phase**:
+  - Phase 44 — Semantic Observability / Replay Preflight.
+- **Forbidden for Next Phase Start**:
+  - No production behavior change.
+  - No diagnostic wiring yet.
+  - No replay implementation yet.
+  - No dispatch behavior change.
+  - No recovery behavior change.
+  - No ActionPolicy change.
+  - No final-answer stop/continue behavior change.
+  - No authority transfer or switch change.
+  - No legacy cleanup.
+- **Next**:
+  - Phase 44 — Step 1/N: Semantic Observability / Replay Preflight Inventory.
+
+---
+
+### Phase 44: Semantic Observability / Replay Preflight
+
+- **Status**: In Progress.
+- **Goal**: Design a safe observability/replay slice for semantic-runtime decisions before implementing diagnostic wiring or replay tools.
+- **Allowed**:
+  - Docs-only inventory and design work.
+  - Inventory current trace/log surfaces for semantic decisions.
+  - Identify semantic decision points that would benefit from structured observation.
+  - Define replay inputs/outputs conceptually before implementation.
+  - Classify candidate observability surfaces by safety and implementation risk.
+- **Forbidden**:
+  - No production behavior change.
+  - No diagnostic wiring yet.
+  - No replay implementation yet.
+  - No changes to dispatch, recovery, ActionPolicy, final-answer, parser/compiler, or bundle validator behavior.
+  - No authority transfer or switch change.
+  - No legacy cleanup.
+- **Done When**:
+  - Current semantic observability surfaces are inventoried.
+  - Candidate replay/diagnostic surfaces are classified.
+  - The first safe observability implementation slice is selected or deferred.
+
+---
+
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.
