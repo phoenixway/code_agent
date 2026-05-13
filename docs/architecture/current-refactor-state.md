@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 42 — Step 1/N: Semantic Runtime Consumer Map / Legacy Cleanup Preflight Inventory
+- **Phase**: Phase 42 — Step 2/N: Consumer Classification / Cleanup Risk Matrix
 - **Status**: Complete.
-- **Next Step**: Phase 42 — Step 2/N: Consumer Classification / Cleanup Risk Matrix.
-- **Boundary**: Semantic-runtime legacy and compatibility surfaces are inventoried. No cleanup is approved yet. No production behavior change, compatibility shim removal, authority transfer, switch change, dispatch behavior change, final-answer stop/continue behavior change, ActionPolicy change, or recovery behavior change is allowed.
+- **Next Step**: Phase 42 — Step 3/N: Cleanup Candidate Selection / Defer Decision.
+- **Boundary**: Semantic-runtime legacy and compatibility consumers are classified by risk. No cleanup is approved yet. No production behavior change, compatibility shim removal, authority transfer, switch change, dispatch behavior change, final-answer stop/continue behavior change, ActionPolicy change, or recovery behavior change is allowed.
 
 ## Step 4I Parity Matrix
 

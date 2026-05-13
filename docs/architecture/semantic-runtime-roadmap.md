@@ -4708,7 +4708,7 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ### Phase 42: Semantic Runtime Consumer Map / Legacy Cleanup Preflight
 
-- **Status**: Not started.
+- **Status**: In Progress.
 - **Goal**: Build a semantic-runtime consumer map before any legacy or compatibility cleanup.
 - **Allowed**:
   - Docs-only inventory and preflight.
@@ -4762,6 +4762,41 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - No production behavior was changed.
 - **Next**:
   - Phase 42 — Step 2/N: Consumer Classification / Cleanup Risk Matrix.
+
+---
+
+#### Phase 42 — Step 2/N: Consumer Classification / Cleanup Risk Matrix
+
+- **Status**: Done.
+- **Goal**: Classify inventoried semantic-runtime legacy and compatibility consumers by risk and cleanup readiness.
+- **Completed Outcome**:
+  - Classified protected compatibility / recovery-evidence surfaces:
+    - `ResponseSemantics.has_any_action_proposal(...)` and `has_any_action_proposal_compat(...)` remain protected compatibility shims.
+    - They provide action-like recovery evidence only and are not dispatch authority.
+    - They are not cleanup candidates until all recovery and guard consumers have typed-equivalent coverage.
+  - Classified active runtime / high-risk surfaces:
+    - `ParsedModelOutput.has_action_segment`, `invalid_kind`, `action_content`, compiler metadata fields, compiler IR, and attached typed semantic results remain active compatibility surfaces.
+    - `ActionPolicy` and dispatch-adjacent consumers of compiler IR/action ops are high-risk and must not be simplified without dispatch characterization.
+    - final-answer, terminal-answer, and recovery-adjacent consumers remain high-risk because they overlap stop/continue and recovery boundaries.
+  - Classified candidate-for-future-cleanup surfaces:
+    - `runtime_protocol_semantics.output_recovery_compiler_metadata(...)` is a candidate for later consolidation into `semantic_accessors.get_compiler_metadata(...)` only after explicit parity tests prove fallback behavior is unchanged.
+    - direct metadata reads may become future cleanup candidates after a narrower accessor migration plan exists.
+  - Classified test-only / fixture construction surfaces:
+    - direct `ParsedModelOutput(...)` construction with legacy fields in tests is not production cleanup evidence by itself.
+    - tests that intentionally characterize compatibility behavior should remain until the corresponding runtime consumer is migrated or retired.
+  - Classified diagnostic/transitional surfaces:
+    - `RuntimeProtocolSemantics` and semantic accessor snapshots are diagnostic/transitional read layers, not policy authority.
+    - terminal-answer shadow/parity diagnostics remain evidence only unless a later slice explicitly approves a consumer migration.
+  - Cleanup readiness matrix:
+    - Ready now: none.
+    - Candidate after parity proof: output-recovery compiler metadata fallback consolidation.
+    - Candidate after consumer migration plan: selected direct compiler metadata reads.
+    - Deferred/high-risk: action proposal compatibility shims, `has_action_segment`, final-answer/terminal-answer consumers, dispatch/action policy consumers, recovery behavior consumers.
+  - No cleanup was approved.
+  - No compatibility shim was removed.
+  - No production behavior was changed.
+- **Next**:
+  - Phase 42 — Step 3/N: Cleanup Candidate Selection / Defer Decision.
 
 ### Phase 11: RecoveryStrategy Registry Expansion
 
