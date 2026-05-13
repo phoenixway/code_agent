@@ -6647,6 +6647,79 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Phase 51 — Next Semantic Runtime Slice Selection.
 
 ---
+
+### Phase 51: Next Semantic Runtime Slice Selection
+
+- **Status**: Complete.
+- **Goal**: Select the next safe semantic-runtime slice after closing Phase 50 Protocol Shadow Semantic Record Integration Preflight.
+- **Candidate Slices Reviewed**:
+  - Dispatch Metadata Observability Follow-up.
+  - Replay CLI / Operator Workflow Design.
+  - Trace Export Helper Implementation.
+  - Legacy Cleanup Preflight Refresh.
+  - Broader Semantic Decision Record Domains.
+- **Decision**: Select Dispatch Metadata Observability Follow-up as the next active slice.
+- **Rationale**:
+  - Phase 44–50 established a stable passive observability/readback path for semantic decisions without runtime execution.
+  - Dispatch remains a high-value boundary because earlier plan-first work introduced diagnostic bridge artifacts such as execution plans, execution commits, and dispatch candidates, but actual dispatch remained segment-driven.
+  - The next safe question is not dispatch migration; it is what dispatch metadata is already observable and whether a better diagnostic summary is needed.
+  - This slice can begin docs-only and preserve the side-effect boundary.
+  - Replay CLI remains deferred until there is a concrete operator workflow.
+  - Trace export helper remains deferred because existing structured export and readback are sufficient for now.
+  - Legacy cleanup remains deferred because observability surfaces are still evolving.
+- **Selected Next Phase**:
+  - Phase 52 — Dispatch Metadata Observability Follow-up.
+- **Forbidden for Next Phase Start**:
+  - No dispatch behavior change.
+  - No dispatch adapter implementation.
+  - No synthetic segment adapter.
+  - No candidate-driven dispatcher input.
+  - No ActionPolicy change.
+  - No production behavior change.
+  - No replay implementation.
+  - No protocol shadow integration.
+  - No trace export implementation change.
+  - No state mutation or semantic record storage.
+  - No recovery behavior change.
+  - No final-answer stop/continue behavior change.
+  - No authority transfer or switch change.
+  - No legacy cleanup.
+- **Next**:
+  - Phase 52 — Step 1/N: Dispatch Metadata Observability Preflight Inventory.
+
+---
+
+### Phase 52: Dispatch Metadata Observability Follow-up
+
+- **Status**: In Progress.
+- **Goal**: Inventory and classify dispatch-boundary metadata observability without changing dispatch behavior or side effects.
+- **Allowed**:
+  - Docs-only inventory and classification.
+  - Inventory existing execution plan, execution commit, plan-dispatch candidate, dispatch trace, and runtime artifact surfaces.
+  - Identify what dispatch metadata is already exported or readback-visible.
+  - Classify candidate diagnostic/readback improvements by safety and risk.
+  - Decide whether a test-only characterization or passive summary helper is useful.
+- **Forbidden**:
+  - No dispatch behavior change.
+  - No dispatch adapter implementation.
+  - No synthetic segment adapter.
+  - No candidate-driven dispatcher input.
+  - No ActionPolicy change.
+  - No production behavior change.
+  - No replay implementation.
+  - No protocol shadow integration.
+  - No trace export implementation change.
+  - No state mutation or semantic record storage.
+  - No recovery behavior change.
+  - No final-answer stop/continue behavior change.
+  - No authority transfer or switch change.
+  - No legacy cleanup.
+- **Done When**:
+  - Existing dispatch metadata surfaces are inventoried.
+  - Candidate observability/readback improvements are classified.
+  - The first safe implementation slice is selected or explicitly deferred.
+
+---
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.
