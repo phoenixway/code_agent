@@ -248,6 +248,8 @@ class RecoveryPromptBuilderMixin:
                 "\nYour last search was too broad or a low-value repeat. Unbounded searches are expensive and often noisy."
                 "\nA single bounded reconnaissance search is allowed when exact files are unknown. A bounded search must use at least two of: a specific path, a specific pattern, `include_extensions`, or `exclude_dirs`."
                 "\nIf the previous search already returned candidate paths, the next step must be a targeted read (`read_file`, `read_chunk`, `read_file_skeleton`) on those paths, not another broad search."
+                "\nDo not repeat the same root-level or weakly bounded `search_content` query."
+                "\nIf you still need search, make the next `search_content` materially narrower than the failed search."
                 "\nTo narrow your next search and make it a valid bounded reconnaissance step:"
                 "\n- Use a more specific path instead of the root."
                 "\n- Use a more specific pattern (e.g., an exact symbol, class name, or function name)."

@@ -4434,6 +4434,28 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 33 — Step 5/N: Repeat Broad Search Guard / Hint Hardening Decision.
 
+---
+
+#### Phase 33 — Step 5/N: Repeat Broad Search Guard / Hint Hardening Decision
+
+- **Status**: Done.
+- **Goal**: Decide whether to add a hard repeat broad-search guard or perform prompt-only hint hardening.
+- **Decision**: Use prompt-only hint hardening. Do not add a hard guard.
+- **Completed Outcome**:
+  - Strengthened the existing `too_broad_search` / `low_value_broad_search_repeat` recovery prompt.
+  - The prompt now explicitly tells the agent not to repeat the same root-level or weakly bounded `search_content` query.
+  - The prompt now says that any next `search_content` action must be materially narrower than the failed search.
+  - The existing characterization test now locks this prompt-only behavior.
+  - No repeat detector or repeat state was added.
+  - No hard repeat-search blocking was added.
+  - No automatic memory-board path anchoring was added.
+  - No search matching behavior changed.
+  - No path normalization behavior changed.
+  - No tool execution behavior changed.
+  - No recovery authority changed.
+- **Next**:
+  - Phase 33 — Step 6/N: Invalid-Path Recovery Prompt Hardening Decision.
+
 ### Phase 11: RecoveryStrategy Registry Expansion
 
 - **Goal**: Expand the `CompilerRecoveryRegistry` to cover more structural errors.

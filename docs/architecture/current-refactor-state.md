@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 33 — Step 4/N: Repeat Broad Search Characterization
+- **Phase**: Phase 33 — Step 5/N: Repeat Broad Search Guard / Hint Hardening Decision
 - **Status**: Complete.
-- **Next Step**: Phase 33 — Step 5/N: Repeat Broad Search Guard / Hint Hardening Decision.
-- **Boundary**: Repeat broad-search recovery behavior is characterized at the prompt level. No hard repeat-search blocking, automatic memory-board path anchoring, path normalization change, search matching change, tool execution behavior change, recovery authority change, or broad recovery rewrite was added.
+- **Next Step**: Phase 33 — Step 6/N: Invalid-Path Recovery Prompt Hardening Decision.
+- **Boundary**: Repeat broad-search hardening remains prompt-only. No hard repeat-search blocking, repeat detector/state, automatic memory-board path anchoring, path normalization change, search matching change, tool execution behavior change, recovery authority change, or broad recovery rewrite was added.
 
 ## Step 4I Parity Matrix
 

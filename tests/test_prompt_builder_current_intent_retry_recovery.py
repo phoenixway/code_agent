@@ -130,6 +130,8 @@ class PromptBuilderCurrentIntentRetryRecoveryTests(unittest.TestCase):
         self.assertIn("must use at least two of", out)
         self.assertIn("targeted read (`read_file`, `read_chunk`, `read_file_skeleton`)", out)
         self.assertIn("not another broad search", out)
+        self.assertIn("Do not repeat the same root-level or weakly bounded `search_content` query", out)
+        self.assertIn("materially narrower than the failed search", out)
         self.assertIn("Use a more specific path instead of the root", out)
         self.assertIn("Use a more specific pattern", out)
         self.assertIn("include_extensions", out)
