@@ -6295,6 +6295,40 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 46 — Step 3/N: Trace Export Surface Closure / Export Helper Decision
+
+- **Status**: Done.
+- **Goal**: Close the Trace Export Integration Preflight slice and decide whether an export helper should be implemented immediately.
+- **Completed Outcome**:
+  - Reviewed the Step 2 characterization results.
+  - Confirmed semantic decision records emitted through existing stage logger output are preserved in `orchestration_trace` entry fields.
+  - Confirmed existing `OrchestrationTraceExporter.runtime_artifacts(...)` already exposes those fields through structured trace output.
+  - Confirmed the useful export/readback path exists without adding new runtime state, trace export schema changes, or replay tooling.
+  - Confirmed no additional export helper is required for the current slice.
+  - Confirmed protocol-shadow integration, replay implementation, trace export schema changes, semantic record storage, and broad production logging remain deferred.
+- **Decision**: Close Phase 46 without implementing an export helper.
+- **Rationale**:
+  - The first export/readback question was answered by characterization: existing trace export already preserves `semantic_decision_record` fields.
+  - A new extractor/filter helper would be premature until a concrete consumer or replay workflow needs it.
+  - Closing now keeps the slice narrow and avoids turning trace export preflight into replay tooling.
+- **Deferred / Not Approved**:
+  - Export helper implementation.
+  - Trace export schema changes.
+  - Protocol-shadow semantic record integration.
+  - Replay implementation.
+  - Semantic record state/container storage.
+  - Broad production logging expansion.
+  - Dispatch/action replay.
+  - Terminal-answer replay.
+  - Board/memory commit replay.
+  - Any authority transfer or switch change.
+  - Any production behavior change.
+  - Legacy cleanup.
+- **Next**:
+  - Phase 47 — Next Semantic Runtime Slice Selection.
+
+---
+
 #### Phase 46 — Step 1/N: Trace Export Integration Preflight Inventory / Export Surface Decision
 
 - **Status**: Done.
