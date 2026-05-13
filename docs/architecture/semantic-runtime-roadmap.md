@@ -6062,6 +6062,52 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 44 — Step 10/N: Semantic Observability / Replay Preflight Closure Review
+
+- **Status**: Done.
+- **Goal**: Close Phase 44 after the first safe semantic observability increment and decide whether to continue into replay implementation immediately.
+- **Completed Outcome**:
+  - Closed the Semantic Observability / Replay Preflight slice after one narrow, behavior-preserving diagnostic integration.
+  - Added passive semantic decision record scaffolding:
+    - `CompilerMetadataSnapshot`.
+    - `RegistryResolutionSnapshot`.
+    - `EffectiveDecisionSnapshot`.
+    - `AuthorityResolutionSnapshot`.
+    - `SemanticDecisionRecord`.
+  - Added JSON-serializable `to_dict()` helpers and tests.
+  - Added a pure output-recovery semantic decision record builder.
+  - Added diagnostic-only stage logger emission for resolved output-recovery compiler strategy paths.
+  - Preserved output-recovery decision reason/source/prompt/return behavior.
+  - Preserved dispatch behavior.
+  - Preserved ActionPolicy behavior.
+  - Preserved final-answer stop/continue behavior.
+  - Preserved authority and switch behavior.
+  - No state/container storage was added.
+  - No protocol shadow integration was added.
+  - No trace export integration was added.
+  - No replay tool was added.
+  - No production behavior changed.
+- **Decision**: Close Phase 44 now instead of expanding directly into replay tooling.
+- **Rationale**:
+  - Phase 44 achieved a useful observability increment: semantic decision facts can now be represented and emitted for the output-recovery compiler strategy path.
+  - A full replay tool should wait until the next slice selection because trace export, protocol shadow, dispatch metadata, and replay execution each carry different risks.
+  - Closing now keeps the slice narrow and prevents observability work from drifting into broad runtime instrumentation.
+- **Deferred / Not Approved**:
+  - Replay implementation.
+  - Trace export integration.
+  - Protocol shadow integration.
+  - State/container storage for semantic records.
+  - Broad production logging expansion.
+  - Dispatch/action replay.
+  - Terminal-answer replay.
+  - Board/memory commit replay.
+  - Any authority transfer or switch change.
+  - Any production behavior change.
+- **Next**:
+  - Phase 45 — Next Semantic Runtime Slice Selection.
+
+---
+
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.

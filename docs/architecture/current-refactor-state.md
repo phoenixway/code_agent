@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 44 — Step 9/N: Output-Recovery Compiler Strategy Semantic Record Diagnostic Wiring
+- **Phase**: Phase 44 — Step 10/N: Semantic Observability / Replay Preflight Closure Review
 - **Status**: Complete.
-- **Next Step**: Phase 44 — Step 10/N: Output-Recovery Semantic Diagnostic Wiring Closure / Replay Preflight Decision.
-- **Boundary**: Diagnostic-only semantic decision record emission is wired into the output-recovery compiler strategy path through existing stage logger output. Recovery decisions, prompts, reasons, sources, retry counters, return paths, dispatch behavior, ActionPolicy behavior, final-answer stop/continue behavior, authority selection, switch behavior, state mutation, trace export, protocol shadow, replay implementation, and legacy cleanup remain unchanged.
+- **Next Step**: Phase 45 — Next Semantic Runtime Slice Selection.
+- **Boundary**: Phase 44 is closed after delivering passive semantic decision records, an output-recovery record builder, and diagnostic-only output-recovery compiler strategy record emission through existing stage logger output. No replay implementation, trace export integration, protocol shadow integration, state mutation, production behavior change, dispatch behavior change, recovery behavior change, ActionPolicy change, final-answer stop/continue behavior change, authority transfer, switch change, or legacy cleanup was added.
 
 ## Step 4I Parity Matrix
 
