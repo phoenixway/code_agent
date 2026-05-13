@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 36 — Step 2/N: MEMORY_CONTENT_WITH_ACTION Candidate / Resolver Model Design
+- **Phase**: Phase 36 — Step 4/N: MEMORY_CONTENT_WITH_ACTION Smoke Switch Registration / Validation
 - **Status**: Complete.
-- **Next Step**: Phase 36 — Step 3/N: Commit-Equivalence Hardening / Smoke Switch Planning.
-- **Boundary**: Phase 36 Step 2 added a candidate/resolver model for durable memory content + action, distinct from Phase 35 bare-marker MCTA. No production behavior change. No authority transfer. No `effective_commit` consumption. No default registry flip. No runtime diagnostic wiring.
+- **Next Step**: Phase 36 — Step 5/N: Runtime Diagnostic Integration.
+- **Boundary**: Phase 36 Step 4 added `board_memory.memory_content_with_action` switch registration and smoke validation. Default registry remains `legacy`; smoke registry uses `compiler`. No runtime behavior change. No diagnostic wiring. No `effective_commit` consumption.
 
 ## Step 4I Parity Matrix
 
