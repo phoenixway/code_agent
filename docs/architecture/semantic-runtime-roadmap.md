@@ -6720,6 +6720,73 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - The first safe implementation slice is selected or explicitly deferred.
 
 ---
+
+#### Phase 52 — Step 1/N: Dispatch Metadata Observability Preflight Inventory / Characterization Decision
+
+- **Status**: Done.
+- **Goal**: Inventory dispatch metadata observability surfaces and select the first safe characterization target without changing dispatch behavior.
+- **Completed Outcome**:
+  - Confirmed the active slice is Dispatch Metadata Observability Follow-up.
+  - Inventoried dispatch-related surfaces around:
+    - `ExecutionPlan`.
+    - `ExecutionCommit`.
+    - `PlanDispatchCandidate` / candidate metadata.
+    - `dispatch_ready` response-pipeline outcomes.
+    - `processed_segs` / processed dispatch segments.
+    - `orchestration_trace`.
+    - `trace_export.runtime_artifacts(...)`.
+    - passive `replay_readback` helpers.
+  - Confirmed `TRACE_SCHEMA_DEFAULTS` already includes `execution_plan` and `execution_commit` trace fields.
+  - Confirmed trace export already exposes runtime artifacts such as `last_execution_plan`, `last_execution_commit`, and `orchestration_trace` through existing structured output.
+  - Confirmed existing docs warn that `ExecutionPlan.action_dispatched` is unused and should not be treated as dispatch authority; action intent should be inferred from `action_effects` instead.
+  - Confirmed prior plan-first dispatch work kept actual dispatch segment-driven.
+  - Confirmed `PlanDispatchCandidate` remains diagnostic metadata/bridge evidence only, not dispatcher input.
+  - Confirmed `processed_segs`, `DispatchOutcomeHandler`, and `ExecutionCommit` remain segment-shaped side-effect boundary artifacts.
+  - Confirmed dispatch metadata is already partially observable, but current tests should lock down the trace/export visibility before adding any helper.
+- **Surface Classification**:
+  - **Safe first code target / test-only**:
+    - Characterize that existing trace/export/runtime-artifact surfaces preserve `ExecutionPlan` and `ExecutionCommit` data without implementation changes.
+    - Characterize that trace fields can carry compact dispatch metadata through `execution_plan` and `execution_commit` fields.
+  - **Safe later / possible passive helper**:
+    - Add a pure dispatch metadata readback summary helper only if characterization proves the existing exported shape is stable and useful.
+  - **Defer**:
+    - Any dispatch adapter implementation.
+    - Any synthetic segment adapter.
+    - Any candidate-driven dispatcher input.
+    - Any PlanDispatchCandidate authority expansion.
+    - Any ActionPolicy change.
+    - Replay execution or operator CLI.
+  - **No-go in this slice**:
+    - Any path that changes dispatch side effects, dispatcher input, processed segment interpretation, execution commit construction, or ActionPolicy authority.
+- **Decision**: Select test-only dispatch metadata trace/export characterization as the first safe code step.
+- **Approved Implementation Scope for Step 2**:
+  - Add characterization tests proving existing trace/export surfaces preserve dispatch metadata already present in trace fields and runtime artifacts.
+  - Use existing trace/export APIs only.
+  - Prefer existing test files around orchestration trace helpers and trace export surfaces.
+  - Do not modify production dispatch code.
+  - Do not modify `trace_export.py` yet.
+  - Do not add a dispatch readback helper yet.
+  - Do not add replay execution or CLI code.
+- **Required Safety Properties**:
+  - Test-only characterization.
+  - No dispatch behavior change.
+  - No dispatch adapter implementation.
+  - No synthetic segment adapter.
+  - No candidate-driven dispatcher input.
+  - No ActionPolicy change.
+  - No production behavior change.
+  - No replay implementation.
+  - No protocol shadow integration.
+  - No trace export implementation change.
+  - No state mutation.
+  - No recovery behavior change.
+  - No final-answer stop/continue behavior change.
+  - No authority transfer or switch change.
+  - No legacy cleanup.
+- **Next**:
+  - Phase 52 — Step 2/N: Dispatch Metadata Trace Export Characterization.
+
+---
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.

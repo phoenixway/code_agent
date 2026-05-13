@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 51 — Step 1/N: Next Semantic Runtime Slice Selection / Dispatch Metadata Observability Decision
+- **Phase**: Phase 52 — Step 1/N: Dispatch Metadata Observability Preflight Inventory / Characterization Decision
 - **Status**: Complete.
-- **Next Step**: Phase 52 — Step 1/N: Dispatch Metadata Observability Preflight Inventory.
-- **Boundary**: Dispatch Metadata Observability Follow-up is selected as the next active slice. The next work is docs-only inventory and classification. No dispatch behavior change, dispatch adapter implementation, synthetic segment adapter, ActionPolicy change, production behavior change, replay implementation, protocol shadow integration, trace export implementation change, state mutation, recovery behavior change, final-answer stop/continue behavior change, authority transfer, switch change, or legacy cleanup is allowed yet.
+- **Next Step**: Phase 52 — Step 2/N: Dispatch Metadata Trace Export Characterization.
+- **Boundary**: Dispatch metadata observability surfaces are inventoried and the first safe characterization target is selected. Next work is test-only characterization proving existing trace/export surfaces preserve dispatch metadata already present in execution plans, execution commits, runtime artifacts, and orchestration trace fields. No dispatch behavior change, dispatch adapter implementation, synthetic segment adapter, candidate-driven dispatcher input, ActionPolicy change, production behavior change, replay implementation, protocol shadow integration, trace export implementation change, state mutation, recovery behavior change, final-answer stop/continue behavior change, authority transfer, switch change, or legacy cleanup is allowed.
 
 ## Step 4I Parity Matrix
 
