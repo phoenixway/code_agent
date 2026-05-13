@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 42 — Step 3/N: Cleanup Candidate Selection / Defer Decision
+- **Phase**: Phase 42 — Step 4/N: Output-Recovery Compiler Metadata Fallback Parity Characterization
 - **Status**: Complete.
-- **Next Step**: Phase 42 — Step 4/N: Output-Recovery Compiler Metadata Fallback Parity Characterization.
-- **Boundary**: A single cleanup candidate is selected for characterization only: `output_recovery_compiler_metadata(...)` consolidation into `get_compiler_metadata(...)`. No implementation, cleanup, compatibility shim removal, production behavior change, authority transfer, switch change, dispatch behavior change, final-answer stop/continue behavior change, ActionPolicy change, or recovery behavior change is allowed.
+- **Next Step**: Phase 42 — Step 5/N: Output-Recovery Compiler Metadata Consolidation Implementation Decision.
+- **Boundary**: Parity characterization for `output_recovery_compiler_metadata(...)` versus `get_compiler_metadata(...)` is complete for legacy/fallback metadata cases. No implementation, cleanup, compatibility shim removal, production behavior change, authority transfer, switch change, dispatch behavior change, final-answer stop/continue behavior change, ActionPolicy change, or recovery behavior change was added.
 
 ## Step 4I Parity Matrix
 

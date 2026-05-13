@@ -4829,6 +4829,26 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 42 — Step 4/N: Output-Recovery Compiler Metadata Fallback Parity Characterization.
 
+---
+
+#### Phase 42 — Step 4/N: Output-Recovery Compiler Metadata Fallback Parity Characterization
+
+- **Status**: Done.
+- **Goal**: Prove characterization parity between the deprecated output-recovery metadata helper and the central semantic accessor before any consolidation implementation.
+- **Completed Outcome**:
+  - Added characterization coverage comparing `runtime_protocol_semantics.output_recovery_compiler_metadata(...)` and `semantic_accessors.get_compiler_metadata(...)`.
+  - Covered legacy/fallback metadata cases:
+    - legacy `invalid_kind` without compiler metadata;
+    - compiler error/recovery metadata with legacy invalid kind fallback;
+    - empty metadata.
+  - The test locks down exact dictionary parity, including `source`, `error_code`, `recovery_id`, and `invalid_kind`.
+  - No production code was changed.
+  - No helper was removed.
+  - No output recovery behavior changed.
+  - No compatibility shim was removed.
+- **Next**:
+  - Phase 42 — Step 5/N: Output-Recovery Compiler Metadata Consolidation Implementation Decision.
+
 ### Phase 11: RecoveryStrategy Registry Expansion
 
 - **Goal**: Expand the `CompilerRecoveryRegistry` to cover more structural errors.
