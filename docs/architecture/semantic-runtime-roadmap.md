@@ -5268,6 +5268,27 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 11 — Step 12/N: Transition-Conflict Registry Strategy Batch Parity Characterization
+
+- **Status**: Done.
+- **Goal**: Add test-only characterization for current `conflicting_intent_transitions` and `intent_complete_with_action_not_allowed` behavior before any registry implementation.
+- **Completed Outcome**:
+  - Added a current-behavior contract test for `conflicting_intent_transitions`.
+  - Added a current-behavior contract test for `intent_complete_with_action_not_allowed`.
+  - The tests prove both branches preserve their expected decision reasons.
+  - The tests prove both branches use their dedicated transition-conflict prompts.
+  - The tests verify that `conflicting_intent_transitions` does not accidentally use mixed-visible or mixed-intent/visible-answer prompt language.
+  - The tests verify that `intent_complete_with_action_not_allowed` does not accidentally use conflicting-intent or mixed-intent/visible-answer prompt language.
+  - Existing `mixed_intent_transition_and_visible_answer` and `mixed_visible_text_and_control_protocol` paths remain negative-control siblings.
+  - No `CompilerRecoveryRegistry` strategy was added.
+  - No compiler metadata routing behavior was changed.
+  - No recovery behavior changed.
+  - No production behavior changed.
+- **Next**:
+  - Phase 11 — Step 13/N: Transition-Conflict Registry Strategy Batch Implementation Decision.
+
+---
+
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.

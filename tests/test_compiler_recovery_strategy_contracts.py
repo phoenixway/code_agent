@@ -107,6 +107,52 @@ async def test_mixed_intent_transition_visible_answer_current_contract():
     assert "malformed action json" not in prompt.lower()
 
 
+@pytest.mark.asyncio
+async def test_conflicting_intent_transitions_current_contract():
+    decision = await _handler().decide(
+        ParsedModelOutput(
+            response='<intent>{"mode":"activate","intent_id":"i1"}</intent>\n<intent>{"mode":"complete","intent_id":"i1"}</intent>',
+            invalid_kind="conflicting_intent_transitions",
+            compiler_error_code="",
+            compiler_recovery_id="",
+        ),
+        malformed_action_retries=0,
+        audit_marker_retries=0,
+    )
+
+    prompt = decision.next_query or ""
+    assert decision.reason == "conflicting_intent_transitions"
+    assert "conflicting intent transitions" in prompt
+    assert "Return only one top-level <intent> transition" in prompt
+    assert "Do not include <think>" in prompt
+    assert "If a contract is already active" in prompt
+    assert "mixed an intent transition with user-visible answer text" not in prompt
+    assert "mixed a user-visible answer with internal protocol" not in prompt
+
+
+@pytest.mark.asyncio
+async def test_intent_complete_with_action_not_allowed_current_contract():
+    decision = await _handler().decide(
+        ParsedModelOutput(
+            response='<intent>{"mode":"complete","intent_id":"i1"}</intent>\n<action>{"type":"read_file","path":"x.py"}</action>',
+            invalid_kind="intent_complete_with_action_not_allowed",
+            compiler_error_code="",
+            compiler_recovery_id="",
+        ),
+        malformed_action_retries=0,
+        audit_marker_retries=0,
+    )
+
+    prompt = decision.next_query or ""
+    assert decision.reason == "intent_complete_with_action_not_allowed"
+    assert "A completed intent may not include a follow-up <action>" in prompt
+    assert "If the goal is complete, return the final plain-text answer only" in prompt
+    assert "If more tool work is still needed, do not complete the intent yet" in prompt
+    assert "mixed an intent transition with user-visible answer text" not in prompt
+    assert "conflicting intent transitions" not in prompt
+
+
+@pytest.mark.asyncio
 async def test_action_array_strategy_contract():
     decision = await _handler().decide(
         ParsedModelOutput(
