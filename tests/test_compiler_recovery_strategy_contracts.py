@@ -85,6 +85,28 @@ async def test_mixed_visible_control_strategy_contract():
 
 
 @pytest.mark.asyncio
+async def test_mixed_intent_transition_visible_answer_current_contract():
+    decision = await _handler().decide(
+        ParsedModelOutput(
+            response='<intent>{"mode":"complete","intent_id":"i1"}</intent>\nDone.',
+            invalid_kind="mixed_intent_transition_and_visible_answer",
+            compiler_error_code="",
+            compiler_recovery_id="",
+        ),
+        malformed_action_retries=0,
+        audit_marker_retries=0,
+    )
+
+    prompt = decision.next_query or ""
+    assert decision.reason == "mixed_intent_transition_and_visible_answer"
+    assert "mixed an intent transition with user-visible answer text" in prompt
+    assert "Return only one valid <intent" in prompt
+    assert "return only the final plain-text answer" in prompt.lower()
+    assert "valid atomic bundle" in prompt
+    assert "visible prose before internal protocol" not in prompt.lower()
+    assert "malformed action json" not in prompt.lower()
+
+
 async def test_action_array_strategy_contract():
     decision = await _handler().decide(
         ParsedModelOutput(

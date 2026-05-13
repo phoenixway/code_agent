@@ -5072,6 +5072,61 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 11 — Step 6/N: Mixed Intent Transition / Visible Answer Registry Strategy Parity Characterization
+
+- **Status**: Done.
+- **Goal**: Add test-only characterization for the current `mixed_intent_transition_and_visible_answer` behavior before any registry implementation.
+- **Completed Outcome**:
+  - Added a current-behavior contract test for `mixed_intent_transition_and_visible_answer`.
+  - The test proves the branch returns decision reason `mixed_intent_transition_and_visible_answer`.
+  - The test proves the branch uses the dedicated mixed intent-transition / visible-answer prompt.
+  - The test verifies that the branch does not accidentally use ordinary mixed-visible-control or malformed-action prompt language.
+  - Existing `mixed_visible_text_and_control_protocol` strategy contract remains the negative-control counterpart.
+  - No `CompilerRecoveryRegistry` strategy was added.
+  - No compiler metadata routing behavior was changed.
+  - No recovery behavior changed.
+  - No production behavior changed.
+- **Next**:
+  - Phase 11 — Step 7/N: Mixed Intent Transition / Visible Answer Registry Strategy Implementation Decision.
+
+---
+
+#### Phase 11 — Step 7/N: Mixed Intent Transition / Visible Answer Registry Strategy Implementation Decision
+
+- **Status**: Done.
+- **Goal**: Decide whether the dedicated `mixed_intent_transition_and_visible_answer` registry strategy may be implemented after parity characterization.
+- **Decision**: GO for narrow implementation only.
+- **Approved Implementation Scope**:
+  - Add a dedicated `CompilerRecoveryStrategy` for `mixed_intent_transition_and_visible_answer`.
+  - Expected strategy contract:
+    - `id`: `mixed_intent_transition_visible_answer`.
+    - `error_codes`: `("E_VISIBLE_TEXT_AFTER_INTENT",)`.
+    - `recovery_ids`: `("mixed_intent_transition_and_visible_answer",)`.
+    - `invalid_kind`: `mixed_intent_transition_and_visible_answer`.
+    - `handler_key`: `mixed_intent_transition_visible_answer`.
+  - Add a dedicated compiler strategy handler that uses `build_mixed_intent_transition_and_visible_answer_prompt()`.
+  - Add registry resolution coverage for the new strategy tuple.
+  - Add compiler-driven routing coverage proving this branch can route from compiler metadata without legacy `invalid_kind`.
+  - Preserve the existing current-behavior contract test and ordinary `mixed_visible_text_and_control_protocol` negative-control path.
+- **Required Behavior Preservation**:
+  - Decision reason remains `mixed_intent_transition_and_visible_answer`.
+  - Prompt remains the dedicated mixed intent-transition / visible-answer prompt.
+  - Recovery source follows existing compiler strategy conventions.
+  - Ordinary `mixed_visible_text_and_control_protocol` routing remains unchanged.
+- **Forbidden**:
+  - No broad recovery rewrite.
+  - No final-answer stop/continue behavior change.
+  - No transition policy change.
+  - No `FOLLOWUP_PLAINTEXT` or `get_visible_text` migration.
+  - No dispatch behavior change.
+  - No ActionPolicy change.
+  - No authority transfer or switch change.
+  - No legacy cleanup.
+- **Next**:
+  - Phase 11 — Step 8/N: Mixed Intent Transition / Visible Answer Registry Strategy Implementation.
+
+---
+
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.
