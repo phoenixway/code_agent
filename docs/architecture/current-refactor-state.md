@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 11 — Step 13/N: Transition-Conflict Registry Strategy Batch Implementation Decision
+- **Phase**: Phase 11 — Step 15/N: Transition-Conflict Registry Strategy Batch Closure Review
 - **Status**: Complete.
-- **Next Step**: Phase 11 — Step 14/N: Transition-Conflict Registry Strategy Batch Implementation.
-- **Boundary**: Narrow batch implementation is approved only for dedicated compiler recovery strategies for `conflicting_intent_transitions` and `intent_complete_with_action_not_allowed`. No broad recovery rewrite, final-answer stop/continue behavior change, transition policy change, dispatch behavior change, ActionPolicy change, authority transfer, switch change, bundle validator behavior change, or legacy cleanup is allowed.
+- **Next Step**: Phase 11 — Step 16/N: E_FILE_CONTENT_ACTION_MISMATCH Coverage-Gap Review.
+- **Boundary**: The transition-conflict registry strategy batch is closed after green tests. Phase 11 remains open for a narrow coverage-gap review of `E_FILE_CONTENT_ACTION_MISMATCH`. No registry implementation, recovery behavior change, production behavior change, authority transfer, switch change, dispatch behavior change, final-answer stop/continue behavior change, ActionPolicy change, bundle validator behavior change, or legacy cleanup is allowed in the review step.
 
 ## Step 4I Parity Matrix
 

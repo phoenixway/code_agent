@@ -29,6 +29,28 @@ def test_registry_resolves_mixed_intent_transition_visible_answer_strategy():
     assert strategy.handler_key == "mixed_intent_transition_visible_answer"
 
 
+def test_registry_resolves_transition_conflict_strategies():
+    registry = CompilerRecoveryRegistry()
+
+    conflicting = registry.resolve(
+        error_code="E_MULTIPLE_INTENTS",
+        recovery_id="conflicting_intent_transitions",
+        invalid_kind="conflicting_intent_transitions",
+    )
+    complete_with_action = registry.resolve(
+        error_code="E_INTENT_COMPLETE_WITH_ACTION",
+        recovery_id="intent_complete_with_action_not_allowed",
+        invalid_kind="intent_complete_with_action_not_allowed",
+    )
+
+    assert conflicting is not None
+    assert conflicting.id == "conflicting_intent_transitions"
+    assert conflicting.handler_key == "conflicting_intent_transitions"
+    assert complete_with_action is not None
+    assert complete_with_action.id == "intent_complete_with_action_not_allowed"
+    assert complete_with_action.handler_key == "intent_complete_with_action_not_allowed"
+
+
 def test_registry_resolves_action_array_and_multiple_actions_separately():
     registry = CompilerRecoveryRegistry()
 

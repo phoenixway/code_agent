@@ -926,6 +926,60 @@ class OutputRecoveryRoutingMixin:
         )
 
 
+    def _compiler_strategy_conflicting_intent_transitions(
+        self,
+        parsed_output: ParsedModelOutput,
+        *,
+        invalid_kind: str,
+        malformed_action_retries: int,
+        audit_marker_retries: int,
+        compiler_meta: dict,
+    ) -> OutputRecoveryDecision:
+        prompt = self.prompt_builder.build_conflicting_intent_transitions_prompt()
+        self.stage_logger.log(
+            "output_recovery",
+            "continue",
+            reason=invalid_kind,
+            source="compiler_recovery_strategy",
+            universe=self._intent_universe_label(),
+            compiler_error_code=compiler_meta["error_code"],
+            compiler_recovery_id=compiler_meta["recovery_id"],
+        )
+        return OutputRecoveryDecision.continue_with(
+            prompt,
+            reason=invalid_kind,
+            source="compiler_recovery_strategy",
+            malformed_action_retries=malformed_action_retries,
+            audit_marker_retries=audit_marker_retries,
+        )
+
+    def _compiler_strategy_intent_complete_with_action_not_allowed(
+        self,
+        parsed_output: ParsedModelOutput,
+        *,
+        invalid_kind: str,
+        malformed_action_retries: int,
+        audit_marker_retries: int,
+        compiler_meta: dict,
+    ) -> OutputRecoveryDecision:
+        prompt = self.prompt_builder.build_completion_with_action_not_allowed_prompt()
+        self.stage_logger.log(
+            "output_recovery",
+            "continue",
+            reason=invalid_kind,
+            source="compiler_recovery_strategy",
+            universe=self._intent_universe_label(),
+            compiler_error_code=compiler_meta["error_code"],
+            compiler_recovery_id=compiler_meta["recovery_id"],
+        )
+        return OutputRecoveryDecision.continue_with(
+            prompt,
+            reason=invalid_kind,
+            source="compiler_recovery_strategy",
+            malformed_action_retries=malformed_action_retries,
+            audit_marker_retries=audit_marker_retries,
+        )
+
     def _compiler_strategy_file_content_order(
         self,
         parsed_output: ParsedModelOutput,

@@ -73,6 +73,22 @@ class CompilerRecoveryRegistry:
                 allowed_next_shapes=("PLAINTEXT_ONLY", "INTENT_ONLY", "INTENT_ACTION_BUNDLE"),
             ),
             CompilerRecoveryStrategy(
+                id="conflicting_intent_transitions",
+                error_codes=("E_MULTIPLE_INTENTS",),
+                recovery_ids=("conflicting_intent_transitions",),
+                invalid_kind="conflicting_intent_transitions",
+                handler_key="conflicting_intent_transitions",
+                allowed_next_shapes=("INTENT_ONLY",),
+            ),
+            CompilerRecoveryStrategy(
+                id="intent_complete_with_action_not_allowed",
+                error_codes=("E_INTENT_COMPLETE_WITH_ACTION",),
+                recovery_ids=("intent_complete_with_action_not_allowed",),
+                invalid_kind="intent_complete_with_action_not_allowed",
+                handler_key="intent_complete_with_action_not_allowed",
+                allowed_next_shapes=("PLAINTEXT_ONLY", "ACTION_ONLY"),
+            ),
+            CompilerRecoveryStrategy(
                 id="file_content_requires_action",
                 error_codes=("E_FILE_CONTENT_REQUIRES_ACTION",),
                 recovery_ids=("file_content_requires_action",),

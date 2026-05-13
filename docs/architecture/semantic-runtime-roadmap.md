@@ -5336,6 +5336,71 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 11 — Step 14/N: Transition-Conflict Registry Strategy Batch Implementation
+
+- **Status**: Done.
+- **Goal**: Implement the approved narrow compiler recovery strategies for `conflicting_intent_transitions` and `intent_complete_with_action_not_allowed`.
+- **Completed Outcome**:
+  - Added a dedicated `CompilerRecoveryStrategy` for `conflicting_intent_transitions`.
+  - Added a dedicated `CompilerRecoveryStrategy` for `intent_complete_with_action_not_allowed`.
+  - Added dedicated compiler strategy handlers using:
+    - `build_conflicting_intent_transitions_prompt()`.
+    - `build_completion_with_action_not_allowed_prompt()`.
+  - Added registry resolution coverage for both strategy tuples.
+  - Added compiler-driven routing coverage proving both branches route from compiler metadata without legacy `invalid_kind`.
+  - Preserved existing current-behavior contract tests.
+  - Preserved mixed-visible and mixed-intent/visible-answer negative-control separation.
+  - Decision reasons remain `conflicting_intent_transitions` and `intent_complete_with_action_not_allowed`.
+  - Recovery source follows existing compiler strategy conventions.
+  - No broad recovery rewrite was added.
+  - No final-answer stop/continue behavior changed.
+  - No transition policy changed.
+  - No dispatch behavior changed.
+  - No ActionPolicy behavior changed.
+  - No bundle semantic validator behavior changed.
+  - No authority transfer, switch change, or legacy cleanup was added.
+- **Next**:
+  - Phase 11 — Step 15/N: Transition-Conflict Registry Strategy Batch Closure Review.
+
+---
+
+#### Phase 11 — Step 15/N: Transition-Conflict Registry Strategy Batch Closure Review
+
+- **Status**: Done.
+- **Goal**: Close the completed transition-conflict registry strategy batch and choose the next narrow Phase 11 follow-up.
+- **Completed Outcome**:
+  - The `conflicting_intent_transitions` registry strategy sub-slice is closed.
+  - The `intent_complete_with_action_not_allowed` registry strategy sub-slice is closed.
+  - Green targeted tests confirmed registry resolution, compiler-driven routing without legacy `invalid_kind`, current behavior contracts, and negative-control separation from mixed-visible and mixed-intent/visible-answer paths.
+  - Both completed branches preserve expected reasons, dedicated prompts, and compiler-strategy source conventions.
+  - No final-answer stop/continue behavior changed.
+  - No transition policy changed.
+  - No dispatch behavior changed.
+  - No ActionPolicy behavior changed.
+  - No bundle semantic validator behavior changed.
+  - No authority transfer, switch change, or legacy cleanup was added.
+- **Decision**: Keep Phase 11 open for one narrow coverage-gap review before deciding whether to close the phase.
+- **Selected Follow-Up**:
+  - Review `E_FILE_CONTENT_ACTION_MISMATCH` coverage for the `file_content_must_follow_action` / file-content order family.
+- **Rationale**:
+  - `file_content_must_follow_action` is already covered for `E_FILE_CONTENT_REQUIRES_ACTION` via the `file_content_requires_action` registry strategy and `file_content_order` handler.
+  - `E_FILE_CONTENT_ACTION_MISMATCH` maps to the same invalid kind, `file_content_must_follow_action`, but was previously deferred as a possible separate coverage gap.
+  - The review is narrow and structural, and can be completed without changing bundle semantic validator behavior.
+- **Forbidden for Step 16**:
+  - No registry implementation yet.
+  - No broad recovery rewrite.
+  - No bundle semantic validator behavior change.
+  - No final-answer stop/continue behavior change.
+  - No transition policy change.
+  - No dispatch behavior change.
+  - No ActionPolicy change.
+  - No authority transfer or switch change.
+  - No legacy cleanup.
+- **Next**:
+  - Phase 11 — Step 16/N: E_FILE_CONTENT_ACTION_MISMATCH Coverage-Gap Review.
+
+---
+
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.

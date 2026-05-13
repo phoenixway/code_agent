@@ -52,6 +52,12 @@ class DummyPromptBuilder:
     def build_mixed_intent_transition_and_visible_answer_prompt(self):
         return "MIXED INTENT TRANSITION VISIBLE ANSWER"
 
+    def build_conflicting_intent_transitions_prompt(self):
+        return "CONFLICTING INTENT TRANSITIONS"
+
+    def build_completion_with_action_not_allowed_prompt(self):
+        return "COMPLETION WITH ACTION NOT ALLOWED"
+
     def build_control_tag_leak_recovery_prompt(self):
         return "CONTROL TAG LEAK"
 
@@ -111,6 +117,39 @@ async def test_compiler_code_routes_mixed_intent_transition_visible_answer_witho
     assert decision.reason == "mixed_intent_transition_and_visible_answer"
     assert decision.next_query == "MIXED INTENT TRANSITION VISIBLE ANSWER"
     assert decision.source == "compiler_recovery_strategy"
+
+
+@pytest.mark.asyncio
+async def test_compiler_code_routes_transition_conflict_recoveries_without_legacy_invalid_kind():
+    handler = ModelOutputRecoveryHandler(DummyAgent(), DummyPromptBuilder())
+
+    conflicting = await handler.decide(
+        ParsedModelOutput(
+            response='<intent>{"mode":"activate","intent_id":"i1"}</intent>\n<intent>{"mode":"complete","intent_id":"i1"}</intent>',
+            invalid_kind="",
+            compiler_error_code="E_MULTIPLE_INTENTS",
+            compiler_recovery_id="conflicting_intent_transitions",
+        ),
+        malformed_action_retries=0,
+        audit_marker_retries=0,
+    )
+    complete_with_action = await handler.decide(
+        ParsedModelOutput(
+            response='<intent>{"mode":"complete","intent_id":"i1"}</intent>\n<action>{"type":"read_file","path":"x.py"}</action>',
+            invalid_kind="",
+            compiler_error_code="E_INTENT_COMPLETE_WITH_ACTION",
+            compiler_recovery_id="intent_complete_with_action_not_allowed",
+        ),
+        malformed_action_retries=0,
+        audit_marker_retries=0,
+    )
+
+    assert conflicting.reason == "conflicting_intent_transitions"
+    assert conflicting.next_query == "CONFLICTING INTENT TRANSITIONS"
+    assert conflicting.source == "compiler_recovery_strategy"
+    assert complete_with_action.reason == "intent_complete_with_action_not_allowed"
+    assert complete_with_action.next_query == "COMPLETION WITH ACTION NOT ALLOWED"
+    assert complete_with_action.source == "compiler_recovery_strategy"
 
 
 @pytest.mark.asyncio
