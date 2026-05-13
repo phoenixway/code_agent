@@ -5973,6 +5973,31 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 44 — Step 7/N: Output-Recovery Semantic Decision Record Builder Implementation
+
+- **Status**: Done.
+- **Goal**: Implement a pure output-recovery semantic decision record builder without runtime wiring.
+- **Completed Outcome**:
+  - Added `modules/agent/orchestration/responses/output_recovery_semantic_record.py`.
+  - Added `build_output_recovery_semantic_decision_record(...)`.
+  - The helper builds passive `SemanticDecisionRecord` instances for output-recovery decisions from already-computed facts.
+  - The helper captures compiler metadata snapshots.
+  - The helper captures registry resolution snapshots for resolved and unresolved strategy cases.
+  - The helper captures effective decision snapshots when decision fields are supplied.
+  - Added unit tests for resolved registry strategy records.
+  - Added unit tests for missing strategy records.
+  - Added unit tests for dict-like strategy input.
+  - No runtime integration was added.
+  - No stage logger integration was added.
+  - No protocol shadow integration was added.
+  - No trace export integration was added.
+  - No replay tool was added.
+  - No production behavior changed.
+- **Next**:
+  - Phase 44 — Step 8/N: Output-Recovery Semantic Decision Record Builder Closure / First Diagnostic Wiring Candidate Decision.
+
+---
+
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.
