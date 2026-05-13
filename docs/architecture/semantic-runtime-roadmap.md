@@ -6964,6 +6964,24 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Phase 53 — Step 3/N: Plan Review Marker Compiler Characterization.
 
 ---
+
+#### Phase 53 — Step 3/N: Plan Review Marker Compiler Characterization
+
+- **Status**: Done.
+- **Goal**: Characterize current compiler/parser behavior for `<plan_review_done />` before adding first-class protocol support.
+- **Completed Outcome**:
+  - Added `tests/test_plan_review_marker_compiler.py`.
+  - Added positive control proving `<memory_update_done />` remains a recognized checkpoint marker and board op.
+  - Added characterization proving `<plan_review_done />` currently compiles as plaintext/literal protocol text, not as `CHECKPOINT_ONLY`.
+  - Added characterization proving `<plan_review_done />` before an action is currently treated as pre-action text, not as structural checkpoint protocol.
+  - Confirmed current compiler output does not surface a plan-review checkpoint fact.
+  - Confirmed current compiler output does not create a board op for `<plan_review_done />`.
+  - No parser/compiler behavior changed.
+  - No runtime gate behavior changed.
+- **Next**:
+  - Phase 53 — Step 4/N: Plan Review Marker Compiler Support Decision.
+
+---
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.

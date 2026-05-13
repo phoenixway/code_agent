@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 53 — Step 2/N: Plan Review Gate Runtime Surface Characterization
+- **Phase**: Phase 53 — Step 3/N: Plan Review Marker Compiler Characterization
 - **Status**: Complete.
-- **Next Step**: Phase 53 — Step 3/N: Plan Review Marker Compiler Characterization.
-- **Boundary**: Runtime/protocol surfaces for the post-state-change plan review gate are characterized. The next work is test-only characterization of current compiler/parser behavior for `<plan_review_done />`. No runtime gate, parser implementation change, compiler implementation change, dispatch behavior change, ActionPolicy change, production behavior change, state mutation, recovery behavior change, final-answer stop/continue behavior change, authority transfer, switch change, or legacy cleanup was added.
+- **Next Step**: Phase 53 — Step 4/N: Plan Review Marker Compiler Support Decision.
+- **Boundary**: Test-only characterization proves `<plan_review_done />` is not yet a first-class checkpoint marker or board operation in compiler/parser output. No runtime gate, parser implementation change, compiler implementation change, dispatch behavior change, ActionPolicy change, production behavior change, state mutation, recovery behavior change, final-answer stop/continue behavior change, authority transfer, switch change, or legacy cleanup was added.
 
 ## Step 4I Parity Matrix
 
