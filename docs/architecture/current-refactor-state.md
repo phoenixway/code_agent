@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 36 — Step 8/N: MEMORY_CONTENT_WITH_ACTION Closure / Next Branch Selection
+- **Phase**: Phase 37 — Step 1/N: Board/Memory Remaining Branch Selection / Next Slice Planning
 - **Status**: Complete.
-- **Next Step**: Phase 37 — Board/Memory Remaining Branch Selection / Next Slice Planning.
-- **Boundary**: Phase 36 is complete. Durable memory content + action is validated under the smoke profile. Default registry remains `legacy`; smoke registry remains `compiler`. Runtime behavior remains unchanged and `effective_commit` is not consumed.
+- **Next Step**: Phase 37 — Step 2/N: Board/Memory Commit-Policy Closure / Cross-Slice Boundary Review.
+- **Boundary**: Board-memory commit-policy branches are now covered by the Phase 31, Phase 35, and Phase 36 slices. The remaining `board_checkpoint.plan_*` authority branches are a separate slice and must not be folded into board-memory commit-policy closure. No production behavior change.
 
 ## Step 4I Parity Matrix
 

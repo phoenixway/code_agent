@@ -4121,6 +4121,45 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 37 — Board/Memory Remaining Branch Selection / Next Slice Planning.
 
+---
+
+### Phase 37: Board/Memory Remaining Branch Selection / Next Slice Planning
+
+- **Status**: In Progress.
+- **Goal**: Decide whether any board-memory commit-policy branches remain after the Phase 31, Phase 35, and Phase 36 slices, and select the next safe refactor direction.
+- **Allowed**:
+  - Docs-only inventory and slice-boundary review.
+  - Identify whether remaining work belongs to `board_memory`, `board_checkpoint`, `terminal_answer`, `dispatch`, or `recovery`.
+  - Select the next branch without changing runtime behavior.
+- **Forbidden**:
+  - No production behavior change.
+  - No runtime diagnostic wiring.
+  - No switch registry changes.
+  - No `effective_commit` consumption.
+  - Do not merge `board_checkpoint.plan_*` authority work into board-memory commit-policy closure.
+- **Done When**:
+  - The completed board-memory commit-policy branches are listed.
+  - The remaining branch boundary is clear.
+  - The next slice is selected.
+
+---
+
+#### Phase 37 — Step 1/N: Board/Memory Remaining Branch Selection / Next Slice Planning
+
+- **Status**: Done.
+- **Goal**: Inventory the completed board-memory commit-policy branches and decide the next refactor direction.
+- **Completed Outcome**:
+  - Confirmed that the board-memory commit-policy line now covers:
+    - `memory_checkpoint_only` from Phase 31.
+    - `memory_checkpoint_with_text` from Phase 31.
+    - `memory_checkpoint_with_action` from Phase 35.
+    - `memory_content_with_action` from Phase 36.
+  - Confirmed that default registry values remain `legacy` while smoke registry values validate compiler authority for the completed board-memory branches.
+  - Confirmed that `board_checkpoint.plan_checkpoint_only`, `board_checkpoint.plan_checkpoint_with_text`, and `board_checkpoint.plan_checkpoint_with_action` are separate authority branches and should be handled as a distinct slice.
+  - No production behavior was changed.
+- **Next**:
+  - Phase 37 — Step 2/N: Board/Memory Commit-Policy Closure / Cross-Slice Boundary Review.
+
 ### Phase 33: Search/Path Recovery UX Hardening
 
 - **Status**: Not started.
