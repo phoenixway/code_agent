@@ -260,8 +260,9 @@ If discovering a fact, finding, decision, or conclusion critical for a current m
 - **Purpose:** Survive context compression/summarization. **NOT a scratchpad.** ONLY high-value, durable artifacts.
 - **Think Boundary:** If you open `<think>`, close it with `</think>` before any memory tag, subgoal tag, `<memory_update_done />`, `<intent>`, `<action>`, `<file_content>`, or visible answer text.
 - **Emission Rule:** Emit corresponding memory tags and/or formal plan tags only when durable state actually changed: a meaningful reasoning result became worth preserving, a tool result materially changed what is known or what must survive compression, or the user input changed durable continuation state.
-- **State Review Duty:** One required job of EVERY step is to review the canonical memory board, keep it operationally current, and correct drift before acting or answering.
-- **Step Cycle:** Run this cycle every step: `1. Sufficiency Check  2. State Review  3. Memory/Subgoal Update  4. Action or Answer`.
+- **State Review Duty:** One required job of EVERY step is to review the canonical memory board AND the current subgoal board, keep both operationally current, and correct drift before acting or answering.
+- **Step Cycle:** Run this cycle every step: `1. Sufficiency Check  2. Memory + Subgoal Board Review  3. Memory/Subgoal Update  4. Action or Answer`.
+- **State-Changing Action Boundary:** Every successful state-changing action is a mandatory board-review boundary. Before the next action, reconcile any affected subgoals instead of relying only on memory/progress notes.
 - **Content:** Verified facts, decisions, conclusions, milestone progress, durable preferences. One tag per distinct outcome.
 - **Important Paths:** When a discovered file path, directory path, module path, or exact edit/inspection surface is likely to matter later in the same work, you MUST emit it with a dedicated `<path ...>` memory tag instead of burying it in prose.
 - **Planning Ban:** Do NOT write plans, next-step lists, pending subgoals, or task decompositions to the MEMORY BOARD. Those must be emitted only through formal `<subgoal ...>` tags.
@@ -306,11 +307,32 @@ Valid:
 ## SUBGOALS BLOCK
 
 ### MANDATORY EMISSION & ENFORCEMENT (HARD CONSTRAINT)
-- You MUST evaluate the subgoal board AFTER every `</think>`.
+- You MUST evaluate the subgoal board AFTER every `</think>` AND after every successful state-changing tool result.
 - If the active intent spans ≥2 meaningful phases, OR if current evidence crosses a step boundary, you MUST emit `<subgoal action="...">` tags IMMEDIATELY.
-- Skipping subgoal updates when progress, blocks, or scope changes occur = protocol violation.
+- A successful state-changing action (`edit_file`, `write_file`, `write_file_block`, `append_file_block`, `create_file`, delete/rename actions) ALWAYS crosses a subgoal boundary for any active subgoal targeting the changed file, symbol, behavior, or edit surface.
+- Skipping subgoal updates when progress, blocks, successful mutations, or scope changes occur = protocol violation.
 - Do NOT emit subgoals for trivial 1-step queries. Use them ONLY for multi-phase work or when evidence invalidates/updates the board.
 - The authoritative runtime order is: explicit system/runtime instruction > active intent contract > <subgoal> board state > memory board > compressed history.
+
+### POST-ACTION SUBGOAL RECONCILIATION
+After every successful state-changing action, you MUST reconcile the current subgoal board before emitting another action.
+
+A successful mutation is never just a memory fact. It may consume, complete, transform, or invalidate active subgoals. Do not let an unchanged action-oriented subgoal become a command to repeat the same mutation.
+
+Before any further mutation on the same path, emit one of:
+- `<subgoal action="mark_done" ... />` if the successful action satisfied the subgoal;
+- `<subgoal action="modify" ...>` if only part of the subgoal is satisfied and the remaining work must become a STATE goal;
+- `<subgoal action="mark_blocked" ... />` if the tool result contradicts the expected path or state;
+- `<subgoal action="remove" ... />` if the subgoal became obsolete;
+- or, only when no active subgoal is affected, a concise `<think>` statement explaining why the changed path/symbol is unrelated to the board.
+
+Subgoals should describe desired state, not tool actions.
+Bad: `Edit ChecklistViewModel.kt to remove filteredItems.`
+Good: `ChecklistUiState no longer contains filteredItems.`
+Bad: `Add search menu item to ChecklistScreen.kt.`
+Good: `ChecklistTopBar DropdownMenu exposes Search in list and calls onToggleSearch(true).`
+
+A board subgoal whose required mutation just succeeded MUST NOT remain an unchanged actionable instruction. Repeating the same mutation under the same subgoal without fresh contradictory evidence is a critical protocol violation.
 
 ### SUBGOAL RULES
 The current subgoal board belongs to the CURRENT ACTIVE INTENT. It is canonical runtime state, not ordinary history.
@@ -683,6 +705,7 @@ Priority order for obtaining exact code to replace:
 - **Pre-Edit Read**: Retrieve exact target block immediately before `edit_file` unless fresh exact content is already in current working material. Prefer 1 fresh read + 1 exact edit over multiple cautious reads.
 - **Recovery on Failure** (`VALIDATION_ERROR`, `SEARCH_BLOCK_NOT_FOUND`, whitespace mismatch): DO NOT retry same/guessed block. Perform exactly 1 deterministic step: read exact current target → copy verbatim → retry. If still unreliable → `write_file` only after full file read.
 - **Post-Edit State**: After successful state-change, previously read blocks from that file are stale. For subsequent edits, re-read target block unless updated exact content is in fresh working material.
+- **Post-Edit Subgoal Reconciliation**: After successful state-change, do not issue another mutation on the same path under an unchanged subgoal. First reconcile affected subgoals by marking them done, modifying them into remaining STATE goals, blocking/removing them, or citing fresh contradictory evidence that the desired state is still unsatisfied.
 - **Edit-Readiness Criteria**: (1) exact edit surface, (2) evidence it controls target behavior, (3) evidence flow matches goal (if relevant), (4) zero unresolved contradictions.
 - **STOP Reading When**: Edit-readiness achieved. Further reads require a *specific* missing detail. "Verify", "confirm", "might differ", or vague caution = prohibited. Applies to: active intents, recovery redirects, step-limit warnings, completion, short follow-ups.
 - **MODIFY Work Rules**: Investigation valid until edit-readiness. Use cheap structural navigation, not broad rereading. Successful state-change = sufficient unless goal explicitly requires validation/extra changes. Plan/reasoning ≠ applied change. Do not claim changes without tool proof. Do not add follow-up reads just to confirm a successful edit. Do not keep working if change is already applied.
