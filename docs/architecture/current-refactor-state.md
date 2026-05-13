@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 41 — Step 3/N: Final-Answer Risk Boundary Review / Migration Candidate Decision
+- **Phase**: Phase 41 — Step 4/N: Final-Answer Slice Exit / Next Slice Selection
 - **Status**: Complete.
-- **Next Step**: Phase 41 — Step 4/N: Design-Only Final-Answer Migration Candidate Review.
-- **Boundary**: Final-answer risk boundary review is complete. Real final-answer migration remains NO-GO. Only design-only candidate review is allowed next. No final-answer stop/continue behavior change, dispatch behavior change, ActionPolicy change, recovery behavior change, authority transfer, switch change, or legacy cleanup is allowed.
+- **Next Step**: Phase 42 — Step 1/N: Semantic Runtime Consumer Map / Legacy Cleanup Preflight Inventory.
+- **Boundary**: Final-answer migration remains deferred. The next active slice is Semantic Runtime Consumer Map / Legacy Cleanup Preflight. No final-answer stop/continue behavior change, dispatch behavior change, ActionPolicy change, recovery behavior change, authority transfer, switch change, production behavior change, or legacy cleanup is allowed.
 
 ## Step 4I Parity Matrix
 

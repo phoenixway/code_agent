@@ -4684,6 +4684,59 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 41 — Step 4/N: Design-Only Final-Answer Migration Candidate Review.
 
+---
+
+#### Phase 41 — Step 4/N: Final-Answer Slice Exit / Next Slice Selection
+
+- **Status**: Done.
+- **Goal**: Decide whether to continue the final-answer migration review or switch to a safer adjacent semantic-runtime slice.
+- **Decision**: Defer final-answer migration and select Semantic Runtime Consumer Map / Legacy Cleanup Preflight as the next active slice.
+- **Rationale**:
+  - Phase 41 confirmed that final-answer migration remains high risk because it overlaps stop/continue behavior, sufficiency policy, visible text, recovery, dispatch, and `ActionPolicy` boundaries.
+  - A stronger global consumer map is a safer prerequisite before any broad legacy cleanup or deletion.
+  - Consumer-map work can proceed docs-first and characterization-first without runtime behavior changes.
+  - Cleanup remains forbidden until consumers are classified and migration blockers are recorded.
+- **Deferred**:
+  - Real final-answer migration.
+  - `PLAINTEXT_TERMINAL_ANSWER` authority transfer.
+  - Final-answer stop/continue behavior changes.
+  - Any migration that makes `TerminalAnswerClassifier` sole final-answer authority.
+- **Next**:
+  - Phase 42 — Semantic Runtime Consumer Map / Legacy Cleanup Preflight.
+
+---
+
+### Phase 42: Semantic Runtime Consumer Map / Legacy Cleanup Preflight
+
+- **Status**: Not started.
+- **Goal**: Build a semantic-runtime consumer map before any legacy or compatibility cleanup.
+- **Allowed**:
+  - Docs-only inventory and preflight.
+  - Search for consumers of legacy semantic helpers, compatibility fields, and transitional accessors.
+  - Classify consumers as active, compatibility-only, diagnostic-only, deferred/high-risk, or candidate-for-future-cleanup.
+  - Identify missing typed accessors or migration blockers.
+- **Forbidden**:
+  - No production behavior change.
+  - No legacy cleanup or deletion.
+  - No compatibility shim removal.
+  - No switch registry changes.
+  - No authority transfer.
+  - No dispatch behavior changes.
+  - No final-answer stop/continue behavior changes.
+  - No `ActionPolicy` changes.
+  - No recovery behavior changes.
+- **Done When**:
+  - Legacy and compatibility consumers are inventoried.
+  - Consumers are classified by risk and ownership boundary.
+  - A later cleanup/migration sequence is proposed or explicitly deferred.
+
+---
+
+#### Phase 42 — Step 1/N: Semantic Runtime Consumer Map / Legacy Cleanup Preflight Inventory
+
+- **Status**: Not started.
+- **Goal**: Inventory semantic-runtime legacy helpers, compatibility fields, transitional accessors, and their consumers before any cleanup decision.
+
 ### Phase 11: RecoveryStrategy Registry Expansion
 
 - **Goal**: Expand the `CompilerRecoveryRegistry` to cover more structural errors.
