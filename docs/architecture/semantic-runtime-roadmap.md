@@ -5190,6 +5190,47 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 11 — Step 10/N: Multi-Candidate Structural Recovery Review
+
+- **Status**: Done.
+- **Goal**: Review several structural recovery candidates quickly and classify them before choosing the next design batch.
+- **Completed Outcome**:
+  - Reviewed candidate coverage for:
+    - `conflicting_intent_transitions`.
+    - `intent_complete_with_action_not_allowed`.
+    - `protocol_tag_in_json_string`.
+    - `file_content_must_follow_action` / file-content order family.
+  - Classified `protocol_tag_in_json_string` as already covered by `CompilerRecoveryRegistry` via `E_PROTOCOL_TAG_IN_JSON_STRING` / `protocol_tag_in_json_string` / `malformed_action`.
+  - Classified `file_content_must_follow_action` as already covered for `E_FILE_CONTENT_REQUIRES_ACTION` via the `file_content_requires_action` strategy and `file_content_order` handler.
+  - Identified a possible separate coverage-gap review for `E_FILE_CONTENT_ACTION_MISMATCH`, which maps to `file_content_must_follow_action` but is not selected for the next batch.
+  - Classified `conflicting_intent_transitions` as a structural transition-conflict candidate with existing compiler mapping `E_MULTIPLE_INTENTS` and legacy prompt path.
+  - Classified `intent_complete_with_action_not_allowed` as a structural transition/action-conflict candidate with existing compiler mapping `E_INTENT_COMPLETE_WITH_ACTION` and legacy prompt path.
+  - Both selected transition-conflict candidates are boundary-sensitive because they touch transition territory, so the next step is design-only.
+  - No registry implementation was added.
+  - No recovery behavior changed.
+  - No production behavior changed.
+- **Decision**: Select a two-candidate design batch for:
+  - `conflicting_intent_transitions`.
+  - `intent_complete_with_action_not_allowed`.
+- **Deferred**:
+  - `protocol_tag_in_json_string`, because it is already covered.
+  - `file_content_must_follow_action` for `E_FILE_CONTENT_REQUIRES_ACTION`, because it is already covered.
+  - `E_FILE_CONTENT_ACTION_MISMATCH` coverage-gap review, which should be handled separately if needed.
+- **Forbidden for Next Step**:
+  - No registry implementation yet.
+  - No broad recovery rewrite.
+  - No final-answer stop/continue behavior change.
+  - No transition policy change.
+  - No `FOLLOWUP_PLAINTEXT` or `get_visible_text` migration.
+  - No dispatch behavior change.
+  - No ActionPolicy change.
+  - No authority transfer or switch change.
+  - No legacy cleanup.
+- **Next**:
+  - Phase 11 — Step 11/N: Transition-Conflict Registry Strategy Batch Design.
+
+---
+
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.

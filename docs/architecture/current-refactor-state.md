@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 11 — Step 9/N: Mixed Intent Transition / Visible Answer Registry Strategy Closure Review
+- **Phase**: Phase 11 — Step 10/N: Multi-Candidate Structural Recovery Review
 - **Status**: Complete.
-- **Next Step**: Phase 11 — Step 10/N: Multi-Candidate Structural Recovery Review.
-- **Boundary**: The `mixed_intent_transition_and_visible_answer` registry expansion sub-slice is closed after green tests. Phase 11 remains open for a fast multi-candidate structural recovery review. No new registry implementation, recovery behavior change, production behavior change, authority transfer, switch change, dispatch behavior change, final-answer stop/continue behavior change, ActionPolicy change, or legacy cleanup is allowed in the review step.
+- **Next Step**: Phase 11 — Step 11/N: Transition-Conflict Registry Strategy Batch Design.
+- **Boundary**: Multi-candidate review is complete. `conflicting_intent_transitions` and `intent_complete_with_action_not_allowed` are selected for design-only batch review. No registry implementation, recovery behavior change, production behavior change, authority transfer, switch change, dispatch behavior change, final-answer stop/continue behavior change, ActionPolicy change, transition policy change, or legacy cleanup is allowed yet.
 
 ## Step 4I Parity Matrix
 
