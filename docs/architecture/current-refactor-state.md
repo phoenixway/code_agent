@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 11 — Step 2/N: Structural Recovery Candidate Selection
+- **Phase**: Phase 11 — Step 4/N: Mixed Intent Transition / Visible Answer Registry Strategy Design Decision
 - **Status**: Complete.
-- **Next Step**: Phase 11 — Step 3/N: Mixed Intent Transition / Visible Answer Recovery Characterization.
-- **Boundary**: Selected `mixed_intent_transition_and_visible_answer` as a characterization-only recovery registry expansion candidate. No registry changes, recovery behavior changes, production behavior changes, authority transfer, switch changes, dispatch behavior changes, final-answer stop/continue behavior changes, ActionPolicy changes, or legacy cleanup are allowed yet.
+- **Next Step**: Phase 11 — Step 5/N: Mixed Intent Transition / Visible Answer Registry Strategy Parity Test Design.
+- **Boundary**: `mixed_intent_transition_and_visible_answer` is approved for design-only registry strategy work. No registry implementation, recovery behavior change, production behavior change, authority transfer, switch change, dispatch behavior change, final-answer stop/continue behavior change, ActionPolicy change, or legacy cleanup is allowed yet.
 
 ## Step 4I Parity Matrix
 

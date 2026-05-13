@@ -4997,6 +4997,55 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 11 — Step 3/N: Mixed Intent Transition / Visible Answer Recovery Characterization
+
+- **Status**: Done.
+- **Goal**: Characterize current behavior for `mixed_intent_transition_and_visible_answer` before deciding whether a dedicated registry strategy is safe.
+- **Completed Outcome**:
+  - Confirmed that `mixed_intent_transition_and_visible_answer` is already present in `COMPILER_ROUTED_INVALID_KINDS`.
+  - Confirmed that it is not represented as a dedicated strategy in the currently inventoried `CompilerRecoveryRegistry`.
+  - Confirmed existing test coverage in `tests/test_mixed_visible_text_and_control_protocol.py` for the `mixed_intent_transition_and_visible_answer` recovery path.
+  - Confirmed synthetic smoke coverage references in `tests/test_recovery_invalid_output_synthetic_smoke.py` and related terminal-answer smoke harnesses.
+  - Confirmed that this branch is documented as an intent-followup prevalidation recovery case, not ordinary terminal plaintext authority.
+  - Confirmed that related transition work previously deferred `FOLLOWUP_PLAINTEXT` because it depends on `get_visible_text` and final-answer/sufficiency boundaries.
+  - Boundary conclusion: the candidate is structurally plausible but remains boundary-sensitive because it touches transition/final-answer territory.
+  - No registry strategy was added.
+  - No recovery behavior changed.
+  - No production behavior changed.
+- **Next**:
+  - Phase 11 — Step 4/N: Mixed Intent Transition / Visible Answer Registry Strategy Design Decision.
+
+---
+
+#### Phase 11 — Step 4/N: Mixed Intent Transition / Visible Answer Registry Strategy Design Decision
+
+- **Status**: Done.
+- **Goal**: Decide whether `mixed_intent_transition_and_visible_answer` may advance beyond characterization.
+- **Decision**: GO only for design. No registry implementation is approved yet.
+- **Rationale**:
+  - The branch is already recognized by compiler-routed invalid-kind gating.
+  - The branch is structurally plausible because it represents a protocol-shape conflict between an intent transition and visible answer text.
+  - The branch is not yet represented as a dedicated `CompilerRecoveryRegistry` strategy.
+  - The branch remains boundary-sensitive because it touches transition/final-answer territory and is adjacent to previously deferred `FOLLOWUP_PLAINTEXT` / `get_visible_text` concerns.
+  - A dedicated strategy may be safe only if tests prove it preserves current prompt, reason, source, and recovery behavior.
+- **Approved Next Work**:
+  - Design parity tests for a future dedicated registry strategy.
+  - Identify the exact expected `error_code`, `recovery_id`, `invalid_kind`, `handler_key`, prompt, reason, and source behavior.
+  - Prove that registry routing would remain behavior-equivalent before implementation.
+- **Forbidden**:
+  - No registry strategy implementation yet.
+  - No recovery behavior change.
+  - No authority transfer or switch change.
+  - No final-answer stop/continue behavior change.
+  - No dispatch behavior change.
+  - No ActionPolicy change.
+  - No broad recovery rewrite.
+  - No legacy cleanup.
+- **Next**:
+  - Phase 11 — Step 5/N: Mixed Intent Transition / Visible Answer Registry Strategy Parity Test Design.
+
+---
+
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.
