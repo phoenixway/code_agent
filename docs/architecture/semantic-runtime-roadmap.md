@@ -5593,6 +5593,52 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+### Phase 43: Next Semantic Runtime Slice Selection
+
+- **Status**: In Progress.
+- **Goal**: Select the next safe semantic-runtime refactor slice after closing Phase 11 RecoveryStrategy Registry Expansion.
+- **Allowed**:
+  - Docs-only inventory and decision work.
+  - Compare remaining candidate slices by safety, live-agent value, observability value, and refactor risk.
+  - Select the next active slice without changing runtime behavior.
+- **Forbidden**:
+  - No production behavior change.
+  - No diagnostic wiring or replay implementation yet.
+  - No dispatch behavior change.
+  - No recovery behavior change.
+  - No ActionPolicy change.
+  - No final-answer stop/continue behavior change.
+  - No authority transfer or switch change.
+  - No legacy cleanup.
+- **Done When**:
+  - Candidate next slices are listed.
+  - The selected next active slice is recorded.
+  - Stop lines for the selected slice are documented.
+
+---
+
+#### Phase 43 — Step 1/N: Next Semantic Runtime Slice Selection / Candidate Inventory
+
+- **Status**: Done.
+- **Goal**: Inventory candidate next slices after closing Phase 11.
+- **Completed Outcome**:
+  - Confirmed that Phase 11 closed after narrow, behavior-preserving RecoveryStrategy registry expansion.
+  - Identified candidate next slices:
+    - Semantic Observability / Replay preflight.
+    - Dispatch/action boundary metadata-only follow-up.
+    - Legacy cleanup preflight refresh after Phase 11.
+    - Recovery prompt / live-agent UX hardening.
+    - Terminal-answer deferred boundary review.
+  - Observed that Semantic Observability / Replay has high leverage after Phase 11 because registry and compiler-driven recovery routing now cover more branches and need clearer decision tracing.
+  - Observed that Dispatch/action boundary work remains high-value but higher-risk because dispatch side effects must remain untouched unless the slice is diagnostic-only.
+  - Observed that legacy cleanup should remain deferred until observability and consumer maps make remaining compatibility surfaces safer to classify.
+  - Observed that terminal-answer deferred boundaries remain high-risk because they overlap final-answer stop/continue behavior and sufficiency policy.
+  - No production behavior was changed.
+- **Next**:
+  - Phase 43 — Step 2/N: Select Next Active Slice.
+
+---
+
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.
