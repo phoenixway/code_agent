@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 41 — Step 4/N: Final-Answer Slice Exit / Next Slice Selection
+- **Phase**: Phase 42 — Step 1/N: Semantic Runtime Consumer Map / Legacy Cleanup Preflight Inventory
 - **Status**: Complete.
-- **Next Step**: Phase 42 — Step 1/N: Semantic Runtime Consumer Map / Legacy Cleanup Preflight Inventory.
-- **Boundary**: Final-answer migration remains deferred. The next active slice is Semantic Runtime Consumer Map / Legacy Cleanup Preflight. No final-answer stop/continue behavior change, dispatch behavior change, ActionPolicy change, recovery behavior change, authority transfer, switch change, production behavior change, or legacy cleanup is allowed.
+- **Next Step**: Phase 42 — Step 2/N: Consumer Classification / Cleanup Risk Matrix.
+- **Boundary**: Semantic-runtime legacy and compatibility surfaces are inventoried. No cleanup is approved yet. No production behavior change, compatibility shim removal, authority transfer, switch change, dispatch behavior change, final-answer stop/continue behavior change, ActionPolicy change, or recovery behavior change is allowed.
 
 ## Step 4I Parity Matrix
 

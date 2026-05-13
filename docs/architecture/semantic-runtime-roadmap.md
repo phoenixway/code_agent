@@ -4734,8 +4734,34 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 #### Phase 42 — Step 1/N: Semantic Runtime Consumer Map / Legacy Cleanup Preflight Inventory
 
-- **Status**: Not started.
+- **Status**: Done.
 - **Goal**: Inventory semantic-runtime legacy helpers, compatibility fields, transitional accessors, and their consumers before any cleanup decision.
+- **Completed Outcome**:
+  - Inventoried primary semantic-runtime compatibility surfaces:
+    - `ResponseSemantics` remains a legacy semantic helper collection used by tests and selected runtime consumers.
+    - `semantic_accessors.py` contains approved transitional accessors such as `get_compiler_metadata`, `has_any_action_proposal_compat`, `is_compiler_invalid`, `is_compiler_invalid_with_legacy_action`, `is_leaked_system_result`, and `has_substantial_think`.
+    - `RuntimeProtocolSemantics` provides the compiler-derived read-only snapshot used by semantic accessors and diagnostic paths.
+    - `ParsedModelOutput` still carries legacy and compatibility fields such as `has_action_segment`, `invalid_kind`, `action_content`, compiler metadata fields, compiler IR, and attached typed semantic results.
+    - `runtime_protocol_semantics.output_recovery_compiler_metadata(...)` remains a deprecated/fallback metadata extraction helper while `semantic_accessors.get_compiler_metadata(...)` is the preferred central accessor.
+  - Inventoried visible consumer groups:
+    - response pipeline prevalidation and stages;
+    - output recovery and recovery routing;
+    - terminal-answer classifier and authority diagnostics;
+    - action policy and dispatch-adjacent action candidate handling;
+    - board/memory and checkpoint equivalence tests;
+    - parser/protocol/compiler tests that still construct `ParsedModelOutput` with legacy fields directly.
+  - Initial risk observations:
+    - `ResponseSemantics.has_any_action_proposal` and `has_any_action_proposal_compat` are protected compatibility/recovery-evidence surfaces and are not dispatch authority.
+    - `has_action_segment` remains widely used in tests and compatibility paths and cannot be removed without a migration plan.
+    - `ParsedModelOutput` compatibility fields remain active test and runtime construction surfaces.
+    - action-policy consumers of compiler IR and action ops are high-risk because dispatch behavior must not change.
+    - output recovery metadata consumers are cleanup candidates only if fallback behavior is proven equivalent.
+    - terminal-answer and final-answer consumers remain high-risk because they overlap stop/continue behavior and recovery boundaries.
+  - No consumer is approved for cleanup yet.
+  - No compatibility shim was removed.
+  - No production behavior was changed.
+- **Next**:
+  - Phase 42 — Step 2/N: Consumer Classification / Cleanup Risk Matrix.
 
 ### Phase 11: RecoveryStrategy Registry Expansion
 
