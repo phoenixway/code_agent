@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 36 — Step 7/N: MEMORY_CONTENT_WITH_ACTION Live Smoke Closure / Reconciliation Decision
+- **Phase**: Phase 36 — Step 5/N: MEMORY_CONTENT_WITH_ACTION Runtime Diagnostic Integration
 - **Status**: Complete.
-- **Next Step**: Phase 36 — Step 8/N: Closure / Next Branch Selection.
-- **Boundary**: Live smoke passed for `board_memory.memory_content_with_action` under the smoke profile. Compiler authority was selected diagnostically with `commit_equivalent=True`; runtime behavior remained unchanged and `effective_commit` is not consumed.
+- **Next Step**: Phase 36 — Step 6/N: Runtime Diagnostic Smoke Validation.
+- **Boundary**: Phase 36 Step 5 added diagnostic-only wiring for `board_memory.memory_content_with_action`. Default registry remains `legacy`; smoke registry uses `compiler`. No runtime behavior change. No `effective_commit` consumption.
 
 ## Step 4I Parity Matrix
 
@@ -2262,20 +2262,6 @@ This document is the single source of truth for the current state of the Semanti
   - The resolver's `effective_commit` is not consumed, and no runtime behavior was changed.
   - The default registry remains `legacy`, and the smoke registry remains `compiler` for this branch for validation purposes.
   - No dispatch, action, or `MemoryBoardStageHandler` behavior was changed.
-  - Phase 35 MCTA semantics remain unchanged.
-
-- **Phase 36 — Step 6/N: MEMORY_CONTENT_WITH_ACTION Runtime Diagnostic Smoke Validation (Complete)**
-  - Manual/live smoke validated that the `board_memory.memory_content_with_action` diagnostic is emitted under the smoke profile.
-  - The diagnostic selected compiler authority with `authority_source="compiler"`, `selected_by_switch=True`, and `commit_equivalent=True`.
-  - Runtime behavior was preserved: the response pipeline reached dispatch, pre-dispatch reached dispatch-ready, and dispatch outcome evaluation proceeded.
-  - `behavior_changed=True` was observed as a diagnostic-only branch-name delta, not runtime behavior transfer.
-  - The resolver's `effective_commit` is not consumed.
-
-- **Phase 36 — Step 7/N: MEMORY_CONTENT_WITH_ACTION Live Smoke Closure / Reconciliation Decision (Complete)**
-  - No live semantics reconciliation is required.
-  - The clean durable memory content + action case is validated in the smoke profile.
-  - The diagnostic branch-name delta is documented and expected for compiler-selected `MEMORY_CONTENT_WITH_ACTION` because the legacy branch remains `MEMORY_CHECKPOINT_WITH_ACTION`.
-  - Runtime behavior remains legacy/default-safe, and no production authority flip occurred.
   - Phase 35 MCTA semantics remain unchanged.
 
 - **Phase 36 — Step 4/N: MEMORY_CONTENT_WITH_ACTION Smoke Switch Registration / Validation (Complete)**

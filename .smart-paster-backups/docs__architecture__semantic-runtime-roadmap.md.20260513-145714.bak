@@ -4070,38 +4070,6 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 36 — Step 6/N: Runtime Diagnostic Smoke Validation.
 
----
-
-#### Phase 36 — Step 6/N: MEMORY_CONTENT_WITH_ACTION Runtime Diagnostic Smoke Validation
-
-- **Status**: Done.
-- **Goal**: Validate the live/runtime diagnostic path for `board_memory.memory_content_with_action` under the smoke profile.
-- **Completed Outcome**:
-  - Manual/live smoke validated that the `board_memory.memory_content_with_action` diagnostic is emitted.
-  - The smoke-profile diagnostic selected compiler authority with `authority_source="compiler"`, `selected_by_switch=True`, and `commit_equivalent=True`.
-  - Relevant agreement fields, including commit-attempted and accepted-count agreement, were aligned for the clean durable memory content + action case.
-  - Runtime behavior was preserved: response pipeline dispatch, pre-dispatch dispatch-ready, and dispatch outcome evaluation were observed.
-  - `behavior_changed=True` is expected here as a diagnostic-only branch-name delta because the compiler candidate branch is `MEMORY_CONTENT_WITH_ACTION` while the legacy branch remains `MEMORY_CHECKPOINT_WITH_ACTION`.
-  - The resolver's `effective_commit` is not consumed.
-- **Next**:
-  - Phase 36 — Step 7/N: Live Smoke Closure / Reconciliation Decision.
-
----
-
-#### Phase 36 — Step 7/N: MEMORY_CONTENT_WITH_ACTION Live Smoke Closure / Reconciliation Decision
-
-- **Status**: Done.
-- **Goal**: Decide whether live smoke requires reconciliation before closing the MEMORY_CONTENT_WITH_ACTION slice.
-- **Completed Outcome**:
-  - No live semantics reconciliation is required.
-  - The clean durable memory content + action case is validated in the smoke profile.
-  - Diagnostic compiler selection is observed only as shadow/diagnostic authority; runtime behavior remains legacy/default-safe.
-  - The diagnostic-only branch-name delta is documented and expected.
-  - `effective_commit` remains unconsumed, and no production authority flip occurred.
-  - Phase 35 MCTA semantics remain unchanged.
-- **Next**:
-  - Phase 36 — Step 8/N: Closure / Next Branch Selection.
-
 ### Phase 33: Search/Path Recovery UX Hardening
 
 - **Status**: Not started.
