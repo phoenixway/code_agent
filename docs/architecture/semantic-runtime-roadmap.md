@@ -4218,6 +4218,28 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 38 — Step 2/N: Board-Checkpoint Plan Authority Closure / Remaining Work Decision.
 
+---
+
+#### Phase 38 — Step 2/N: Board-Checkpoint Plan Authority Closure / Remaining Work Decision
+
+- **Status**: Done.
+- **Goal**: Decide whether the `board_checkpoint.plan_*` authority slice requires additional work or can be closed based on prior Phase 27 validation.
+- **Completed Outcome**:
+  - The plan-domain board-checkpoint authority slice is closed.
+  - No new runtime, registry, diagnostic, or test work is required for the currently characterized `board_checkpoint.plan_*` branches.
+  - Prior Phase 27 work already validated:
+    - `board_checkpoint.plan_checkpoint_only`.
+    - `board_checkpoint.plan_checkpoint_with_text`.
+    - `board_checkpoint.plan_checkpoint_with_action`.
+  - Each plan-domain branch has synthetic smoke coverage, authority diagnostics, and live Angelica smoke validation under the smoke profile.
+  - Default registry values remain `legacy`.
+  - Smoke registry values remain `compiler` for continued validation.
+  - No production authority flip occurred.
+  - No memory checkpoint authority transfer occurred.
+  - No board-memory commit-policy work was reopened.
+- **Next**:
+  - Phase 39 — Next Semantic Runtime Slice Selection.
+
 ### Phase 33: Search/Path Recovery UX Hardening
 
 - **Status**: Not started.
