@@ -41,6 +41,52 @@ class OrchestrationTraceSchemaTests(unittest.TestCase):
         self.assertIsNone(fields["execution_plan"])
         self.assertIsNone(fields["execution_commit"])
 
+    def test_stage_logger_preserves_semantic_decision_record_field(self):
+        state = self._state()
+        logger = OrchestrationStageLogger(_DummyLogger(), state)
+        semantic_decision_record = {
+            "domain": "output_recovery",
+            "stage": "output_recovery",
+            "decision": "compiler_strategy_resolved",
+            "reason": "file_content_must_follow_action",
+            "source": "compiler_recovery_strategy",
+            "diagnostic_only": True,
+            "authority_affecting": False,
+            "behavior_affecting": False,
+            "compiler_metadata": {
+                "error_code": "E_FILE_CONTENT_ACTION_MISMATCH",
+                "recovery_id": "file_content_must_follow_action",
+                "invalid_kind": "file_content_must_follow_action",
+                "source": "runtime_protocol_semantics",
+            },
+            "registry_resolution": {
+                "resolved": True,
+                "strategy_id": "file_content_action_mismatch",
+                "handler_key": "file_content_order",
+                "allowed_next_shapes": [],
+            },
+        }
+
+        logger.log(
+            "output_recovery",
+            "diagnostic",
+            reason="file_content_must_follow_action",
+            source="semantic_decision_record",
+            semantic_decision_record=semantic_decision_record,
+        )
+
+        entry = state.orchestration_trace[-1]
+        fields = entry.fields
+        self.assertEqual("output_recovery", entry.stage)
+        self.assertEqual("diagnostic", entry.decision)
+        self.assertEqual("semantic_decision_record", fields["source"])
+        self.assertEqual(semantic_decision_record, fields["semantic_decision_record"])
+        self.assertTrue(fields["semantic_decision_record"]["diagnostic_only"])
+        self.assertEqual(
+            "file_content_action_mismatch",
+            fields["semantic_decision_record"]["registry_resolution"]["strategy_id"],
+        )
+
     def test_explicit_trace_fields_override_defaults(self):
         state = self._state()
         logger = OrchestrationStageLogger(_DummyLogger(), state)

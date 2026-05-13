@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+from modules.agent.orchestration.trace_export import OrchestrationTraceExporter
 from modules.agent.orchestration.shared.decision_models import OrchestrationTraceEntry
 from modules.agent.orchestration.shared.decision_models import ExecutionCommit, ExecutionPlan
 from modules.agent.orchestration.protocol.models import CompilerAnalysis, ResponseShape
@@ -71,6 +72,43 @@ def test_snapshot_and_render_trace_use_canonical_entry_shape():
     ]
     assert "[1] stage=intent_transition decision=continue" in rendered
     assert "reason: intent_accepted" in rendered
+
+
+def test_snapshot_and_trace_export_preserve_semantic_decision_record_field():
+    semantic_decision_record = {
+        "domain": "output_recovery",
+        "stage": "output_recovery",
+        "decision": "compiler_strategy_resolved",
+        "reason": "file_content_must_follow_action",
+        "source": "compiler_recovery_strategy",
+        "diagnostic_only": True,
+        "authority_affecting": False,
+        "behavior_affecting": False,
+        "compiler_metadata": {
+            "error_code": "E_FILE_CONTENT_ACTION_MISMATCH",
+            "recovery_id": "file_content_must_follow_action",
+            "invalid_kind": "file_content_must_follow_action",
+            "source": "runtime_protocol_semantics",
+        },
+    }
+    state = SimpleNamespace(orchestration_trace=[], orchestration_trace_sequence=0)
+
+    append_trace_entry(
+        state,
+        stage="output_recovery",
+        decision="diagnostic",
+        fields={
+            "source": "semantic_decision_record",
+            "semantic_decision_record": semantic_decision_record,
+        },
+    )
+
+    snapshot = snapshot_trace(state)
+    exported = OrchestrationTraceExporter().runtime_artifacts(state)
+
+    assert snapshot[0]["fields"]["semantic_decision_record"] == semantic_decision_record
+    assert exported["orchestration_trace"][0]["fields"]["semantic_decision_record"] == semantic_decision_record
+    assert exported["orchestration_trace"][0]["fields"]["semantic_decision_record"]["compiler_metadata"]["error_code"] == "E_FILE_CONTENT_ACTION_MISMATCH"
 
 
 def test_compact_execution_plan_and_commit_use_stable_trace_shape():

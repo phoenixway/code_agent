@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 46 — Step 1/N: Trace Export Integration Preflight Inventory / Export Surface Decision
+- **Phase**: Phase 46 — Step 2/N: Semantic Decision Record Trace Export Characterization
 - **Status**: Complete.
-- **Next Step**: Phase 46 — Step 2/N: Semantic Decision Record Trace Export Characterization.
-- **Boundary**: Trace/export surfaces are inventoried and the first safe export/readback candidate is selected. Next code work is limited to test-only characterization proving existing trace export can surface semantic decision records already emitted through stage logger output. No production behavior change, trace export integration change, protocol shadow integration, replay implementation, dispatch behavior change, recovery behavior change, ActionPolicy change, final-answer stop/continue behavior change, authority transfer, switch change, state mutation, or legacy cleanup is allowed.
+- **Next Step**: Phase 46 — Step 3/N: Trace Export Surface Closure / Export Helper Decision.
+- **Boundary**: Test-only characterization proves semantic decision record fields emitted through existing stage logger output are preserved in `orchestration_trace` and existing trace export structured output. No production behavior change, trace export implementation change, protocol shadow integration, replay implementation, dispatch behavior change, recovery behavior change, ActionPolicy change, final-answer stop/continue behavior change, authority transfer, switch change, state mutation, or legacy cleanup was added.
 
 ## Step 4I Parity Matrix
 
