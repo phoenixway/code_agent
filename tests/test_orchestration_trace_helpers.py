@@ -111,6 +111,83 @@ def test_snapshot_and_trace_export_preserve_semantic_decision_record_field():
     assert exported["orchestration_trace"][0]["fields"]["semantic_decision_record"]["compiler_metadata"]["error_code"] == "E_FILE_CONTENT_ACTION_MISMATCH"
 
 
+def test_snapshot_and_runtime_artifacts_preserve_dispatch_metadata_fields():
+    from modules.agent.orchestration.trace_export import OrchestrationTraceExporter
+
+    plan = ExecutionPlan(
+        shape="intent_action_bundle",
+        transaction_kind="atomic_intent_action_bundle",
+        action_effects=["read_chunk:x.py"],
+        bundle_validated=True,
+        transition_applied=True,
+        action_dispatched=False,
+        before_active_intent_id="intent_before",
+        after_active_intent_id="intent_after",
+    )
+    commit = ExecutionCommit(
+        shape="intent_action_bundle",
+        transaction_kind="atomic_intent_action_bundle",
+        action_effects=["read_chunk:x.py"],
+        bundle_validated=True,
+        transition_applied=True,
+        action_dispatched=True,
+        before_active_intent_id="intent_before",
+        after_active_intent_id="intent_after",
+        committed_action_count=1,
+        committed_system_result_count=2,
+        dispatch_stop_requested=True,
+    )
+    state = SimpleNamespace(
+        orchestration_trace=[],
+        orchestration_trace_sequence=0,
+        last_execution_plan=plan,
+        last_execution_commit=commit,
+    )
+
+    append_trace_entry(
+        state,
+        stage="pre_dispatch_pipeline",
+        decision="dispatch_ready",
+        fields={
+            "execution_plan": compact_execution_plan(plan),
+            "execution_commit": compact_execution_commit(commit),
+        },
+    )
+
+    snapshot = snapshot_trace(state)
+    exported = OrchestrationTraceExporter().runtime_artifacts(state)
+
+    assert snapshot[0]["fields"]["execution_plan"] == {
+        "shape": "intent_action_bundle",
+        "transaction_kind": "atomic_intent_action_bundle",
+        "bundle_validated": True,
+        "transition_applied": True,
+        "action_dispatched": False,
+        "before_active_intent_id": "intent_before",
+        "after_active_intent_id": "intent_after",
+        "action_effects": ["read_chunk:x.py"],
+    }
+    assert snapshot[0]["fields"]["execution_commit"] == {
+        "shape": "intent_action_bundle",
+        "transaction_kind": "atomic_intent_action_bundle",
+        "bundle_validated": True,
+        "transition_applied": True,
+        "action_dispatched": True,
+        "before_active_intent_id": "intent_before",
+        "after_active_intent_id": "intent_after",
+        "committed_action_count": 1,
+        "committed_system_result_count": 2,
+        "dispatch_stop_requested": True,
+        "action_effects": ["read_chunk:x.py"],
+    }
+    assert exported["orchestration_trace"][0]["fields"]["execution_plan"] == snapshot[0]["fields"]["execution_plan"]
+    assert exported["orchestration_trace"][0]["fields"]["execution_commit"] == snapshot[0]["fields"]["execution_commit"]
+    assert exported["last_execution_plan"]["shape"] == "intent_action_bundle"
+    assert exported["last_execution_plan"]["action_effects"] == ["read_chunk:x.py"]
+    assert exported["last_execution_commit"]["committed_action_count"] == 1
+    assert exported["last_execution_commit"]["dispatch_stop_requested"] is True
+
+
 def test_compact_execution_plan_and_commit_use_stable_trace_shape():
     plan = ExecutionPlan(
         shape="intent_action_bundle",
