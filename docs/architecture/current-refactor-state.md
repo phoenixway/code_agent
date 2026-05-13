@@ -2251,6 +2251,12 @@ This document is the single source of truth for the current state of the Semanti
   - No runtime diagnostic wiring was added, and `effective_commit` is not consumed.
   - No registry or default switch changes were made.
 
+- **Phase 36 — Step 3/N: MEMORY_CONTENT_WITH_ACTION Commit-Equivalence Hardening / Smoke Switch Planning (Complete)**
+  - Strengthened commit-equivalence tests and negative controls for the durable memory content + action case.
+  - Documented the smoke switch plan for `board_memory.memory_content_with_action` without adding registry entries.
+  - No runtime behavior was changed, no diagnostic wiring was added, and `effective_commit` is not consumed.
+  - Phase 35 MCTA semantics remain unchanged.
+
 ## Guiding Principles: Typed Accessors and Branch Authority Switches
 
 As of Phase 10, the semantic runtime refactor adopts a new guiding principle for managing the transition from legacy to compiler-driven authority. The model is:

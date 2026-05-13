@@ -1346,6 +1346,9 @@ class TestMemoryContentWithActionAuthority:
             '<action>{"type":"read_file","path":"README.md"}</action>',
             '<subgoal action="mark_in_progress" id="sg_1" />\n<action>{"type":"read_file","path":"README.md"}</action>',
             '<memory_update_done />\n<action>{"type":"read_file","path":"README.md"}</action>',
+            "<fact>some fact</fact>",
+            "<fact>some fact</fact>\nDone.",
+            '<memory_update_done />\n<fact>some fact</fact>\n<action>{"type":"read_file","path":"README.md"}</action>',
         ],
         ids=[
             "none_response",
@@ -1356,6 +1359,9 @@ class TestMemoryContentWithActionAuthority:
             "action_only",
             "plan_checkpoint_with_action",
             "bare_marker_mcta",
+            "memory_content_without_action",
+            "memory_content_with_text",
+            "mixed_marker_content_action",
         ],
     )
     def test_candidate_builder_unavailable_for_mca_content_negative_controls(self, response):

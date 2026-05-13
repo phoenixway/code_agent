@@ -3989,6 +3989,34 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 36 — Step 3/N: Commit-Equivalence Hardening / Smoke Switch Planning.
 
+---
+
+#### Phase 36 — Step 3/N: MEMORY_CONTENT_WITH_ACTION Commit-Equivalence Hardening / Smoke Switch Planning
+
+- **Status**: Done.
+- **Goal**: Harden the MEMORY_CONTENT_WITH_ACTION candidate/resolver model and prepare the smoke-switch plan, without changing runtime behavior.
+- **Allowed**:
+  - Add commit-equivalence hardening tests and negative controls.
+  - Document the smoke switch plan.
+- **Forbidden**:
+  - Do not change runtime behavior.
+  - Do not wire the resolver into the runtime pipeline.
+  - Do not consume `effective_commit`.
+  - Do not change `MemoryBoardStageHandler`.
+  - Do not change switch registry or flip defaults.
+  - Do not add runtime diagnostic integration.
+- **Done When**:
+  - Commit-equivalence tests are hardened.
+  - The smoke switch plan is documented.
+  - No runtime behavior has changed.
+- **Completed Outcome**:
+  - Strengthened commit-equivalence tests and negative controls for the durable memory content + action case.
+  - Documented the smoke switch plan for `board_memory.memory_content_with_action` without adding registry entries.
+  - No runtime behavior was changed, no diagnostic wiring was added, and `effective_commit` is not consumed.
+  - Phase 35 MCTA semantics remain unchanged.
+- **Next**:
+  - Phase 36 — Step 4/N: Smoke Switch Registration / Validation.
+
 ### Phase 33: Search/Path Recovery UX Hardening
 
 - **Status**: Not started.
