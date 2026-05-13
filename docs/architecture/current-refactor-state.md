@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 38 — Step 2/N: Board-Checkpoint Plan Authority Closure / Remaining Work Decision
+- **Phase**: Phase 39 — Step 1/N: Next Semantic Runtime Slice Selection / Candidate Inventory
 - **Status**: Complete.
-- **Next Step**: Phase 39 — Next Semantic Runtime Slice Selection.
-- **Boundary**: The `board_checkpoint.plan_*` authority slice is closed. Phase 27 already validated the plan-domain board/checkpoint branches with synthetic coverage, authority diagnostics, and live smoke. No production behavior change, switch registry change, diagnostic wiring, or authority transfer is needed.
+- **Next Step**: Phase 39 — Step 2/N: Select Next Active Slice.
+- **Boundary**: Board/checkpoint and board-memory authority slices are closed for the currently characterized branches. This step inventories candidate next slices only. No production behavior change, switch registry change, diagnostic wiring, or authority transfer is allowed.
 
 ## Step 4I Parity Matrix
 

@@ -4240,6 +4240,48 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 - **Next**:
   - Phase 39 — Next Semantic Runtime Slice Selection.
 
+---
+
+### Phase 39: Next Semantic Runtime Slice Selection
+
+- **Status**: In Progress.
+- **Goal**: Select the next safe semantic-runtime refactor slice after closing the board/checkpoint plan-authority and board-memory commit-policy lines.
+- **Allowed**:
+  - Docs-only inventory and decision work.
+  - Compare remaining candidate slices by safety, live-agent value, and refactor risk.
+  - Select a next active slice without changing runtime behavior.
+- **Forbidden**:
+  - No production behavior change.
+  - No switch registry changes.
+  - No runtime diagnostic wiring.
+  - No authority transfer.
+  - No legacy cleanup or deletion before a consumer map exists.
+- **Done When**:
+  - Candidate next slices are listed.
+  - The selected next active slice is recorded.
+  - Stop lines for the selected slice are documented.
+
+---
+
+#### Phase 39 — Step 1/N: Next Semantic Runtime Slice Selection / Candidate Inventory
+
+- **Status**: Done.
+- **Goal**: Inventory candidate next slices after closing the board/checkpoint and board-memory authority work.
+- **Completed Outcome**:
+  - Confirmed that the recently closed slices are:
+    - `board_checkpoint.plan_*` authority work.
+    - `board_memory` commit-policy work for the characterized memory checkpoint/content branches.
+  - Identified candidate next slices:
+    - Phase 33 — Search/Path Recovery UX Hardening.
+    - Terminal-answer remaining authority/boundary work.
+    - Recovery remaining branches and deferred stateful/internal-summary recovery work.
+    - Dispatch/action boundary work.
+    - Legacy/compatibility cleanup, deferred until a consumer map exists.
+  - Preferred near-term candidate is Phase 33 because it is already listed as Not started, targets live-agent search/path failures, and can proceed characterization-first without authority transfer.
+  - No production behavior was changed.
+- **Next**:
+  - Phase 39 — Step 2/N: Select Next Active Slice.
+
 ### Phase 33: Search/Path Recovery UX Hardening
 
 - **Status**: Not started.
