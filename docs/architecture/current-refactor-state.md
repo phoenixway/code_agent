@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 52 — Step 3/N: Dispatch Metadata Observability Closure / Readback Helper Decision
+- **Phase**: Phase 53 — Step 1/N: Post-State-Change Plan Review Gate Design / Pivot
 - **Status**: Complete.
-- **Next Step**: Phase 53 — Next Semantic Runtime Slice Selection.
-- **Boundary**: Phase 52 is closed after test-only characterization proved existing trace/export surfaces preserve dispatch metadata already present in execution plan and execution commit trace fields and runtime artifacts. No dispatch readback helper, dispatch behavior change, dispatch adapter implementation, synthetic segment adapter, candidate-driven dispatcher input, ActionPolicy change, production behavior change, replay implementation, protocol shadow integration, trace export implementation change, state mutation, recovery behavior change, final-answer stop/continue behavior change, authority transfer, switch change, or legacy cleanup was added.
+- **Next Step**: Phase 53 — Step 2/N: Plan Review Gate Runtime Surface Characterization.
+- **Boundary**: Work is pivoted from broad semantic-runtime slice selection to the stale-subgoal repeated-edit defect. A Post-State-Change Plan Review Gate is designed as a protocol/runtime checkpoint after successful state-changing actions. No runtime gate, parser change, compiler change, dispatch behavior change, ActionPolicy change, production behavior change, state mutation, recovery behavior change, final-answer stop/continue behavior change, authority transfer, switch change, or legacy cleanup was added.
 
 ## Step 4I Parity Matrix
 

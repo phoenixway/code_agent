@@ -6849,6 +6849,74 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Phase 53 — Next Semantic Runtime Slice Selection.
 
 ---
+
+### Phase 53: Post-State-Change Plan Review Gate
+
+- **Status**: In Progress.
+- **Goal**: Prevent stale subgoal pressure from causing repeated edits after a successful state-changing action.
+- **Problem Statement**:
+  - The model can perform a successful edit/create/write action while the active subgoal still says to perform that same edit.
+  - On the next turn, stale subgoal context can pressure the model into repeating an already-applied edit.
+  - Prompt-only wording is useful but insufficient because the runtime currently lacks a post-state-change reconciliation boundary.
+- **Design Principle**:
+  - After a successful state-changing action, the plan/subgoal board is dirty until reviewed.
+  - Before the next tool action, the model must reconcile subgoals and emit a plan-review checkpoint.
+  - A successful state-changing action is completion evidence for any active subgoal whose objective was to perform that exact state change.
+- **Checkpoint Protocol**:
+  - Use a self-closing checkpoint marker: `<plan_review_done />`.
+  - Subgoal state changes should continue to use existing `<subgoal ... />` mutations.
+  - Recommended completion form:
+    - `<subgoal action="mark_done" id="sg_1" evidence="edit_file succeeded path/to/file" />`
+    - `<plan_review_done />`
+  - The checkpoint marker means the model reviewed the active subgoal board after a successful state-changing action.
+  - The checkpoint marker does not itself commit subgoal changes; subgoal mutations remain the data-bearing protocol.
+- **Intended Future Gate**:
+  - Successful state-changing action sets a runtime flag such as `plan_review_required_after_state_change`.
+  - If that flag is set, the next model response may update subgoals and must emit `<plan_review_done />` before any next `<action>`.
+  - A next `<action>` without the checkpoint should recover as `missing_plan_review_after_state_change`.
+  - Repeating the same state-changing action should remain invalid unless the review records concrete failure, rejection, mismatch, or a distinct remaining edit.
+- **Initial State-Changing Action Scope**:
+  - File writes/edits/creates/appends/deletes/moves.
+  - `run_shell` only when classified or configured as state-changing.
+  - Read-only discovery actions do not trigger the gate.
+- **Existing Surfaces Observed**:
+  - `modules/agent/planner.py` already owns the subgoal-board XML protocol.
+  - Existing subgoal protocol already supports `mark_done` with required `evidence`.
+  - Existing compiler/parser history includes self-closing `<subgoal ... />` handling.
+  - Existing board/checkpoint architecture distinguishes marker/checkpoint ownership from final-answer authority.
+  - Older state-machine tests already reference state-changing operations and previously performed action tags.
+- **Forbidden in Initial Slice**:
+  - No immediate runtime gate implementation before characterization.
+  - No dispatch behavior change.
+  - No ActionPolicy change.
+  - No automatic intent completion after every edit.
+  - No suppression of legitimate verification or distinct follow-up edits.
+  - No parser/compiler authority transfer without tests.
+  - No history.py refactor.
+- **Next**:
+  - Phase 53 — Step 2/N: Plan Review Gate Runtime Surface Characterization.
+
+---
+
+#### Phase 53 — Step 1/N: Post-State-Change Plan Review Gate Design / Pivot
+
+- **Status**: Done.
+- **Goal**: Pivot from broad semantic-runtime slice selection to the stale-subgoal repeated-edit defect and design the first safe gate shape.
+- **Completed Outcome**:
+  - Selected Post-State-Change Plan Review Gate as the active defect slice.
+  - Defined the core invariant: state changed → plan/subgoal board is dirty → review required before the next action.
+  - Selected `<plan_review_done />` as a self-closing checkpoint marker.
+  - Kept subgoal mutations in the existing `<subgoal ... />` protocol rather than encoding subgoal state inside the checkpoint marker.
+  - Defined the intended future runtime flag: `plan_review_required_after_state_change`.
+  - Defined the intended future recovery reason: `missing_plan_review_after_state_change`.
+  - Defined the first safe implementation path as characterization before gate enforcement.
+  - Explicitly rejected auto-completing the whole intent after any edit.
+  - Explicitly preserved verification steps and distinct follow-up edits.
+  - No runtime behavior changed.
+- **Next**:
+  - Phase 53 — Step 2/N: Plan Review Gate Runtime Surface Characterization.
+
+---
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.
