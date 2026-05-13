@@ -5401,6 +5401,49 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 11 — Step 16/N: E_FILE_CONTENT_ACTION_MISMATCH Coverage-Gap Review
+
+- **Status**: Done.
+- **Goal**: Determine whether `E_FILE_CONTENT_ACTION_MISMATCH` is already sufficiently covered or should receive its own registry strategy design.
+- **Completed Outcome**:
+  - Confirmed that `E_FILE_CONTENT_REQUIRES_ACTION` is already covered by the `file_content_requires_action` registry strategy.
+  - Confirmed that `E_FILE_CONTENT_ACTION_MISMATCH` maps to the same invalid kind: `file_content_must_follow_action`.
+  - Confirmed that `BundleSemanticValidator` already classifies both `E_FILE_CONTENT_REQUIRES_ACTION` and `E_FILE_CONTENT_ACTION_MISMATCH` as `INVALID_FILE_CONTENT_PAIRING`.
+  - Confirmed golden compiler cases exist for `E_FILE_CONTENT_ACTION_MISMATCH`, including file content with a read action and file content with multiple actions.
+  - Confirmed existing compiler-driven routing coverage currently covers `E_FILE_CONTENT_REQUIRES_ACTION`, but not a dedicated `E_FILE_CONTENT_ACTION_MISMATCH` registry route.
+  - Confirmed the existing `file_content_order` compiler strategy handler already uses `build_file_content_must_follow_action_prompt()` and can preserve the same reason/prompt behavior if a second strategy is added.
+  - No registry implementation was added.
+  - No bundle semantic validator behavior changed.
+  - No recovery behavior changed.
+  - No production behavior changed.
+- **Decision**: `E_FILE_CONTENT_ACTION_MISMATCH` is a narrow registry coverage gap and is safe for design-only work.
+- **Designed Direction for Next Step**:
+  - Add design for a second file-content pairing strategy that reuses the existing `file_content_order` handler.
+  - Expected future contract:
+    - `id`: `file_content_action_mismatch`.
+    - `error_codes`: `("E_FILE_CONTENT_ACTION_MISMATCH",)`.
+    - `recovery_ids`: `("file_content_must_follow_action",)`.
+    - `invalid_kind`: `file_content_must_follow_action`.
+    - `handler_key`: `file_content_order`.
+  - Expected prompt: `build_file_content_must_follow_action_prompt()`.
+  - Expected reason: `file_content_must_follow_action`.
+  - Expected source: existing compiler strategy source conventions.
+- **Forbidden for Next Step**:
+  - No registry implementation yet.
+  - No broad recovery rewrite.
+  - No bundle semantic validator behavior change.
+  - No file-content parser/compiler behavior change.
+  - No final-answer stop/continue behavior change.
+  - No transition policy change.
+  - No dispatch behavior change.
+  - No ActionPolicy change.
+  - No authority transfer or switch change.
+  - No legacy cleanup.
+- **Next**:
+  - Phase 11 — Step 17/N: E_FILE_CONTENT_ACTION_MISMATCH Registry Strategy Design.
+
+---
+
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.
