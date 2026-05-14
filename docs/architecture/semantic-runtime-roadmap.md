@@ -7162,6 +7162,49 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Phase 53 — Step 9/N: Plan Review Checkpoint Clear Hook Decision.
 
 ---
+
+#### Phase 53 — Step 9/N: Plan Review Checkpoint Clear Hook Decision
+
+- **Status**: Done.
+- **Goal**: Decide where to clear passive plan-review-required state after the model emits `<plan_review_done />`.
+- **Decision**: GO for a narrow passive clear hook.
+- **Rationale**:
+  - Step 5 made `<plan_review_done />` a first-class passive compiler/protocol marker.
+  - Step 8 added passive state bookkeeping and an explicit clear helper in `ExecutionCommitObserverAdapter`.
+  - The next safe move is to connect those two existing surfaces without enforcing the gate yet.
+  - Clearing the flag on `has_plan_review_checkpoint` is bookkeeping, not dispatch authority, recovery authority, or ActionPolicy behavior.
+- **Approved Implementation Scope**:
+  - Add a small helper or inline hook in the response classification/prevalidation path that checks runtime protocol semantics for `has_plan_review_checkpoint`.
+  - When the fact is true, call the existing clear helper for plan-review-required state.
+  - Add tests proving `<plan_review_done />` clears existing plan-review-required state.
+  - Add tests proving responses without `<plan_review_done />` do not clear the flag.
+  - Add tests proving action responses without `<plan_review_done />` are not blocked yet.
+- **Preferred Hook Surface**:
+  - After compiler classification/runtime protocol semantics are available.
+  - Before future ActionPolicy/gate enforcement would inspect `plan_review_required_after_state_change`.
+  - Avoid dispatch pipeline and ActionPolicy for this step.
+- **Required Safety Properties**:
+  - Passive state clear only.
+  - No runtime gate enforcement yet.
+  - No recovery branch yet.
+  - No dispatch behavior change.
+  - No ActionPolicy change.
+  - No repeat-edit guard yet.
+  - No automatic intent completion.
+  - No production behavior change beyond passive state bookkeeping clear.
+  - No authority transfer or switch change.
+  - No legacy cleanup.
+- **Forbidden**:
+  - Do not reject actions missing `<plan_review_done />` yet.
+  - Do not build `missing_plan_review_after_state_change` recovery yet.
+  - Do not alter dispatch segments.
+  - Do not alter `ExecutionCommit` construction.
+  - Do not infer subgoal completion from the marker alone.
+  - Do not clear or modify the subgoal board from `<plan_review_done />` alone.
+- **Next**:
+  - Phase 53 — Step 10/N: Plan Review Checkpoint Clear Hook Implementation.
+
+---
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.
