@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 53 — Step 7/N: Plan Review Required State Flag Characterization
+- **Phase**: Phase 53 — Step 8/N: Plan Review Required State Flag Scaffolding
 - **Status**: Complete.
-- **Next Step**: Phase 53 — Step 8/N: Plan Review Required State Flag Scaffolding.
-- **Boundary**: Runtime surfaces for setting and clearing a future post-state-change plan review flag are characterized. Next work may only add passive state-flag scaffolding, pure state-changing action classification helpers, and tests around `ExecutionCommitObserverAdapter` / compiler semantic clearing. No runtime gate enforcement, dispatch behavior change, ActionPolicy change, production behavior change beyond state bookkeeping, recovery behavior change, final-answer stop/continue behavior change, authority transfer, switch change, repeat-edit guard, automatic intent completion, or legacy cleanup is allowed.
+- **Next Step**: Phase 53 — Step 9/N: Plan Review Checkpoint Clear Hook Decision.
+- **Boundary**: Passive plan-review-required state bookkeeping and tests are implemented in the execution commit observer layer. State-changing file commits now set `plan_review_required_after_state_change` metadata, and an explicit helper can clear it after a future checkpoint hook. No runtime gate enforcement, dispatch behavior change, ActionPolicy change, production behavior change beyond passive state bookkeeping, recovery behavior change, final-answer stop/continue behavior change, authority transfer, switch change, repeat-edit guard, automatic intent completion, or legacy cleanup was added.
 
 ## Step 4I Parity Matrix
 

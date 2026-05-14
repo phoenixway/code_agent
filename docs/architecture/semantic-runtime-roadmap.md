@@ -7137,6 +7137,31 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Phase 53 — Step 8/N: Plan Review Required State Flag Scaffolding.
 
 ---
+
+#### Phase 53 — Step 8/N: Plan Review Required State Flag Scaffolding
+
+- **Status**: Done.
+- **Goal**: Add passive state bookkeeping for the future post-state-change plan review gate without enforcing it yet.
+- **Completed Outcome**:
+  - Added state-changing file action classification in `ExecutionCommitObserverAdapter`.
+  - Added passive setting of `plan_review_required_after_state_change` after committed state-changing file actions.
+  - Added metadata fields for review reason, action type, target, and action effects.
+  - Added an explicit helper to clear plan-review-required fields after a future checkpoint hook.
+  - Added tests for state-changing file commit trigger behavior.
+  - Added tests for read-only action non-trigger behavior.
+  - Added tests for non-dispatched commit non-trigger behavior.
+  - Added tests for explicit clear behavior.
+  - Added tests proving `run_shell` is not treated as a generic state-changing trigger in this slice.
+  - No runtime gate enforcement was added.
+  - No recovery branch was added.
+  - No ActionPolicy behavior changed.
+  - No dispatch behavior changed.
+  - No repeat-edit guard was added.
+  - No automatic intent completion was added.
+- **Next**:
+  - Phase 53 — Step 9/N: Plan Review Checkpoint Clear Hook Decision.
+
+---
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.
