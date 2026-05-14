@@ -558,3 +558,119 @@ class PromptBuilderCurrentIntentRetryRecoveryTests(unittest.TestCase):
         self.assertEqual("MODIFY", universe.active_intent_type)
         self.assertEqual(["edit_file", "write_file"], universe.allowed_actions)
         self.assertEqual(0, universe.intentless_steps_used)
+
+def _structured_recovery_builder(active_intent):
+    from modules.agent.orchestration.prompts.prompting import OrchestratorPromptBuilder
+
+    agent = SimpleNamespace(
+        state=SimpleNamespace(
+            active_intent=active_intent,
+            last_action_fingerprint="",
+            last_action_status="",
+            last_failed_action_command=None,
+            last_failed_action_result=None,
+            operational_journal=[],
+            recent_problem_actions=[],
+            memory_tag_expected_next_step=False,
+            memory_tag_reason="",
+            memory_tag_expected_intent_id="",
+            last_resumable_intent_id="",
+            last_resumable_intent_lineage_id="",
+            last_resumable_intent_type="",
+            last_resumable_intent_goal="",
+        ),
+        config=SimpleNamespace(),
+        memory_board_store=None,
+        log=None,
+    )
+    return OrchestratorPromptBuilder(agent)
+
+
+def test_retry_recovery_prompt_prefers_replace_symbol_when_structural_recovery_available():
+    active_intent = SimpleNamespace(
+        intent_id="modify_kotlin_screen",
+        intent_type="MODIFY",
+        goal="Modify Kotlin screen.",
+        allowed_actions=[
+            "read_chunk",
+            "search_content",
+            "extract_symbol",
+            "replace_symbol",
+            "edit_file",
+            "write_file_block",
+        ],
+    )
+    builder = _structured_recovery_builder(active_intent)
+
+    prompt = builder.build_keep_current_intent_recovery_prompt(
+        {
+            "reason": "retry_or_continuation_after_failure",
+            "recoverable": True,
+            "error_code": "VALIDATION_ERROR",
+            "error_details": {
+                "mismatch_type": "no_similar_block_found",
+                "failed_action_type": "edit_file",
+            },
+            "command": {
+                "type": "edit_file",
+                "path": "app/src/main/java/example/ChecklistScreen.kt",
+            },
+            "next_actions": [
+                "read_chunk",
+                "search_content",
+                "extract_symbol",
+                "replace_symbol",
+                "edit_file",
+                "write_file_block",
+            ],
+            "intent_allowed_actions": [
+                "read_chunk",
+                "search_content",
+                "extract_symbol",
+                "replace_symbol",
+                "edit_file",
+                "write_file_block",
+            ],
+            "next_actions_source": "intent",
+        }
+    )
+
+    assert "Last failed tool: edit_file." in prompt
+    assert "prefer structural recovery" in prompt
+    assert "extract_symbol" in prompt
+    assert "replace_symbol" in prompt
+    assert "Do not treat an edit_file mismatch as a replace_symbol failure" in prompt
+
+
+def test_retry_recovery_prompt_uses_legacy_exact_edit_when_replace_symbol_unavailable():
+    active_intent = SimpleNamespace(
+        intent_id="modify_source_file",
+        intent_type="MODIFY",
+        goal="Modify source file.",
+        allowed_actions=["read_chunk", "search_content", "edit_file"],
+    )
+    builder = _structured_recovery_builder(active_intent)
+
+    prompt = builder.build_keep_current_intent_recovery_prompt(
+        {
+            "reason": "retry_or_continuation_after_failure",
+            "recoverable": True,
+            "error_code": "VALIDATION_ERROR",
+            "error_details": {
+                "mismatch_type": "whitespace_mismatch",
+                "failed_action_type": "edit_file",
+            },
+            "command": {
+                "type": "edit_file",
+                "path": "src/example.txt",
+            },
+            "next_actions": ["read_chunk", "search_content", "edit_file"],
+            "intent_allowed_actions": ["read_chunk", "search_content", "edit_file"],
+            "next_actions_source": "intent",
+        }
+    )
+
+    assert "retrieve the exact target block" in prompt
+    assert "retry edit_file with verbatim exact text" in prompt
+    assert "prefer structural recovery" not in prompt
+
