@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 53 — Step 6/N: Plan Review Marker Runtime Surface Closure / Gate Decision
+- **Phase**: Phase 53 — Step 7/N: Plan Review Required State Flag Characterization
 - **Status**: Complete.
-- **Next Step**: Phase 53 — Step 7/N: Plan Review Required State Flag Characterization.
-- **Boundary**: Compiler/protocol support for `<plan_review_done />` is closed as a passive marker slice. Phase 53 remains open for runtime gate characterization. Next work may only characterize where a successful state-changing action can set `plan_review_required_after_state_change` and how the marker can clear it. No runtime gate enforcement, dispatch behavior change, ActionPolicy change, production behavior change, state mutation implementation, recovery behavior change, final-answer stop/continue behavior change, authority transfer, switch change, repeat-edit guard, automatic intent completion, or legacy cleanup is allowed yet.
+- **Next Step**: Phase 53 — Step 8/N: Plan Review Required State Flag Scaffolding.
+- **Boundary**: Runtime surfaces for setting and clearing a future post-state-change plan review flag are characterized. Next work may only add passive state-flag scaffolding, pure state-changing action classification helpers, and tests around `ExecutionCommitObserverAdapter` / compiler semantic clearing. No runtime gate enforcement, dispatch behavior change, ActionPolicy change, production behavior change beyond state bookkeeping, recovery behavior change, final-answer stop/continue behavior change, authority transfer, switch change, repeat-edit guard, automatic intent completion, or legacy cleanup is allowed.
 
 ## Step 4I Parity Matrix
 

@@ -7081,6 +7081,62 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Phase 53 — Step 7/N: Plan Review Required State Flag Characterization.
 
 ---
+
+#### Phase 53 — Step 7/N: Plan Review Required State Flag Characterization
+
+- **Status**: Done.
+- **Goal**: Characterize the safest runtime surface for setting and clearing a future post-state-change plan review flag.
+- **Completed Outcome**:
+  - Confirmed successful post-dispatch action execution is observable through `ExecutionCommit`.
+  - Confirmed `ExecutionCommit` already carries `action_effects`, `action_dispatched`, `committed_action_count`, and `committed_system_result_count`.
+  - Confirmed `DispatchPipeline._build_execution_commit(...)` builds commits after processed segments and system results are known.
+  - Confirmed `ExecutionCommitObserverAdapter.observe_execution_commit(...)` is the narrowest state-side observer after dispatch because it already remembers `last_execution_plan`, `last_execution_commit`, and appends operational journal entries.
+  - Confirmed `ExecutionCommitObserverAdapter.build_operational_journal_entry(...)` already parses the primary action effect into `action_type` and `target`.
+  - Confirmed `ActionPolicyHandler.STATE_CHANGING_FILE_ACTIONS` already defines the core write/edit/create/delete action family used by existing policy.
+  - Confirmed `run_shell` remains too ambiguous for the first flag-setting slice and should remain excluded unless separately classified as state-changing.
+  - Confirmed `<plan_review_done />` clearing can be driven by passive compiler semantics through `has_plan_review_checkpoint`, but clearing should be introduced as bookkeeping only before enforcement.
+- **Surface Classification**:
+  - **Best set-point**:
+    - `ExecutionCommitObserverAdapter.observe_execution_commit(...)`, after a successful dispatch commit is available.
+  - **Best detection source**:
+    - `ExecutionCommit.action_effects` plus `action_dispatched` / `committed_action_count` / `committed_system_result_count`.
+  - **Best first action scope**:
+    - file state-changing actions already represented by policy: `write_file`, `write_file_block`, `append_file_block`, `create_file`, `edit_file`, `delete_file`, `replace`.
+  - **Best clear source**:
+    - compiler/runtime semantic fact `has_plan_review_checkpoint` from `<plan_review_done />`.
+  - **Do not use yet**:
+    - `run_shell` as a generic state-changing trigger.
+    - ActionPolicy gate enforcement.
+    - output recovery branch.
+    - repeat-edit hard guard.
+    - automatic intent completion.
+- **Proposed Future State Fields**:
+  - `plan_review_required_after_state_change: bool`.
+  - `plan_review_required_reason: str`.
+  - `plan_review_required_action_type: str`.
+  - `plan_review_required_target: str`.
+  - `plan_review_required_action_effects: list[str]`.
+- **Decision**: Proceed to narrow state-flag scaffolding.
+- **Approved Scope for Step 8**:
+  - Add pure helper(s) for classifying whether an execution commit represents a successful state-changing file action.
+  - Add state-side bookkeeping in `ExecutionCommitObserverAdapter` to set plan-review-required fields after matching commits.
+  - Add state-side clearing helper that clears the fields when a later response has `has_plan_review_checkpoint`.
+  - Add tests for helper classification, observer set behavior, read-only/non-dispatched non-trigger behavior, and explicit clear behavior.
+  - Do not enforce the gate yet.
+- **Forbidden**:
+  - No runtime gate enforcement yet.
+  - No recovery branch yet.
+  - No ActionPolicy changes.
+  - No dispatch behavior changes.
+  - No repeat-edit guard yet.
+  - No automatic intent completion.
+  - No production behavior change beyond passive state bookkeeping.
+  - No authority transfer or switch change.
+  - No legacy cleanup.
+- **Next**:
+  - Phase 53 — Step 8/N: Plan Review Required State Flag Scaffolding.
+
+---
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.
