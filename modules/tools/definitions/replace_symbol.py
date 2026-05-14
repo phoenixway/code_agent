@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import ast
 import re
+import textwrap
 from pathlib import Path
 from typing import Any
 
@@ -107,7 +109,19 @@ class ReplaceSymbolTool(BaseTool):
                 error_details={"path": path, "symbol_name": resolved_name, "symbol_kind": resolved_kind},
             )
 
-        actual_kind = str(selected.get("symbol_kind") or resolved_kind or "auto")
+        actual_kind = _effective_replacement_kind(
+            language=language,
+            selected=selected,
+            requested_kind=resolved_kind,
+        )
+        syntax_error = _validate_replacement_syntax(
+            language=language,
+            new_content=resolved_new_content,
+            symbol_kind=actual_kind,
+        )
+        if syntax_error is not None:
+            return syntax_error
+
         if not _new_content_declares_same_symbol(resolved_new_content, resolved_name.strip(), actual_kind):
             return _validation_error(
                 (
@@ -212,6 +226,40 @@ def _validation_error(message: str, *, next_actions: list[str], error_details: d
         "output": message,
         "error_details": dict(error_details or {}),
     }
+
+
+def _effective_replacement_kind(*, language: str, selected: dict[str, Any], requested_kind: str) -> str:
+    actual_kind = str(selected.get("symbol_kind") or requested_kind or "auto").strip().lower()
+    requested = str(requested_kind or "auto").strip().lower()
+    if language == "python" and requested == "method" and selected.get("container_name"):
+        return "method"
+    return actual_kind
+
+
+def _validate_replacement_syntax(*, language: str, new_content: str, symbol_kind: str) -> dict[str, Any] | None:
+    if language != "python":
+        return None
+
+    kind = str(symbol_kind or "auto").strip().lower()
+    source = str(new_content or "")
+    parse_source = source
+    if kind == "method":
+        parse_source = "class __AngelicaReplacementSyntaxCheck:\n" + textwrap.indent(source.strip("\n"), "    ") + "\n"
+
+    try:
+        ast.parse(parse_source)
+    except SyntaxError as exc:
+        return _validation_error(
+            f"Python replacement new_content is not syntactically valid: {exc}",
+            next_actions=["extract_symbol", "read_chunk", "replace_symbol", "edit_file"],
+            error_details={
+                "language": language,
+                "symbol_kind": kind,
+                "line": exc.lineno,
+                "offset": exc.offset,
+            },
+        )
+    return None
 
 
 def _new_content_declares_same_symbol(new_content: str, symbol_name: str, symbol_kind: str) -> bool:

@@ -156,6 +156,54 @@ async def test_replace_symbol_rejects_ambiguous_python_method_without_container(
 
 
 @pytest.mark.asyncio
+async def test_replace_symbol_rejects_invalid_python_function_new_content(tmp_path):
+    path = tmp_path / "example.py"
+    path.write_text(
+        "def target():\n"
+        "    return 'old'\n",
+        encoding="utf-8",
+    )
+
+    tool = ReplaceSymbolTool()
+    result = await tool.execute(
+        path=str(path),
+        symbol_name="target",
+        symbol_kind="function",
+        new_content="def target(:\n    return 'new'\n",
+    )
+
+    assert result["status"] == "error"
+    assert result["error_code"] == "VALIDATION_ERROR"
+    assert "not syntactically valid" in result["output"]
+    assert result["error_details"]["language"] == "python"
+
+
+@pytest.mark.asyncio
+async def test_replace_symbol_rejects_invalid_python_method_new_content(tmp_path):
+    path = tmp_path / "example.py"
+    path.write_text(
+        "class Target:\n"
+        "    def run(self):\n"
+        "        return 'old'\n",
+        encoding="utf-8",
+    )
+
+    tool = ReplaceSymbolTool()
+    result = await tool.execute(
+        path=str(path),
+        symbol_name="run",
+        symbol_kind="method",
+        container_name="Target",
+        new_content="    def run(self):\n        return (\n",
+    )
+
+    assert result["status"] == "error"
+    assert result["error_code"] == "VALIDATION_ERROR"
+    assert "not syntactically valid" in result["output"]
+    assert result["error_details"]["symbol_kind"] == "method"
+
+
+@pytest.mark.asyncio
 async def test_replace_symbol_rejects_unsupported_language_with_supported_language_list(tmp_path):
     path = tmp_path / "example.txt"
     path.write_text("target\n", encoding="utf-8")
