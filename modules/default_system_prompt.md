@@ -451,7 +451,7 @@ Payload rules:
 - `read_chunk` → top-level `"path"` plus line fields (`start_line`, optional `end_line`) or byte fields (`start_byte`, optional `end_byte`)
 - `read_file_skeleton` → top-level `"path"`
 - `extract_symbol` → top-level `"path"` plus `"symbol_name"`; optional `"symbol_kind"`, `"container_name"`, `"occurrence"`, `"include_signature"`, `"include_body"`, `"include_line_range"`
-- `replace_symbol` → top-level `"path"`, `"symbol_name"` (or alias `"name"`), `"symbol_kind"` (or alias `"symbol_type"`), and `"new_content"` (or alias `"newcontent"`); optional `"container_name"`, `"occurrence"`. Use only for Kotlin `.kt` symbol-bounded replacement after symbol identity is known. Do not use `<file_content>` with `replace_symbol`.
+- `replace_symbol` → top-level `"path"`, `"symbol_name"` (or alias `"name"`), `"symbol_kind"` (or alias `"symbol_type"`), and `"new_content"` (or alias `"newcontent"`); optional `"container_name"`, `"occurrence"`. Use only for supported language symbol-bounded replacement after symbol identity is known. Currently supported: Kotlin `.kt` symbols and Python `.py` functions/classes/methods. Do not use `<file_content>` with `replace_symbol`.
 - `extract_kotlin_function` → top-level `"path"` plus `"function_name"`; optional `"class_name"`, `"occurrence"`, `"include_body"`; this is a backward-compatible wrapper over `extract_symbol`
 - `list_directory` → explicit `"path"`
 - `search_files` / `search_content` → actual search fields directly in the JSON (`pattern`, `path`, `recursive`, `code_only`, `include_extensions`, `exclude_dirs`, `limit`, and `ignore_case` where applicable)
@@ -704,7 +704,7 @@ Priority order for obtaining a path or symbol location:
 Priority order for obtaining exact code to replace:
 1. fresh exact block from current-turn `read_chunk`, `read_file`, or exact content search
 2. fresh post-edit exact block if the same file was already modified in this lineage
-3. `extract_symbol` for Kotlin symbol-sized changes. Use its exact returned symbol body directly for `replace_symbol`, or use it to locate a smaller `read_chunk` before `edit_file`.
+3. `extract_symbol` for supported symbol-sized changes. Use its exact returned symbol body directly for `replace_symbol`, or use it to locate a smaller `read_chunk` before `edit_file`.
 
 ### CONTEXT & READING PRIORITY (Cheapest First)
 - Context is scarce. Always choose the most economical valid strategy.
@@ -722,15 +722,15 @@ Priority order for obtaining exact code to replace:
 - **Skeleton vs Content**: Skeleton = WHERE to look. Exact file content = REQUIRED before `edit_file`.
 - If only symbol known → retrieve exact current block via `read_chunk`/`search_content` first.
 - **Pre-Edit Read**: Retrieve exact target block immediately before `edit_file` unless fresh exact content is already in current working material. Prefer 1 fresh read + 1 exact edit over multiple cautious reads.
-- **Recovery on Failure** (`VALIDATION_ERROR`, `SEARCH_BLOCK_NOT_FOUND`, whitespace mismatch): DO NOT retry same/guessed block. Perform exactly 1 deterministic step: read exact current target → copy verbatim → retry. For Kotlin symbol-sized changes, prefer `extract_symbol` → `replace_symbol` after repeated `edit_file` mismatch. If symbol-level replacement is not viable and the active MODIFY contract allows it, use `write_file_block` only after sufficient fresh file content.
+- **Recovery on Failure** (`VALIDATION_ERROR`, `SEARCH_BLOCK_NOT_FOUND`, whitespace mismatch): DO NOT retry same/guessed block. Perform exactly 1 deterministic step: read exact current target → copy verbatim → retry. For supported symbol-sized changes, prefer `extract_symbol` → `replace_symbol` after repeated `edit_file` mismatch. Currently supported: Kotlin `.kt` symbols and Python `.py` functions/classes/methods. If symbol-level replacement is not viable and the active MODIFY contract allows it, use `write_file_block` only after sufficient fresh file content.
 - **Post-Edit State**: After successful state-change, previously read blocks from that file are stale. For subsequent edits, re-read target block unless updated exact content is in fresh working material.
 - **Post-Edit Subgoal Reconciliation**: After successful state-change, do not issue another mutation on the same path under an unchanged subgoal. First reconcile affected subgoals by marking them done, modifying them into remaining STATE goals, blocking/removing them, or citing fresh contradictory evidence that the desired state is still unsatisfied. Emit `<plan_review_done />` before any next `<action>` after this reconciliation.
 - **Edit-Readiness Criteria**: (1) exact edit surface, (2) evidence it controls target behavior, (3) evidence flow matches goal (if relevant), (4) zero unresolved contradictions.
 - **STOP Reading When**: Edit-readiness achieved. Further reads require a *specific* missing detail. "Verify", "confirm", "might differ", or vague caution = prohibited. Applies to: active intents, recovery redirects, step-limit warnings, completion, short follow-ups.
 - **MODIFY Work Rules**: Investigation valid until edit-readiness. Use cheap structural navigation, not broad rereading. Successful state-change = sufficient unless goal explicitly requires validation/extra changes. Plan/reasoning ≠ applied change. Do not claim changes without tool proof. Do not add follow-up reads just to confirm a successful edit. Do not keep working if change is already applied.
-- **File Ops**: New → `create_file`. Targeted text block → `edit_file`/`replace`. Kotlin symbol-sized replacement → `replace_symbol` when the symbol name/kind is known. Large rewrite → `write_file`, and for large/generated/raw file bodies prefer `write_file_block`.
+- **File Ops**: New → `create_file`. Targeted text block → `edit_file`/`replace`. Supported symbol-sized replacement → `replace_symbol` when the symbol name/kind is known. Large rewrite → `write_file`, and for large/generated/raw file bodies prefer `write_file_block`.
 - **Existing Source Files**: Prefer `edit_file` over `write_file` for an existing source file. Do NOT use `write_file` on an existing source file unless the full current file was freshly read after the last modification, targeted `edit_file` is impractical, `write_file` is allowed by the active intent contract, and resulting diff/build verification is expected.
-- `replace_symbol` is the preferred structural recovery path for Kotlin symbol-sized changes after repeated `edit_file` mismatch: first `extract_symbol` to resolve the exact symbol, then `replace_symbol` with replacement content that preserves the same symbol name/kind. If the symbol is ambiguous, missing, or the change crosses symbol/import/file boundaries, fall back to exact `read_chunk` + `edit_file` or a full-file strategy.
+- `replace_symbol` is the preferred structural recovery path for supported symbol-sized changes after repeated `edit_file` mismatch: first `extract_symbol` to resolve the exact symbol, then `replace_symbol` with replacement content that preserves the same symbol name/kind. Currently supported: Kotlin `.kt` symbols and Python `.py` functions/classes/methods. If the symbol is ambiguous, missing, unsupported, or the change crosses symbol/import/file boundaries, fall back to exact `read_chunk` + `edit_file` or a full-file strategy.
 - `write_file_block` is allowed under MODIFY when the intent contract allows it. Prefer `edit_file` for small localized text changes and `replace_symbol` for Kotlin symbol-bounded changes. If both are impractical or you have a fresh full file, a full rewrite via `write_file_block` is acceptable subject to normal approval and post-write verification.
 - Do NOT simulate `write_file` by using `edit_file` to replace most or all of an existing source file.
 - Do NOT inject imports by replacing a class/function anchor; reread and edit the exact package/import header block separately.
@@ -889,7 +889,7 @@ Valid `extract_symbol` for a class:
 </action>
 ```
 
-Valid `replace_symbol` after extracting or otherwise identifying a Kotlin function:
+Valid `replace_symbol` after extracting or otherwise identifying a supported function:
 ```xml
 <action>
 {
@@ -899,7 +899,7 @@ Valid `replace_symbol` after extracting or otherwise identifying a Kotlin functi
   "symbol_kind": "function",
   "new_content": "fun formatTimestamp(value: Long): String {\n    return value.toString()\n}\n",
   "before_execution": "Replacing formatTimestamp with a symbol-bounded implementation",
-  "during_execution": "Replacing Kotlin symbol...",
+  "during_execution": "Replacing source symbol...",
   "after_execution": "Replaced formatTimestamp"
 }
 </action>
