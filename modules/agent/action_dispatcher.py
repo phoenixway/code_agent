@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from .allowed_actions_resolver import AllowedActionsResolver
 from .orchestration.runtime.filesystem_path_failure import classify_filesystem_path_failure
 from .orchestration.shared.decision_models import RecoveryContext
+from modules.tools.action_schema import validate_tool_action_schema
 
 
 class ActionDispatcher:
@@ -749,6 +750,32 @@ class ActionDispatcher:
             return self._sanitize_command_for_history(command), full_result_text, True
 
         command_for_history = self._sanitize_command_for_history(command)
+        schema_stop = self._schema_validation_preflight(command, state)
+        if schema_stop is not None:
+            output_text = schema_stop["message"]
+            state.pending_loop_stop_info = self._recovery_payload(
+                reason=schema_stop["reason"],
+                recoverable=True,
+                error_code=schema_stop["error_code"],
+                next_actions=list(schema_stop["next_actions"]),
+                command=command.copy() if isinstance(command, dict) else {},
+                message=output_text,
+                message_key=schema_stop["reason"],
+                policy_allowed_actions=list(schema_stop["policy_allowed_actions"]),
+                policy_recommended_actions=list(schema_stop["policy_recommended_actions"]),
+                policy_authoritative_source="recommended",
+                policy_keep_current_intent=bool(schema_stop["active_intent_type"]),
+                validation_snapshot=dict(schema_stop["validation_snapshot"]),
+            )
+            full_result_text = f"SYSTEM RESULT for `{cmd_type}`: {output_text}"
+            if self.agent.log:
+                self.agent.log.debug(
+                    "Action.finish type=%s should_stop=True reason=%s",
+                    cmd_type,
+                    schema_stop["reason"],
+                )
+            return command_for_history, full_result_text, True
+
         sm = getattr(state, "state_machine", None)
 
         intent_precheck = getattr(state, "check_intent_pre_action", None)
@@ -1140,6 +1167,55 @@ class ActionDispatcher:
                 "Action.finish type=%s should_stop=%s", cmd_type, should_stop
             )
         return command_for_history, full_result_text, should_stop
+
+    def _active_intent_type(self, state) -> str:
+        active = getattr(state, "active_intent", None)
+        return str(getattr(active, "intent_type", "") or "").strip().upper()
+
+    def _active_intent_allowed_actions(self, state) -> list[str]:
+        active = getattr(state, "active_intent", None)
+        actions = getattr(active, "allowed_actions", []) if active is not None else []
+        return self.allowed_actions_resolver.normalize_action_list(list(actions or []))
+
+    def _schema_recovery_actions(self, violation, state) -> list[str]:
+        active_type = self._active_intent_type(state)
+        active_allowed = self._active_intent_allowed_actions(state)
+        recommended = self.allowed_actions_resolver.normalize_action_list(list(violation.recommended_actions or []))
+
+        if active_type == "MODIFY" and violation.action_type == "edit_file" and "write_file_block" not in active_allowed:
+            active_allowed = active_allowed + ["write_file_block"]
+
+        if active_allowed:
+            filtered = [action for action in recommended if action in active_allowed]
+            if filtered:
+                return filtered
+            return active_allowed
+        return recommended
+
+    def _schema_validation_preflight(self, command: dict, state) -> dict | None:
+        violation = validate_tool_action_schema(command)
+        if violation is None:
+            return None
+        active_type = self._active_intent_type(state)
+        active_allowed = self._active_intent_allowed_actions(state)
+        policy_actions = self._schema_recovery_actions(violation, state)
+        return {
+            "reason": violation.reason,
+            "error_code": violation.error_code,
+            "message": violation.message,
+            "next_actions": policy_actions,
+            "policy_allowed_actions": policy_actions,
+            "policy_recommended_actions": policy_actions,
+            "active_intent_type": active_type,
+            "validation_snapshot": {
+                "action_type": violation.action_type,
+                "missing_fields": list(violation.missing_fields),
+                "forbidden_fields": list(violation.forbidden_fields),
+                "active_intent_type": active_type,
+                "active_intent_allowed_actions": active_allowed,
+                "policy_recovery_actions": policy_actions,
+            },
+        }
 
     def _is_read_only_shell_command(self, raw_command: object) -> bool:
         if not isinstance(raw_command, str):
