@@ -59,6 +59,37 @@ def test_fallback_execution_commit_returns_none_without_action_effects():
     assert commit is None
 
 
+def test_fallback_execution_commit_feeds_plan_review_observer_for_replace_symbol():
+    from modules.agent.orchestration.runtime.execution_commit_observer import ExecutionCommitObserverAdapter
+
+    harness = Harness()
+    commit = harness._build_execution_commit(
+        None,
+        [_action_segment("replace_symbol", "src/SmokeSymbolTarget.kt")],
+        ["SYSTEM RESULT for `replace_symbol`: Changes applied to src/SmokeSymbolTarget.kt"],
+        False,
+        iteration=_iteration("replace_symbol", "src/SmokeSymbolTarget.kt"),
+    )
+
+    ExecutionCommitObserverAdapter(harness.state).observe_execution_commit(
+        None,
+        commit,
+        sys_results=["SYSTEM RESULT for `replace_symbol`: Changes applied to src/SmokeSymbolTarget.kt"],
+    )
+
+    assert harness.state.plan_review_required_after_state_change is True
+    assert harness.state.plan_review_required_action_type == "replace_symbol"
+    assert harness.state.plan_review_required_target == "src/SmokeSymbolTarget.kt"
+    assert harness.state.plan_review_required_action_effects == ["replace_symbol:src/SmokeSymbolTarget.kt"]
+    trace_entry = harness.state.orchestration_trace[-1]
+    assert trace_entry.stage == "plan_review_gate"
+    assert trace_entry.decision == "required_set"
+    assert trace_entry.fields["fallback_commit_used"] is True
+    assert trace_entry.fields["plan_review_required_action_type"] == "replace_symbol"
+    assert trace_entry.fields["plan_review_required_target"] == "src/SmokeSymbolTarget.kt"
+
+
+
 def test_fallback_execution_commit_feeds_plan_review_observer_for_write_file_block():
     from modules.agent.orchestration.runtime.execution_commit_observer import ExecutionCommitObserverAdapter
 
