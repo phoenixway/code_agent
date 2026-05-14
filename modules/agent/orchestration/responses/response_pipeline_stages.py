@@ -431,12 +431,15 @@ class ResponsePipelineStagesMixin:
         if terminal_completion_decision is not None:
             return raw_response, None, terminal_completion_decision
 
-        atomicity_decision = await self._reject_invalid_intent_followup_before_transition(
-            ctx,
-            raw_response,
-            step,
-            preclassified=preclassified,
-        )
+        if self._is_terminal_intent_complete_with_summary(preclassified):
+            atomicity_decision = None
+        else:
+            atomicity_decision = await self._reject_invalid_intent_followup_before_transition(
+                ctx,
+                raw_response,
+                step,
+                preclassified=preclassified,
+            )
         if atomicity_decision is not None:
             return raw_response, None, atomicity_decision
 
@@ -479,6 +482,22 @@ class ResponsePipelineStagesMixin:
             )
 
         return raw_response, (reflection_repair_pending, reflection_repair_kind), None
+
+    def _is_terminal_intent_complete_with_summary(self, preclassified) -> bool:
+        if preclassified is None:
+            return False
+        try:
+            _segments, parsed_output = preclassified
+        except Exception:
+            return False
+        analysis = getattr(parsed_output, "compiler_analysis", None)
+        if analysis is None:
+            shape = str(getattr(parsed_output, "compiler_shape", "") or "")
+            if shape == "INTENT_COMPLETE_WITH_TEXT":
+                return True
+            runtime_semantics = getattr(parsed_output, "runtime_protocol_semantics", None)
+            return str(getattr(runtime_semantics, "shape", "") or "") == "INTENT_COMPLETE_WITH_TEXT"
+        return str(getattr(getattr(analysis, "shape", None), "name", "") or "") == "INTENT_COMPLETE_WITH_TEXT"
 
     async def _run_checkpoint_stage(self, ctx, raw_response: str, *, reflection_repair_pending: bool, reflection_repair_kind: str):
         compiler_analysis = self._run_structural_diagnosis_prepass(raw_response)

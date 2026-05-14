@@ -5,6 +5,7 @@ import pytest
 from modules.agent.orchestration.responses import ModelOutputRecoveryHandler
 from modules.agent.orchestration.parsers import IntentResponseParser
 from modules.agent.orchestration.prompts import OrchestratorPromptBuilder
+from modules.agent.orchestration.protocol.classifier import ProtocolCompiler
 from modules.agent.orchestration.responses import ModelResponsePipeline
 from modules.agent.orchestration.shared.decision_models import ActionPolicyDecision, OutputRecoveryDecision
 from modules.parser import ResponseParser
@@ -51,6 +52,40 @@ def test_pure_plaintext_answer_is_not_mixed_protocol():
 
     assert parsed.invalid_kind == ""
     assert parsed.visible_text
+
+
+def test_intent_complete_with_visible_summary_is_valid_protocol_shape():
+    response = (
+        '<intent mode="complete">\n'
+        '{"intent_id":"smoke_test","mode":"complete","completion_reason":"goal_completed","completion_explanation":"done"}\n'
+        '</intent>\n'
+        'Done. I changed SmokeSymbolTarget from before to after.'
+    )
+
+    parsed = ProtocolCompiler().analyze(response)
+
+    assert parsed.error is None
+    assert parsed.shape.name == "INTENT_COMPLETE_WITH_TEXT"
+    assert parsed.ir is not None
+    assert len(parsed.ir.intent_ops) == 1
+    assert parsed.ir.intent_ops[0].payload["mode"] == "complete"
+    assert parsed.ir.has_visible_answer is True
+    assert parsed.ir.visible_answer == "Done. I changed SmokeSymbolTarget from before to after."
+    assert parsed.ir.has_action is False
+
+
+def test_non_complete_intent_with_visible_summary_remains_invalid():
+    response = (
+        '<intent mode="reuse">\n'
+        '{"intent_id":"smoke_test","mode":"reuse","requested_steps":2}\n'
+        '</intent>\n'
+        'Continuing now.'
+    )
+
+    parsed = ProtocolCompiler().analyze(response)
+
+    assert parsed.error is not None
+    assert parsed.error.recovery_id == "mixed_intent_transition_and_visible_answer"
 
 
 @pytest.mark.asyncio
