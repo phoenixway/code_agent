@@ -31,7 +31,7 @@ class IntentPromptBuilderMixin:
         )
         normalized_allowed = [str(action).strip() for action in (allowed_actions or []) if str(action).strip()]
         if not normalized_allowed:
-            normalized_allowed = ["read_file", "edit_file", "write_file_block", "create_file", "run_shell"]
+            normalized_allowed = ["read_file", "read_chunk", "read_file_skeleton", "extract_symbol", "replace_symbol", "edit_file", "write_file_block", "create_file", "run_shell"]
         example_payload = {
             "intent_id": intent_id or self._suggest_example_intent_id(normalized_goal),
             "intent_type": "MODIFY",

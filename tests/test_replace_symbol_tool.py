@@ -78,9 +78,15 @@ async def test_replace_symbol_rejects_replacement_that_renames_symbol(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_replace_symbol_rejects_non_kotlin_file(tmp_path):
+async def test_replace_symbol_replaces_unique_python_function(tmp_path):
     path = tmp_path / "example.py"
-    path.write_text("def target():\n    return 'old'\n", encoding="utf-8")
+    path.write_text(
+        "def keep():\n"
+        "    return 'keep'\n\n"
+        "def target():\n"
+        "    return 'old'\n",
+        encoding="utf-8",
+    )
 
     tool = ReplaceSymbolTool()
     result = await tool.execute(
@@ -90,6 +96,79 @@ async def test_replace_symbol_rejects_non_kotlin_file(tmp_path):
         new_content="def target():\n    return 'new'\n",
     )
 
+    assert isinstance(result, ChangeProposal)
+    assert "return 'old'" in result.original_content
+    assert "return 'new'" in result.new_content
+    assert "def keep" in result.new_content
+
+
+@pytest.mark.asyncio
+async def test_replace_symbol_replaces_python_method_with_container_name(tmp_path):
+    path = tmp_path / "example.py"
+    path.write_text(
+        "class One:\n"
+        "    def target(self):\n"
+        "        return 'one'\n\n"
+        "class Two:\n"
+        "    def target(self):\n"
+        "        return 'two'\n",
+        encoding="utf-8",
+    )
+
+    tool = ReplaceSymbolTool()
+    result = await tool.execute(
+        path=str(path),
+        symbol_name="target",
+        symbol_kind="method",
+        container_name="Two",
+        new_content="    def target(self):\n        return 'changed'\n",
+    )
+
+    assert isinstance(result, ChangeProposal)
+    assert "return 'one'" in result.new_content
+    assert "return 'changed'" in result.new_content
+    assert "return 'two'" not in result.new_content
+
+
+@pytest.mark.asyncio
+async def test_replace_symbol_rejects_ambiguous_python_method_without_container(tmp_path):
+    path = tmp_path / "example.py"
+    path.write_text(
+        "class One:\n"
+        "    def target(self):\n"
+        "        return 'one'\n\n"
+        "class Two:\n"
+        "    def target(self):\n"
+        "        return 'two'\n",
+        encoding="utf-8",
+    )
+
+    tool = ReplaceSymbolTool()
+    result = await tool.execute(
+        path=str(path),
+        symbol_name="target",
+        symbol_kind="method",
+        new_content="    def target(self):\n        return 'changed'\n",
+    )
+
+    assert result["status"] == "error"
+    assert result["error_code"] == "AMBIGUOUS_MATCH"
+
+
+@pytest.mark.asyncio
+async def test_replace_symbol_rejects_unsupported_language_with_supported_language_list(tmp_path):
+    path = tmp_path / "example.txt"
+    path.write_text("target\n", encoding="utf-8")
+
+    tool = ReplaceSymbolTool()
+    result = await tool.execute(
+        path=str(path),
+        symbol_name="target",
+        symbol_kind="function",
+        new_content="target\n",
+    )
+
     assert result["status"] == "error"
     assert result["error_code"] == "VALIDATION_ERROR"
-    assert "Kotlin .kt" in result["output"]
+    assert "does not yet support" in result["output"]
+    assert result["error_details"]["supported_languages"] == {".kt": "kotlin", ".py": "python"}

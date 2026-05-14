@@ -8,22 +8,33 @@ from modules.types import ChangeProposal
 
 from ..base import BaseTool
 from ._kotlin_symbol_extractor import KotlinSymbolExtractor
+from ._python_symbol_extractor import PythonSymbolExtractor
 
 
 class ReplaceSymbolTool(BaseTool):
     name = "replace_symbol"
+    SUPPORTED_LANGUAGE_BY_SUFFIX = {
+        ".kt": "kotlin",
+        ".py": "python",
+    }
+    SUPPORTED_SYMBOL_KINDS_BY_LANGUAGE = {
+        "kotlin": "auto|function|composable|class|enum|object|interface|method|property",
+        "python": "auto|function|async_function|class|method",
+    }
     description = (
-        "Replaces exactly one Kotlin symbol using tree-sitter symbol boundaries. "
+        "Replaces exactly one source symbol using language-specific structural symbol boundaries. "
+        "Currently supported: Kotlin .kt via tree-sitter and Python .py via ast. "
         "Use this after extract_symbol/read_chunk when edit_file exact text replacement is brittle. "
         "Params: 'path' (str), 'symbol_name' (str; alias 'name'), optional "
-        "'symbol_kind' (str; alias 'symbol_type': auto|function|composable|class|enum|object|interface|method|property), "
+        "'symbol_kind' (str; alias 'symbol_type'; for Kotlin: auto|function|composable|class|enum|object|interface|method|property), "
         "optional 'container_name' (str), optional 'occurrence' (int, default 1), "
         "and 'new_content' (str; alias 'newcontent'). "
-        "Fails if the symbol is missing, ambiguous, or the resolved source block is not unique in the file."
+        "Fails if the language is unsupported, the symbol is missing, ambiguous, or the resolved source block is not unique in the file."
     )
 
     def __init__(self):
-        self.extractor = KotlinSymbolExtractor()
+        self.kotlin_extractor = KotlinSymbolExtractor()
+        self.python_extractor = PythonSymbolExtractor()
 
     async def execute(
         self,
@@ -59,21 +70,31 @@ class ReplaceSymbolTool(BaseTool):
             )
 
         p = Path(path)
-        if p.suffix.lower() != ".kt":
+        language = self._language_for_path(p)
+        if language is None:
+            supported = ", ".join(
+                f"{suffix} ({lang})" for suffix, lang in sorted(self.SUPPORTED_LANGUAGE_BY_SUFFIX.items())
+            )
             return _validation_error(
-                f"replace_symbol currently supports Kotlin .kt files only. Got: {p.suffix or '(no extension)'}",
+                (
+                    f"replace_symbol does not yet support files with suffix {p.suffix or '(no extension)'}. "
+                    f"Currently supported: {supported}."
+                ),
                 next_actions=["read_file", "read_file_skeleton", "edit_file"],
+                error_details={
+                    "path": path,
+                    "unsupported_suffix": p.suffix or "",
+                    "supported_languages": dict(self.SUPPORTED_LANGUAGE_BY_SUFFIX),
+                },
             )
 
-        selected = self.extractor.extract_symbol(
+        selected = self._extract_symbol_for_language(
+            language=language,
             path=path,
             symbol_name=resolved_name.strip(),
             symbol_kind=resolved_kind,
             container_name=container_name,
             occurrence=occurrence,
-            include_body=True,
-            include_signature=True,
-            include_line_range=True,
         )
         if selected.get("status") != "success":
             return selected
@@ -130,6 +151,50 @@ class ReplaceSymbolTool(BaseTool):
         new_file_content = content.replace(selected_text, resolved_new_content, 1)
         return ChangeProposal(file_path=str(p), original_content=content, new_content=new_file_content)
 
+    def _language_for_path(self, path: Path) -> str | None:
+        return self.SUPPORTED_LANGUAGE_BY_SUFFIX.get(path.suffix.lower())
+
+    def _extract_symbol_for_language(
+        self,
+        *,
+        language: str,
+        path: str,
+        symbol_name: str,
+        symbol_kind: str,
+        container_name: str | None,
+        occurrence: int,
+    ) -> dict[str, Any]:
+        if language == "kotlin":
+            return self.kotlin_extractor.extract_symbol(
+                path=path,
+                symbol_name=symbol_name,
+                symbol_kind=symbol_kind,
+                container_name=container_name,
+                occurrence=occurrence,
+                include_body=True,
+                include_signature=True,
+                include_line_range=True,
+            )
+        if language == "python":
+            return self.python_extractor.extract_symbol(
+                path=path,
+                symbol_name=symbol_name,
+                symbol_kind=symbol_kind,
+                container_name=container_name,
+                occurrence=occurrence,
+                include_body=True,
+                include_signature=True,
+                include_line_range=True,
+            )
+        return {
+            "status": "error",
+            "error_code": "VALIDATION_ERROR",
+            "recoverable": True,
+            "next_actions": ["read_file", "read_file_skeleton", "edit_file"],
+            "output": f"replace_symbol language backend is not implemented for {language}.",
+            "error_details": {"language": language, "path": path},
+        }
+
 
 def _first_nonempty(*values) -> str | None:
     for value in values:
@@ -155,9 +220,18 @@ def _new_content_declares_same_symbol(new_content: str, symbol_name: str, symbol
     text = str(new_content or "")
 
     if kind in {"function", "method", "composable"}:
-        return re.search(rf"\bfun\s+(?:<[^>]+>\s*)?`?{escaped}`?\s*\(", text) is not None
+        return (
+            re.search(rf"\bfun\s+(?:<[^>]+>\s*)?`?{escaped}`?\s*\(", text) is not None
+            or re.search(rf"\bdef\s+{escaped}\s*\(", text) is not None
+            or re.search(rf"\basync\s+def\s+{escaped}\s*\(", text) is not None
+        )
+    if kind == "async_function":
+        return re.search(rf"\basync\s+def\s+{escaped}\s*\(", text) is not None
     if kind == "class":
-        return re.search(rf"\bclass\s+`?{escaped}`?\b", text) is not None
+        return (
+            re.search(rf"\bclass\s+`?{escaped}`?\b", text) is not None
+            or re.search(rf"\bclass\s+{escaped}\s*(?:\(|:)", text) is not None
+        )
     if kind == "enum":
         return re.search(rf"\benum\s+class\s+`?{escaped}`?\b", text) is not None
     if kind == "object":
