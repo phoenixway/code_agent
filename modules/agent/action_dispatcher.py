@@ -1009,9 +1009,12 @@ class ActionDispatcher:
                 2, int(getattr(self.config, "LOOP_ERROR_REPEAT_THRESHOLD", 2))
             )
             threshold_reached = same_error_repeats >= loop_threshold
-            is_repeated_edit_search_mismatch = (
+            is_repeated_edit_validation_failure = (
                 cmd_type == "edit_file"
                 and error_code == "VALIDATION_ERROR"
+            )
+            is_repeated_edit_search_mismatch = (
+                is_repeated_edit_validation_failure
                 and "Search block not found" in str(result.get("output", ""))
             )
             is_missing_executable = error_code == "MISSING_EXECUTABLE"
@@ -1038,22 +1041,31 @@ class ActionDispatcher:
                 )
 
             if not should_stop and threshold_reached:
-                if is_repeated_edit_search_mismatch:
+                if is_repeated_edit_validation_failure:
                     should_stop = True
+                    recovery_actions = self._repeated_edit_failure_recovery_actions(state)
+                    mismatch_note = " search mismatch" if is_repeated_edit_search_mismatch else " validation failure"
                     output_text += (
-                        "\n[SYSTEM: Repeated edit_file search mismatch detected. "
-                        "Stop this loop and switch to deterministic recovery.]"
+                        f"\n[SYSTEM: Repeated edit_file{mismatch_note} detected. "
+                        "Hard-stop this exact retry loop and switch to deterministic recovery: "
+                        "read the current exact target block before another edit_file, or use write_file_block only when it is allowed by the current MODIFY recovery contract.]"
                     )
                     state.pending_loop_stop_info = self._recovery_payload(
-                        reason="repeating_failure",
+                        reason="repeated_edit_failure_hard_stop",
                         recoverable=recoverable,
                         error_code=error_code,
-                        next_actions=next_actions,
+                        next_actions=recovery_actions,
                         command=command.copy(),
                         error_details=dict(error_details or {}),
-                        policy_allowed_actions=next_actions,
-                        policy_recommended_actions=next_actions,
-                        policy_authoritative_source="recommended" if next_actions else "",
+                        policy_allowed_actions=recovery_actions,
+                        policy_recommended_actions=recovery_actions,
+                        policy_authoritative_source="recommended" if recovery_actions else "",
+                        hard_stop_scope={
+                            "action_type": "edit_file",
+                            "path": str(command.get("path") or ""),
+                            "error_code": str(error_code or ""),
+                            "same_error_repeats": same_error_repeats,
+                        },
                     )
                 elif state.consume_malformed_grace():
                     output_text += (
@@ -1191,6 +1203,21 @@ class ActionDispatcher:
                 return filtered
             return active_allowed
         return recommended
+
+    def _repeated_edit_failure_recovery_actions(self, state) -> list[str]:
+        base_actions = ["read_chunk", "read_file", "search_content", "edit_file", "write_file_block"]
+        active_type = self._active_intent_type(state)
+        active_allowed = self._active_intent_allowed_actions(state)
+
+        if active_type == "MODIFY" and "write_file_block" not in active_allowed:
+            active_allowed = active_allowed + ["write_file_block"]
+
+        if active_allowed:
+            filtered = [action for action in base_actions if action in active_allowed]
+            if filtered:
+                return filtered
+            return active_allowed
+        return base_actions
 
     def _schema_validation_preflight(self, command: dict, state) -> dict | None:
         violation = validate_tool_action_schema(command)

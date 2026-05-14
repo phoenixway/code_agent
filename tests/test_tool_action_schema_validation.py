@@ -129,3 +129,45 @@ def test_dispatcher_schema_preflight_has_no_decision_for_valid_edit_file():
     )
 
     assert stop is None
+
+
+def test_repeated_edit_failure_recovery_actions_add_write_file_block_for_modify():
+    dispatcher = ActionDispatcher(DummyAgent())
+    state = DummyState(
+        active_intent=DummyIntent(
+            intent_type="MODIFY",
+            allowed_actions=["read_chunk", "read_file", "search_content", "edit_file"],
+        )
+    )
+
+    actions = dispatcher._repeated_edit_failure_recovery_actions(state)
+
+    assert actions == ["read_chunk", "read_file", "search_content", "edit_file", "write_file_block"]
+
+
+def test_repeated_edit_failure_recovery_actions_do_not_add_write_file_block_for_non_modify():
+    dispatcher = ActionDispatcher(DummyAgent())
+    state = DummyState(
+        active_intent=DummyIntent(
+            intent_type="INVESTIGATE",
+            allowed_actions=["read_chunk", "read_file", "search_content", "edit_file"],
+        )
+    )
+
+    actions = dispatcher._repeated_edit_failure_recovery_actions(state)
+
+    assert actions == ["read_chunk", "read_file", "search_content", "edit_file"]
+
+
+def test_repeated_edit_failure_recovery_actions_respect_existing_non_modify_contract():
+    dispatcher = ActionDispatcher(DummyAgent())
+    state = DummyState(
+        active_intent=DummyIntent(
+            intent_type="SUMMARIZE",
+            allowed_actions=["read_chunk", "search_content"],
+        )
+    )
+
+    actions = dispatcher._repeated_edit_failure_recovery_actions(state)
+
+    assert actions == ["read_chunk", "search_content"]
