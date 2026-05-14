@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 53 — Step 13/N: Plan Review Gate Closure / Repeat-Edit Guard Decision
+- **Phase**: Phase 54 — Step 1/N: Semantic Runtime Observability Slice Selection
 - **Status**: Complete.
-- **Next Step**: Phase 54 — Next Semantic Runtime Slice Selection.
-- **Boundary**: Phase 53 is closed. The post-state-change plan review gate is implemented and tested: successful state-changing file commits set passive review-required state, `<plan_review_done />` clears it, and action proposals without the checkpoint are blocked before ActionPolicy/dispatch. Repeat-edit hard guard, automatic intent completion, subgoal-board mutation from the marker alone, dispatch behavior changes, ActionPolicy changes, authority transfer, switch changes, and legacy cleanup remain deferred.
+- **Next Step**: Phase 54 — Step 2/N: Plan Review / Fallback Commit Trace Hardening Characterization.
+- **Boundary**: Phase 53 is closed after fallback execution commit smoke validation. Phase 54 selects a non-behavioral observability slice: make fallback commits, plan-review-required state, plan-review checkpoint clearing, and plan-review gate blocking easier to diagnose in orchestration trace/export surfaces. Next work may only characterize existing trace gaps and propose passive diagnostic fields. No dispatch behavior change, ActionPolicy change, gate behavior change, recovery behavior change, repeat-edit hard guard, automatic intent completion, authority transfer, switch change, or legacy cleanup is allowed.
 
 ## Step 4I Parity Matrix
 

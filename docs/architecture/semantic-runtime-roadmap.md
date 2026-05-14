@@ -7339,7 +7339,72 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Successful edit followed by `<subgoal action="mark_done" ... />` plus `<plan_review_done />` should clear the gate without implying automatic intent completion.
   - Read-only actions should not set the plan-review-required flag.
 - **Next**:
-  - Phase 54 — Next Semantic Runtime Slice Selection.
+  - Phase 53 — Step 14/N: Fallback Commit Smoke Closure.
+
+---
+
+#### Phase 53 — Step 14/N: Fallback Commit Smoke Closure
+
+- **Status**: Done.
+- **Goal**: Close the fallback execution commit gap discovered by real-agent smoke testing and record final Phase 53 validation.
+- **Completed Outcome**:
+  - Real-agent smoke testing showed that intentless/no-execution-plan file mutations are a real production path, not an edge case.
+  - Added fallback execution commit semantics for successful action-only/no-execution-plan dispatches.
+  - Confirmed fallback commits preserve action effects such as `write_file_block:path` and `append_file_block:path`.
+  - Confirmed fallback commits are observed by `ExecutionCommitObserverAdapter`.
+  - Confirmed operational journal entries are produced for fallback file mutations.
+  - Confirmed successful fallback state-changing file mutations activate `plan_review_required_after_state_change`.
+  - Confirmed an action proposal without `<plan_review_done />` is blocked before ActionPolicy/dispatch with `missing_plan_review_after_state_change`.
+  - Confirmed `<plan_review_done />` is recognized as a checkpoint, clears the review-required state, and allows checkpoint-plus-action to proceed through normal checks.
+  - Confirmed malformed protocol marker placement inside JSON is caught separately by compiler protocol validation.
+- **Final Phase 53 Decision**: Close Phase 53.
+- **Rationale**:
+  - The complete chain now works for both planned execution commits and fallback intentless execution commits.
+  - The original stale-subgoal repeated-edit defect is mitigated at the safer boundary: the model must review/reconcile the subgoal board before another action after successful state-changing file work.
+  - Further hard guards should be driven by new smoke-test evidence, not added speculatively.
+- **Deferred / Not Approved**:
+  - Repeat-edit hard guard.
+  - Automatic intent completion after edits.
+  - Subgoal-board mutation from `<plan_review_done />` alone.
+  - Dispatch behavior changes.
+  - ActionPolicy changes.
+  - Authority transfer or switch changes.
+  - Legacy cleanup.
+- **Next**:
+  - Phase 54 — Step 1/N: Semantic Runtime Observability Slice Selection.
+
+---
+
+#### Phase 54 — Step 1/N: Semantic Runtime Observability Slice Selection
+
+- **Status**: Done.
+- **Goal**: Select the next semantic runtime slice after closing the post-state-change plan review gate.
+- **Decision**: Select a non-behavioral observability hardening slice for plan-review gate and fallback execution commit diagnostics.
+- **Rationale**:
+  - Phase 53 added real runtime behavior and validated it with smoke testing.
+  - The next highest-value work is to make that behavior easier to diagnose, not to add another guard.
+  - Current trace/export surfaces already preserve compact `ExecutionCommit` data, gate block events, and checkpoint clear events, but the state transitions around plan-review-required activation and fallback commit usage are not explicit enough.
+  - Better diagnostics will make future smoke failures faster to classify without changing dispatch, ActionPolicy, gate behavior, or recovery behavior.
+- **Selected Slice**: Plan Review / Fallback Commit Trace Hardening.
+- **Approved Scope for Step 2**:
+  - Characterize current trace visibility for fallback commit creation.
+  - Characterize current trace visibility for `plan_review_required_after_state_change` activation.
+  - Characterize current trace visibility for `<plan_review_done />` clearing.
+  - Characterize current trace visibility for `missing_plan_review_after_state_change` gate blocking.
+  - Identify minimal passive diagnostic fields, if needed.
+  - Do not implement behavior changes in characterization.
+- **Forbidden**:
+  - No dispatch behavior change.
+  - No ActionPolicy change.
+  - No gate behavior change.
+  - No recovery behavior change.
+  - No repeat-edit hard guard.
+  - No automatic intent completion.
+  - No subgoal-board mutation from `<plan_review_done />` alone.
+  - No authority transfer or switch change.
+  - No legacy cleanup.
+- **Next**:
+  - Phase 54 — Step 2/N: Plan Review / Fallback Commit Trace Hardening Characterization.
 
 ---
 ### Phase 12: Observability/Replay
