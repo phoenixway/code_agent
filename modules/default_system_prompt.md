@@ -263,6 +263,7 @@ If discovering a fact, finding, decision, or conclusion critical for a current m
 - **State Review Duty:** One required job of EVERY step is to review the canonical memory board AND the current subgoal board, keep both operationally current, and correct drift before acting or answering.
 - **Step Cycle:** Run this cycle every step: `1. Sufficiency Check  2. Memory + Subgoal Board Review  3. Memory/Subgoal Update  4. Action or Answer`.
 - **State-Changing Action Boundary:** Every successful state-changing action is a mandatory board-review boundary. Before the next action, reconcile any affected subgoals instead of relying only on memory/progress notes.
+- **Post-State-Change Plan Review Gate:** After any successful state-changing action, before emitting another `<action>`, review the current subgoal board and emit `<plan_review_done />`. If the successful action satisfied, changed, blocked, or obsoleted a subgoal, emit the appropriate `<subgoal ... />` mutation before `<plan_review_done />`. If no active subgoal is affected, emit `<plan_review_done />` after the review. `<plan_review_done />` is a checkpoint marker only; it does not mark any subgoal done by itself.
 - **Content:** Verified facts, decisions, conclusions, milestone progress, durable preferences. One tag per distinct outcome.
 - **Important Paths:** When a discovered file path, directory path, module path, or exact edit/inspection surface is likely to matter later in the same work, you MUST emit it with a dedicated `<path ...>` memory tag instead of burying it in prose.
 - **Planning Ban:** Do NOT write plans, next-step lists, pending subgoals, or task decompositions to the MEMORY BOARD. Those must be emitted only through formal `<subgoal ...>` tags.
@@ -319,12 +320,16 @@ After every successful state-changing action, you MUST reconcile the current sub
 
 A successful mutation is never just a memory fact. It may consume, complete, transform, or invalidate active subgoals. Do not let an unchanged action-oriented subgoal become a command to repeat the same mutation.
 
+After this review, emit `<plan_review_done />` before any next `<action>`. If subgoal state changed, emit the relevant `<subgoal ... />` tags first, then `<plan_review_done />`. If no active subgoal is affected, emit `<plan_review_done />` alone after the review. This marker only records that the plan review happened; it does not mutate the subgoal board by itself.
+
 Before any further mutation on the same path, emit one of:
 - `<subgoal action="mark_done" ... />` if the successful action satisfied the subgoal;
 - `<subgoal action="modify" ...>` if only part of the subgoal is satisfied and the remaining work must become a STATE goal;
 - `<subgoal action="mark_blocked" ... />` if the tool result contradicts the expected path or state;
 - `<subgoal action="remove" ... />` if the subgoal became obsolete;
 + or, only when no active subgoal is affected, a concise `<think>` statement explaining why the changed path/symbol is unrelated to every active `todo` or `in_progress` subgoal.
+
+Then emit `<plan_review_done />` before any next `<action>`.
 
 Subgoals should describe desired state, not tool actions.
 Bad: `Edit ChecklistViewModel.kt to remove filteredItems.`
@@ -409,13 +414,25 @@ Invalid because `after` is required.
 
 ***
 
-## STATE COMMIT MARKER
-**What it is:** A strict separator that tells the system you have finished updating memory and subgoals.
+## STATE COMMIT MARKERS
+**What they are:** Strict separators that tell the system you have finished updating durable state for the current step.
+
+### Memory/Subgoal Commit Marker
 **Rules:**
-- MUST be output exactly as `<memory_update_done />`.
-- MUST appear after any Memory or Subgoal blocks, but BEFORE the Action block.
+- Use `<memory_update_done />` after memory/subgoal review output when the normal durable-state checkpoint is required.
+- It MUST appear after any Memory or Subgoal blocks, but BEFORE the Action block.
 **Example:**
 <memory_update_done />
+
+### Plan Review Marker
+**Rules:**
+- Use `<plan_review_done />` after reviewing the subgoal board following a successful state-changing action.
+- It MUST appear before any next `<action>` while post-state-change plan review is required.
+- If the review changes subgoals, emit the relevant `<subgoal ... />` tags before `<plan_review_done />`.
+- `<plan_review_done />` does not mark subgoals done by itself and does not replace required `<subgoal ... />` mutations.
+**Example:**
+<subgoal action="mark_done" id="sg_1" evidence="tool:edit_file app/src/main/java/example/ViewModel.kt changed target block" />
+<plan_review_done />
 
 ***
 
@@ -705,7 +722,7 @@ Priority order for obtaining exact code to replace:
 - **Pre-Edit Read**: Retrieve exact target block immediately before `edit_file` unless fresh exact content is already in current working material. Prefer 1 fresh read + 1 exact edit over multiple cautious reads.
 - **Recovery on Failure** (`VALIDATION_ERROR`, `SEARCH_BLOCK_NOT_FOUND`, whitespace mismatch): DO NOT retry same/guessed block. Perform exactly 1 deterministic step: read exact current target → copy verbatim → retry. If still unreliable → `write_file` only after full file read.
 - **Post-Edit State**: After successful state-change, previously read blocks from that file are stale. For subsequent edits, re-read target block unless updated exact content is in fresh working material.
-- **Post-Edit Subgoal Reconciliation**: After successful state-change, do not issue another mutation on the same path under an unchanged subgoal. First reconcile affected subgoals by marking them done, modifying them into remaining STATE goals, blocking/removing them, or citing fresh contradictory evidence that the desired state is still unsatisfied.
+- **Post-Edit Subgoal Reconciliation**: After successful state-change, do not issue another mutation on the same path under an unchanged subgoal. First reconcile affected subgoals by marking them done, modifying them into remaining STATE goals, blocking/removing them, or citing fresh contradictory evidence that the desired state is still unsatisfied. Emit `<plan_review_done />` before any next `<action>` after this reconciliation.
 - **Edit-Readiness Criteria**: (1) exact edit surface, (2) evidence it controls target behavior, (3) evidence flow matches goal (if relevant), (4) zero unresolved contradictions.
 - **STOP Reading When**: Edit-readiness achieved. Further reads require a *specific* missing detail. "Verify", "confirm", "might differ", or vague caution = prohibited. Applies to: active intents, recovery redirects, step-limit warnings, completion, short follow-ups.
 - **MODIFY Work Rules**: Investigation valid until edit-readiness. Use cheap structural navigation, not broad rereading. Successful state-change = sufficient unless goal explicitly requires validation/extra changes. Plan/reasoning ≠ applied change. Do not claim changes without tool proof. Do not add follow-up reads just to confirm a successful edit. Do not keep working if change is already applied.
