@@ -7020,6 +7020,31 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Phase 53 — Step 5/N: Plan Review Marker Compiler Support Implementation.
 
 ---
+
+#### Phase 53 — Step 5/N: Plan Review Marker Compiler Support Implementation
+
+- **Status**: Done.
+- **Goal**: Add first-class passive compiler/protocol support for `<plan_review_done />`.
+- **Completed Outcome**:
+  - Added `plan_review_done` to the protocol spec as a self-closing marker.
+  - Added a first-class parser node for plan-review markers.
+  - Added parser support for `<plan_review_done />` as protocol structure instead of literal text.
+  - Added compiler/lowerer support for passive board op `plan_review_done`.
+  - Added passive IR fact `has_plan_review_checkpoint`.
+  - Added runtime semantic accessor support for `has_plan_review_checkpoint`.
+  - Updated tests so `<plan_review_done />` alone compiles as `CHECKPOINT_ONLY`.
+  - Updated tests so `<plan_review_done />` before an action compiles as structural checkpoint protocol plus `ACTION_ONLY`, not pre-action text.
+  - Preserved positive control for `<memory_update_done />`.
+  - No runtime gate was added.
+  - No dispatch behavior changed.
+  - No ActionPolicy behavior changed.
+  - No recovery branch was added.
+  - No repeat-edit guard was added.
+  - No automatic intent completion was added.
+- **Next**:
+  - Phase 53 — Step 6/N: Plan Review Marker Runtime Surface Closure / Gate Decision.
+
+---
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.

@@ -15,6 +15,7 @@ from .models import (
     LiteralProtocolTagNode,
     MarkerNode,
     MemoryNode,
+    PlanReviewNode,
     ResponseAst,
     ResponseIR,
     ResponseShape,
@@ -56,6 +57,7 @@ class ProtocolLowerer:
         memory_nodes = [node for node in ast.nodes if isinstance(node, MemoryNode)]
         subgoal_nodes = [node for node in ast.nodes if isinstance(node, SubgoalNode)]
         marker_nodes = [node for node in ast.nodes if isinstance(node, MarkerNode)]
+        plan_review_nodes = [node for node in ast.nodes if isinstance(node, PlanReviewNode)]
         intent_nodes = [node for node in ast.nodes if isinstance(node, IntentNode)]
         action_nodes = [node for node in ast.nodes if isinstance(node, ActionNode)]
         file_nodes = [node for node in ast.nodes if isinstance(node, FileContentNode)]
@@ -72,7 +74,7 @@ class ProtocolLowerer:
 
         # Lower to primary IR ops
         annotations = tuple(AnnotationIR(kind="think", text=node.content) for node in think_nodes)
-        board_ops = tuple(self._lower_board_nodes(memory_nodes, subgoal_nodes, marker_nodes))
+        board_ops = tuple(self._lower_board_nodes(memory_nodes, subgoal_nodes, marker_nodes, plan_review_nodes))
         intent_ops = tuple(self._lower_intent_node(node) for node in intent_nodes if isinstance(node.json_payload, dict))
         action_ops = tuple(self._lower_action_node(node, file_content_text or None) for node in action_nodes)
         effects_preview = tuple(self._preview_effects(intent_ops, action_ops, visible_text or None, file_content_text or None))
@@ -86,8 +88,9 @@ class ProtocolLowerer:
         has_memory_tags = len(memory_nodes) > 0
         has_subgoal_tags = len(subgoal_nodes) > 0
         has_memory_checkpoint = len(marker_nodes) > 0
+        has_plan_review_checkpoint = len(plan_review_nodes) > 0
         has_plan_checkpoint = has_subgoal_tags
-        has_checkpoint = has_memory_tags or has_subgoal_tags or has_memory_checkpoint
+        has_checkpoint = has_memory_tags or has_subgoal_tags or has_memory_checkpoint or has_plan_review_checkpoint
         visible_text_source = self._get_visible_text_source(shape, has_visible_answer, has_pre_action_text)
         has_file_content = len(file_nodes) > 0
         file_content_count = len(file_nodes)
@@ -113,6 +116,7 @@ class ProtocolLowerer:
             has_subgoal_tags=has_subgoal_tags,
             has_memory_checkpoint=has_memory_checkpoint,
             has_plan_checkpoint=has_plan_checkpoint,
+            has_plan_review_checkpoint=has_plan_review_checkpoint,
             has_file_content=has_file_content,
             file_content_count=file_content_count,
             file_content_text=file_content_text,
@@ -135,13 +139,15 @@ class ProtocolLowerer:
             return "UNKNOWN"
         return "NONE"
 
-    def _lower_board_nodes(self, memory_nodes, subgoal_nodes, marker_nodes):
+    def _lower_board_nodes(self, memory_nodes, subgoal_nodes, marker_nodes, plan_review_nodes):
         for node in memory_nodes:
             yield BoardOpIR(kind=node.tag, attrs=dict(node.attrs), content=node.content)
         for node in subgoal_nodes:
             yield BoardOpIR(kind="subgoal", attrs=dict(node.attrs), content=node.content)
         for _node in marker_nodes:
             yield BoardOpIR(kind="memory_update_done", attrs={}, content=None)
+        for _node in plan_review_nodes:
+            yield BoardOpIR(kind="plan_review_done", attrs={}, content=None)
 
     def _lower_intent_node(self, node: IntentNode) -> IntentOpIR:
         payload = dict(node.json_payload or {})

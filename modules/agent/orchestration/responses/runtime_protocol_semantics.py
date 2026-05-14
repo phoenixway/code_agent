@@ -37,6 +37,7 @@ class RuntimeProtocolSemantics:
     has_memory_tags: bool
     has_subgoal_tags: bool
     has_memory_checkpoint: bool
+    has_plan_review_checkpoint: bool
     memory_ops: tuple[object, ...]
     subgoal_ops: tuple[object, ...]
     has_file_content: bool
@@ -66,6 +67,7 @@ def runtime_semantics_from_compiler_analysis(compiler_analysis: Any, *, invalid_
             has_memory_tags=False,
             has_subgoal_tags=False,
             has_memory_checkpoint=False,
+            has_plan_review_checkpoint=False,
             memory_ops=(),
             subgoal_ops=(),
             has_file_content=False,
@@ -79,7 +81,9 @@ def runtime_semantics_from_compiler_analysis(compiler_analysis: Any, *, invalid_
     shape_name = str(_safe_getattr(shape_obj, "name", "") or str(shape_obj or "")).strip()
 
     board_ops = _safe_getattr(ir, "board_ops", ()) or ()
-    memory_ops = tuple(op for op in board_ops if _safe_getattr(op, "kind", "") != "subgoal")
+    memory_ops = tuple(
+        op for op in board_ops if _safe_getattr(op, "kind", "") not in {"subgoal", "plan_review_done"}
+    )
     subgoal_ops = tuple(op for op in board_ops if _safe_getattr(op, "kind", "") == "subgoal")
 
     return RuntimeProtocolSemantics(
@@ -101,6 +105,7 @@ def runtime_semantics_from_compiler_analysis(compiler_analysis: Any, *, invalid_
         has_memory_tags=bool(_safe_getattr(ir, "has_memory_tags", False)),
         has_subgoal_tags=bool(_safe_getattr(ir, "has_subgoal_tags", False)),
         has_memory_checkpoint=bool(_safe_getattr(ir, "has_memory_checkpoint", False)),
+        has_plan_review_checkpoint=bool(_safe_getattr(ir, "has_plan_review_checkpoint", False)),
         memory_ops=memory_ops,
         subgoal_ops=subgoal_ops,
         has_file_content=bool(_safe_getattr(ir, "has_file_content", False)),
@@ -117,7 +122,9 @@ def runtime_semantics_from_parsed_output(parsed_output: Any) -> RuntimeProtocolS
         error_code = str(_safe_getattr(parsed_output, "compiler_error_code", "") or "")
 
         board_ops = _safe_getattr(compiler_ir, "board_ops", ()) or ()
-        memory_ops = tuple(op for op in board_ops if _safe_getattr(op, "kind", "") != "subgoal")
+        memory_ops = tuple(
+            op for op in board_ops if _safe_getattr(op, "kind", "") not in {"subgoal", "plan_review_done"}
+        )
         subgoal_ops = tuple(op for op in board_ops if _safe_getattr(op, "kind", "") == "subgoal")
 
         return RuntimeProtocolSemantics(
@@ -139,6 +146,7 @@ def runtime_semantics_from_parsed_output(parsed_output: Any) -> RuntimeProtocolS
             has_memory_tags=bool(_safe_getattr(compiler_ir, "has_memory_tags", False)),
             has_subgoal_tags=bool(_safe_getattr(compiler_ir, "has_subgoal_tags", False)),
             has_memory_checkpoint=bool(_safe_getattr(compiler_ir, "has_memory_checkpoint", False)),
+            has_plan_review_checkpoint=bool(_safe_getattr(compiler_ir, "has_plan_review_checkpoint", False)),
             memory_ops=memory_ops,
             subgoal_ops=subgoal_ops,
             has_file_content=bool(_safe_getattr(compiler_ir, "has_file_content", False)),
@@ -166,6 +174,7 @@ def runtime_semantics_from_parsed_output(parsed_output: Any) -> RuntimeProtocolS
         has_memory_tags=False,
         has_subgoal_tags=False,
         has_memory_checkpoint=False,
+        has_plan_review_checkpoint=False,
         memory_ops=(),
         subgoal_ops=(),
         has_file_content=False,

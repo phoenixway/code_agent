@@ -18,6 +18,7 @@ PROTOCOL_SPEC = ProtocolSpec(
         "action": BlockSpec(name="action", kind="closed", payload=PayloadSpec(type="json")),
         "file_content": BlockSpec(name="file_content", kind="closed", payload=PayloadSpec(type="raw_file")),
         "memory_update_done": BlockSpec(name="memory_update_done", kind="self_closing"),
+        "plan_review_done": BlockSpec(name="plan_review_done", kind="self_closing"),
         "fact": BlockSpec(name="fact", kind="closed", payload=PayloadSpec(type="text")),
         "finding": BlockSpec(name="finding", kind="closed", payload=PayloadSpec(type="text")),
         "decision": BlockSpec(name="decision", kind="closed", payload=PayloadSpec(type="text")),

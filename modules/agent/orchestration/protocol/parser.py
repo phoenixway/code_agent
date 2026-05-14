@@ -21,6 +21,7 @@ from .models import (
     MarkerNode,
     MemoryNode,
     Node,
+    PlanReviewNode,
     ResponseAst,
     ResponseShape,
     SelfClosingTagToken,
@@ -45,7 +46,7 @@ class ProtocolParser:
         re.DOTALL,
     )
     PROTOCOL_TAG_IN_STRING_RE = re.compile(
-        r"</?\s*(action|intent|think|file_content|memory_update_done|memory_review|fact|finding|decision|preference|path|progress|subgoal)\b",
+        r"</?\s*(action|intent|think|file_content|memory_update_done|plan_review_done|memory_review|fact|finding|decision|preference|path|progress|subgoal)\b",
         re.IGNORECASE,
     )
     THINK_FORBIDDEN_TAG_MAP = {
@@ -60,6 +61,7 @@ class ProtocolParser:
         "progress": "E_MEMORY_TAG_INSIDE_THINK",
         "memory_review": "E_MEMORY_TAG_INSIDE_THINK",
         "memory_update_done": "E_MEMORY_TAG_INSIDE_THINK",
+        "plan_review_done": "E_MEMORY_TAG_INSIDE_THINK",
         "subgoal": "E_MEMORY_TAG_INSIDE_THINK",
     }
 
@@ -93,6 +95,8 @@ class ProtocolParser:
             if isinstance(token, SelfClosingTagToken):
                 if token.name == "memory_update_done":
                     nodes.append(MarkerNode(span=token.span))
+                elif token.name == "plan_review_done":
+                    nodes.append(PlanReviewNode(span=token.span))
                 elif token.name == "memory_review":
                     nodes.append(MemoryNode(tag=token.name, attrs=token.attrs, content=None, span=token.span))
                 elif token.name == "subgoal":

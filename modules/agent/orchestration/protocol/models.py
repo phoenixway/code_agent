@@ -172,6 +172,11 @@ class MarkerNode(Node):
 
 
 @dataclass(frozen=True)
+class PlanReviewNode(Node):
+    pass
+
+
+@dataclass(frozen=True)
 class IntentNode(Node):
     attrs: dict[str, str]
     raw_payload: str
@@ -265,6 +270,7 @@ class ResponseIR:
     has_subgoal_tags: bool = False
     has_memory_checkpoint: bool = False
     has_plan_checkpoint: bool = False
+    has_plan_review_checkpoint: bool = False
     has_file_content: bool = False
     file_content_count: int = 0
     file_content_text: str = ""

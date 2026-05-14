@@ -14,6 +14,7 @@ from .models import (
     LiteralProtocolTagNode,
     MarkerNode,
     MemoryNode,
+    PlanReviewNode,
     ResponseAst,
     ResponseShape,
     SubgoalNode,
@@ -119,7 +120,7 @@ class ProtocolCompiler:
         control_nodes = [
             node
             for node in nodes
-            if isinstance(node, (ThinkNode, MemoryNode, MarkerNode, ActionNode, IntentNode, FileContentNode, LiteralProtocolTagNode))
+            if isinstance(node, (ThinkNode, MemoryNode, MarkerNode, PlanReviewNode, ActionNode, IntentNode, FileContentNode, LiteralProtocolTagNode))
         ]
 
         if len(intent_nodes) > 1:
@@ -266,20 +267,20 @@ class ProtocolCompiler:
 
         if visible_nodes and not action_nodes and not intent_nodes:
             has_only_board_and_text = all(
-                isinstance(node, (VisibleTextNode, ThinkNode, MemoryNode, SubgoalNode, MarkerNode, LiteralProtocolTagNode)) for node in nodes
+                isinstance(node, (VisibleTextNode, ThinkNode, MemoryNode, SubgoalNode, MarkerNode, PlanReviewNode, LiteralProtocolTagNode)) for node in nodes
             )
             if has_only_board_and_text:
                 if any(isinstance(node, SubgoalNode) for node in nodes):
                     return ResponseShape.SUBGOAL_WITH_TEXT, None
-                if any(isinstance(node, (MemoryNode, MarkerNode)) for node in nodes):
+                if any(isinstance(node, (MemoryNode, MarkerNode, PlanReviewNode)) for node in nodes):
                     return ResponseShape.MEMORY_TEXT, None
             return ResponseShape.PURE_PLAINTEXT, None
 
         if not action_nodes and not intent_nodes and not file_nodes and not visible_nodes:
             has_only_checkpoint_protocol = all(
-                isinstance(node, (ThinkNode, MemoryNode, SubgoalNode, MarkerNode)) for node in nodes
+                isinstance(node, (ThinkNode, MemoryNode, SubgoalNode, MarkerNode, PlanReviewNode)) for node in nodes
             )
-            has_checkpoint_protocol = any(isinstance(node, (MemoryNode, SubgoalNode, MarkerNode)) for node in nodes)
+            has_checkpoint_protocol = any(isinstance(node, (MemoryNode, SubgoalNode, MarkerNode, PlanReviewNode)) for node in nodes)
             if has_only_checkpoint_protocol and has_checkpoint_protocol:
                 return ResponseShape.CHECKPOINT_ONLY, None
 
