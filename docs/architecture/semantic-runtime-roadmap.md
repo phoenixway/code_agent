@@ -7541,6 +7541,99 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 58 — Turn-Scoped Repeat Guard Reset Closure
+
+- **Status**: Done.
+- **Goal**: Prevent repeat-action tripwires from leaking across real user continuation turns without clearing useful session context.
+- **Problem**:
+  - A same-action repeat detector could carry `consecutive_same_action_count` / `last_completed_fingerprint` across a real user continuation turn.
+  - In smoke, repeated successful read-only evidence actions such as `extract_symbol` could trigger `defect_same_action_repeat` and surface UI recovery even though the user had not requested a session reset and the active intent/context were still valid.
+  - `/clearsession` was too blunt: it removed the tripwire but also threw away useful session state.
+- **Implemented Outcomes**:
+  - Added `AgentState.reset_turn_scoped_repeat_guards()`.
+  - The reset clears only turn-local repeat tripwires:
+    - `consecutive_same_action_count`;
+    - `last_completed_fingerprint`;
+    - `forbidden_next_action_fingerprint`.
+  - `AngelicaAgent.process_user_input(...)` invokes the reset at real user-input boundaries before orchestration continues.
+  - The reset intentionally preserves:
+    - active intent / intent runtime;
+    - failed-action diagnostics;
+    - plan-review-required state;
+    - operational journal;
+    - current turn id and other useful session context.
+- **Tests Added / Updated**:
+  - `tests/test_turn_scoped_repeat_guard_reset.py`
+  - Existing fresh-evidence and edit-recovery guard tests were run with this slice.
+- **Forbidden / Not Added**:
+  - No session clear.
+  - No active-intent reset.
+  - No working-material wipe.
+  - No defect-detector disablement.
+  - No ActionPolicy change.
+  - No plan-review gate behavior change.
+  - No automatic intent completion.
+  - No legacy cleanup.
+- **Next**:
+  - Phase 59 — Tool-local `edit_file` recovery policy consolidation.
+
+---
+
+#### Phase 59 — Tool-Local `edit_file` Recovery Policy Closure
+
+- **Status**: Done.
+- **Goal**: Centralize scattered `edit_file` recovery action lists near the tool layer so schema validation, tool failures, dispatcher hard-stops, and intent contracts stop giving the model contradictory recovery rails.
+- **Problem**:
+  - Different code paths around `edit_file` maintained separate recovery lists.
+  - Some paths already recommended structural recovery with `extract_symbol` / `replace_symbol`, while others still returned legacy lists such as `read_file`, `search_content`, `edit_file`, `write_file`.
+  - `replace_symbol` existed as a tool and appeared in prompts/recovery hints, but intent runtime could still strip it from accepted MODIFY/reuse contracts because it was not registered as a known/default MODIFY action.
+  - This created the observed loop: `edit_file` mismatch → reread/re-extract → retry brittle `edit_file` → `replace_symbol` blocked → repeat.
+- **Implemented Outcomes**:
+  - Added a tool-local recovery module:
+    - `modules/tools/recovery/edit_file_recovery_policy.py`.
+  - The policy defines canonical `edit_file` recovery plans for:
+    - MODIFY search mismatches;
+    - malformed `edit_file` payloads;
+    - INVESTIGATE/read-only recovery;
+    - unsupported/non-structural file suffixes.
+  - `EditFileTool` search mismatch results now use the tool-local policy instead of returning the old `read_file/search_content/edit_file/write_file` list.
+  - `modules/tools/action_schema.py` now derives malformed `edit_file` recommended actions from the same policy instead of maintaining a separate hardcoded structural list.
+  - `ActionDispatcher._repeated_edit_failure_recovery_actions(...)` now uses the same tool-local policy for repeated `edit_file` hard-stop recovery.
+  - `IntentRuntime` now knows and preserves `replace_symbol`:
+    - added to known tool actions;
+    - included in MODIFY default/upgraded actions;
+    - treated as a MODIFY state-changing action;
+    - preserved by MODIFY reuse payloads that include it in `allowed_actions`.
+  - MODIFY recovery now prefers structural rails where appropriate:
+    - `read_chunk`;
+    - `extract_symbol`;
+    - `replace_symbol`;
+    - `edit_file`;
+    - `write_file_block`.
+  - Non-MODIFY repeated-edit recovery remains read-only and no longer receives accidental state-changing fallbacks such as `edit_file`, `replace_symbol`, or `write_file_block`.
+- **Tests Added / Updated**:
+  - `tests/test_edit_file_recovery_policy.py`
+  - `tests/test_edit_file_guards.py`
+  - `tests/test_tool_action_schema_validation.py`
+  - `tests/test_repeated_edit_failure_hard_stop.py`
+  - `tests/test_intent_runtime_policy_integration.py`
+  - Existing `replace_symbol` and prompt recovery tests were run with this slice.
+- **Forbidden / Not Added**:
+  - No ActionPolicy authority change.
+  - No global defect-detector disablement.
+  - No repeat-edit guard removal.
+  - No plan-review gate behavior change.
+  - No automatic intent completion.
+  - No broad read permission expansion.
+  - No broad rewrite permission expansion.
+  - No unsupported-language expansion for `replace_symbol`.
+  - No dispatcher ownership of tool-specific recovery semantics beyond adapting policy output to active intent.
+  - No legacy cleanup beyond replacing the targeted duplicated recovery lists.
+- **Next**:
+  - Phase 60 — Next Semantic Runtime Slice Selection.
+
+---
+
 #### Phase 54 — Step 2/N: Plan Review / Fallback Commit Trace Hardening Characterization
 
 - **Status**: Done.
