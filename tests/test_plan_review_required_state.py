@@ -45,14 +45,58 @@ def test_read_only_commit_does_not_set_plan_review_required():
     assert state.last_execution_commit.action_effects == ["read_file:src/example.py"]
 
 
-def test_not_dispatched_commit_does_not_set_plan_review_required():
+def test_not_dispatched_commit_without_system_result_does_not_set_plan_review_required():
     state = SimpleNamespace()
     observer = ExecutionCommitObserverAdapter(state)
 
     observer.observe_execution_commit(
         None,
-        _commit(action_dispatched=False, committed_action_count=0),
+        _commit(action_dispatched=False, committed_action_count=0, committed_system_result_count=0),
         sys_results=[],
+    )
+
+    assert getattr(state, "plan_review_required_after_state_change", False) is False
+
+
+def test_system_result_only_state_changing_commit_sets_plan_review_required():
+    state = SimpleNamespace()
+    observer = ExecutionCommitObserverAdapter(state)
+
+    observer.observe_execution_commit(
+        None,
+        _commit(
+            action_effects=["create_file:smoke_test.txt"],
+            action_dispatched=False,
+            committed_action_count=0,
+            committed_system_result_count=1,
+        ),
+        sys_results=["SYSTEM RESULT for `create_file`: Changes applied to smoke_test.txt"],
+    )
+
+    assert state.plan_review_required_after_state_change is True
+    assert state.plan_review_required_reason == "state_changing_action_committed"
+    assert state.plan_review_required_action_type == "create_file"
+    assert state.plan_review_required_target == "smoke_test.txt"
+    assert state.plan_review_required_action_effects == ["create_file:smoke_test.txt"]
+
+
+def test_failed_system_result_does_not_set_plan_review_required():
+    state = SimpleNamespace()
+    observer = ExecutionCommitObserverAdapter(state)
+
+    observer.observe_execution_commit(
+        None,
+        _commit(
+            action_effects=["edit_file:smoke_test.txt"],
+            action_dispatched=False,
+            committed_action_count=0,
+            committed_system_result_count=1,
+        ),
+        sys_results=[
+            "SYSTEM RESULT for `edit_file`: edit_file requires both 'search_text' and 'replace_text' as strings.\n"
+            "[SYSTEM: Action failed. Use the runtime recovery payload below.]\n"
+            "last_tool_error_code=VALIDATION_ERROR"
+        ],
     )
 
     assert getattr(state, "plan_review_required_after_state_change", False) is False
