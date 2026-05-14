@@ -1075,8 +1075,19 @@ class ResponsePipelineStagesMixin:
         )
         return True
 
+    def _plan_review_checkpoint_before_first_action_in_response(self, response: str) -> bool:
+        text = str(response or "")
+        plan_idx = text.find("<plan_review_done")
+        if plan_idx < 0:
+            return False
+        action_idx = text.find("<action")
+        return action_idx < 0 or plan_idx < action_idx
+
     def _has_plan_review_checkpoint(self, parsed_output) -> bool:
         runtime_semantics = getattr(parsed_output, "runtime_protocol_semantics", None)
+        before_action = getattr(runtime_semantics, "has_plan_review_checkpoint_before_action", None)
+        if before_action is not None:
+            return bool(before_action)
         return bool(getattr(runtime_semantics, "has_plan_review_checkpoint", False))
 
     def _plan_review_gate_should_block(self, parsed_output, parsed_action_count: int) -> bool:
@@ -1110,6 +1121,9 @@ class ResponsePipelineStagesMixin:
         response = normalized.normalized_response
         segments = self.parser.parse(response)
         parsed_output = self._classify_intent_output(response, segments, allow_think_autorepair=True)
+        runtime_semantics = getattr(parsed_output, "runtime_protocol_semantics", None)
+        if runtime_semantics is not None:
+            runtime_semantics.has_plan_review_checkpoint_before_action = self._plan_review_checkpoint_before_first_action_in_response(response)
         self._merge_normalization_metadata(parsed_output, normalized)
         compiler_analysis = self._apply_compiler_diagnosis(parsed_output, response)
         self._clear_plan_review_required_if_checkpoint(parsed_output)
