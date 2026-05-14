@@ -354,6 +354,13 @@ class KotlinSymbolExtractor:
             return "method"
         return base_kind
 
+    def _reported_kind(self, *, node_type: str, base_kind: str, owner_name: str, is_composable: bool) -> str:
+        if node_type == "function_declaration" and is_composable:
+            return "composable"
+        if node_type == "function_declaration" and owner_name:
+            return "method"
+        return base_kind
+
     def _kind_from_node_type(self, node_type: str) -> str:
         mapping = {
             "function_declaration": "function",
