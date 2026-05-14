@@ -279,7 +279,8 @@ class IntentPromptBuilderMixin:
             f"Target path: {path or '<path>'}.\n"
             f"Allowed actions now: {allowed_line}.\n"
             "Do not retry edit_file from memory.\n"
-            "Use read_chunk, read_file, or search_content to retrieve the exact current target block, then retry one targeted edit.\n"
+            "Use read_chunk, read_file, search_content, or extract_symbol to retrieve the exact current target block.\n"
+            "For supported symbol-sized changes, prefer replace_symbol after extract_symbol instead of retrying brittle edit_file.\n"
             "Use write_file only if the full current file was freshly read and the active intent explicitly allows it."
         )
 
@@ -460,6 +461,10 @@ class IntentPromptBuilderMixin:
             "goal": normalized_goal,
             "allowed_actions": [
                 "read_file",
+                "read_chunk",
+                "read_file_skeleton",
+                "extract_symbol",
+                "replace_symbol",
                 "edit_file",
                 "write_file_block",
                 "create_file",
@@ -489,7 +494,7 @@ class IntentPromptBuilderMixin:
             header="Formal intent contract is required before this tool use.",
             reason="formal_intent_required_for_multi_step_state_change",
             goal=normalized_goal,
-            allowed_actions=["read_file", "edit_file", "write_file_block", "create_file", "run_shell"],
+            allowed_actions=["read_file", "read_chunk", "read_file_skeleton", "extract_symbol", "replace_symbol", "edit_file", "write_file_block", "create_file", "run_shell"],
             intent_id=self._suggest_example_intent_id(normalized_goal),
         )
 
