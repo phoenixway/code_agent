@@ -908,7 +908,7 @@ class ActionDispatcher:
         self._refresh_current_file_state_after_success(command, result)
         self._capture_turn_working_material(command, result, state)
 
-        output_text = result.get("output", "")
+        output_text = self._format_model_facing_tool_result(cmd_type, command, result)
         status = result.get("status")
         error_code = result.get("error_code")
         recoverable = bool(result.get("recoverable", False))
@@ -1739,7 +1739,7 @@ class ActionDispatcher:
                         self.agent.log.debug("FileState.refresh read_file failed path=%s", path, exc_info=True)
             return
 
-        if cmd_type in {"edit_file", "create_file", "write_file", "write_file_block", "append_file_block", "replace", "delete_file"}:
+        if cmd_type in {"edit_file", "create_file", "write_file", "write_file_block", "append_file_block", "replace", "replace_symbol", "delete_file"}:
             updater = getattr(history, "update_file_state_from_disk", None)
             if callable(updater):
                 try:
@@ -1761,6 +1761,58 @@ class ActionDispatcher:
                 except Exception:
                     if self.agent.log:
                         self.agent.log.debug("FileState.refresh mutation failed type=%s path=%s", cmd_type, path, exc_info=True)
+
+    def _format_model_facing_tool_result(self, cmd_type: str, command: dict, result: dict) -> str:
+        output_text = str(result.get("output", "") or "")
+        if not isinstance(result, dict):
+            return output_text
+
+        status = str(result.get("status") or "").strip().lower()
+        action_type = str(cmd_type or "").strip()
+        if status != "success" or action_type not in {"extract_symbol", "extract_kotlin_function"}:
+            return output_text
+
+        content = result.get("file_content") or result.get("content")
+        if not isinstance(content, str) or not content.strip():
+            return output_text
+        if content.strip() and content.strip() in output_text:
+            return output_text
+
+        language = str(result.get("language") or "").strip().lower()
+        if not language:
+            path = str(result.get("file_path") or command.get("path") or "")
+            if path.endswith(".kt"):
+                language = "kotlin"
+            elif path.endswith(".py"):
+                language = "python"
+            else:
+                language = "text"
+
+        header = (
+            "\n\nExtracted file_content is available below. "
+            "Use it as the current extracted evidence; do not repeat the same extraction just to confirm body content."
+        )
+        max_inline_chars = 2400
+        if len(content) <= max_inline_chars:
+            return f"{output_text}{header}\n```{language}\n{content.rstrip()}\n```"
+
+        preview = self._symbol_content_preview(content, max_chars=max_inline_chars)
+        return (
+            f"{output_text}{header}\n"
+            "Full extracted file_content is too large for inline display, so this is a preview. "
+            "The full content is preserved as turn working material.\n"
+            f"```{language}\n{preview.rstrip()}\n```"
+        )
+
+    def _symbol_content_preview(self, content: str, *, max_chars: int = 2400) -> str:
+        if len(content) <= max_chars:
+            return content
+        lines = content.splitlines()
+        if len(lines) <= 12:
+            return content[:max_chars] + "\n... [truncated]"
+        head = "\n".join(lines[:8])
+        tail = "\n".join(lines[-4:])
+        return f"{head}\n... [truncated extracted symbol content] ...\n{tail}"
 
     async def _handle_default(self, command):
         widget = await self.ui.print_tool_call(command)
