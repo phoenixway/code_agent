@@ -7407,6 +7407,48 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Phase 54 — Step 2/N: Plan Review / Fallback Commit Trace Hardening Characterization.
 
 ---
+
+#### Phase 54 — Step 2/N: Plan Review / Fallback Commit Trace Hardening Characterization
+
+- **Status**: Done.
+- **Goal**: Characterize current diagnostic visibility for fallback commits and the post-state-change plan-review gate.
+- **Findings**:
+  - Fallback execution commits are visible through compact `execution_commit` trace metadata on `post_dispatch_pipeline` entries.
+  - `transaction_kind=fallback_single_action` is already enough to identify fallback commit usage in trace/export surfaces.
+  - Operational journal entries already expose action type, target, action effects, committed system result count, and system result excerpt for fallback file mutations.
+  - Gate blocking is already visible as `stage=response_pipeline`, `decision=continue`, `reason=missing_plan_review_after_state_change`, `source=plan_review_gate`.
+  - Gate blocking already logs `plan_review_required_action_type` and `plan_review_required_target`.
+  - Checkpoint clearing is already visible as `stage=response_pipeline`, `decision=pass`, `reason=plan_review_checkpoint_cleared`, `source=plan_review_checkpoint`.
+  - Runtime protocol semantics already expose `has_plan_review_checkpoint` indirectly through checkpoint/category and compiler semantic snapshots.
+- **Gaps**:
+  - There is no explicit trace/default field for `plan_review_required_after_state_change`.
+  - There is no explicit trace/default field for `plan_review_required_reason`.
+  - There is no explicit trace/default field for `plan_review_required_action_type` / `plan_review_required_target` outside gate-block logs.
+  - There is no explicit trace entry when `ExecutionCommitObserverAdapter` activates the plan-review-required flag.
+  - There is no explicit passive diagnostic field for `fallback_commit_used` or `fallback_commit_reason` beyond inferring it from `transaction_kind=fallback_single_action`.
+  - Checkpoint clear trace does not currently include the previous action type/target/effects that were cleared.
+- **Decision**: Proceed to minimal passive trace hardening.
+- **Approved Scope for Step 3**:
+  - Add canonical trace defaults for passive plan-review/fallback diagnostic fields.
+  - Add a passive trace log when plan-review-required state is set by the execution commit observer.
+  - Include action type, target, action effects, reason, and whether fallback commit semantics were used.
+  - Extend checkpoint-clear trace log with the cleared plan-review state metadata before clearing.
+  - Extend gate-block trace fields if needed so the blocked state is self-contained.
+  - Add tests for canonical defaults and trace entries.
+- **Forbidden**:
+  - No dispatch behavior change.
+  - No ActionPolicy change.
+  - No gate behavior change.
+  - No recovery behavior change.
+  - No repeat-edit hard guard.
+  - No automatic intent completion.
+  - No subgoal-board mutation from `<plan_review_done />` alone.
+  - No authority transfer or switch change.
+  - No legacy cleanup.
+- **Next**:
+  - Phase 54 — Step 3/N: Plan Review / Fallback Commit Passive Trace Fields Implementation.
+
+---
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.
