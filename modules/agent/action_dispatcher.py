@@ -479,6 +479,7 @@ class ActionDispatcher:
                     "next_actions": [
                         "read_chunk",
                         "read_file_skeleton",
+                        "extract_symbol",
                         "search_content",
                         "search_files",
                         "run_shell",
@@ -487,8 +488,9 @@ class ActionDispatcher:
                         "The planned full read_file action is too large for this path. "
                         "Do not repeat the same full read_file action for this path right now. "
                         "Stay on the current goal, but switch to a smaller read strategy: "
-                        "read_chunk, read_file_skeleton, search_content, search_files, "
-                        "or run_shell with rg/fd. "
+                        "read_chunk, read_file_skeleton, extract_symbol, search_content, search_files, "
+                        "or run_shell with rg/fd. For supported source files (.kt/.py) and symbol-sized work, "
+                        "prefer extract_symbol over large read_chunk ranges when the target symbol is known or inferable. "
                         "If you later need a new intent, request it formally with a legitimate switch reason. "
                         "Return EXACTLY ONE materially different read-only action."
                     ),

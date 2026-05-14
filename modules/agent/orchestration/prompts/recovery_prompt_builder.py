@@ -278,6 +278,12 @@ class RecoveryPromptBuilderMixin:
                 "\nSpend the next action on the shortest path to concrete evidence."
             )
         elif single_readonly_action_only:
+            if reason == "planned_full_read_too_large":
+                prompt += (
+                    "\nFor supported source files (.kt/.py) and symbol-sized work, prefer read_file_skeleton or extract_symbol over large read_chunk ranges."
+                    "\nIf the target symbol name is known or inferable from the task, return exactly one extract_symbol action as the next read-only step."
+                    "\nUse read_chunk only when the needed target is not a supported symbol, is ambiguous, or requires a precise non-symbol block."
+                )
             prompt += (
                 "\nFor search_content, prefer explicit import patterns, narrower directories, "
                 "or stronger exclude_dirs. Avoid repeating the same broad batch."
