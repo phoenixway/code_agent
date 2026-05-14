@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 56 — Structured Edit Recovery / `replace_symbol` Closure
+- **Phase**: Phase 57 — Structured Edit Recovery Alignment Closure
 - **Status**: Complete.
-- **Next Step**: Phase 57 — Next Semantic Runtime Slice Selection.
-- **Boundary**: Added a clean tool-side schema/preflight validation layer for malformed `edit_file` payloads, a narrow repeated-`edit_file` validation-failure hard-stop with recovery actions aligned to the active intent contract, and a universal `replace_symbol` tool with language-specific backends for Kotlin `.kt` symbols and Python `.py` functions/classes/methods. Recovery now prefers structural `extract_symbol` → `replace_symbol` before full-file rewrite when applicable. Prompt guidance and default MODIFY intent examples were updated. Full test suite passes. No global defect-detector disablement, ActionPolicy change, plan-review gate behavior change, automatic intent completion, authority transfer, switch change, broad rewrite permission expansion, or legacy cleanup was added.
+- **Next Step**: Phase 58 — Next Semantic Runtime Slice Selection.
+- **Boundary**: Aligned old recovery rails with the Phase 56 `extract_symbol` → `replace_symbol` structural-edit path. Current-intent retry recovery now prefers structural recovery after `edit_file` mismatch when `extract_symbol` and `replace_symbol` are allowed. The malformed-recovery repeated-action guard now permits narrow read-only fresh evidence actions such as same-target `extract_symbol` after an `edit_file` validation mismatch while keeping different-path and broad-root cases blocked. Oversized full-read preflight now recommends `extract_symbol` for supported source files (`.kt`/`.py`) and symbol-sized work instead of steering only toward large `read_chunk` ranges. Regression tests cover structural retry recovery prompts, fresh-evidence guard behavior, and planned-full-read structural recovery. No global defect-detector disablement, ActionPolicy change, plan-review gate behavior change, automatic intent completion, authority transfer, switch change, broad read permission expansion, broad rewrite permission expansion, or legacy cleanup was added.
 
 ## Step 4I Parity Matrix
 

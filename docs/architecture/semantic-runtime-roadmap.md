@@ -7500,6 +7500,47 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 57 — Structured Edit Recovery Alignment Closure
+
+- **Status**: Done.
+- **Goal**: Align older recovery paths with the Phase 56 structural-edit toolchain so the runtime does not push the model back into brittle exact edits or oversized reads when `extract_symbol` → `replace_symbol` is available.
+- **Problem**:
+  - After an `edit_file` mismatch, retry recovery still emphasized rereading exact text and retrying `edit_file`, even when the active MODIFY contract allowed `extract_symbol` and `replace_symbol`.
+  - The malformed-action repeated-fingerprint guard could block a same-target `extract_symbol` evidence step after an `edit_file` validation mismatch, treating a useful recovery read as action-cycle/no-progress behavior.
+  - Oversized full-read preflight recommended smaller read/search strategies but omitted `extract_symbol`, which encouraged large `read_chunk` ranges for symbol-sized Kotlin/Python work.
+- **Implemented Outcomes**:
+  - Updated current-intent retry recovery so `retry_or_continuation_after_failure` identifies the last failed tool and, when structural recovery is available, explicitly prefers `extract_symbol` → `replace_symbol` for supported symbol-sized changes.
+  - Added a tool-identity guardrail: an `edit_file` mismatch must not be treated as a `replace_symbol` failure; if the failed tool was `edit_file`, `replace_symbol` remains a valid recovery candidate when the active contract allows it.
+  - Added a narrow dispatcher fresh-evidence escape hatch for the malformed-recovery repeated-action guard:
+    - Allows read-only evidence actions (`read_chunk`, `read_file_skeleton`, `search_content`, `extract_symbol`) only after same-target `edit_file` `VALIDATION_ERROR` mismatch evidence.
+    - Keeps state-changing retries outside this exemption.
+    - Keeps different-path cases blocked.
+    - Keeps broad root `search_content` blocked.
+  - Expanded repeated-action recovery hints to include `read_chunk`, `read_file_skeleton`, `extract_symbol`, `replace_symbol`, and related recovery actions instead of only old exact-edit/full-write paths.
+  - Updated oversized full-read preflight so `planned_full_read_too_large` includes `extract_symbol` in `next_actions`.
+  - Updated oversized full-read messages and typed recovery prompts so supported source files (`.kt`/`.py`) and symbol-sized work prefer `read_file_skeleton` or `extract_symbol` over large `read_chunk` ranges.
+  - Added regression tests proving the new structural-recovery guidance and guard behavior.
+- **Tests Added / Updated**:
+  - `tests/test_prompt_builder_current_intent_retry_recovery.py`
+  - `tests/test_fresh_evidence_after_edit_failure_guard.py`
+  - `tests/test_planned_full_read_structural_recovery.py`
+  - Existing recovery and structured-edit tests were run with this slice.
+- **Forbidden / Not Added**:
+  - No global defect-detector disablement.
+  - No repeat-edit guard removal.
+  - No ActionPolicy change.
+  - No plan-review gate behavior change.
+  - No automatic intent completion.
+  - No authority transfer or switch change.
+  - No broad read permission expansion.
+  - No broad rewrite permission expansion.
+  - No legacy cleanup.
+  - No attempt to make `replace_symbol` apply to unsupported languages silently.
+- **Next**:
+  - Phase 58 — Next Semantic Runtime Slice Selection.
+
+---
+
 #### Phase 54 — Step 2/N: Plan Review / Fallback Commit Trace Hardening Characterization
 
 - **Status**: Done.
