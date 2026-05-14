@@ -88,31 +88,65 @@ def test_extract_symbol_kotlin_interface_with_body_returns_interface_kind(tmp_pa
     assert result["file_content"].strip().endswith("}")
 
 
-def test_extract_symbol_kotlin_interface_with_body_returns_interface_kind(tmp_path):
-    path = tmp_path / "CapabilityDescriptor.kt"
+def test_extract_symbol_kotlin_enum_with_body_returns_full_enum(tmp_path):
+    path = tmp_path / "DayManagementTab.kt"
     path.write_text(
         "package demo\n\n"
-        "interface CapabilityDescriptor {\n"
-        "    val id: CapabilityId\n"
-        "    val label: String\n"
-        "    val supportedViews: Set<ViewId>\n"
+        "enum class DayManagementTab(val title: String, val description: String) {\n"
+        "    PLAN(\"Plan\", \"Plan today\"),\n"
+        "    FOCUS(\"Focus\", \"Focus work\"),\n"
+        "    REVIEW(\"Review\", \"Review day\");\n"
+        "\n"
+        "    fun isPlanning(): Boolean = this == PLAN\n"
         "}\n",
         encoding="utf-8",
     )
 
     result = KotlinSymbolExtractor().extract_symbol(
         path=str(path),
-        symbol_name="CapabilityDescriptor",
-        symbol_kind="interface",
+        symbol_name="DayManagementTab",
+        symbol_kind="enum",
         include_signature=True,
         include_body=True,
         include_line_range=True,
     )
 
     assert result["status"] == "success"
-    assert result["symbol_kind"] == "interface"
-    assert "interface CapabilityDescriptor" in result["file_content"]
-    assert "val label: String" in result["file_content"]
+    assert result["symbol_kind"] == "enum"
+    assert "enum class DayManagementTab" in result["file_content"]
+    assert "PLAN(\"Plan\", \"Plan today\")" in result["file_content"]
+    assert "fun isPlanning" in result["file_content"]
+    assert result["file_content"].strip().endswith("}")
+
+
+def test_extract_symbol_kotlin_enum_with_body_returns_full_enum(tmp_path):
+    path = tmp_path / "DayManagementTab.kt"
+    path.write_text(
+        "package demo\n\n"
+        "enum class DayManagementTab(val title: String) {\n"
+        "    PLAN(\"Plan\"),\n"
+        "    EXECUTE(\"Execute\"),\n"
+        "    REVIEW(\"Review\");\n"
+        "\n"
+        "    fun isPrimary(): Boolean = this == PLAN\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    result = KotlinSymbolExtractor().extract_symbol(
+        path=str(path),
+        symbol_name="DayManagementTab",
+        symbol_kind="enum",
+        include_signature=True,
+        include_body=True,
+        include_line_range=True,
+    )
+
+    assert result["status"] == "success"
+    assert result["symbol_kind"] == "enum"
+    assert "enum class DayManagementTab" in result["file_content"]
+    assert "PLAN(\"Plan\")" in result["file_content"]
+    assert "fun isPrimary" in result["file_content"]
     assert result["file_content"].strip().endswith("}")
 
 

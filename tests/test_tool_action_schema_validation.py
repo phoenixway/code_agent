@@ -157,7 +157,8 @@ def test_repeated_edit_failure_recovery_actions_add_write_file_block_for_modify(
 
     actions = dispatcher._repeated_edit_failure_recovery_actions(state)
 
-    assert actions == ["read_chunk", "extract_symbol", "replace_symbol", "edit_file", "write_file_block"]
+    assert actions == ["read_chunk", "extract_symbol", "replace_symbol", "write_file_block"]
+    assert "edit_file" not in actions
 
 
 def test_repeated_edit_failure_recovery_actions_do_not_include_state_changing_actions_for_non_modify():

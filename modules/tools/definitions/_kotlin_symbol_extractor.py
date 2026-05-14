@@ -354,13 +354,6 @@ class KotlinSymbolExtractor:
             return "method"
         return base_kind
 
-    def _reported_kind(self, *, node_type: str, base_kind: str, owner_name: str, is_composable: bool) -> str:
-        if node_type == "function_declaration" and is_composable:
-            return "composable"
-        if node_type == "function_declaration" and owner_name:
-            return "method"
-        return base_kind
-
     def _kind_from_node_type(self, node_type: str) -> str:
         mapping = {
             "function_declaration": "function",
@@ -371,22 +364,6 @@ class KotlinSymbolExtractor:
             "property_declaration": "property",
         }
         return mapping.get(str(node_type or ""), "unknown")
-
-    def _kind_from_node(self, node, content_bytes: bytes) -> str:
-        node_type = str(getattr(node, "type", "") or "")
-        if node_type == "class_declaration":
-            header = self._symbol_header_text(node, content_bytes).lstrip()
-            if re.match(r"(?:@[\w.]+(?:\([^)]*\))?\s*)*interface\b", header):
-                return "interface"
-            if re.match(r"(?:@[\w.]+(?:\([^)]*\))?\s*)*enum\s+class\b", header):
-                return "enum"
-            return "class"
-        return self._kind_from_node_type(node_type)
-
-    def _symbol_header_text(self, node, content_bytes: bytes) -> str:
-        body_node = self._body_child(node)
-        end_byte = int(body_node.start_byte) if body_node is not None else int(node.end_byte)
-        return content_bytes[int(node.start_byte):end_byte].decode("utf-8", errors="replace")
 
     def _kind_from_node(self, node, content_bytes: bytes) -> str:
         node_type = str(getattr(node, "type", "") or "")

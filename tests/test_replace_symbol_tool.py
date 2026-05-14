@@ -89,14 +89,14 @@ async def test_replace_symbol_replaces_unique_kotlin_interface(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_replace_symbol_replaces_unique_kotlin_interface(tmp_path):
-    path = tmp_path / "CapabilityDescriptor.kt"
+async def test_replace_symbol_replaces_unique_kotlin_enum(tmp_path):
+    path = tmp_path / "DayManagementTab.kt"
     path.write_text(
         "package demo\n\n"
-        "interface CapabilityDescriptor {\n"
-        "    val id: CapabilityId\n"
-        "    val label: String\n"
-        "    val iconRes: Int?\n"
+        "enum class DayManagementTab(val title: String, val description: String) {\n"
+        "    PLAN(\"Plan\", \"Plan today\"),\n"
+        "    FOCUS(\"Focus\", \"Focus work\"),\n"
+        "    REVIEW(\"Review\", \"Review day\")\n"
         "}\n",
         encoding="utf-8",
     )
@@ -104,21 +104,54 @@ async def test_replace_symbol_replaces_unique_kotlin_interface(tmp_path):
     tool = ReplaceSymbolTool()
     result = await tool.execute(
         path=str(path),
-        symbol_name="CapabilityDescriptor",
-        symbol_kind="interface",
+        symbol_name="DayManagementTab",
+        symbol_kind="enum",
         new_content=(
-            "interface CapabilityDescriptor {\n"
-            "    val id: CapabilityId\n"
-            "    val name: String\n"
-            "    val iconRes: Int?\n"
+            "enum class DayManagementTab(val title: String, val description: String) {\n"
+            "    PLAN(\"Plan\", \"Plan today\"),\n"
+            "    FOCUS(\"Focus\", \"Focus work\"),\n"
+            "    REVIEW(\"Review\", \"Review day\"),\n"
+            "    STATS(\"Stats\", \"Day statistics\")\n"
             "}\n"
         ),
     )
 
     assert isinstance(result, ChangeProposal)
-    assert "val label: String" in result.original_content
-    assert "val name: String" in result.new_content
-    assert "interface CapabilityDescriptor" in result.new_content
+    assert "enum class DayManagementTab" in result.original_content
+    assert "STATS(\"Stats\", \"Day statistics\")" in result.new_content
+    assert "FOCUS(\"Focus\", \"Focus work\")" in result.new_content
+
+
+@pytest.mark.asyncio
+async def test_replace_symbol_replaces_unique_kotlin_enum(tmp_path):
+    path = tmp_path / "DayManagementTab.kt"
+    path.write_text(
+        "package demo\n\n"
+        "enum class DayManagementTab(val title: String) {\n"
+        "    PLAN(\"Plan\"),\n"
+        "    EXECUTE(\"Execute\")\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    tool = ReplaceSymbolTool()
+    result = await tool.execute(
+        path=str(path),
+        symbol_name="DayManagementTab",
+        symbol_kind="enum",
+        new_content=(
+            "enum class DayManagementTab(val title: String) {\n"
+            "    PLAN(\"Plan\"),\n"
+            "    EXECUTE(\"Execute\"),\n"
+            "    REVIEW(\"Review\")\n"
+            "}\n"
+        ),
+    )
+
+    assert isinstance(result, ChangeProposal)
+    assert "EXECUTE(\"Execute\")" in result.original_content
+    assert "REVIEW(\"Review\")" in result.new_content
+    assert "enum class DayManagementTab" in result.new_content
 
 
 @pytest.mark.asyncio

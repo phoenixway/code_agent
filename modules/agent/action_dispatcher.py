@@ -1294,6 +1294,7 @@ class ActionDispatcher:
                 mismatch_type=mismatch_type,
                 active_intent_type=active_type,
                 active_allowed_actions=tuple(active_allowed),
+                reason="repeated_edit_failure_hard_stop",
             )
         )
 

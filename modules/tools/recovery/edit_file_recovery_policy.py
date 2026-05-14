@@ -108,6 +108,9 @@ def resolve_edit_file_recovery(ctx: EditFileRecoveryContext | None = None) -> Ed
         prefer_structural = bool(ctx.replace_symbol_available and (is_structural_source or path_unknown) and is_search_mismatch)
         actions = EDIT_FILE_STRUCTURAL_MODIFY_ACTIONS if prefer_structural else EDIT_FILE_LEGACY_MODIFY_ACTIONS
         actions = _merge_allowed_recovery_actions(actions, ctx.active_allowed_actions, active_type=active_type)
+        suppress_edit_file = _should_suppress_edit_file_retry(ctx)
+        if suppress_edit_file:
+            actions = tuple(action for action in actions if action != "edit_file")
         hint = (
             "Recover from the edit_file mismatch with a structural path when possible: "
             "use extract_symbol to resolve the current symbol body, then replace_symbol for supported .kt/.py symbol-sized changes. "
@@ -115,6 +118,8 @@ def resolve_edit_file_recovery(ctx: EditFileRecoveryContext | None = None) -> Ed
             if prefer_structural
             else "Recover from the failed edit by reading the smaller current target block and retrying only a targeted edit, or use write_file_block when a broader rewrite is explicitly intended."
         )
+        if suppress_edit_file:
+            hint = "Repeated edit_file mismatch detected. Do not retry edit_file with another hand-written search_text. " + hint
         return EditFileRecoveryPlan(
             next_actions=actions,
             recommended_actions=actions,
@@ -152,10 +157,11 @@ def search_mismatch_recovery_actions(
     active_intent_type: str = "",
     active_allowed_actions: tuple[str, ...] = (),
     replace_symbol_available: bool = True,
+    reason: str = "edit_file_search_mismatch",
 ) -> tuple[str, ...]:
     return resolve_edit_file_recovery(
         EditFileRecoveryContext(
-            reason="edit_file_search_mismatch",
+            reason=reason,
             error_code="VALIDATION_ERROR",
             mismatch_type=mismatch_type,
             path=path,
@@ -164,6 +170,11 @@ def search_mismatch_recovery_actions(
             replace_symbol_available=replace_symbol_available,
         )
     ).next_actions
+
+
+def _should_suppress_edit_file_retry(ctx: EditFileRecoveryContext) -> bool:
+    reason = str(ctx.reason or "").strip()
+    return reason in {"repeated_edit_failure_hard_stop", "repeating_failure"}
 
 
 def _is_search_mismatch(ctx: EditFileRecoveryContext) -> bool:
