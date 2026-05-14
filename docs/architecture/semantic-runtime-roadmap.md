@@ -7305,6 +7305,43 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Phase 53 — Step 13/N: Plan Review Gate Closure / Repeat-Edit Guard Decision.
 
 ---
+
+#### Phase 53 — Step 13/N: Plan Review Gate Closure / Repeat-Edit Guard Decision
+
+- **Status**: Done.
+- **Goal**: Close the Post-State-Change Plan Review Gate phase and decide whether to implement a separate repeat-edit hard guard immediately.
+- **Completed Outcome**:
+  - Reviewed Step 12 enforcement results.
+  - Confirmed the original stale-subgoal repeated-edit failure mode is now blocked by the plan-review gate:
+    - successful state-changing file commits set `plan_review_required_after_state_change`;
+    - `<plan_review_done />` clears that state;
+    - action proposals without the checkpoint are blocked before ActionPolicy/dispatch.
+  - Confirmed the gate does not alter dispatch behavior, ActionPolicy behavior, `ExecutionCommit` construction, or subgoal-board mutation semantics.
+  - Confirmed `<plan_review_done />` alone does not mark subgoals done.
+  - Confirmed subgoal updates remain explicit through existing `<subgoal ... />` mutations such as `mark_done` with evidence.
+- **Decision**: Close Phase 53 and defer repeat-edit hard guard.
+- **Rationale**:
+  - The plan-review gate directly addresses the immediate defect by forcing reconciliation before the next action after a successful state-changing operation.
+  - A separate repeat-edit hard guard would require action signature comparison, target matching, and careful exceptions for legitimate repeated or adjacent edits.
+  - Implementing a hard guard now risks blocking valid workflows before there is smoke-test evidence that the plan-review gate is insufficient.
+  - The next prudent step is real-agent smoke testing and observation rather than another behavior-changing guard.
+- **Deferred / Not Approved**:
+  - Repeat-edit hard guard.
+  - Automatic intent completion after edits.
+  - Subgoal-board mutation from `<plan_review_done />` alone.
+  - Dispatch behavior changes.
+  - ActionPolicy changes.
+  - Authority transfer or switch changes.
+  - Legacy cleanup.
+- **Recommended Smoke Tests**:
+  - Successful edit followed by model attempting another action without `<plan_review_done />` should recover with `missing_plan_review_after_state_change`.
+  - Successful edit followed by `<plan_review_done />` and a distinct action should pass the gate and continue to normal policy.
+  - Successful edit followed by `<subgoal action="mark_done" ... />` plus `<plan_review_done />` should clear the gate without implying automatic intent completion.
+  - Read-only actions should not set the plan-review-required flag.
+- **Next**:
+  - Phase 54 — Next Semantic Runtime Slice Selection.
+
+---
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.
