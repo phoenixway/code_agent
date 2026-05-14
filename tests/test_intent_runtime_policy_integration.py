@@ -141,6 +141,7 @@ class IntentRuntimePolicyIntegrationTests(unittest.TestCase):
         self.assertTrue(ok, msg)
         self.assertEqual("MODIFY", self.runtime.active_intent.intent_type)
         self.assertIn("edit_file", self.runtime.active_intent.allowed_actions)
+        self.assertIn("replace_symbol", self.runtime.active_intent.allowed_actions)
         self.assertIn("write_file", self.runtime.active_intent.allowed_actions)
         self.assertIn("write_file_block", self.runtime.active_intent.allowed_actions)
         self.assertIn("append_file_block", self.runtime.active_intent.allowed_actions)
@@ -163,6 +164,49 @@ class IntentRuntimePolicyIntegrationTests(unittest.TestCase):
 
         self.assertTrue(ok, msg)
         self.assertIn("extract_kotlin_function", self.runtime.active_intent.allowed_actions)
+
+    def test_replace_symbol_is_retained_as_known_modify_allowed_action(self):
+        payload = {
+            "intent_id": "activity_tracker_replace_symbol",
+            "intent_type": "MODIFY",
+            "goal": "Replace a Kotlin symbol implementation in the activity tracker.",
+            "allowed_actions": ["extract_symbol", "replace_symbol", "search_content"],
+            "safe_steps_limit": 4,
+            "retry_limit": 2,
+            "mode": "replace",
+            "switch_reason": "work_type_changed",
+            "switch_explanation": "switch to symbol-bounded modification",
+        }
+
+        ok, msg = self.runtime.apply_payload(payload)
+
+        self.assertTrue(ok, msg)
+        self.assertIn("replace_symbol", self.runtime.active_intent.allowed_actions)
+
+    def test_reuse_preserves_replace_symbol_in_modify_allowed_actions(self):
+        payload = {
+            "intent_id": "activity_tracker_edit",
+            "mode": "reuse",
+            "intent_type": "MODIFY",
+            "goal": "Determine how to move today's record to yesterday via edit dialog",
+            "allowed_actions": [
+                "read_chunk",
+                "extract_symbol",
+                "edit_file",
+                "replace_symbol",
+                "write_file_block",
+            ],
+            "requested_steps": 4,
+            "switch_reason": "work_type_changed",
+            "switch_explanation": "same lineage now needs symbol-bounded replacement",
+        }
+
+        ok, msg = self.runtime.apply_payload(payload)
+
+        self.assertTrue(ok, msg)
+        self.assertEqual("intent_reused_with_step_refresh", msg)
+        self.assertEqual("MODIFY", self.runtime.active_intent.intent_type)
+        self.assertIn("replace_symbol", self.runtime.active_intent.allowed_actions)
 
     def test_extract_symbol_is_retained_as_known_allowed_action(self):
         payload = {

@@ -29,6 +29,7 @@ KNOWN_TOOL_ACTIONS = {
     "read_file_skeleton",
     "extract_kotlin_function",
     "extract_symbol",
+    "replace_symbol",
     "search_content",
     "search_files",
     "list_directory",
@@ -91,6 +92,7 @@ class IntentRuntime:
         "read_file_skeleton",
         "extract_kotlin_function",
         "extract_symbol",
+        "replace_symbol",
         "search_content",
         "search_files",
         "read_file",
@@ -354,7 +356,7 @@ class IntentRuntime:
             return cleaned
 
         has_state_changing = any(
-            action in {"edit_file", "write_file", "write_file_block", "append_file_block", "create_file"}
+            action in {"edit_file", "replace_symbol", "write_file", "write_file_block", "append_file_block", "create_file"}
             for action in cleaned
         )
         if has_state_changing:
