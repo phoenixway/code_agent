@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 55 — Authorized Fresh-Evidence Retry Exemption Closure
+- **Phase**: Phase 56 — Structured Edit Recovery / `replace_symbol` Closure
 - **Status**: Complete.
-- **Next Step**: Phase 56 — Next Semantic Runtime Slice Selection.
-- **Boundary**: Added a narrow one-shot exemption for false-positive no-progress/action-cycle defects after failed edit/write attempts when, and only when, a later user message is followed by a fresh same-target evidence read and a materially changed retry. Full test suite passes. No global defect-detector disablement, dispatch behavior change, ActionPolicy change, plan-review gate behavior change, automatic intent completion, authority transfer, switch change, or legacy cleanup was added.
+- **Next Step**: Phase 57 — Next Semantic Runtime Slice Selection.
+- **Boundary**: Added a clean tool-side schema/preflight validation layer for malformed `edit_file` payloads, a narrow repeated-`edit_file` validation-failure hard-stop with recovery actions aligned to the active intent contract, and a universal `replace_symbol` tool with language-specific backends for Kotlin `.kt` symbols and Python `.py` functions/classes/methods. Recovery now prefers structural `extract_symbol` → `replace_symbol` before full-file rewrite when applicable. Prompt guidance and default MODIFY intent examples were updated. Full test suite passes. No global defect-detector disablement, ActionPolicy change, plan-review gate behavior change, automatic intent completion, authority transfer, switch change, broad rewrite permission expansion, or legacy cleanup was added.
 
 ## Step 4I Parity Matrix
 

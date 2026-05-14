@@ -7451,6 +7451,55 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 56 — Structured Edit Recovery / `replace_symbol` Closure
+
+- **Status**: Done.
+- **Goal**: Reduce repeated exact-edit failure loops by adding clean schema validation, hard-stop recovery alignment, and a structural symbol replacement path.
+- **Problem**:
+  - Malformed `edit_file` payloads such as `start_line`/`end_line` could reach tool execution instead of being rejected before dispatch.
+  - Repeated `edit_file` validation failures could keep steering the model into the same brittle exact-text retry loop.
+  - Recovery could recommend actions that were not coherent with the active intent contract, especially full-file fallbacks.
+  - Exact-text replacement is fragile for symbol-sized changes when a parser can identify structural boundaries more safely.
+- **Implemented Outcomes**:
+  - Added a tool-side action schema validation layer in `modules/tools/action_schema.py`.
+  - Added dispatcher preflight integration for malformed `edit_file` payloads.
+  - `edit_file` now requires the exact replacement contract: `path`, `search_text`, and `replace_text`; line ranges, byte ranges, file-content fields, and block-write fields are rejected as malformed payloads before tool execution.
+  - Added a repeated `edit_file` validation-failure hard-stop path using `repeated_edit_failure_hard_stop`.
+  - Recovery actions are aligned with the active intent contract:
+    - MODIFY recovery may include `read_chunk`, `extract_symbol`, `replace_symbol`, `read_file`, `search_content`, `edit_file`, and `write_file_block`.
+    - non-MODIFY recovery does not receive `replace_symbol`/`write_file_block` unless already allowed by the active contract.
+  - Added a universal public `replace_symbol` tool with language-specific backends.
+  - Current `replace_symbol` support:
+    - Kotlin `.kt` symbols via the existing tree-sitter `KotlinSymbolExtractor`.
+    - Python `.py` functions, classes, and methods via a new `PythonSymbolExtractor` built on `ast` line ranges.
+  - Added safety guards for `replace_symbol`:
+    - unsupported-language validation with supported-language listing;
+    - missing and ambiguous symbol failures;
+    - unique resolved source-block requirement;
+    - replacement must preserve the same symbol name/kind;
+    - Python replacement syntax validation, including method-body validation through a dummy-class parse wrapper.
+  - Added `replace_symbol` to repeated-edit recovery recommendations and default MODIFY intent examples.
+  - Updated `modules/default_system_prompt.md` guidance so repeated exact-edit mismatch prefers structural `extract_symbol` → `replace_symbol` for supported symbol-sized changes before full-file rewrite.
+  - Confirmed targeted tests and full test suite pass.
+- **Tests Added / Updated**:
+  - `tests/test_tool_action_schema_validation.py`
+  - `tests/test_repeated_edit_failure_hard_stop.py`
+  - `tests/test_replace_symbol_tool.py`
+  - Existing recovery/prompt tests were run with this slice.
+- **Forbidden / Not Added**:
+  - No global defect-detector disablement.
+  - No broad ActionPolicy change.
+  - No plan-review gate behavior change.
+  - No automatic intent completion.
+  - No authority transfer or switch change.
+  - No legacy cleanup.
+  - No blanket permission to use full-file rewrites outside the active MODIFY contract.
+  - No attempt to make `replace_symbol` cover unsupported languages silently.
+- **Next**:
+  - Phase 57 — Next Semantic Runtime Slice Selection.
+
+---
+
 #### Phase 54 — Step 2/N: Plan Review / Fallback Commit Trace Hardening Characterization
 
 - **Status**: Done.
