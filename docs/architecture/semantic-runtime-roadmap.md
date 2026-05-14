@@ -7227,6 +7227,58 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Phase 53 — Step 11/N: Plan Review Gate Enforcement Decision.
 
 ---
+
+#### Phase 53 — Step 11/N: Plan Review Gate Enforcement Decision
+
+- **Status**: Done.
+- **Goal**: Decide whether to enforce the post-state-change plan review gate after passive marker support, state bookkeeping, and clear hook implementation are in place.
+- **Decision**: GO for narrow pre-dispatch enforcement.
+- **Rationale**:
+  - The original defect remains possible until action proposals are blocked after a successful state-changing action when no plan-review checkpoint has been emitted.
+  - Step 5 made `<plan_review_done />` a first-class compiler/protocol marker.
+  - Step 8 added passive `plan_review_required_after_state_change` state bookkeeping after committed state-changing file actions.
+  - Step 10 added passive clearing when `has_plan_review_checkpoint` is present.
+  - The next safe enforcement point is the response pipeline after classification/clear-hook processing and before ActionPolicy/dispatch.
+  - This keeps enforcement out of dispatch, out of ActionPolicy authority, and away from `ExecutionCommit` construction.
+- **Approved Enforcement Rule**:
+  - If `state.plan_review_required_after_state_change` is true,
+  - and the current response proposes at least one action,
+  - and compiler/runtime semantics do not report `has_plan_review_checkpoint`,
+  - then the response must not dispatch the action.
+  - The pipeline should recover/continue with reason `missing_plan_review_after_state_change`.
+- **Allowed Passing Cases**:
+  - `<plan_review_done />` alone may clear the flag and continue through existing checkpoint/terminal behavior.
+  - `<plan_review_done />` before an action may clear the flag and allow the action to continue to normal ActionPolicy/dispatch checks.
+  - Plain text without action is not blocked by this gate.
+  - Responses with no pending `plan_review_required_after_state_change` are not affected.
+- **Recovery Prompt Requirements**:
+  - The prompt should tell the model that a previous state-changing action succeeded.
+  - It should instruct the model to review active subgoals before any next tool action.
+  - It should ask for `<plan_review_done />` after reviewing.
+  - It should recommend using existing `<subgoal ... />` mutations, especially `mark_done` with evidence, when the previous action satisfied a subgoal.
+  - It must not require automatic intent completion.
+  - It must not require suppressing legitimate verification or distinct follow-up edits.
+- **Approved Implementation Scope for Step 12**:
+  - Add a response-pipeline gate before ActionPolicy/dispatch.
+  - Add a recovery prompt builder method for `missing_plan_review_after_state_change`.
+  - Add tests proving action without checkpoint is blocked when the flag is set.
+  - Add tests proving action with `<plan_review_done />` is allowed past this gate.
+  - Add tests proving action without pending flag is not blocked.
+  - Add tests proving plain text without action is not blocked by this gate.
+- **Forbidden**:
+  - No dispatch behavior change.
+  - No ActionPolicy change.
+  - No `ExecutionCommit` construction change.
+  - No repeat-edit hard guard yet.
+  - No automatic intent completion.
+  - No subgoal-board mutation from `<plan_review_done />` alone.
+  - No inference that every edit completes the whole intent.
+  - No authority transfer or switch change.
+  - No legacy cleanup.
+- **Next**:
+  - Phase 53 — Step 12/N: Plan Review Gate Enforcement Implementation.
+
+---
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.
