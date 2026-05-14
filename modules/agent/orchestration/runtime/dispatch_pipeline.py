@@ -188,9 +188,48 @@ class DispatchPipeline:
                 f"session_tokens={self.state.session_tokens}"
             )
 
-    def _build_execution_commit(self, execution_plan, processed_segs, sys_results, should_stop: bool):
-        if execution_plan is None:
+    def _execution_effects_from_iteration(self, iteration) -> list[str]:
+        parsed_output = getattr(iteration, "parsed_output", None)
+        compiler_ir = getattr(parsed_output, "compiler_ir", None)
+        action_ops = list(getattr(compiler_ir, "action_ops", ()) or []) if compiler_ir is not None else []
+        effects: list[str] = []
+        for op in action_ops:
+            action_type = str(getattr(op, "action_type", "") or "").strip()
+            payload = getattr(op, "payload", None)
+            target = ""
+            if isinstance(payload, dict):
+                target = str(payload.get("path") or payload.get("command") or "").strip()
+            summary = action_type or "action"
+            if target:
+                summary = f"{summary}:{target}"
+            effects.append(summary)
+        return effects
+
+    def _build_fallback_execution_commit(self, iteration, processed_segs, sys_results, should_stop: bool):
+        action_effects = self._execution_effects_from_iteration(iteration)
+        if not action_effects:
             return None
+
+        return ExecutionCommit(
+            shape=str(getattr(getattr(iteration, "parsed_output", None), "compiler_shape", "") or ""),
+            transaction_kind="fallback_single_action",
+            state_effects=[],
+            action_effects=action_effects,
+            output_effects=[],
+            bundle_validated=False,
+            transition_applied=False,
+            action_dispatched=any(getattr(seg, "type", None) == "action" for seg in (processed_segs or [])),
+            active_intent_unchanged=True,
+            before_active_intent_id=str(getattr(getattr(self.state, "active_intent", None), "intent_id", "") or ""),
+            after_active_intent_id=str(getattr(getattr(self.state, "active_intent", None), "intent_id", "") or ""),
+            committed_action_count=sum(1 for seg in (processed_segs or []) if getattr(seg, "type", None) == "action"),
+            committed_system_result_count=len(sys_results or []),
+            dispatch_stop_requested=bool(should_stop),
+        )
+
+    def _build_execution_commit(self, execution_plan, processed_segs, sys_results, should_stop: bool, *, iteration=None):
+        if execution_plan is None:
+            return self._build_fallback_execution_commit(iteration, processed_segs, sys_results, should_stop)
 
         committed_actions = 0
         for seg in processed_segs or []:
@@ -265,6 +304,7 @@ class DispatchPipeline:
             processed_segs,
             sys_results,
             should_stop,
+            iteration=iteration,
         )
         self.execution_commit_observer.observe_execution_commit(
             getattr(iteration, "execution_plan", None),

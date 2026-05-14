@@ -59,9 +59,25 @@ class ExecutionCommitObserverAdapter:
             return False
         if int(getattr(execution_commit, "committed_system_result_count", 0) or 0) <= 0:
             return False
-        result_text = "\n".join(str(item or "") for item in (sys_results or []))
-        if not result_text.strip():
+
+        action_type, target, _action_effects = self._primary_action_effect_parts(execution_commit)
+        action_type = action_type.strip()
+        target = target.strip()
+        result_lines = [str(item or "") for item in (sys_results or []) if str(item or "").strip()]
+        if not result_lines:
             return True
+
+        current_action_lines = [line for line in result_lines if action_type and f"`{action_type}`" in line]
+        if not current_action_lines:
+            current_action_lines = [line for line in result_lines if action_type and f'"tool": "{action_type}"' in line]
+        if target:
+            targeted_lines = [line for line in current_action_lines if target in line]
+            if targeted_lines:
+                current_action_lines = targeted_lines
+        if not current_action_lines:
+            return False
+
+        current_text = "\n".join(current_action_lines)
         failure_markers = (
             "Action failed",
             "VALIDATION_ERROR",
@@ -69,9 +85,18 @@ class ExecutionCommitObserverAdapter:
             "status=failed",
             "'status': 'failed'",
             "\"status\": \"failed\"",
+            "execution failed",
             "requires both 'search_text' and 'replace_text'",
         )
-        return not any(marker in result_text for marker in failure_markers)
+        if any(marker in current_text for marker in failure_markers):
+            return False
+        success_markers = (
+            "Changes applied",
+            "status=success",
+            "'status': 'success'",
+            "\"status\": \"success\"",
+        )
+        return any(marker in current_text for marker in success_markers)
 
     def commit_requires_plan_review(self, execution_commit, *, sys_results=None) -> bool:
         if execution_commit is None:

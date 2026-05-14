@@ -443,7 +443,8 @@ Every action must include:
 - `"before_execution"`: what you are doing
 - `"during_execution"`: status message
 - `"after_execution"`: success message
-- For `create_file`, `write_file_block`, and `append_file_block`, you may put only metadata in the JSON object and place the real raw file body in the following `<file_content>` block.
+- For `write_file_block` and `append_file_block`, put only metadata in the JSON object and place the real raw file body in the following `<file_content>` block.
+- Do NOT use `<file_content>` with `create_file`; put small new-file content directly in the `create_file` JSON payload, or use `write_file_block` for raw block content.
 
 Payload rules:
 - `read_file` → top-level `"path"`
