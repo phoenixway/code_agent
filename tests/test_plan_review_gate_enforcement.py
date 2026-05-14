@@ -3,6 +3,8 @@ from unittest.mock import MagicMock
 
 from modules.agent.orchestration.responses.response_pipeline_stages import ResponsePipelineStagesMixin
 from modules.agent.orchestration.prompts.recovery_prompt_builder import RecoveryPromptBuilderMixin
+from modules.agent.orchestration.runtime.execution_commit_observer import ExecutionCommitObserverAdapter
+from modules.agent.orchestration.shared.decision_models import ExecutionCommit
 
 
 class GateHarness(ResponsePipelineStagesMixin):
@@ -52,6 +54,36 @@ def test_plan_review_gate_does_not_block_plain_text_without_action():
     harness = GateHarness(pending=True, has_action=False, has_checkpoint=False)
 
     assert harness._plan_review_gate_should_block(harness.parsed_output, 0) is False
+
+
+def test_replace_symbol_commit_requires_plan_review_before_next_action():
+    state = SimpleNamespace()
+    commit = ExecutionCommit(
+        shape="ACTION_ONLY",
+        transaction_kind="fallback_single_action",
+        action_effects=["replace_symbol:tests/fixtures/kotlin/SmokeSymbolTarget.kt"],
+        action_dispatched=False,
+        committed_action_count=0,
+        committed_system_result_count=1,
+    )
+
+    ExecutionCommitObserverAdapter(state).observe_execution_commit(
+        None,
+        commit,
+        sys_results=["SYSTEM RESULT for `replace_symbol`: Changes applied to tests/fixtures/kotlin/SmokeSymbolTarget.kt"],
+    )
+
+    harness = GateHarness(pending=True, has_action=True, has_checkpoint=False)
+    harness.state = state
+    harness.prompt_builder = SimpleNamespace(
+        build_missing_plan_review_after_state_change_prompt=MagicMock(return_value="review prompt")
+    )
+
+    assert state.plan_review_required_after_state_change is True
+    assert state.plan_review_required_action_type == "replace_symbol"
+    assert harness._plan_review_gate_should_block(harness.parsed_output, 1) is True
+    assert harness._plan_review_gate_recovery_prompt() == "review prompt"
+
 
 
 def test_missing_plan_review_prompt_mentions_subgoal_review_and_checkpoint():
