@@ -1606,7 +1606,7 @@ class ActionDispatcher:
 
     def _sanitize_command_for_history(self, command: dict) -> dict:
         cmd_type = command.get("type") or command.get("action", "unknown")
-        if cmd_type in {"create_file", "write_file", "write_file_block", "append_file_block", "edit_file", "replace"}:
+        if cmd_type in {"create_file", "write_file", "write_file_block", "append_file_block", "edit_file", "replace", "replace_symbol"}:
             return self._sanitize_file_write_payload(command)
         return command.copy()
 
