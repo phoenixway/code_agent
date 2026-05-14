@@ -267,6 +267,70 @@ class KotlinSymbolExtractor:
             "candidates": [self._candidate_summary(item) for item in matches],
         }
 
+    def _symbol_name_node(self, node):
+        field_getter = getattr(node, "child_by_field_name", None)
+        if callable(field_getter):
+            try:
+                candidate = field_getter("name")
+                if candidate is not None:
+                    return candidate
+            except Exception:
+                pass
+
+        for child in getattr(node, "children", []) or []:
+            if child.type in {"simple_identifier", "identifier", "type_identifier"}:
+                return child
+
+        for child in getattr(node, "children", []) or []:
+            if child.type in {"modifiers", "annotation", "annotation_entry"}:
+                continue
+            found = self._first_identifier_descendant(child)
+            if found is not None:
+                return found
+        return None
+
+    def _first_identifier_descendant(self, node):
+        if node.type in {"simple_identifier", "identifier", "type_identifier"}:
+            return node
+        for child in getattr(node, "children", []) or []:
+            if child.type in {"modifiers", "annotation", "annotation_entry"}:
+                continue
+            found = self._first_identifier_descendant(child)
+            if found is not None:
+                return found
+        return None
+
+    def _body_child(self, node):
+        for child in getattr(node, "children", []) or []:
+            if child.type in self.BODY_NODE_TYPES:
+                return child
+        return None
+
+    def _node_text(self, node, content_bytes: bytes) -> str:
+        return content_bytes[int(node.start_byte):int(node.end_byte)].decode("utf-8", errors="replace")
+
+    def _line_col_from_byte(self, content_bytes: bytes, byte_index: int) -> tuple[int, int]:
+        byte_index = max(0, min(int(byte_index), len(content_bytes)))
+        prefix = content_bytes[:byte_index].decode("utf-8", errors="replace")
+        line = prefix.count("\n") + 1
+        last_nl = prefix.rfind("\n")
+        col = len(prefix) + 1 if last_nl < 0 else len(prefix) - last_nl
+        return line, col
+
+    def _owner_chain(self, node, content_bytes: bytes) -> list[str]:
+        chain: list[str] = []
+        current = getattr(node, "parent", None)
+        while current is not None:
+            if current.type in self.OWNER_NODE_TYPES:
+                name_node = self._symbol_name_node(current)
+                if name_node is not None:
+                    name = self._node_text(name_node, content_bytes).strip()
+                    if name:
+                        chain.append(name)
+            current = getattr(current, "parent", None)
+        chain.reverse()
+        return chain
+
     def _normalize_symbol_kind(self, symbol_kind: str | None) -> str:
         value = str(symbol_kind or "auto").strip().lower()
         aliases = {
@@ -282,6 +346,23 @@ class KotlinSymbolExtractor:
             "enumclass": "enum",
         }
         return aliases.get(value, value)
+
+    def _kind_from_node_type(self, node_type: str) -> str:
+        mapping = {
+            "function_declaration": "function",
+            "class_declaration": "class",
+            "enum_class_declaration": "enum",
+            "object_declaration": "object",
+            "interface_declaration": "interface",
+            "property_declaration": "property",
+        }
+        return mapping.get(str(node_type or ""), "unknown")
+
+    def _is_composable(self, node, content_bytes: bytes) -> bool:
+        start = max(0, int(getattr(node, "start_byte", 0) or 0) - 512)
+        prefix = content_bytes[start:int(node.start_byte)].decode("utf-8", errors="replace")
+        node_text_prefix = self._node_text(node, content_bytes)[:256]
+        return "@Composable" in prefix or "@Composable" in node_text_prefix
 
     def _safe_skeleton(self, path: str, content: str) -> str | None:
         try:
@@ -310,63 +391,66 @@ class KotlinSymbolExtractor:
             return info["kind"] == "enum"
         return info["kind"] == requested_kind
 
-    def _build_symbol_info(
-        self,
-        node,
-        content: str,
-        content_bytes: bytes,
-        include_body: bool,
-        include_signature: bool,
-    ) -> dict[str, Any] | None:
+    def _build_symbol_info(self, node, content: str, content_bytes: bytes, include_body: bool, include_signature: bool) -> dict[str, Any] | None:
         if node.type not in self.SYMBOL_NODE_TYPES:
             return None
 
-        declaration_start = self._expanded_declaration_start_byte(node, content)
-        full_source = content_bytes[declaration_start:node.end_byte].decode("utf-8", errors="replace").strip()
-        signature = self._extract_signature(node, content, content_bytes, declaration_start).strip()
-        if not signature:
+        name_node = self._symbol_name_node(node)
+        if name_node is None:
+            return None
+        name = self._node_text(name_node, content_bytes).strip()
+        if not name:
             return None
 
-        if node.type == "function_declaration":
-            symbol_name = self._extract_function_name(signature)
-        elif node.type == "property_declaration":
-            symbol_name = self._extract_property_name(signature)
+        node_type = str(node.type or "")
+        kind = self._kind_from_node_type(node_type)
+        owner_chain = self._owner_chain(node, content_bytes)
+        owner_name = owner_chain[-1] if owner_chain else ""
+        body_node = self._body_child(node)
+
+        full_start_byte = int(node.start_byte)
+        full_end_byte = int(node.end_byte)
+        signature_start_byte = full_start_byte
+        signature_end_byte = int(body_node.start_byte) if body_node is not None else full_end_byte
+
+        if include_body:
+            selected_start_byte = full_start_byte
+            selected_end_byte = full_end_byte
         else:
-            symbol_name = self._extract_owner_name(node.type, signature)
-        if not symbol_name:
+            selected_start_byte = signature_start_byte
+            selected_end_byte = signature_end_byte
+
+        selected_text = content_bytes[selected_start_byte:selected_end_byte].decode("utf-8", errors="replace")
+        signature = (
+            content_bytes[signature_start_byte:signature_end_byte]
+            .decode("utf-8", errors="replace")
+            .rstrip()
+            if include_signature
+            else ""
+        )
+        body = selected_text if include_body else ""
+
+        # A class/object/interface/enum with a body must never report clean success
+        # with only the header when include_body=True. That creates unsafe evidence
+        # for replace_symbol and pushes the model back into brittle edit_file loops.
+        if include_body and body_node is not None and selected_end_byte < int(body_node.end_byte):
             return None
 
-        owner_chain = self._find_owner_chain(node, content_bytes)
-        owner_name = owner_chain[0] if owner_chain else None
-        has_composable = self._is_composable_signature(signature)
-        is_enum = self._is_enum_declaration(node.type, signature)
-        kind = self._resolved_symbol_kind(node.type, owner_name, has_composable, is_enum)
-
-        start_line, start_col = self._line_col_from_offset(content, declaration_start)
-        end_line = node.end_point[0] + 1
-        end_col = node.end_point[1] + 1
-        body = self._extract_body(node, content, content_bytes)
-        selected_text = self._build_selected_text(
-            signature=signature,
-            body=body,
-            full_source=full_source,
-            include_body=include_body,
-            include_signature=include_signature,
-        )
+        start_line, start_col = self._line_col_from_byte(content_bytes, selected_start_byte)
+        end_line, end_col = self._line_col_from_byte(content_bytes, selected_end_byte)
 
         return {
-            "name": symbol_name,
+            "name": name,
             "kind": kind,
-            "node_type": node.type,
+            "node_type": node_type,
+            "is_composable": self._is_composable(node, content_bytes),
             "owner_name": owner_name,
             "owner_chain": owner_chain,
-            "is_composable": has_composable,
-            "is_enum": is_enum,
+            "selected_text": selected_text,
             "signature": signature,
             "body": body,
-            "selected_text": selected_text,
             "start_line": start_line,
-            "end_line": max(start_line, end_line),
+            "end_line": end_line,
             "start_col": start_col,
             "end_col": end_col,
         }
