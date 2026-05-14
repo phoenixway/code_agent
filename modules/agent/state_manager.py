@@ -150,6 +150,8 @@ class AgentState:
         self.last_error_next_actions = []
         self.last_failed_action_command = None
         self.last_failed_action_result = None
+        self.last_schema_preflight_failure_fingerprint = ""
+        self.consecutive_schema_preflight_failures = 0
         self.malformed_recovery_grace_remaining = 0
         self.forbidden_next_action_fingerprint = None
         self.state_machine = None
@@ -1074,6 +1076,58 @@ class AgentState:
             self.consecutive_failed_repeats = 0
         self.last_action_fingerprint = fingerprint
         self.last_action_status = status
+
+    def record_schema_preflight_failure(self, command: dict, schema_stop: dict) -> int:
+        """Record malformed action preflight failures that stop before tool dispatch."""
+        command = command if isinstance(command, dict) else {}
+        schema_stop = schema_stop if isinstance(schema_stop, dict) else {}
+        snapshot = schema_stop.get("validation_snapshot") if isinstance(schema_stop.get("validation_snapshot"), dict) else {}
+        command_type = str(command.get("type") or command.get("action") or snapshot.get("action_type") or "").strip()
+        path = str(command.get("path") or "").strip()
+        missing = tuple(str(item) for item in snapshot.get("missing_fields", []) or [])
+        forbidden = tuple(str(item) for item in snapshot.get("forbidden_fields", []) or [])
+        fingerprint = json.dumps(
+            {
+                "type": command_type,
+                "path": path,
+                "reason": str(schema_stop.get("reason") or ""),
+                "error_code": str(schema_stop.get("error_code") or ""),
+                "missing_fields": missing,
+                "forbidden_fields": forbidden,
+            },
+            sort_keys=True,
+        )
+
+        if fingerprint == self.last_schema_preflight_failure_fingerprint:
+            self.consecutive_schema_preflight_failures += 1
+        else:
+            self.consecutive_schema_preflight_failures = 1
+        self.last_schema_preflight_failure_fingerprint = fingerprint
+
+        result = {
+            "status": "error",
+            "error_code": schema_stop.get("error_code"),
+            "recoverable": True,
+            "output": schema_stop.get("message", ""),
+            "next_actions": list(schema_stop.get("next_actions") or []),
+            "error_details": {
+                "reason": schema_stop.get("reason"),
+                "action_type": command_type,
+                "path": path,
+                "missing_fields": list(missing),
+                "forbidden_fields": list(forbidden),
+                "schema_preflight": True,
+            },
+        }
+
+        self.last_error_code = schema_stop.get("error_code")
+        self.last_error_message = schema_stop.get("message", "")
+        self.last_error_recoverable = True
+        self.last_error_next_actions = list(schema_stop.get("next_actions") or [])
+        self.last_failed_action_command = command.copy()
+        self.last_failed_action_result = result
+        self.consecutive_same_error_count = self.consecutive_schema_preflight_failures
+        return self.consecutive_schema_preflight_failures
 
     def set_retry_budgets(self, recoverable_budget: int, critical_budget: int):
         self.recoverable_retry_budget_remaining = max(0, int(recoverable_budget))

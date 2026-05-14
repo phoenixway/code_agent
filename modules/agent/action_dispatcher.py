@@ -756,26 +756,55 @@ class ActionDispatcher:
         schema_stop = self._schema_validation_preflight(command, state)
         if schema_stop is not None:
             output_text = schema_stop["message"]
+            schema_repeats = 1
+            recorder = getattr(state, "record_schema_preflight_failure", None)
+            if callable(recorder):
+                schema_repeats = recorder(command, schema_stop)
+
+            loop_threshold = max(
+                2, int(getattr(self.config, "LOOP_ERROR_REPEAT_THRESHOLD", 2))
+            )
+            repeated_schema_failure = schema_repeats >= loop_threshold
+            reason = schema_stop["reason"]
+            policy_actions = list(schema_stop["policy_allowed_actions"])
+            recommended_actions = list(schema_stop["policy_recommended_actions"])
+
+            if repeated_schema_failure:
+                reason = "repeated_schema_preflight_failure_hard_stop"
+                policy_actions = [action for action in policy_actions if action != cmd_type]
+                recommended_actions = [action for action in recommended_actions if action != cmd_type]
+                if not policy_actions:
+                    policy_actions = list(schema_stop["policy_allowed_actions"])
+                if not recommended_actions:
+                    recommended_actions = policy_actions
+                output_text += (
+                    "\n[SYSTEM: Repeated malformed action payload detected before dispatch. "
+                    "Do not retry the same malformed tool payload. "
+                    "For edit_file, the next edit_file action is allowed only if it has top-level path, search_text, and replace_text. "
+                    "If you only know a line range or symbol target, use read_chunk, extract_symbol, or replace_symbol instead.]"
+                )
+
             state.pending_loop_stop_info = self._recovery_payload(
-                reason=schema_stop["reason"],
+                reason=reason,
                 recoverable=True,
                 error_code=schema_stop["error_code"],
-                next_actions=list(schema_stop["next_actions"]),
+                next_actions=policy_actions,
                 command=command.copy() if isinstance(command, dict) else {},
                 message=output_text,
-                message_key=schema_stop["reason"],
-                policy_allowed_actions=list(schema_stop["policy_allowed_actions"]),
-                policy_recommended_actions=list(schema_stop["policy_recommended_actions"]),
+                message_key=reason,
+                policy_allowed_actions=policy_actions,
+                policy_recommended_actions=recommended_actions,
                 policy_authoritative_source="recommended",
                 policy_keep_current_intent=bool(schema_stop["active_intent_type"]),
                 validation_snapshot=dict(schema_stop["validation_snapshot"]),
+                schema_preflight_repeat_count=schema_repeats,
             )
             full_result_text = f"SYSTEM RESULT for `{cmd_type}`: {output_text}"
             if self.agent.log:
                 self.agent.log.debug(
                     "Action.finish type=%s should_stop=True reason=%s",
                     cmd_type,
-                    schema_stop["reason"],
+                    reason,
                 )
             return command_for_history, full_result_text, True
 
