@@ -750,14 +750,17 @@ class OutputRecoveryRoutingMixin:
             prompt_family=strategy.handler_key,
             details={"invalid_kind_argument": invalid_kind},
         )
-        self.stage_logger.log(
-            "output_recovery",
-            "diagnostic",
-            reason=strategy_invalid_kind,
-            source="semantic_decision_record",
-            universe=self._intent_universe_label(),
-            semantic_decision_record=semantic_record.to_dict(),
-        )
+        stage_logger = getattr(self, "stage_logger", None)
+        log = getattr(stage_logger, "log", None)
+        if callable(log):
+            log(
+                "output_recovery",
+                "diagnostic",
+                reason=strategy_invalid_kind,
+                source="semantic_decision_record",
+                universe=self._intent_universe_label(),
+                semantic_decision_record=semantic_record.to_dict(),
+            )
         return handler(
             parsed_output,
             invalid_kind=invalid_kind,

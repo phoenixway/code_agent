@@ -790,7 +790,7 @@ def test_checkpoint_only_default_registry_logs_legacy_authority():
     assert final_authority["clean_checkpoint_only_candidate"] is True
 
 
-def test_smoke_registry_checkpoint_only_remains_legacy_after_boundary_closure(smoke_registry_override):
+def test_smoke_registry_checkpoint_only_uses_compiler_after_boundary_closure(smoke_registry_override):
     response = "<memory_update_done />"
     harness, parsed_output, classified, outcome = _run_terminal_smoke(response)
 
@@ -800,8 +800,8 @@ def test_smoke_registry_checkpoint_only_remains_legacy_after_boundary_closure(sm
     final_authority = _terminal_authority_calls_for_branch(
         harness, "terminal_answer.checkpoint_only"
     )[-1].kwargs
-    assert final_authority["switch_value"] == "legacy"
-    assert final_authority["authority_source"] == "legacy"
+    assert final_authority["switch_value"] == "compiler"
+    assert final_authority["authority_source"] == "compiler"
     assert final_authority["typed_kind"] == "CHECKPOINT_ONLY"
     assert final_authority["agreement"] is True
     assert final_authority["fallback_used"] is False
@@ -813,7 +813,7 @@ def test_smoke_registry_checkpoint_only_remains_legacy_after_boundary_closure(sm
     assert final_authority["behavior_changed"] is False
 
 
-def test_smoke_registry_checkpoint_with_visible_text_keeps_legacy_checkpoint_only_switch(smoke_registry_override):
+def test_smoke_registry_checkpoint_with_visible_text_uses_compiler_checkpoint_only_switch(smoke_registry_override):
     response = "<memory_update_done />\nDone."
     harness, parsed_output, classified, outcome = _run_terminal_smoke(response)
 
@@ -822,14 +822,14 @@ def test_smoke_registry_checkpoint_with_visible_text_keeps_legacy_checkpoint_onl
     final_authority = _terminal_authority_calls_for_branch(
         harness, "terminal_answer.checkpoint_only"
     )[-1].kwargs
-    assert final_authority["switch_value"] == "legacy"
+    assert final_authority["switch_value"] == "compiler"
     assert final_authority["authority_source"] == "legacy_fallback"
     assert final_authority["fallback_used"] is True
     assert final_authority["checkpoint_with_visible_text_overlap"] is True
     assert "checkpoint_with_visible_text_overlap" in final_authority["blocking_reasons"]
 
 
-def test_smoke_registry_action_only_keeps_legacy_checkpoint_only_switch(smoke_registry_override):
+def test_smoke_registry_action_only_uses_compiler_checkpoint_only_switch(smoke_registry_override):
     response = '<action>{"type":"read_file","path":"README.md"}</action>'
     harness, parsed_output, classified, outcome = _run_terminal_smoke(response)
 
@@ -839,13 +839,13 @@ def test_smoke_registry_action_only_keeps_legacy_checkpoint_only_switch(smoke_re
     final_authority = _terminal_authority_calls_for_branch(
         harness, "terminal_answer.checkpoint_only"
     )[-1].kwargs
-    assert final_authority["switch_value"] == "legacy"
+    assert final_authority["switch_value"] == "compiler"
     assert final_authority["authority_source"] == "legacy_fallback"
     assert final_authority["fallback_used"] is True
     assert final_authority["action_or_pre_action_overlap"] is True
 
 
-def test_smoke_registry_plaintext_keeps_legacy_checkpoint_only_switch(smoke_registry_override):
+def test_smoke_registry_plaintext_uses_compiler_checkpoint_only_switch(smoke_registry_override):
     harness, parsed_output, classified, outcome = _run_terminal_smoke("Done.")
 
     assert parsed_output.terminal_answer_semantic_result.kind == TerminalAnswerKind.PLAINTEXT_TERMINAL_ANSWER
@@ -853,13 +853,13 @@ def test_smoke_registry_plaintext_keeps_legacy_checkpoint_only_switch(smoke_regi
     final_authority = _terminal_authority_calls_for_branch(
         harness, "terminal_answer.checkpoint_only"
     )[-1].kwargs
-    assert final_authority["switch_value"] == "legacy"
+    assert final_authority["switch_value"] == "compiler"
     assert final_authority["authority_source"] == "legacy_fallback"
     assert final_authority["fallback_used"] is True
     assert final_authority["has_checkpoint"] is False
 
 
-def test_smoke_registry_leaked_system_result_keeps_legacy_checkpoint_only_switch(smoke_registry_override):
+def test_smoke_registry_leaked_system_result_uses_compiler_checkpoint_only_switch(smoke_registry_override):
     response = "SYSTEM RESULT: The tool output is..."
     harness, parsed_output, classified, outcome = _run_terminal_smoke(response)
 
@@ -868,13 +868,13 @@ def test_smoke_registry_leaked_system_result_keeps_legacy_checkpoint_only_switch
     final_authority = _terminal_authority_calls_for_branch(
         harness, "terminal_answer.checkpoint_only"
     )[-1].kwargs
-    assert final_authority["switch_value"] == "legacy"
+    assert final_authority["switch_value"] == "compiler"
     assert final_authority["authority_source"] == "legacy_fallback"
     assert final_authority["fallback_used"] is True
     assert final_authority["leaked_system_result_overlap"] is True
 
 
-def test_smoke_registry_unclosed_think_keeps_legacy_checkpoint_only_switch(smoke_registry_override):
+def test_smoke_registry_unclosed_think_uses_compiler_checkpoint_only_switch(smoke_registry_override):
     response = "<think>\n<memory_update_done />"
     harness, parsed_output, classified, outcome = _run_terminal_smoke(response)
 
@@ -883,13 +883,13 @@ def test_smoke_registry_unclosed_think_keeps_legacy_checkpoint_only_switch(smoke
     final_authority = _terminal_authority_calls_for_branch(
         harness, "terminal_answer.checkpoint_only"
     )[-1].kwargs
-    assert final_authority["switch_value"] == "legacy"
+    assert final_authority["switch_value"] == "compiler"
     assert final_authority["authority_source"] == "legacy_fallback"
     assert final_authority["fallback_used"] is True
     assert "invalid_kind" in final_authority["blocking_reasons"]
 
 
-def test_smoke_registry_checkpoint_plus_action_keeps_legacy_checkpoint_only_switch(smoke_registry_override):
+def test_smoke_registry_checkpoint_plus_action_uses_compiler_checkpoint_only_switch(smoke_registry_override):
     response = '<memory_update_done />\n<action>{"type":"read_file","path":"README.md"}</action>'
     harness, parsed_output, classified, outcome = _run_terminal_smoke(response)
 
@@ -898,7 +898,7 @@ def test_smoke_registry_checkpoint_plus_action_keeps_legacy_checkpoint_only_swit
     final_authority = _terminal_authority_calls_for_branch(
         harness, "terminal_answer.checkpoint_only"
     )[-1].kwargs
-    assert final_authority["switch_value"] == "legacy"
+    assert final_authority["switch_value"] == "compiler"
     assert final_authority["authority_source"] == "legacy_fallback"
     assert final_authority["fallback_used"] is True
     assert final_authority["action_or_pre_action_overlap"] is True

@@ -173,6 +173,17 @@ class AgentState:
         self.last_turn_had_failure = False
         self.intent_only_response_count = 0
         self.recent_problem_actions = []
+        self.last_failed_edit_retry_turn_id = 0
+        self.last_failed_edit_retry_command = None
+        self.last_failed_edit_retry_fingerprint = ""
+        self.last_failed_edit_retry_path = ""
+        self.last_failed_edit_retry_search_text = ""
+        self.last_fresh_edit_evidence_turn_id = 0
+        self.last_fresh_edit_evidence_path = ""
+        self.last_fresh_edit_evidence_action_type = ""
+        self.last_fresh_edit_evidence_fingerprint = ""
+        self.last_fresh_edit_evidence_excerpt = ""
+        self.authorized_fresh_evidence_retry_consumed_key = ""
         self.pending_suspect_intent_payload = None
         self.pending_goal_drift_payload = None
         self.allow_suspect_intent_once = False
@@ -657,6 +668,111 @@ class AgentState:
         self.recent_problem_actions.append(entry)
         self._trim_recent_problem_actions()
 
+    def _action_type(self, command: dict) -> str:
+        return str((command or {}).get("type") or (command or {}).get("action") or "").strip().lower()
+
+    def _action_path(self, command: dict) -> str:
+        return str((command or {}).get("path") or (command or {}).get("file") or "").strip()
+
+    def _result_excerpt(self, result: dict) -> str:
+        return str(
+            (result or {}).get("file_content")
+            or (result or {}).get("output")
+            or (result or {}).get("raw_output")
+            or (result or {}).get("stdout_full")
+            or ""
+        )[:8000]
+
+    def _same_retry_target(self, left: str, right: str) -> bool:
+        left = str(left or "").strip()
+        right = str(right or "").strip()
+        if not left or not right:
+            return False
+        return left == right or left.endswith("/" + right) or right.endswith("/" + left)
+
+    def note_failed_edit_retry_candidate(self, command: dict) -> None:
+        cmd_type = self._action_type(command)
+        if cmd_type not in {"edit_file", "write_file", "write_file_block", "append_file_block", "replace"}:
+            return
+        self.last_failed_edit_retry_turn_id = int(getattr(self, "current_turn_id", 0) or 0)
+        self.last_failed_edit_retry_command = command.copy()
+        self.last_failed_edit_retry_fingerprint = self.get_action_fingerprint(command)
+        self.last_failed_edit_retry_path = self._action_path(command)
+        self.last_failed_edit_retry_search_text = str((command or {}).get("search_text") or "")
+        self.last_fresh_edit_evidence_turn_id = 0
+        self.last_fresh_edit_evidence_path = ""
+        self.last_fresh_edit_evidence_action_type = ""
+        self.last_fresh_edit_evidence_fingerprint = ""
+        self.last_fresh_edit_evidence_excerpt = ""
+        self.authorized_fresh_evidence_retry_consumed_key = ""
+
+    def note_fresh_edit_evidence_if_applicable(self, command: dict, result: dict) -> None:
+        if str((result or {}).get("status") or "").strip().lower() != "success":
+            return
+        cmd_type = self._action_type(command)
+        if cmd_type not in {"read_file", "read_chunk", "extract_symbol", "extract_kotlin_function", "search_content"}:
+            return
+        path = self._action_path(command)
+        failed_path = str(getattr(self, "last_failed_edit_retry_path", "") or "").strip()
+        failed_turn = int(getattr(self, "last_failed_edit_retry_turn_id", 0) or 0)
+        current_turn = int(getattr(self, "current_turn_id", 0) or 0)
+        if not failed_turn or current_turn <= failed_turn:
+            return
+        if not self._same_retry_target(path, failed_path):
+            output = self._result_excerpt(result)
+            if not failed_path or failed_path not in output:
+                return
+        self.last_fresh_edit_evidence_turn_id = current_turn
+        self.last_fresh_edit_evidence_path = path or failed_path
+        self.last_fresh_edit_evidence_action_type = cmd_type
+        self.last_fresh_edit_evidence_fingerprint = self.get_action_fingerprint(command)
+        self.last_fresh_edit_evidence_excerpt = self._result_excerpt(result)
+
+    def _retry_payload_materially_changed(self, command: dict) -> bool:
+        current_fingerprint = self.get_action_fingerprint(command)
+        failed_fingerprint = str(getattr(self, "last_failed_edit_retry_fingerprint", "") or "")
+        if current_fingerprint and failed_fingerprint and current_fingerprint != failed_fingerprint:
+            return True
+
+        search_text = str((command or {}).get("search_text") or "")
+        failed_search_text = str(getattr(self, "last_failed_edit_retry_search_text", "") or "")
+        evidence = str(getattr(self, "last_fresh_edit_evidence_excerpt", "") or "")
+        return bool(search_text and search_text != failed_search_text and search_text in evidence)
+
+    def consume_authorized_fresh_evidence_retry_exemption(self, command: dict, defect_reason: str) -> bool:
+        if str(defect_reason or "") not in {"defect_same_action_repeat", "defect_repeated_action_cycle"}:
+            return False
+        cmd_type = self._action_type(command)
+        if cmd_type not in {"edit_file", "write_file", "write_file_block", "append_file_block", "replace"}:
+            return False
+
+        failed_turn = int(getattr(self, "last_failed_edit_retry_turn_id", 0) or 0)
+        fresh_turn = int(getattr(self, "last_fresh_edit_evidence_turn_id", 0) or 0)
+        current_turn = int(getattr(self, "current_turn_id", 0) or 0)
+        if not failed_turn or current_turn <= failed_turn:
+            return False
+        if fresh_turn != current_turn or fresh_turn <= failed_turn:
+            return False
+        if not self._same_retry_target(self._action_path(command), getattr(self, "last_failed_edit_retry_path", "")):
+            return False
+        if not self._retry_payload_materially_changed(command):
+            return False
+
+        key = "|".join(
+            [
+                str(failed_turn),
+                str(fresh_turn),
+                str(getattr(self, "last_fresh_edit_evidence_fingerprint", "") or ""),
+                self.get_action_fingerprint(command),
+            ]
+        )
+        if key and key == str(getattr(self, "authorized_fresh_evidence_retry_consumed_key", "") or ""):
+            return False
+        self.authorized_fresh_evidence_retry_consumed_key = key
+        self.consecutive_same_action_count = 0
+        self.last_completed_fingerprint = None
+        return True
+
     def _latest_operational_journal_action_command(self) -> dict:
         snapshotter = getattr(self, "operational_journal_snapshot", None)
         if callable(snapshotter):
@@ -1087,6 +1203,7 @@ class AgentState:
             self.last_failed_action_command = command.copy()
             self.last_failed_action_result = {k: v for k, v in result.items() if k != "output"}
             self.last_failed_action_result["output"] = str(error_message)[:4000]
+            self.note_failed_edit_retry_candidate(command)
             if cmd_type == "edit_file" and error_code == "VALIDATION_ERROR":
                 details = result.get("error_details") or {}
                 mismatch_type = str(details.get("mismatch_type") or "").strip()
@@ -1105,6 +1222,7 @@ class AgentState:
                 self.last_error_next_actions = []
                 self.last_failed_action_command = None
                 self.last_failed_action_result = None
+            self.note_fresh_edit_evidence_if_applicable(command, result)
             if cmd_type in {"read_file", "read_chunk"}:
                 path = str(command.get("path") or "").strip()
                 if path and path == str(self.pending_edit_mismatch_path or "").strip():
@@ -1142,6 +1260,12 @@ class AgentState:
                     "policy_authoritative_source": "intent" if policy_actions else "",
                     "policy_keep_current_intent": True if policy_actions else False,
                 }
+
+        if defect_info is not None and self.consume_authorized_fresh_evidence_retry_exemption(
+            command,
+            str(defect_info.get("reason") or ""),
+        ):
+            defect_info = None
 
         if status in {"failed", "error"}:
             self.note_problem_action(command, result, reason=error_code or status)

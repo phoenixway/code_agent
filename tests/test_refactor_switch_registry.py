@@ -51,9 +51,8 @@ class TestSwitchRegistry(unittest.TestCase):
             self.assertEqual(value_plan_only, "compiler")
             value_memory_with_text = get_switch("board_memory.memory_checkpoint_with_text")
             self.assertEqual(value_memory_with_text, "compiler")
-            # Check a legacy one too
             value_dispatch = get_switch("dispatch.plan_first_single_action")
-            self.assertEqual(value_dispatch, "legacy")
+            self.assertEqual(value_dispatch, "compiler")
         finally:
             if original_env is None:
                 os.environ.pop("ANGELICA_REFACTOR_SWITCH_REGISTRY", None)

@@ -37,12 +37,12 @@ class RuntimeProtocolSemantics:
     has_memory_tags: bool
     has_subgoal_tags: bool
     has_memory_checkpoint: bool
-    has_plan_review_checkpoint: bool
     memory_ops: tuple[object, ...]
     subgoal_ops: tuple[object, ...]
     has_file_content: bool
     file_content: str
     effects_preview: tuple[object, ...]
+    has_plan_review_checkpoint: bool = False
 
 
 def runtime_semantics_from_compiler_analysis(compiler_analysis: Any, *, invalid_kind: str = "") -> RuntimeProtocolSemantics:
