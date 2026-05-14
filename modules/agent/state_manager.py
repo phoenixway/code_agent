@@ -1116,6 +1116,12 @@ class AgentState:
             self.consecutive_same_action_count = 1
         self.last_completed_fingerprint = fingerprint
 
+    def reset_turn_scoped_repeat_guards(self):
+        """Clear repeat-action tripwires at a real user turn boundary without clearing session context."""
+        self.consecutive_same_action_count = 0
+        self.last_completed_fingerprint = None
+        self.forbidden_next_action_fingerprint = None
+
     def _result_confirms_state_change(self, command: dict, result: dict) -> bool:
         cmd_type = str(command.get("type") or command.get("action") or "").strip().lower()
         status = str(result.get("status") or "").strip().lower()

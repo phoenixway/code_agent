@@ -124,6 +124,10 @@ class AngelicaAgent:
         if self.orchestrator.ui is None and self._ui is not None:
             self.orchestrator.ui = self._ui
 
+        reset_turn_guards = getattr(self.state, "reset_turn_scoped_repeat_guards", None)
+        if callable(reset_turn_guards):
+            reset_turn_guards()
+
         return await self.orchestrator.process(user_input)
 
     def _build_resume_control_query(self) -> str:
