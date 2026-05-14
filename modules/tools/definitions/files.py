@@ -814,11 +814,20 @@ class EditFileTool(BaseTool):
                     output_lines.append(f"Similarity hint: {similarity:.2f}.")
                 if first_diff:
                     output_lines.append(f"First diff at search_text line {first_diff['line']}, col {first_diff['col']}.")
+                from modules.tools.recovery.edit_file_recovery_policy import search_mismatch_recovery_actions
+
+                next_actions = list(
+                    search_mismatch_recovery_actions(
+                        path=path,
+                        mismatch_type=mismatch_type,
+                        active_intent_type="MODIFY",
+                    )
+                )
                 return {
                     "status": "error",
                     "error_code": "VALIDATION_ERROR",
                     "recoverable": True,
-                    "next_actions": ["read_file", "search_content", "edit_file", "write_file"],
+                    "next_actions": next_actions,
                     "output": "\n".join(output_lines),
                     "error_details": {
                         "path": path,
