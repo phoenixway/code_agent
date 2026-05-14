@@ -153,10 +153,10 @@ def test_repeated_edit_failure_recovery_actions_add_write_file_block_for_modify(
 
     actions = dispatcher._repeated_edit_failure_recovery_actions(state)
 
-    assert actions == ["read_chunk", "extract_symbol", "replace_symbol", "read_file", "search_content", "edit_file", "write_file_block"]
+    assert actions == ["read_chunk", "extract_symbol", "replace_symbol", "edit_file", "write_file_block"]
 
 
-def test_repeated_edit_failure_recovery_actions_do_not_add_write_file_block_for_non_modify():
+def test_repeated_edit_failure_recovery_actions_do_not_include_state_changing_actions_for_non_modify():
     dispatcher = ActionDispatcher(DummyAgent())
     state = DummyState(
         active_intent=DummyIntent(
@@ -167,7 +167,7 @@ def test_repeated_edit_failure_recovery_actions_do_not_add_write_file_block_for_
 
     actions = dispatcher._repeated_edit_failure_recovery_actions(state)
 
-    assert actions == ["read_chunk", "read_file", "search_content", "edit_file"]
+    assert actions == ["read_chunk", "search_content", "read_file"]
 
 
 def test_repeated_edit_failure_recovery_actions_respect_existing_non_modify_contract():

@@ -10,6 +10,7 @@ from .allowed_actions_resolver import AllowedActionsResolver
 from .orchestration.runtime.filesystem_path_failure import classify_filesystem_path_failure
 from .orchestration.shared.decision_models import RecoveryContext
 from modules.tools.action_schema import validate_tool_action_schema
+from modules.tools.recovery.edit_file_recovery_policy import search_mismatch_recovery_actions
 
 
 class ActionDispatcher:
@@ -1048,7 +1049,11 @@ class ActionDispatcher:
             if not should_stop and threshold_reached:
                 if is_repeated_edit_validation_failure:
                     should_stop = True
-                    recovery_actions = self._repeated_edit_failure_recovery_actions(state)
+                    recovery_actions = self._repeated_edit_failure_recovery_actions(
+                        state,
+                        command=command,
+                        error_details=error_details,
+                    )
                     mismatch_note = " search mismatch" if is_repeated_edit_search_mismatch else " validation failure"
                     output_text += (
                         f"\n[SYSTEM: Repeated edit_file{mismatch_note} detected. "
@@ -1242,22 +1247,34 @@ class ActionDispatcher:
             return active_allowed
         return recommended
 
-    def _repeated_edit_failure_recovery_actions(self, state) -> list[str]:
-        base_actions = ["read_chunk", "extract_symbol", "replace_symbol", "read_file", "search_content", "edit_file", "write_file_block"]
+    def _repeated_edit_failure_recovery_actions(
+        self,
+        state,
+        *,
+        command: dict | None = None,
+        error_details: dict | None = None,
+    ) -> list[str]:
         active_type = self._active_intent_type(state)
         active_allowed = self._active_intent_allowed_actions(state)
+        mismatch_type = str((error_details or {}).get("mismatch_type") or "").strip()
+        path = str((command or {}).get("path") or "").strip()
 
-        if active_type == "MODIFY":
-            for recovery_action in ["extract_symbol", "replace_symbol", "write_file_block"]:
-                if recovery_action not in active_allowed:
-                    active_allowed = active_allowed + [recovery_action]
+        actions = list(
+            search_mismatch_recovery_actions(
+                path=path,
+                mismatch_type=mismatch_type,
+                active_intent_type=active_type,
+                active_allowed_actions=tuple(active_allowed),
+            )
+        )
 
-        if active_allowed:
-            filtered = [action for action in base_actions if action in active_allowed]
+        if active_type != "MODIFY" and active_allowed:
+            state_changing = {"edit_file", "replace_symbol", "write_file", "write_file_block", "append_file_block", "create_file"}
+            filtered = [action for action in actions if action in active_allowed and action not in state_changing]
             if filtered:
                 return filtered
-            return active_allowed
-        return base_actions
+
+        return actions
 
     def _schema_validation_preflight(self, command: dict, state) -> dict | None:
         violation = validate_tool_action_schema(command)

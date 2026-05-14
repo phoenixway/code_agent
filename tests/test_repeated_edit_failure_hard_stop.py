@@ -112,8 +112,6 @@ async def test_repeated_edit_validation_failure_hard_stop_includes_write_file_bl
         "read_chunk",
         "extract_symbol",
         "replace_symbol",
-        "read_file",
-        "search_content",
         "edit_file",
         "write_file_block",
     ]
@@ -121,8 +119,6 @@ async def test_repeated_edit_validation_failure_hard_stop_includes_write_file_bl
         "read_chunk",
         "extract_symbol",
         "replace_symbol",
-        "read_file",
-        "search_content",
         "edit_file",
         "write_file_block",
     ]
@@ -163,10 +159,11 @@ async def test_repeated_edit_validation_failure_hard_stop_excludes_write_file_bl
     assert state.pending_loop_stop_info["reason"] == "repeated_edit_failure_hard_stop"
     assert state.pending_loop_stop_info["policy_allowed_actions"] == [
         "read_chunk",
-        "read_file",
         "search_content",
-        "edit_file",
+        "read_file",
     ]
+    assert "edit_file" not in state.pending_loop_stop_info["policy_allowed_actions"]
+    assert "replace_symbol" not in state.pending_loop_stop_info["policy_allowed_actions"]
     assert "write_file_block" not in state.pending_loop_stop_info["policy_allowed_actions"]
 
 
