@@ -86,6 +86,24 @@ def test_replace_symbol_commit_requires_plan_review_before_next_action():
 
 
 
+def test_pending_plan_review_blocks_next_action_without_checkpoint():
+    harness = GateHarness(pending=True, has_action=True, has_checkpoint=False)
+
+    assert harness._plan_review_gate_should_block(harness.parsed_output, 1) is True
+
+
+def test_pending_plan_review_allows_action_with_checkpoint():
+    harness = GateHarness(pending=True, has_action=True, has_checkpoint=True)
+
+    assert harness._plan_review_gate_should_block(harness.parsed_output, 1) is False
+
+
+def test_pending_plan_review_allows_terminal_text_without_action():
+    harness = GateHarness(pending=True, has_action=False, has_checkpoint=False)
+
+    assert harness._plan_review_gate_should_block(harness.parsed_output, 1) is False
+
+
 def test_missing_plan_review_prompt_mentions_subgoal_review_and_checkpoint():
     class PromptHarness(RecoveryPromptBuilderMixin):
         pass

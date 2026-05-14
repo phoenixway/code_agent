@@ -121,6 +121,70 @@ def test_fallback_execution_commit_feeds_plan_review_observer_for_replace_symbol
 
 
 
+def test_fallback_execution_commit_feeds_plan_review_observer_for_edit_file():
+    from modules.agent.orchestration.runtime.execution_commit_observer import ExecutionCommitObserverAdapter
+
+    harness = Harness()
+    commit = harness._build_execution_commit(
+        None,
+        [_action_segment("edit_file", "src/Screen.kt")],
+        ["SYSTEM RESULT for `edit_file`: Changes applied to src/Screen.kt"],
+        False,
+        iteration=_iteration("edit_file", "src/Screen.kt"),
+    )
+
+    ExecutionCommitObserverAdapter(harness.state).observe_execution_commit(
+        None,
+        commit,
+        sys_results=["SYSTEM RESULT for `edit_file`: Changes applied to src/Screen.kt"],
+    )
+
+    assert harness.state.plan_review_required_after_state_change is True
+    assert harness.state.plan_review_required_action_type == "edit_file"
+    assert harness.state.plan_review_required_target == "src/Screen.kt"
+    assert harness.state.plan_review_required_action_effects == ["edit_file:src/Screen.kt"]
+    trace_entry = harness.state.orchestration_trace[-1]
+    assert trace_entry.stage == "plan_review_gate"
+    assert trace_entry.decision == "required_set"
+    assert trace_entry.fields["fallback_commit_used"] is True
+    assert trace_entry.fields["fallback_commit_reason"] == "no_execution_plan"
+    assert trace_entry.fields["plan_review_required_action_type"] == "edit_file"
+    assert trace_entry.fields["plan_review_required_target"] == "src/Screen.kt"
+
+
+
+def test_fallback_execution_commit_feeds_plan_review_observer_for_edit_file():
+    from modules.agent.orchestration.runtime.execution_commit_observer import ExecutionCommitObserverAdapter
+
+    harness = Harness()
+    commit = harness._build_execution_commit(
+        None,
+        [_action_segment("edit_file", "src/Screen.kt")],
+        ["SYSTEM RESULT for `edit_file`: Changes applied to src/Screen.kt"],
+        False,
+        iteration=_iteration("edit_file", "src/Screen.kt"),
+    )
+
+    ExecutionCommitObserverAdapter(harness.state).observe_execution_commit(
+        None,
+        commit,
+        sys_results=["SYSTEM RESULT for `edit_file`: Changes applied to src/Screen.kt"],
+    )
+
+    assert harness.state.plan_review_required_after_state_change is True
+    assert harness.state.plan_review_required_action_type == "edit_file"
+    assert harness.state.plan_review_required_target == "src/Screen.kt"
+    assert harness.state.plan_review_required_action_effects == ["edit_file:src/Screen.kt"]
+    trace_entry = harness.state.orchestration_trace[-1]
+    assert trace_entry.stage == "plan_review_gate"
+    assert trace_entry.decision == "required_set"
+    assert trace_entry.fields["fallback_commit_used"] is True
+    assert trace_entry.fields["fallback_commit_reason"] == "no_execution_plan"
+    assert trace_entry.fields["plan_review_required_action_type"] == "edit_file"
+    assert trace_entry.fields["plan_review_required_target"] == "src/Screen.kt"
+
+
+
 def test_fallback_execution_commit_feeds_plan_review_observer_for_write_file_block():
     from modules.agent.orchestration.runtime.execution_commit_observer import ExecutionCommitObserverAdapter
 
