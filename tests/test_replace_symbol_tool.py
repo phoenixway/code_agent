@@ -56,6 +56,72 @@ async def test_replace_symbol_accepts_name_and_newcontent_aliases(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_replace_symbol_replaces_unique_kotlin_interface(tmp_path):
+    path = tmp_path / "CapabilityDescriptor.kt"
+    path.write_text(
+        "package demo\n\n"
+        "interface CapabilityDescriptor {\n"
+        "    val id: CapabilityId\n"
+        "    val label: String\n"
+        "    val iconRes: Int?\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    tool = ReplaceSymbolTool()
+    result = await tool.execute(
+        path=str(path),
+        symbol_name="CapabilityDescriptor",
+        symbol_kind="interface",
+        new_content=(
+            "interface CapabilityDescriptor {\n"
+            "    val id: CapabilityId\n"
+            "    val name: String\n"
+            "    val iconRes: Int?\n"
+            "}\n"
+        ),
+    )
+
+    assert isinstance(result, ChangeProposal)
+    assert "val label: String" in result.original_content
+    assert "val name: String" in result.new_content
+    assert "interface CapabilityDescriptor" in result.new_content
+
+
+@pytest.mark.asyncio
+async def test_replace_symbol_replaces_unique_kotlin_interface(tmp_path):
+    path = tmp_path / "CapabilityDescriptor.kt"
+    path.write_text(
+        "package demo\n\n"
+        "interface CapabilityDescriptor {\n"
+        "    val id: CapabilityId\n"
+        "    val label: String\n"
+        "    val iconRes: Int?\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    tool = ReplaceSymbolTool()
+    result = await tool.execute(
+        path=str(path),
+        symbol_name="CapabilityDescriptor",
+        symbol_kind="interface",
+        new_content=(
+            "interface CapabilityDescriptor {\n"
+            "    val id: CapabilityId\n"
+            "    val name: String\n"
+            "    val iconRes: Int?\n"
+            "}\n"
+        ),
+    )
+
+    assert isinstance(result, ChangeProposal)
+    assert "val label: String" in result.original_content
+    assert "val name: String" in result.new_content
+    assert "interface CapabilityDescriptor" in result.new_content
+
+
+@pytest.mark.asyncio
 async def test_replace_symbol_rejects_replacement_that_renames_symbol(tmp_path):
     path = tmp_path / "Example.kt"
     path.write_text(

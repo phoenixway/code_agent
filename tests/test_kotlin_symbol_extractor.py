@@ -60,6 +60,62 @@ def test_extract_symbol_kotlin_class_signature_only_excludes_body(tmp_path):
     assert result["file_content"].strip().endswith(": ViewModel()")
 
 
+def test_extract_symbol_kotlin_interface_with_body_returns_interface_kind(tmp_path):
+    path = tmp_path / "CapabilityDescriptor.kt"
+    path.write_text(
+        "package demo\n\n"
+        "interface CapabilityDescriptor {\n"
+        "    val id: CapabilityId\n"
+        "    val label: String\n"
+        "    val supportedViews: Set<ViewId>\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    result = KotlinSymbolExtractor().extract_symbol(
+        path=str(path),
+        symbol_name="CapabilityDescriptor",
+        symbol_kind="interface",
+        include_signature=True,
+        include_body=True,
+        include_line_range=True,
+    )
+
+    assert result["status"] == "success"
+    assert result["symbol_kind"] == "interface"
+    assert "interface CapabilityDescriptor" in result["file_content"]
+    assert "val label: String" in result["file_content"]
+    assert result["file_content"].strip().endswith("}")
+
+
+def test_extract_symbol_kotlin_interface_with_body_returns_interface_kind(tmp_path):
+    path = tmp_path / "CapabilityDescriptor.kt"
+    path.write_text(
+        "package demo\n\n"
+        "interface CapabilityDescriptor {\n"
+        "    val id: CapabilityId\n"
+        "    val label: String\n"
+        "    val supportedViews: Set<ViewId>\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    result = KotlinSymbolExtractor().extract_symbol(
+        path=str(path),
+        symbol_name="CapabilityDescriptor",
+        symbol_kind="interface",
+        include_signature=True,
+        include_body=True,
+        include_line_range=True,
+    )
+
+    assert result["status"] == "success"
+    assert result["symbol_kind"] == "interface"
+    assert "interface CapabilityDescriptor" in result["file_content"]
+    assert "val label: String" in result["file_content"]
+    assert result["file_content"].strip().endswith("}")
+
+
 def test_extract_symbol_kotlin_object_with_body_returns_full_object(tmp_path):
     path = tmp_path / "ChecklistActions.kt"
     path.write_text(
