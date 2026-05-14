@@ -7205,6 +7205,28 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Phase 53 — Step 10/N: Plan Review Checkpoint Clear Hook Implementation.
 
 ---
+
+#### Phase 53 — Step 10/N: Plan Review Checkpoint Clear Hook Implementation
+
+- **Status**: Done.
+- **Goal**: Connect the passive `<plan_review_done />` compiler fact to passive plan-review-required state clearing without enforcing the gate yet.
+- **Completed Outcome**:
+  - Added a passive clear hook in the response classification path after compiler diagnosis is available.
+  - The hook checks runtime protocol semantics for `has_plan_review_checkpoint`.
+  - When the fact is true, the hook calls the existing `ExecutionCommitObserverAdapter.clear_plan_review_required_after_checkpoint()` helper.
+  - Added tests proving `<plan_review_done />` clears existing plan-review-required state.
+  - Added tests proving responses without `<plan_review_done />` do not clear the flag.
+  - Added tests proving action responses without `<plan_review_done />` are not blocked by this hook.
+  - No runtime gate enforcement was added.
+  - No recovery branch was added.
+  - No dispatch behavior changed.
+  - No ActionPolicy behavior changed.
+  - No repeat-edit guard was added.
+  - No automatic intent completion was added.
+- **Next**:
+  - Phase 53 — Step 11/N: Plan Review Gate Enforcement Decision.
+
+---
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.

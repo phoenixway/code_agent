@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 53 — Step 9/N: Plan Review Checkpoint Clear Hook Decision
+- **Phase**: Phase 53 — Step 10/N: Plan Review Checkpoint Clear Hook Implementation
 - **Status**: Complete.
-- **Next Step**: Phase 53 — Step 10/N: Plan Review Checkpoint Clear Hook Implementation.
-- **Boundary**: Narrow plan-review checkpoint clear hook is approved. Next work may only clear passive `plan_review_required_after_state_change` bookkeeping when compiler/runtime semantics report `has_plan_review_checkpoint`. No runtime gate enforcement, dispatch behavior change, ActionPolicy change, production behavior change beyond passive state bookkeeping clear, recovery behavior change, final-answer stop/continue behavior change, authority transfer, switch change, repeat-edit guard, automatic intent completion, or legacy cleanup is allowed.
+- **Next Step**: Phase 53 — Step 11/N: Plan Review Gate Enforcement Decision.
+- **Boundary**: Passive plan-review checkpoint clear hook is implemented in the response classification path. When compiler/runtime semantics report `has_plan_review_checkpoint`, runtime clears passive `plan_review_required_after_state_change` bookkeeping. No runtime gate enforcement, dispatch behavior change, ActionPolicy change, production behavior change beyond passive state bookkeeping clear, recovery behavior change, final-answer stop/continue behavior change, authority transfer, switch change, repeat-edit guard, automatic intent completion, or legacy cleanup was added.
 
 ## Step 4I Parity Matrix
 

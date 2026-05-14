@@ -1031,6 +1031,22 @@ class ResponsePipelineStagesMixin:
                     shadow_only=True,
                 )
 
+    def _clear_plan_review_required_if_checkpoint(self, parsed_output) -> bool:
+        runtime_semantics = getattr(parsed_output, "runtime_protocol_semantics", None)
+        if not bool(getattr(runtime_semantics, "has_plan_review_checkpoint", False)):
+            return False
+
+        from ..runtime.execution_commit_observer import ExecutionCommitObserverAdapter
+
+        ExecutionCommitObserverAdapter(self.state).clear_plan_review_required_after_checkpoint()
+        self.stage_logger.log(
+            "response_pipeline",
+            "pass",
+            reason="plan_review_checkpoint_cleared",
+            source="plan_review_checkpoint",
+        )
+        return True
+
     def _run_classification_stage(self, step, raw_response: str, checkpoint_state: CheckpointStageState):
         normalized = self._normalize_response_stage(
             checkpoint_state.response,
@@ -1042,6 +1058,7 @@ class ResponsePipelineStagesMixin:
         parsed_output = self._classify_intent_output(response, segments, allow_think_autorepair=True)
         self._merge_normalization_metadata(parsed_output, normalized)
         compiler_analysis = self._apply_compiler_diagnosis(parsed_output, response)
+        self._clear_plan_review_required_if_checkpoint(parsed_output)
         parsed_output.model_stop_reason = str(getattr(step, "model_stop_reason", "") or "").strip()
         checkpoint_has_think = self.semantics.has_complete_think_before_action(raw_response)
         checkpoint_has_marker = bool(
