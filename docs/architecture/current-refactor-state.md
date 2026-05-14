@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 54 — Step 2/N: Plan Review / Fallback Commit Trace Hardening Characterization
+- **Phase**: Phase 54 — Step 3/N: Plan Review / Fallback Commit Passive Trace Fields Implementation
 - **Status**: Complete.
-- **Next Step**: Phase 54 — Step 3/N: Plan Review / Fallback Commit Passive Trace Fields Implementation.
-- **Boundary**: Trace hardening gaps are characterized. Next work may only add passive trace/default/export fields and tests for fallback commit usage, plan-review-required activation, checkpoint clearing, and gate blocking diagnostics. No dispatch behavior change, ActionPolicy change, gate behavior change, recovery behavior change, repeat-edit hard guard, automatic intent completion, authority transfer, switch change, or legacy cleanup is allowed.
+- **Next Step**: Phase 54 — Step 4/N: Plan Review / Fallback Commit Observability Closure.
+- **Boundary**: Passive trace fields and tests were added for plan-review-required activation, checkpoint clearing, gate blocking metadata, and fallback commit diagnostics. No dispatch behavior change, ActionPolicy change, gate behavior change, recovery behavior change, repeat-edit hard guard, automatic intent completion, authority transfer, switch change, or legacy cleanup was added.
 
 ## Step 4I Parity Matrix
 

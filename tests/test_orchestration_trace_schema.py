@@ -40,6 +40,13 @@ class OrchestrationTraceSchemaTests(unittest.TestCase):
         self.assertEqual("", fields["think_repair_tag"])
         self.assertIsNone(fields["execution_plan"])
         self.assertIsNone(fields["execution_commit"])
+        self.assertIsNone(fields["plan_review_required_after_state_change"])
+        self.assertEqual("", fields["plan_review_required_reason"])
+        self.assertEqual("", fields["plan_review_required_action_type"])
+        self.assertEqual("", fields["plan_review_required_target"])
+        self.assertIsNone(fields["plan_review_required_action_effects"])
+        self.assertIsNone(fields["fallback_commit_used"])
+        self.assertEqual("", fields["fallback_commit_reason"])
 
     def test_stage_logger_preserves_semantic_decision_record_field(self):
         state = self._state()

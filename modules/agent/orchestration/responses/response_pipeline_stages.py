@@ -1038,12 +1038,21 @@ class ResponsePipelineStagesMixin:
 
         from ..runtime.execution_commit_observer import ExecutionCommitObserverAdapter
 
+        cleared_reason = str(getattr(self.state, "plan_review_required_reason", "") or "")
+        cleared_action_type = str(getattr(self.state, "plan_review_required_action_type", "") or "")
+        cleared_target = str(getattr(self.state, "plan_review_required_target", "") or "")
+        cleared_action_effects = list(getattr(self.state, "plan_review_required_action_effects", []) or [])
         ExecutionCommitObserverAdapter(self.state).clear_plan_review_required_after_checkpoint()
         self.stage_logger.log(
             "response_pipeline",
             "pass",
             reason="plan_review_checkpoint_cleared",
             source="plan_review_checkpoint",
+            plan_review_required_after_state_change=False,
+            plan_review_required_reason=cleared_reason,
+            plan_review_required_action_type=cleared_action_type,
+            plan_review_required_target=cleared_target,
+            plan_review_required_action_effects=cleared_action_effects,
         )
         return True
 
@@ -1535,8 +1544,13 @@ class ResponsePipelineStagesMixin:
                 reason="missing_plan_review_after_state_change",
                 source="plan_review_gate",
                 action_count=parsed_action_count,
+                plan_review_required_after_state_change=True,
+                plan_review_required_reason=str(getattr(self.state, "plan_review_required_reason", "") or ""),
                 plan_review_required_action_type=str(getattr(self.state, "plan_review_required_action_type", "") or ""),
                 plan_review_required_target=str(getattr(self.state, "plan_review_required_target", "") or ""),
+                plan_review_required_action_effects=list(
+                    getattr(self.state, "plan_review_required_action_effects", []) or []
+                ),
             )
             return ResponsePipelineOutcome.continue_with(
                 self._plan_review_gate_recovery_prompt(),

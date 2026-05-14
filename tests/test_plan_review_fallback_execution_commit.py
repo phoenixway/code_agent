@@ -81,3 +81,10 @@ def test_fallback_execution_commit_feeds_plan_review_observer_for_write_file_blo
     assert harness.state.plan_review_required_action_type == "write_file_block"
     assert harness.state.plan_review_required_target == "test_file.txt"
     assert harness.state.plan_review_required_action_effects == ["write_file_block:test_file.txt"]
+    trace_entry = harness.state.orchestration_trace[-1]
+    assert trace_entry.stage == "plan_review_gate"
+    assert trace_entry.decision == "required_set"
+    assert trace_entry.fields["fallback_commit_used"] is True
+    assert trace_entry.fields["fallback_commit_reason"] == "no_execution_plan"
+    assert trace_entry.fields["plan_review_required_action_type"] == "write_file_block"
+    assert trace_entry.fields["plan_review_required_target"] == "test_file.txt"

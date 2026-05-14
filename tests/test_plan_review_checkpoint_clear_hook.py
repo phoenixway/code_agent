@@ -78,6 +78,11 @@ def test_plan_review_checkpoint_clears_required_state_in_classification_stage():
         "pass",
         reason="plan_review_checkpoint_cleared",
         source="plan_review_checkpoint",
+        plan_review_required_after_state_change=False,
+        plan_review_required_reason="state_changing_action_committed",
+        plan_review_required_action_type="edit_file",
+        plan_review_required_target="src/example.py",
+        plan_review_required_action_effects=["edit_file:src/example.py"],
     )
 
 

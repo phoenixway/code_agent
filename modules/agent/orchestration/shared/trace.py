@@ -30,6 +30,13 @@ TRACE_SCHEMA_DEFAULTS = {
     "active_intent_unchanged": None,
     "before_active_intent_id": "",
     "after_active_intent_id": "",
+    "plan_review_required_after_state_change": None,
+    "plan_review_required_reason": "",
+    "plan_review_required_action_type": "",
+    "plan_review_required_target": "",
+    "plan_review_required_action_effects": None,
+    "fallback_commit_used": None,
+    "fallback_commit_reason": "",
 }
 
 

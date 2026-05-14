@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from ..shared.trace import append_trace_entry
+
 
 STATE_CHANGING_FILE_ACTIONS = {
     "write_file",
@@ -114,12 +116,57 @@ class ExecutionCommitObserverAdapter:
         if not self.commit_requires_plan_review(execution_commit, sys_results=sys_results):
             return False
         action_type, target, action_effects = self._primary_action_effect_parts(execution_commit)
+        reason = "state_changing_action_committed"
         self._safe_set("plan_review_required_after_state_change", True)
-        self._safe_set("plan_review_required_reason", "state_changing_action_committed")
+        self._safe_set("plan_review_required_reason", reason)
         self._safe_set("plan_review_required_action_type", action_type)
         self._safe_set("plan_review_required_target", target)
         self._safe_set("plan_review_required_action_effects", action_effects)
+        self.append_plan_review_required_trace_entry(
+            execution_commit,
+            action_type=action_type,
+            target=target,
+            action_effects=action_effects,
+            reason=reason,
+        )
         return True
+
+    def append_plan_review_required_trace_entry(
+        self,
+        execution_commit,
+        *,
+        action_type: str,
+        target: str,
+        action_effects: list[str],
+        reason: str,
+    ) -> None:
+        transaction_kind = str(getattr(execution_commit, "transaction_kind", "") or "")
+        fallback_commit_used = transaction_kind == "fallback_single_action"
+        append_trace_entry(
+            self.state,
+            stage="plan_review_gate",
+            decision="required_set",
+            fields={
+                "reason": reason,
+                "source": "execution_commit_observer",
+                "plan_review_required_after_state_change": True,
+                "plan_review_required_reason": reason,
+                "plan_review_required_action_type": str(action_type or ""),
+                "plan_review_required_target": str(target or ""),
+                "plan_review_required_action_effects": list(action_effects or []),
+                "fallback_commit_used": fallback_commit_used,
+                "fallback_commit_reason": "no_execution_plan" if fallback_commit_used else "",
+                "execution_commit": {
+                    "shape": str(getattr(execution_commit, "shape", "") or ""),
+                    "transaction_kind": transaction_kind,
+                    "committed_action_count": int(getattr(execution_commit, "committed_action_count", 0) or 0),
+                    "committed_system_result_count": int(
+                        getattr(execution_commit, "committed_system_result_count", 0) or 0
+                    ),
+                    "action_effects": list(action_effects or []),
+                },
+            },
+        )
 
     def clear_plan_review_required_after_checkpoint(self) -> None:
         self._safe_set("plan_review_required_after_state_change", False)

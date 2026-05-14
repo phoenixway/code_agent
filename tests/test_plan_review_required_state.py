@@ -78,6 +78,14 @@ def test_system_result_only_state_changing_commit_sets_plan_review_required():
     assert state.plan_review_required_action_type == "create_file"
     assert state.plan_review_required_target == "smoke_test.txt"
     assert state.plan_review_required_action_effects == ["create_file:smoke_test.txt"]
+    trace_entry = state.orchestration_trace[-1]
+    assert trace_entry.stage == "plan_review_gate"
+    assert trace_entry.decision == "required_set"
+    assert trace_entry.fields["source"] == "execution_commit_observer"
+    assert trace_entry.fields["plan_review_required_after_state_change"] is True
+    assert trace_entry.fields["plan_review_required_action_type"] == "create_file"
+    assert trace_entry.fields["plan_review_required_target"] == "smoke_test.txt"
+    assert trace_entry.fields["fallback_commit_used"] is False
 
 
 def test_failed_system_result_does_not_set_plan_review_required():
