@@ -519,6 +519,36 @@ class RecoveryPromptBuilderMixin:
             safe_recovery_action=preferred,
         )
 
+    def build_missing_plan_review_after_state_change_prompt(
+        self,
+        *,
+        action_type: str = "",
+        target: str = "",
+        reason: str = "",
+        action_effects: list[str] | None = None,
+    ) -> str:
+        action_type = str(action_type or "").strip()
+        target = str(target or "").strip()
+        reason = str(reason or "state_changing_action_committed").strip()
+        effects = [str(effect or "").strip() for effect in (action_effects or []) if str(effect or "").strip()]
+        previous = action_type or "state-changing action"
+        if target:
+            previous = f"{previous} on {target}"
+        effect_line = f"Previous action effects: {', '.join(effects)}.\n" if effects else ""
+        return (
+            "SYSTEM: A previous state-changing action succeeded, so the active plan/subgoal board must be reviewed before another tool action.\n"
+            f"Reason: {reason}.\n"
+            f"Previous completed action: {previous}.\n"
+            f"{effect_line}"
+            "Before any next <action>, review the active subgoals.\n"
+            "If the previous action satisfied a subgoal, update it using the existing <subgoal ... /> protocol, preferably action=\"mark_done\" with concrete evidence.\n"
+            "Then emit <plan_review_done />.\n"
+            "After that, if a distinct next tool step is still needed, return exactly one valid <action>.\n"
+            "Do not repeat the same edit just because the old subgoal text still says to make it.\n"
+            "Do not automatically complete the whole intent unless the goal is actually complete.\n"
+            "Do not suppress legitimate verification or a distinct follow-up edit."
+        )
+
     def build_missing_executable_prompt(self, stop_info: dict | None) -> str:
         ctx = self._recovery_context(stop_info)
         return self.build_current_intent_retry_recovery_query(

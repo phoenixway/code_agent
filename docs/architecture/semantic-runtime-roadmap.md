@@ -7279,6 +7279,32 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Phase 53 — Step 12/N: Plan Review Gate Enforcement Implementation.
 
 ---
+
+#### Phase 53 — Step 12/N: Plan Review Gate Enforcement Implementation
+
+- **Status**: Done.
+- **Goal**: Enforce the post-state-change plan-review checkpoint before ActionPolicy/dispatch.
+- **Completed Outcome**:
+  - Added a response-pipeline gate before `action_policy.decide(...)`.
+  - The gate blocks action proposals when `plan_review_required_after_state_change` is true and the current response lacks `has_plan_review_checkpoint`.
+  - The gate recovers with reason `missing_plan_review_after_state_change` and source `plan_review_gate`.
+  - Added recovery prompt builder support for `missing_plan_review_after_state_change`.
+  - The recovery prompt tells the model that a previous state-changing action succeeded.
+  - The prompt asks the model to review active subgoals and emit `<plan_review_done />` before any next action.
+  - The prompt recommends existing `<subgoal ... />` mutations, especially `mark_done` with evidence, when the previous action satisfied a subgoal.
+  - Added tests proving pending review + action without checkpoint is blocked.
+  - Added tests proving action with checkpoint is allowed past the gate.
+  - Added tests proving no pending review means no block.
+  - Added tests proving plain text without action is not blocked.
+  - No dispatch behavior changed.
+  - No ActionPolicy behavior changed.
+  - No repeat-edit hard guard was added.
+  - No automatic intent completion was added.
+  - No subgoal-board mutation from `<plan_review_done />` alone was added.
+- **Next**:
+  - Phase 53 — Step 13/N: Plan Review Gate Closure / Repeat-Edit Guard Decision.
+
+---
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.

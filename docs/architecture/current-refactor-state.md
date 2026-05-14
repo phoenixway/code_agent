@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 53 — Step 11/N: Plan Review Gate Enforcement Decision
+- **Phase**: Phase 53 — Step 12/N: Plan Review Gate Enforcement Implementation
 - **Status**: Complete.
-- **Next Step**: Phase 53 — Step 12/N: Plan Review Gate Enforcement Implementation.
-- **Boundary**: Narrow pre-dispatch plan-review gate enforcement is approved. Next work may only block action proposals when `plan_review_required_after_state_change` is true and the current response lacks `has_plan_review_checkpoint`. Enforcement must run before ActionPolicy/dispatch and recover with `missing_plan_review_after_state_change`. No dispatch behavior change, ActionPolicy change, production behavior change beyond this gate, repeat-edit hard guard, automatic intent completion, subgoal-board mutation from the marker alone, authority transfer, switch change, or legacy cleanup is allowed.
+- **Next Step**: Phase 53 — Step 13/N: Plan Review Gate Closure / Repeat-Edit Guard Decision.
+- **Boundary**: Narrow pre-dispatch plan-review gate enforcement is implemented. Action proposals are blocked with `missing_plan_review_after_state_change` when passive plan-review-required state is set and the current response lacks `has_plan_review_checkpoint`. Enforcement runs before ActionPolicy/dispatch. No dispatch behavior change, ActionPolicy change, repeat-edit hard guard, automatic intent completion, subgoal-board mutation from the marker alone, authority transfer, switch change, or legacy cleanup was added.
 
 ## Step 4I Parity Matrix
 

@@ -1047,6 +1047,32 @@ class ResponsePipelineStagesMixin:
         )
         return True
 
+    def _has_plan_review_checkpoint(self, parsed_output) -> bool:
+        runtime_semantics = getattr(parsed_output, "runtime_protocol_semantics", None)
+        return bool(getattr(runtime_semantics, "has_plan_review_checkpoint", False))
+
+    def _plan_review_gate_should_block(self, parsed_output, parsed_action_count: int) -> bool:
+        if not bool(getattr(self.state, "plan_review_required_after_state_change", False)):
+            return False
+        if self._has_plan_review_checkpoint(parsed_output):
+            return False
+        return bool(self.semantics.has_any_action_proposal(parsed_output, parsed_action_count))
+
+    def _plan_review_gate_recovery_prompt(self) -> str:
+        builder = getattr(self.prompt_builder, "build_missing_plan_review_after_state_change_prompt", None)
+        if callable(builder):
+            return builder(
+                action_type=str(getattr(self.state, "plan_review_required_action_type", "") or ""),
+                target=str(getattr(self.state, "plan_review_required_target", "") or ""),
+                reason=str(getattr(self.state, "plan_review_required_reason", "") or ""),
+                action_effects=list(getattr(self.state, "plan_review_required_action_effects", []) or []),
+            )
+        return (
+            "SYSTEM: A previous state-changing action succeeded. Review active subgoals before the next tool action.\n"
+            "If the previous action satisfied a subgoal, update it with <subgoal ... /> using concrete evidence.\n"
+            "Then emit <plan_review_done /> before any next <action>."
+        )
+
     def _run_classification_stage(self, step, raw_response: str, checkpoint_state: CheckpointStageState):
         normalized = self._normalize_response_stage(
             checkpoint_state.response,
@@ -1501,6 +1527,28 @@ class ResponsePipelineStagesMixin:
                     reason=parsed_output.invalid_kind,
                     source="structural_invalid_guard",
                 )
+
+        if self._plan_review_gate_should_block(parsed_output, parsed_action_count):
+            self.stage_logger.log(
+                "response_pipeline",
+                "continue",
+                reason="missing_plan_review_after_state_change",
+                source="plan_review_gate",
+                action_count=parsed_action_count,
+                plan_review_required_action_type=str(getattr(self.state, "plan_review_required_action_type", "") or ""),
+                plan_review_required_target=str(getattr(self.state, "plan_review_required_target", "") or ""),
+            )
+            return ResponsePipelineOutcome.continue_with(
+                self._plan_review_gate_recovery_prompt(),
+                response_text=response,
+                segments=segments,
+                parsed_output=parsed_output,
+                parsed_action_count=parsed_action_count,
+                malformed_action_retries=0,
+                audit_marker_retries=0,
+                reason="missing_plan_review_after_state_change",
+                source="plan_review_gate",
+            )
 
         try:
             action_policy_decision = await self.action_policy.decide(
