@@ -7045,6 +7045,42 @@ This document outlines the phased plan to migrate the runtime from legacy respon
   - Phase 53 — Step 6/N: Plan Review Marker Runtime Surface Closure / Gate Decision.
 
 ---
+
+#### Phase 53 — Step 6/N: Plan Review Marker Runtime Surface Closure / Gate Decision
+
+- **Status**: Done.
+- **Goal**: Close the passive compiler/protocol marker slice and decide whether to proceed toward runtime gate characterization.
+- **Completed Outcome**:
+  - Reviewed the Step 5 marker implementation boundary.
+  - Confirmed `<plan_review_done />` is now a first-class passive protocol marker.
+  - Confirmed the marker is surfaced through passive compiler/runtime semantic facts.
+  - Confirmed the marker alone does not commit subgoal changes.
+  - Confirmed subgoal state changes remain owned by existing `<subgoal ... />` mutations.
+  - Confirmed no runtime gate, recovery branch, repeat-edit guard, dispatch behavior change, ActionPolicy change, or automatic intent completion was added.
+- **Decision**: Keep Phase 53 open and proceed to runtime gate characterization.
+- **Rationale**:
+  - The compiler gap is closed, but the original defect remains possible until runtime can require plan review after successful state-changing actions.
+  - The next safe step is not enforcement; it is characterizing where review-required state should be set and cleared.
+  - A runtime gate must be designed around existing dispatch success surfaces and existing protocol semantics to avoid changing dispatch authority or ActionPolicy behavior prematurely.
+- **Approved Scope for Step 7**:
+  - Characterize where successful state-changing actions are observable after dispatch.
+  - Characterize the smallest safe state surface for `plan_review_required_after_state_change`.
+  - Characterize how `has_plan_review_checkpoint` could clear the future flag.
+  - Identify tests for future enforcement without implementing enforcement yet.
+- **Forbidden**:
+  - No runtime gate enforcement yet.
+  - No dispatch behavior change.
+  - No ActionPolicy change.
+  - No recovery branch yet.
+  - No repeat-edit guard yet.
+  - No automatic intent completion.
+  - No production behavior change.
+  - No authority transfer or switch change.
+  - No legacy cleanup.
+- **Next**:
+  - Phase 53 — Step 7/N: Plan Review Required State Flag Characterization.
+
+---
 ### Phase 12: Observability/Replay
 
 - **Goal**: Improve debugging by enabling replay of semantic decisions.
