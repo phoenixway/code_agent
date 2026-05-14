@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 from modules.agent.action_dispatcher import ActionDispatcher
-from modules.tools.action_schema import validate_tool_action_schema
+from modules.tools.action_schema import EDIT_FILE_SCHEMA, validate_tool_action_schema
 
 
 class DummyLog:
@@ -47,6 +47,17 @@ def test_edit_file_schema_rejects_line_range_fields():
     assert "start_line" in violation.forbidden_fields
     assert "end_line" in violation.forbidden_fields
     assert "line ranges" in violation.message
+
+
+def test_edit_file_schema_recommended_actions_come_from_structural_policy():
+    assert EDIT_FILE_SCHEMA.recommended_actions == (
+        "read_chunk",
+        "read_file_skeleton",
+        "extract_symbol",
+        "replace_symbol",
+        "edit_file",
+        "write_file_block",
+    )
 
 
 def test_edit_file_schema_accepts_exact_replacement_contract():

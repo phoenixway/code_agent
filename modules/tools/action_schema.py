@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from modules.tools.recovery.edit_file_recovery_policy import malformed_edit_file_recovery_actions
+
 
 @dataclass(frozen=True)
 class ToolActionSchemaViolation:
@@ -79,7 +81,7 @@ EDIT_FILE_SCHEMA = ToolActionSchema(
     ),
     malformed_reason="malformed_edit_file_payload",
     malformed_error_code="MALFORMED_EDIT_FILE_PAYLOAD",
-    recommended_actions=("read_chunk", "extract_symbol", "replace_symbol", "read_file", "search_content", "edit_file", "write_file_block"),
+    recommended_actions=malformed_edit_file_recovery_actions(active_intent_type="MODIFY"),
 )
 
 

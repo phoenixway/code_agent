@@ -101,7 +101,11 @@ def resolve_edit_file_recovery(ctx: EditFileRecoveryContext | None = None) -> Ed
         )
 
     if active_type == "MODIFY":
-        prefer_structural = bool(ctx.replace_symbol_available and is_structural_source and is_search_mismatch)
+        # If path is unknown, keep structural recovery available. Schema-level malformed
+        # edit_file validation often has incomplete payload context, and the runtime/intent
+        # layer will still filter actions against the active contract.
+        path_unknown = not str(ctx.path or "").strip()
+        prefer_structural = bool(ctx.replace_symbol_available and (is_structural_source or path_unknown) and is_search_mismatch)
         actions = EDIT_FILE_STRUCTURAL_MODIFY_ACTIONS if prefer_structural else EDIT_FILE_LEGACY_MODIFY_ACTIONS
         actions = _merge_allowed_recovery_actions(actions, ctx.active_allowed_actions, active_type=active_type)
         hint = (

@@ -93,6 +93,7 @@ def test_malformed_edit_file_recovery_uses_same_modify_policy():
     assert actions == (
         "read_chunk",
         "extract_symbol",
+        "replace_symbol",
         "edit_file",
         "write_file_block",
     )
