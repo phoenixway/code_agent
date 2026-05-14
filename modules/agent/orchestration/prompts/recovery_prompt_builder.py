@@ -119,13 +119,32 @@ class RecoveryPromptBuilderMixin:
         elif reason == "retry_or_continuation_after_failure":
             details = stop_info.get("error_details") or {}
             mismatch_type = str(details.get("mismatch_type") or "")
+            failed_action = str((stop_info.get("command") or {}).get("type") or details.get("failed_action_type") or "").strip()
+            structural_recovery_available = "extract_symbol" in allowed_actions and "replace_symbol" in allowed_actions
             if mismatch_type:
                 base_lines.append(f"Last recoverable failure detail: {mismatch_type}.")
+            if failed_action:
+                base_lines.append(f"Last failed tool: {failed_action}.")
             base_lines.extend(
                 [
                     "Prefer a deterministic recovery step inside the SAME current intent contract.",
                     "Do not open a new intent contract unless the work truly changed.",
-                    "If the previous edit failed because the search block was not unique or whitespace did not match, first retrieve the exact target block from file content, then retry edit_file with verbatim exact text, or use write_file with full validated content.",
+                ]
+            )
+            if structural_recovery_available:
+                base_lines.extend(
+                    [
+                        "If the previous edit_file failed because the search block was not unique, stale, missing, or whitespace did not match, prefer structural recovery for supported symbol-sized changes: use extract_symbol to retrieve the exact current symbol, then use replace_symbol with replacement content that preserves the same symbol name/kind.",
+                        "Do not treat an edit_file mismatch as a replace_symbol failure. If the failed tool was edit_file, replace_symbol remains a valid recovery candidate when the active contract allows it.",
+                        "Use read_chunk/search_content before edit_file only when the change is not symbol-sized, the symbol is unsupported or ambiguous, or replace_symbol is not appropriate.",
+                    ]
+                )
+            else:
+                base_lines.append(
+                    "If the previous edit failed because the search block was not unique or whitespace did not match, first retrieve the exact target block from file content, then retry edit_file with verbatim exact text, or use write_file with full validated content."
+                )
+            base_lines.extend(
+                [
                     "For edit_file, copy search_text verbatim from the most recent exact file-content tool result.",
                     "If the same file was already modified earlier in this flow, treat pre-edit blocks from that file as stale and reread the current target block before another edit_file call.",
                     "Do not reconstruct indentation or whitespace from memory.",
