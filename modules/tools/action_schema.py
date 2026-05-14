@@ -44,8 +44,10 @@ class ToolActionSchema:
                 + "; ".join(parts)
                 + ". edit_file accepts only an exact text replacement contract: path, search_text, and replace_text. "
                 "It does not accept line ranges, byte ranges, file_content, or replace_block. "
-                "Use read_chunk/read_file/search_content to inspect the exact current block first, then call edit_file with exact search_text/replace_text. "
-                "If exact replacement remains unreliable and the active intent is MODIFY, use write_file_block only after obtaining sufficient fresh file content."
+                "Accepted edit_file payload has exactly top-level path, search_text, and replace_text strings. "
+                "Do not use edits arrays, search_block, replace_block, start_line/end_line, byte ranges, content, file_content, patches, or diff-style payloads with edit_file. "
+                "If you only know a line range, call read_chunk first. If you know a Kotlin/Python symbol target, use extract_symbol or replace_symbol. "
+                "Call edit_file again only after you can provide exact top-level search_text and replace_text."
             )
         else:
             message = f"Invalid {self.action_type} payload: " + "; ".join(parts) + "."

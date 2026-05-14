@@ -47,6 +47,10 @@ def test_edit_file_schema_rejects_line_range_fields():
     assert "start_line" in violation.forbidden_fields
     assert "end_line" in violation.forbidden_fields
     assert "line ranges" in violation.message
+    assert "edits arrays" in violation.message
+    assert "search_block" in violation.message
+    assert "replace_block" in violation.message
+    assert "top-level path, search_text, and replace_text" in violation.message
 
 
 def test_edit_file_schema_recommended_actions_come_from_structural_policy():
