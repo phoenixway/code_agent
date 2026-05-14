@@ -497,6 +497,52 @@ class TestActionDispatcherLoopGuard(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Repeated read-only run_shell commands detected", result_text)
         self.assertEqual(state.pending_loop_stop_info.get("error_code"), "READONLY_SHELL_LOOP")
 
+    async def test_allows_fresh_extract_symbol_after_edit_mismatch_even_if_fingerprint_was_forbidden(self):
+        ui = SimpleNamespace(
+            print_edit_file_start=AsyncMock(return_value=object()),
+            start_action=AsyncMock(),
+            update_edit_file_result=AsyncMock(),
+            print_tool_call=AsyncMock(),
+            print_plan=AsyncMock(),
+            print_command_result=AsyncMock(),
+            print_confirmation=AsyncMock(),
+            print_shell_start=AsyncMock(return_value=object()),
+            update_shell_result=AsyncMock(),
+            print_read_file_start=AsyncMock(return_value=object()),
+            update_read_file_result=AsyncMock(),
+        )
+        processor = SimpleNamespace(process_single_action=AsyncMock(return_value={"status": "success", "output": "symbol body"}))
+        config = SimpleNamespace(
+            STATE_CHANGING_OPS={"edit_file", "create_file", "replace_symbol", "run_shell"},
+            LOOP_ERROR_REPEAT_THRESHOLD=2,
+            READ_ONLY_REPEAT_THRESHOLD=3,
+            RECOVERABLE_ERROR_RETRY_BUDGET=2,
+            CRITICAL_ERROR_RETRY_BUDGET=1,
+        )
+        agent = SimpleNamespace(ui=ui, processor=processor, config=config, log=None)
+        dispatcher = ActionDispatcher(agent)
+        state = AgentState()
+        state.last_failed_action_command = {
+            "type": "edit_file",
+            "path": "a.kt",
+            "search_text": "old",
+            "replace_text": "new",
+        }
+        state.last_failed_action_result = {
+            "status": "error",
+            "error_code": "VALIDATION_ERROR",
+            "output": "Search block not found. Ensure whitespace and indentation match exactly.",
+        }
+        state.last_error_code = "VALIDATION_ERROR"
+
+        command = {"type": "extract_symbol", "path": "a.kt", "symbol_name": "Screen", "symbol_kind": "composable"}
+        state.forbid_next_action_fingerprint(state.get_action_fingerprint(command))
+        _cmd_copy, result_text, should_stop = await dispatcher._execute_action(command, state)
+
+        self.assertFalse(should_stop)
+        self.assertIn("Fresh evidence action allowed after edit_file mismatch", result_text)
+        processor.process_single_action.assert_called_once()
+
     async def test_blocks_repeated_action_after_malformed_recovery(self):
         ui = SimpleNamespace(
             print_edit_file_start=AsyncMock(return_value=object()),

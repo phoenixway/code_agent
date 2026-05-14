@@ -830,27 +830,30 @@ class ActionDispatcher:
                 return command_for_history, full_result_text, True
 
         if state.consume_forbidden_action_if_matches(command):
-            output_text = (
-                "Action blocked: repeating the previous action immediately after malformed-action recovery "
-                "is not allowed. Change tool or arguments. "
-                "The current intent may continue, but this exact immediate retry is not accepted."
-            )
-            state.pending_loop_stop_info = self._recovery_payload(
-                reason="repeating_no_progress",
-                recoverable=True,
-                error_code="REPEATED_ACTION_AFTER_MALFORMED",
-                next_actions=["search_content", "search_files", "edit_file", "write_file"],
-                command=command.copy(),
-                policy_allowed_actions=["search_content", "search_files", "edit_file", "write_file"],
-                policy_recommended_actions=["search_content", "search_files", "edit_file", "write_file"],
-                policy_authoritative_source="recommended",
-            )
-            full_result_text = f"SYSTEM RESULT for `{cmd_type}`: {output_text}"
-            if self.agent.log:
-                self.agent.log.debug(
-                    "Action.finish type=%s should_stop=True", cmd_type
+            if self._is_authorized_fresh_evidence_action_after_edit_failure(command, state):
+                pass
+            else:
+                output_text = (
+                    "Action blocked: repeating the previous action immediately after malformed-action recovery "
+                    "is not allowed. Change tool or arguments. "
+                    "The current intent may continue, but this exact immediate retry is not accepted."
                 )
-            return command_for_history, full_result_text, True
+                state.pending_loop_stop_info = self._recovery_payload(
+                    reason="repeating_no_progress",
+                    recoverable=True,
+                    error_code="REPEATED_ACTION_AFTER_MALFORMED",
+                    next_actions=["search_content", "search_files", "read_chunk", "read_file_skeleton", "extract_symbol", "edit_file", "replace_symbol", "write_file"],
+                    command=command.copy(),
+                    policy_allowed_actions=["search_content", "search_files", "read_chunk", "read_file_skeleton", "extract_symbol", "edit_file", "replace_symbol", "write_file"],
+                    policy_recommended_actions=["search_content", "search_files", "read_chunk", "read_file_skeleton", "extract_symbol", "edit_file", "replace_symbol", "write_file"],
+                    policy_authoritative_source="recommended",
+                )
+                full_result_text = f"SYSTEM RESULT for `{cmd_type}`: {output_text}"
+                if self.agent.log:
+                    self.agent.log.debug(
+                        "Action.finish type=%s should_stop=True", cmd_type
+                    )
+                return command_for_history, full_result_text, True
 
         if self.agent.log:
             self.agent.log.debug("Action.start type=%s command=%s", cmd_type, command)
@@ -1179,6 +1182,37 @@ class ActionDispatcher:
                 "Action.finish type=%s should_stop=%s", cmd_type, should_stop
             )
         return command_for_history, full_result_text, should_stop
+
+    def _is_authorized_fresh_evidence_action_after_edit_failure(self, command: dict, state) -> bool:
+        action_type = str((command or {}).get("type") or "").strip()
+        if action_type not in {"read_chunk", "read_file_skeleton", "search_content", "extract_symbol"}:
+            return False
+
+        path = str((command or {}).get("path") or "").strip()
+        if not path:
+            return False
+
+        last_failed_command = getattr(state, "last_failed_action_command", None) or {}
+        last_failed_result = getattr(state, "last_failed_action_result", None) or {}
+        failed_type = str(last_failed_command.get("type") or "").strip()
+        failed_path = str(last_failed_command.get("path") or "").strip()
+        error_code = str(last_failed_result.get("error_code") or getattr(state, "last_error_code", "") or "").strip().upper()
+        output = str(last_failed_result.get("output") or "")
+
+        if failed_type != "edit_file" or not failed_path or path != failed_path:
+            return False
+        if error_code != "VALIDATION_ERROR":
+            return False
+        if not any(fragment in output for fragment in ("Search block not found", "whitespace", "not unique", "No similar block")):
+            return False
+
+        # Evidence escape hatch only. Do not authorize broad project/root searches.
+        if action_type == "search_content":
+            pattern = str((command or {}).get("pattern") or "").strip()
+            if not pattern or path in {".", "./", ""}:
+                return False
+
+        return True
 
     def _active_intent_type(self, state) -> str:
         active = getattr(state, "active_intent", None)
