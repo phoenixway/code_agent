@@ -20,7 +20,7 @@ class ExecutionCommitObserverAdapter:
 
     def observe_execution_commit(self, execution_plan, execution_commit, *, sys_results=None) -> None:
         self.remember_execution_artifacts(execution_plan, execution_commit)
-        self.mark_plan_review_required_if_state_changing_commit(execution_commit)
+        self.mark_plan_review_required_if_state_changing_commit(execution_commit, sys_results=sys_results)
         self.append_operational_journal_entry(execution_commit, sys_results=sys_results)
 
     def remember_execution_artifacts(self, execution_plan, execution_commit) -> None:
@@ -54,18 +54,39 @@ class ExecutionCommitObserverAdapter:
         target = primary_effect.split(":", 1)[1] if ":" in primary_effect else ""
         return action_type.strip(), target.strip(), action_effects
 
-    def commit_requires_plan_review(self, execution_commit) -> bool:
+    def commit_has_successful_system_result(self, execution_commit, *, sys_results=None) -> bool:
         if execution_commit is None:
             return False
-        if not bool(getattr(execution_commit, "action_dispatched", False)):
+        if int(getattr(execution_commit, "committed_system_result_count", 0) or 0) <= 0:
             return False
-        if int(getattr(execution_commit, "committed_action_count", 0) or 0) <= 0:
+        result_text = "\n".join(str(item or "") for item in (sys_results or []))
+        if not result_text.strip():
+            return True
+        failure_markers = (
+            "Action failed",
+            "VALIDATION_ERROR",
+            "RECOVERABLE",
+            "status=failed",
+            "'status': 'failed'",
+            "\"status\": \"failed\"",
+            "requires both 'search_text' and 'replace_text'",
+        )
+        return not any(marker in result_text for marker in failure_markers)
+
+    def commit_requires_plan_review(self, execution_commit, *, sys_results=None) -> bool:
+        if execution_commit is None:
+            return False
+        legacy_dispatched_success = bool(getattr(execution_commit, "action_dispatched", False)) and int(
+            getattr(execution_commit, "committed_action_count", 0) or 0
+        ) > 0
+        system_result_success = self.commit_has_successful_system_result(execution_commit, sys_results=sys_results)
+        if not legacy_dispatched_success and not system_result_success:
             return False
         action_type, _target, _action_effects = self._primary_action_effect_parts(execution_commit)
         return action_type.strip().lower() in STATE_CHANGING_FILE_ACTIONS
 
-    def mark_plan_review_required_if_state_changing_commit(self, execution_commit) -> bool:
-        if not self.commit_requires_plan_review(execution_commit):
+    def mark_plan_review_required_if_state_changing_commit(self, execution_commit, *, sys_results=None) -> bool:
+        if not self.commit_requires_plan_review(execution_commit, sys_results=sys_results):
             return False
         action_type, target, action_effects = self._primary_action_effect_parts(execution_commit)
         self._safe_set("plan_review_required_after_state_change", True)
