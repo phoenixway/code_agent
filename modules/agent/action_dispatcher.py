@@ -1194,8 +1194,10 @@ class ActionDispatcher:
         active_allowed = self._active_intent_allowed_actions(state)
         recommended = self.allowed_actions_resolver.normalize_action_list(list(violation.recommended_actions or []))
 
-        if active_type == "MODIFY" and violation.action_type == "edit_file" and "write_file_block" not in active_allowed:
-            active_allowed = active_allowed + ["write_file_block"]
+        if active_type == "MODIFY" and violation.action_type == "edit_file":
+            for recovery_action in ["extract_symbol", "replace_symbol", "write_file_block"]:
+                if recovery_action not in active_allowed:
+                    active_allowed = active_allowed + [recovery_action]
 
         if active_allowed:
             filtered = [action for action in recommended if action in active_allowed]
@@ -1205,12 +1207,14 @@ class ActionDispatcher:
         return recommended
 
     def _repeated_edit_failure_recovery_actions(self, state) -> list[str]:
-        base_actions = ["read_chunk", "read_file", "search_content", "edit_file", "write_file_block"]
+        base_actions = ["read_chunk", "extract_symbol", "replace_symbol", "read_file", "search_content", "edit_file", "write_file_block"]
         active_type = self._active_intent_type(state)
         active_allowed = self._active_intent_allowed_actions(state)
 
-        if active_type == "MODIFY" and "write_file_block" not in active_allowed:
-            active_allowed = active_allowed + ["write_file_block"]
+        if active_type == "MODIFY":
+            for recovery_action in ["extract_symbol", "replace_symbol", "write_file_block"]:
+                if recovery_action not in active_allowed:
+                    active_allowed = active_allowed + [recovery_action]
 
         if active_allowed:
             filtered = [action for action in base_actions if action in active_allowed]

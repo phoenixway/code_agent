@@ -85,8 +85,8 @@ def test_dispatcher_schema_preflight_adds_write_file_block_for_modify_recovery()
     assert stop is not None
     assert stop["reason"] == "malformed_edit_file_payload"
     assert stop["error_code"] == "MALFORMED_EDIT_FILE_PAYLOAD"
-    assert stop["policy_allowed_actions"] == ["read_chunk", "edit_file", "write_file_block"]
-    assert stop["policy_recommended_actions"] == ["read_chunk", "edit_file", "write_file_block"]
+    assert stop["policy_allowed_actions"] == ["read_chunk", "extract_symbol", "replace_symbol", "edit_file", "write_file_block"]
+    assert stop["policy_recommended_actions"] == ["read_chunk", "extract_symbol", "replace_symbol", "edit_file", "write_file_block"]
     assert stop["validation_snapshot"]["active_intent_type"] == "MODIFY"
 
 
@@ -142,7 +142,7 @@ def test_repeated_edit_failure_recovery_actions_add_write_file_block_for_modify(
 
     actions = dispatcher._repeated_edit_failure_recovery_actions(state)
 
-    assert actions == ["read_chunk", "read_file", "search_content", "edit_file", "write_file_block"]
+    assert actions == ["read_chunk", "extract_symbol", "replace_symbol", "read_file", "search_content", "edit_file", "write_file_block"]
 
 
 def test_repeated_edit_failure_recovery_actions_do_not_add_write_file_block_for_non_modify():

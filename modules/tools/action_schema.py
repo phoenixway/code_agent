@@ -79,7 +79,7 @@ EDIT_FILE_SCHEMA = ToolActionSchema(
     ),
     malformed_reason="malformed_edit_file_payload",
     malformed_error_code="MALFORMED_EDIT_FILE_PAYLOAD",
-    recommended_actions=("read_chunk", "read_file", "search_content", "edit_file", "write_file_block"),
+    recommended_actions=("read_chunk", "extract_symbol", "replace_symbol", "read_file", "search_content", "edit_file", "write_file_block"),
 )
 
 

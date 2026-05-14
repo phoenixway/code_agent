@@ -110,6 +110,8 @@ async def test_repeated_edit_validation_failure_hard_stop_includes_write_file_bl
     assert state.pending_loop_stop_info["error_code"] == "VALIDATION_ERROR"
     assert state.pending_loop_stop_info["policy_allowed_actions"] == [
         "read_chunk",
+        "extract_symbol",
+        "replace_symbol",
         "read_file",
         "search_content",
         "edit_file",
@@ -117,6 +119,8 @@ async def test_repeated_edit_validation_failure_hard_stop_includes_write_file_bl
     ]
     assert state.pending_loop_stop_info["policy_recommended_actions"] == [
         "read_chunk",
+        "extract_symbol",
+        "replace_symbol",
         "read_file",
         "search_content",
         "edit_file",
