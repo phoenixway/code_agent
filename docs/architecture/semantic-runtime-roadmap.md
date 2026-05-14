@@ -7408,6 +7408,49 @@ This document outlines the phased plan to migrate the runtime from legacy respon
 
 ---
 
+#### Phase 55 — Authorized Fresh-Evidence Retry Exemption Closure
+
+- **Status**: Done.
+- **Goal**: Fix a false-positive no-progress/action-cycle defect when the user explicitly guides recovery after failed edit attempts.
+- **Problem**:
+  - Failed edit/write attempts can leave the runtime primed for `defect_same_action_repeat` or repeated action-cycle detection.
+  - A user may then explicitly instruct the agent to read the exact current fragment and retry the edit.
+  - The model can correctly perform a fresh same-target evidence read and then attempt a corrected edit, but the old defect guard could still stop the action as no-progress behavior.
+- **Implemented Rule**:
+  - Allow exactly one no-progress/action-cycle exemption only when all conditions are true:
+    - there were failed edit/write attempts earlier;
+    - after those failures, a later user message occurred;
+    - after that user message and before the retry, the model performed a fresh same-target evidence action such as `read_file`, `read_chunk`, `extract_symbol`, `extract_kotlin_function`, or `search_content`;
+    - the retry is materially different from the failed edit payload or its `search_text` is anchored in the fresh exact evidence;
+    - the exemption has not already been consumed for that user-message/fresh-read window.
+- **Completed Outcome**:
+  - Added state-side tracking of failed edit retry candidates.
+  - Added state-side tracking of fresh same-target edit evidence.
+  - Added a one-shot exemption in `AgentState.record_action_result(...)` before returning defect info to the dispatcher.
+  - Kept `DefectDetector` itself intact.
+  - Kept dispatch/tool execution semantics intact.
+  - Added regression tests for:
+    - blocking repeats without user intervention;
+    - blocking user intervention without fresh same-target read;
+    - blocking user intervention plus read when retry payload is unchanged;
+    - allowing one user-authorized fresh-read materially changed retry;
+    - blocking a second retry without newer user message or newer fresh read.
+  - Repaired compatibility fallout around `RuntimeProtocolSemantics.has_plan_review_checkpoint`, guarded diagnostic logging in output recovery routing, and updated smoke registry expectations to match the compiler-enabled smoke profile.
+  - Confirmed targeted tests and full suite pass.
+- **Forbidden / Not Added**:
+  - No global no-progress guard disablement.
+  - No repeat-edit hard guard removal.
+  - No ActionPolicy change.
+  - No dispatch behavior change.
+  - No plan-review gate behavior change.
+  - No automatic intent completion.
+  - No authority transfer or switch change.
+  - No legacy cleanup.
+- **Next**:
+  - Phase 56 — Next Semantic Runtime Slice Selection.
+
+---
+
 #### Phase 54 — Step 2/N: Plan Review / Fallback Commit Trace Hardening Characterization
 
 - **Status**: Done.

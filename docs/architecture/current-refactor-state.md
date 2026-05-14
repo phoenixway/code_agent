@@ -4,10 +4,10 @@ This document is the single source of truth for the current state of the Semanti
 
 ## Current Phase
 
-- **Phase**: Phase 54 — Step 3/N: Plan Review / Fallback Commit Passive Trace Fields Implementation
+- **Phase**: Phase 55 — Authorized Fresh-Evidence Retry Exemption Closure
 - **Status**: Complete.
-- **Next Step**: Phase 54 — Step 4/N: Plan Review / Fallback Commit Observability Closure.
-- **Boundary**: Passive trace fields and tests were added for plan-review-required activation, checkpoint clearing, gate blocking metadata, and fallback commit diagnostics. No dispatch behavior change, ActionPolicy change, gate behavior change, recovery behavior change, repeat-edit hard guard, automatic intent completion, authority transfer, switch change, or legacy cleanup was added.
+- **Next Step**: Phase 56 — Next Semantic Runtime Slice Selection.
+- **Boundary**: Added a narrow one-shot exemption for false-positive no-progress/action-cycle defects after failed edit/write attempts when, and only when, a later user message is followed by a fresh same-target evidence read and a materially changed retry. Full test suite passes. No global defect-detector disablement, dispatch behavior change, ActionPolicy change, plan-review gate behavior change, automatic intent completion, authority transfer, switch change, or legacy cleanup was added.
 
 ## Step 4I Parity Matrix
 
