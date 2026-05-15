@@ -120,6 +120,115 @@ Update the system prompt or architecture docs if the model needs a new decision 
 - dispatcher/schema test, if payload validation is involved
 - full `pytest -q tests`
 
+## Required Integration Checklist
+
+Creating a `BaseTool` class is only the discovery step. A tool is not complete until runtime semantics, recovery behavior, and tests agree with the new action.
+
+### A. Tool discovery and model visibility
+
+- Put the tool class under `modules/tools/definitions/`.
+- Inherit from `BaseTool`.
+- Set a unique `name`.
+- Write a precise `description`; this text is model-facing and appears in the available tools prompt.
+- Document every required and optional parameter in the description.
+- Include safety constraints directly in the description when the model must know when not to use the tool.
+- Add a `ToolManager.load_tools()` test proving the tool name is loaded.
+
+### B. Classify the tool as read-only or state-changing
+
+If the tool can modify files, shell state, git state, project state, runtime state, or user-visible artifacts, treat it as state-changing.
+
+State-changing tools must be added to:
+
+- `modules/agent/intent_runtime.py::KNOWN_TOOL_ACTIONS`
+- `modules/agent/config.py::STATE_CHANGING_OPS`
+- policy-engine mutating/action-classification sets
+- batching exclusions, if applicable
+- any loop/stale-evidence/plan-review logic that depends on mutation detection
+
+Read-only tools should be added only to read-only batching paths when they are bounded and safe.
+
+### C. Decide whether schema/preflight validation is needed
+
+Add schema validation when:
+
+- the payload shape is strict;
+- the model commonly emits malformed variants;
+- the tool is state-changing;
+- the tool can accidentally perform a broad or destructive operation;
+- a malformed payload should be rejected before tool execution.
+
+Schema errors must return actionable recovery guidance, not just a generic validation failure.
+
+Example: `edit_file` remains exact-only. A payload with `start_line`/`end_line` is malformed for `edit_file`; recovery should point to `replace_line_range`, not silently reinterpret the payload.
+
+### D. Wire recovery policy intentionally
+
+If the new tool is meant to recover from another tool's failure, update the relevant recovery policy.
+
+Examples:
+
+- `fuzzy_edit_file` is recommended only after `edit_file` reports exactly one indentation-normalized fuzzy candidate.
+- `replace_line_range` is recommended when the model has reliable line numbers or attempted a line-range edit payload.
+- `replace_symbol` is preferred for supported symbol-sized Kotlin/Python replacements after repeated `edit_file` mismatch.
+
+Recovery messages must explain:
+
+- when to use the tool;
+- what evidence is required;
+- when not to use the tool;
+- what to do if the tool fails.
+
+### E. Update prompt/protocol documentation if the model needs a new rule
+
+Tool availability alone is not enough. If the model must choose the tool under specific conditions, update the relevant system prompt or architecture document.
+
+Examples:
+
+- Exact text replacement should still use `edit_file`.
+- Line-coordinate replacement should use `replace_line_range`.
+- Symbol-sized replacement should prefer `extract_symbol` → `replace_symbol` when supported.
+- Indentation-only exact-match drift may use `fuzzy_edit_file` only when the backend found a unique candidate.
+
+### F. Required tests before closing a tool phase
+
+At minimum, add tests for:
+
+- direct tool success path;
+- direct tool failure path;
+- safety guardrails;
+- `ToolManager` visibility;
+- known-action registration;
+- state-changing or read-only classification;
+- recovery-policy integration, if applicable;
+- schema/preflight behavior, if applicable;
+- full `pytest -q tests`.
+
+For state-changing tools, also test that the tool returns a `ChangeProposal` or equivalent state-change result rather than silently editing files outside the normal proposal/apply flow.
+
+### G. Closure checklist
+
+A new tool phase is not closed until all are true:
+
+- the tool is implemented;
+- the model can see it in the tools prompt;
+- runtime knows whether it is read-only or state-changing;
+- intent runtime accepts it where appropriate;
+- recovery policies can recommend it when intended;
+- malformed payloads fail with useful guidance;
+- tests cover direct behavior and integration behavior;
+- full test suite is green.
+
+### Example classifications
+
+| Tool | Type | Notes |
+| --- | --- | --- |
+| `search_content` | read-only | `literal=true` is a parameter, not a new tool. |
+| `fuzzy_edit_file` | state-changing | Guarded recovery tool after unique fuzzy candidate. |
+| `replace_line_range` | state-changing | Use for reliable inclusive line ranges; supports empty replacement for deletion. |
+| `replace_symbol` | state-changing | Preferred structural replacement for supported Kotlin/Python symbols. |
+| `extract_symbol` | read-only | Evidence-gathering tool; output must be usable as current symbol content. |
+
 ### Best Practices
 
 1.  **Robust Error Handling**: Always wrap your logic in `try-except` blocks. The AI depends on clear error messages to correct itself.
