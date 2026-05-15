@@ -637,10 +637,14 @@ class RecoveryPromptBuilderMixin:
             "Do NOT output read_chunk again in the next reply.\n"
             f"{goal_line}"
             f"Next valid options now: {allowed_text}.\n"
-            "Return EXACTLY ONE materially different next step.\n"
+            "[RECOVERY_SCOPE]\n"
+            "This applies only to the next corrective step after repeated malformed read_chunk payloads.\n"
+            "[NEXT_STEP_RULE]\n"
+            "Choose one valid alternative from the listed options, or answer directly if current evidence is sufficient.\n"
             "Prefer search_content, read_file_skeleton, search_files, list_directory, or a narrow read-only run_shell if allowed.\n"
-            "If current evidence is already sufficient, return a plain-text answer instead.\n"
-            "Do not re-send another malformed recovery attempt."
+            "Do not re-send another malformed recovery attempt.\n"
+            "[EXIT_CONDITION]\n"
+            "After one valid alternative step or a final answer, resume normal execution."
         )
 
     def build_orchestrated_recovery_prompt(self, stop_info: dict | None) -> str:

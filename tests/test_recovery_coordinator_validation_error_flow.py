@@ -154,6 +154,13 @@ class RecoveryCoordinatorValidationErrorFlowTests(unittest.IsolatedAsyncioTestCa
         self.assertIn("Do NOT output read_chunk again", decision.next_query)
         self.assertIn("search_content", decision.next_query)
         self.assertNotIn("Return EXACTLY ONE valid read_chunk action now.", decision.next_query)
+        self.assertNotIn("Return EXACTLY ONE materially different next step.", decision.next_query)
+        self.assertIn("[RECOVERY_SCOPE]", decision.next_query)
+        self.assertIn("This applies only to the next corrective step after repeated malformed read_chunk payloads.", decision.next_query)
+        self.assertIn("[NEXT_STEP_RULE]", decision.next_query)
+        self.assertIn("Choose one valid alternative from the listed options, or answer directly if current evidence is sufficient.", decision.next_query)
+        self.assertIn("[EXIT_CONDITION]", decision.next_query)
+        self.assertIn("After one valid alternative step or a final answer, resume normal execution.", decision.next_query)
 
     async def test_intent_blocked_action_signature_uses_scoped_recovery_text(self):
         agent = self._make_agent()
