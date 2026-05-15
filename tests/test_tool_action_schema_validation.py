@@ -77,6 +77,48 @@ def test_edit_file_schema_accepts_exact_replacement_contract():
     assert violation is None
 
 
+def test_edit_file_schema_accepts_empty_replace_text_for_deletion():
+    violation = validate_tool_action_schema(
+        {
+            "type": "edit_file",
+            "path": "src/example.py",
+            "search_text": "Text(\"remove me\")",
+            "replace_text": "",
+        }
+    )
+
+    assert violation is None
+
+
+def test_edit_file_schema_rejects_missing_replace_text():
+    violation = validate_tool_action_schema(
+        {
+            "type": "edit_file",
+            "path": "src/example.py",
+            "search_text": "old",
+        }
+    )
+
+    assert violation is not None
+    assert violation.error_code == "MALFORMED_EDIT_FILE_PAYLOAD"
+    assert "replace_text" in violation.missing_fields
+
+
+def test_edit_file_schema_rejects_non_string_replace_text():
+    violation = validate_tool_action_schema(
+        {
+            "type": "edit_file",
+            "path": "src/example.py",
+            "search_text": "old",
+            "replace_text": None,
+        }
+    )
+
+    assert violation is not None
+    assert violation.error_code == "MALFORMED_EDIT_FILE_PAYLOAD"
+    assert "replace_text" in violation.missing_fields
+
+
 def test_dispatcher_schema_preflight_adds_write_file_block_for_modify_recovery():
     dispatcher = ActionDispatcher(DummyAgent())
     state = DummyState(
@@ -139,6 +181,23 @@ def test_dispatcher_schema_preflight_has_no_decision_for_valid_edit_file():
             "path": "src/example.py",
             "search_text": "old",
             "replace_text": "new",
+        },
+        state,
+    )
+
+    assert stop is None
+
+
+def test_dispatcher_schema_preflight_has_no_decision_for_empty_replace_text_deletion():
+    dispatcher = ActionDispatcher(DummyAgent())
+    state = DummyState(active_intent=DummyIntent(intent_type="MODIFY", allowed_actions=["edit_file"]))
+
+    stop = dispatcher._schema_validation_preflight(
+        {
+            "type": "edit_file",
+            "path": "src/example.py",
+            "search_text": "Text(\"remove me\")",
+            "replace_text": "",
         },
         state,
     )

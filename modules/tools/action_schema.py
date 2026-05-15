@@ -27,7 +27,15 @@ class ToolActionSchema:
 
     def validate(self, command: dict) -> ToolActionSchemaViolation | None:
         payload = command if isinstance(command, dict) else {}
-        missing = tuple(field for field in self.required_fields if not _has_non_empty_string(payload.get(field)))
+        missing = tuple(
+            field
+            for field in self.required_fields
+            if not _has_required_string(
+                payload,
+                field,
+                allow_empty=self.action_type == "edit_file" and field == "replace_text",
+            )
+        )
         forbidden = tuple(field for field in self.forbidden_fields if field in payload)
         if not missing and not forbidden:
             return None
@@ -65,6 +73,17 @@ class ToolActionSchema:
 
 def _has_non_empty_string(value) -> bool:
     return isinstance(value, str) and bool(value.strip())
+
+
+def _has_required_string(payload: dict, field: str, *, allow_empty: bool = False) -> bool:
+    if field not in payload:
+        return False
+    value = payload.get(field)
+    if not isinstance(value, str):
+        return False
+    if allow_empty:
+        return True
+    return bool(value.strip())
 
 
 EDIT_FILE_SCHEMA = ToolActionSchema(

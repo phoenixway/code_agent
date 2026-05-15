@@ -150,6 +150,54 @@ def test_tool_manager_loads_fuzzy_edit_file_tool():
 
 
 @pytest.mark.asyncio
+async def test_edit_file_allows_empty_replace_text_for_deletion(tmp_path):
+    path = tmp_path / "Example.kt"
+    path.write_text(
+        "package demo\n\n"
+        "fun tab() {\n"
+        "    Icon()\n"
+        "    Text(\"remove me\")\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    result = await EditFileTool().execute(
+        path=str(path),
+        search_text='    Text("remove me")\n',
+        replace_text="",
+    )
+
+    assert not isinstance(result, dict)
+    assert 'Text("remove me")' in result.original_content
+    assert 'Text("remove me")' not in result.new_content
+    assert "    Icon()" in result.new_content
+
+
+@pytest.mark.asyncio
+async def test_edit_file_allows_empty_replace_text_for_deletion(tmp_path):
+    path = tmp_path / "Example.kt"
+    path.write_text(
+        "package demo\n\n"
+        "fun tab() {\n"
+        "    Icon()\n"
+        "    Text(\"remove me\")\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    result = await EditFileTool().execute(
+        path=str(path),
+        search_text='    Text("remove me")\n',
+        replace_text="",
+    )
+
+    assert not isinstance(result, dict)
+    assert 'Text("remove me")' in result.original_content
+    assert 'Text("remove me")' not in result.new_content
+    assert "    Icon()" in result.new_content
+
+
+@pytest.mark.asyncio
 async def test_edit_file_exact_match_still_applies_without_fuzzy_path(tmp_path):
     path = tmp_path / "Example.kt"
     path.write_text("package demo\n\nfun answer() = 1\n", encoding="utf-8")
