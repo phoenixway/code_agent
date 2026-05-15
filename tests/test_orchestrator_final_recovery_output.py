@@ -176,7 +176,11 @@ class OrchestratorFinalRecoveryOutputTests(unittest.TestCase):
         self.assertIn("Do NOT send another <intent> block now.", out)
         self.assertIn("Continue under the current intent contract.", out)
         self.assertIn("Do not restart the task from the beginning.", out)
-        self.assertIn("Return EXACTLY ONE materially different read-only action.", out)
+        self.assertNotIn("Return EXACTLY ONE", out)
+        self.assertIn("[RECOVERY_SCOPE]", out)
+        self.assertIn("[NEXT_STEP_RULE]", out)
+        self.assertIn("[EXIT_CONDITION]", out)
+        self.assertIn("Use a materially different read-only action only if tool use is still needed.", out)
 
     def test_hard_limit_reuse_prompt_forbids_continuing_under_current_contract(self):
         out = self.prompt_builder.build_limit_aware_reuse_prompt(

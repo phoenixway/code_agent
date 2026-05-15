@@ -258,9 +258,9 @@ class RecoveryPromptBuilderMixin:
                 "\nDo not repeat the blocked or low-value action pattern."
                 "\nDo not restart the task from the beginning. Continue from already gathered evidence under the same contract."
                 "\nReturn the next valid output under the current contract."
-                "\nReturn EXACTLY ONE materially different read-only action."
-                "\nUse it only if tool use is still needed."
-                "\nIf current evidence is already sufficient, return a plain-text answer instead."
+                "\n[RECOVERY_SCOPE] This instruction applies only to the next corrective step for this blocked or oversized read-only action pattern under the current intent."
+                "\n[NEXT_STEP_RULE] Use a materially different read-only action only if tool use is still needed. Follow the current contract and updated runtime constraints."
+                "\n[EXIT_CONDITION] After a successful corrective step, resume normal intent execution. If current evidence is already sufficient, return a plain-text answer instead."
             )
         if reason in {"too_broad_search", "low_value_broad_search_repeat"}:
             prompt += (
