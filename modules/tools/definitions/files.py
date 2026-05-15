@@ -93,6 +93,75 @@ def _classify_search_mismatch(content: str, search_text: str) -> tuple[str, dict
     return "no_similar_block_found", details
 
 
+def _line_start_offsets(text: str) -> list[int]:
+    offsets = [0]
+    for idx, char in enumerate(text):
+        if char == "\n":
+            offsets.append(idx + 1)
+    return offsets
+
+
+def _line_number_for_offset(offsets: list[int], index: int) -> int:
+    line = 1
+    for idx, start in enumerate(offsets, start=1):
+        if start > index:
+            break
+        line = idx
+    return line
+
+
+def _line_base_indent(line: str) -> str:
+    return line[: len(line) - len(line.lstrip(" \t"))]
+
+
+def _dedent_for_fuzzy_match(text: str) -> str:
+    lines = _normalize_line_endings(text).split("\n")
+    non_empty = [line for line in lines if line.strip()]
+    if not non_empty:
+        return ""
+    indents = [len(line) - len(line.lstrip(" \t")) for line in non_empty]
+    base = min(indents)
+    return "\n".join(line[base:] if len(line) >= base else line for line in lines).strip()
+
+
+def _indentation_normalized_fuzzy_candidates(content: str, search_text: str, *, max_candidates: int = 5) -> list[dict]:
+    normalized_search = _dedent_for_fuzzy_match(search_text)
+    if not normalized_search or len(normalized_search) < 12:
+        return []
+
+    content_norm = _normalize_line_endings(content)
+    content_lines = content_norm.split("\n")
+    search_line_count = max(1, len(_normalize_line_endings(search_text).split("\n")))
+    offsets = _line_start_offsets(content_norm)
+    candidates: list[dict] = []
+
+    for start_idx in range(0, len(content_lines)):
+        for extra in range(-2, 3):
+            end_idx = start_idx + search_line_count + extra
+            if end_idx <= start_idx or end_idx > len(content_lines):
+                continue
+            block = "\n".join(content_lines[start_idx:end_idx])
+            if _dedent_for_fuzzy_match(block) != normalized_search:
+                continue
+            start_offset = offsets[start_idx]
+            end_offset = offsets[end_idx] - 1 if end_idx < len(offsets) else len(content_norm)
+            first_line = content_lines[start_idx] if start_idx < len(content_lines) else ""
+            candidates.append(
+                {
+                    "mode": "indentation_normalized",
+                    "start_line": start_idx + 1,
+                    "end_line": end_idx,
+                    "start_offset": start_offset,
+                    "end_offset": end_offset,
+                    "base_indent": _line_base_indent(first_line),
+                    "preview": block[:500],
+                }
+            )
+            if len(candidates) >= max_candidates:
+                return candidates
+    return candidates
+
+
 def _build_first_diff(search_text: str, content: str) -> dict | None:
     limit = min(len(search_text), len(content))
     diff_idx = None
@@ -803,6 +872,10 @@ class EditFileTool(BaseTool):
                 return guard_error
             if search_text not in content:
                 mismatch_type, mismatch_details = _classify_search_mismatch(content, search_text)
+                fuzzy_candidates = _indentation_normalized_fuzzy_candidates(content, search_text)
+                mismatch_details["fuzzy_candidates"] = fuzzy_candidates
+                mismatch_details["fuzzy_candidate_count"] = len(fuzzy_candidates)
+                mismatch_details["fuzzy_unique_candidate"] = len(fuzzy_candidates) == 1
                 first_diff = _build_first_diff(search_text, content)
                 mismatch_details["first_diff"] = first_diff
                 output_lines = [
@@ -814,6 +887,18 @@ class EditFileTool(BaseTool):
                     output_lines.append(f"Similarity hint: {similarity:.2f}.")
                 if first_diff:
                     output_lines.append(f"First diff at search_text line {first_diff['line']}, col {first_diff['col']}.")
+                if fuzzy_candidates:
+                    if len(fuzzy_candidates) == 1:
+                        candidate = fuzzy_candidates[0]
+                        output_lines.append(
+                            "Indentation-normalized fuzzy candidate found at "
+                            f"lines {candidate['start_line']}-{candidate['end_line']}. "
+                            "Do not retry blind edit_file; use fuzzy_edit_file once available, or read this exact range."
+                        )
+                    else:
+                        output_lines.append(
+                            f"Found {len(fuzzy_candidates)} indentation-normalized fuzzy candidates; candidate is ambiguous, read the exact target range before retry."
+                        )
                 from modules.tools.recovery.edit_file_recovery_policy import search_mismatch_recovery_actions
 
                 next_actions = list(
