@@ -493,7 +493,9 @@ class ActionDispatcher:
                         "or run_shell with rg/fd. For supported source files (.kt/.py) and symbol-sized work, "
                         "prefer extract_symbol over large read_chunk ranges when the target symbol is known or inferable. "
                         "If you later need a new intent, request it formally with a legitimate switch reason. "
-                        "Return EXACTLY ONE materially different read-only action."
+                        "[RECOVERY_SCOPE] This instruction applies only to the next corrective step for this oversized read_file action under the current intent. "
+                        "[NEXT_STEP_RULE] Use a materially smaller read-only action: read_chunk, read_file_skeleton, extract_symbol, search_content, search_files, or run_shell with rg/fd. "
+                        "[EXIT_CONDITION] After a successful smaller read step, resume normal intent execution."
                     ),
                     "command": cmd.copy(),
                     "estimated_new_chars": estimated_new_chars,
@@ -526,7 +528,9 @@ class ActionDispatcher:
                 "read exactly one strongest candidate file, use read_chunk, use read_file_skeleton, "
                 "or narrow the investigation through search first (search_content, search_files, rg, fd). "
                 "If you truly need to change intent, do it only through a formal intent request with a legitimate switch reason. "
-                "Return EXACTLY ONE revised action or a smaller read-only batch."
+                "[RECOVERY_SCOPE] This instruction applies only to the next corrective step for this oversized read/search turn under the current intent. "
+                "[NEXT_STEP_RULE] Use a materially smaller action or smaller read-only batch: fewer files, one strongest candidate, read_chunk, read_file_skeleton, narrower search_content/search_files, or rg/fd. "
+                "[EXIT_CONDITION] After a successful smaller step, resume normal intent execution."
             ),
             "command": first_command.copy() if isinstance(first_command, dict) else {},
             "estimated_new_chars": estimated_new_chars,
