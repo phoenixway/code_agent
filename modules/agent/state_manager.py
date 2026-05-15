@@ -141,6 +141,7 @@ class AgentState:
 
         self.last_action_fingerprint = None
         self.last_action_status = None
+        self.recovery_visibility_successes = []
         self.consecutive_failed_repeats = 0
         self.last_error_fingerprint = None
         self.consecutive_same_error_count = 0
@@ -684,6 +685,40 @@ class AgentState:
             or (result or {}).get("stdout_full")
             or ""
         )[:8000]
+
+    def _recovery_visibility_target_for_command(self, command: dict) -> str:
+        if not isinstance(command, dict):
+            return ""
+        for key in ("path", "file", "target", "filename"):
+            value = command.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        cmd_type = self._action_type(command)
+        if cmd_type == "run_shell":
+            value = command.get("command")
+            return str(value or "").strip()
+        if cmd_type == "search_content":
+            value = command.get("pattern") or command.get("query")
+            return str(value or "").strip()
+        value = command.get("symbol_name") or command.get("function_name") or command.get("name")
+        return str(value or "").strip()
+
+    def note_recovery_visibility_success(self, command: dict, result: dict) -> None:
+        if str((result or {}).get("status") or "").strip().lower() != "success":
+            return
+        action_type = self._action_type(command)
+        if not action_type:
+            return
+        entry = {
+            "turn_id": int(getattr(self, "current_turn_id", 0) or 0),
+            "action_type": action_type,
+            "target": self._recovery_visibility_target_for_command(command),
+        }
+        successes = getattr(self, "recovery_visibility_successes", None)
+        if not isinstance(successes, list):
+            successes = []
+        successes.append(entry)
+        self.recovery_visibility_successes = successes[-20:]
 
     def _same_retry_target(self, left: str, right: str) -> bool:
         left = str(left or "").strip()

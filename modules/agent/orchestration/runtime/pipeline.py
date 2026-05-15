@@ -61,6 +61,15 @@ class OrchestrationPipeline:
             message = builder()
             if message:
                 injected_messages.append(message)
+
+        recovery_builder = getattr(self.history, "build_recovery_instruction_injected_messages", None)
+        if callable(recovery_builder):
+            recovery_messages = recovery_builder(state=self.state)
+            if isinstance(recovery_messages, list):
+                injected_messages.extend(
+                    message for message in recovery_messages if isinstance(message, dict)
+                )
+
         return injected_messages
 
     @property
