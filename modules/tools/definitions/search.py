@@ -302,7 +302,8 @@ class ContentSearchTool(BaseTool):
         "Searches for text patterns inside files using 'ripgrep' (rg). "
         "Prefer this before full read_file when you need to locate exact symbols, imports, handlers, or dialog usage. "
         "Parameters: pattern (str), path (str='.'), recursive (bool=True), code_only (bool=False), "
-        "include_extensions (list[str], optional), exclude_dirs (list[str], optional), limit (int, optional), ignore_case (bool=False)."
+        "include_extensions (list[str], optional), exclude_dirs (list[str], optional), limit (int, optional), "
+        "ignore_case (bool=False), literal (bool=False; use fixed-string search for code text like Row( or AutocompleteSuggestions())."
     )
 
     async def execute(
@@ -315,16 +316,20 @@ class ContentSearchTool(BaseTool):
         exclude_dirs=None,
         limit: int = 50,
         ignore_case: bool = False,
+        literal: bool = False,
         **kwargs
     ):
         recursive = _normalize_bool(recursive, True)
         code_only = _normalize_bool(code_only, False)
         ignore_case = _normalize_bool(ignore_case, False)
+        literal = _normalize_bool(literal, False)
         limit = int(limit) if isinstance(limit, int) or str(limit).isdigit() else 50
         limit = max(1, min(limit, 200))
 
         cmd = ["rg", "--color=never", "--no-heading", "--line-number", "--hidden"]
         cmd.append("--ignore-case" if ignore_case else "--smart-case")
+        if literal:
+            cmd.append("--fixed-strings")
 
         excludes = _merge_excludes(exclude_dirs)
         for item in excludes:
@@ -354,15 +359,51 @@ class ContentSearchTool(BaseTool):
                 }
 
             if result.returncode != 0:
+                stderr = result.stderr or ""
+                stdout = result.stdout or ""
+                raw_output = (stderr or stdout or "").strip() or f"ripgrep exited with code {result.returncode}."
+                regex_parse_error = "regex parse error" in stderr.lower()
+                if regex_parse_error:
+                    return {
+                        "status": "failed",
+                        "error_code": "SEARCH_REGEX_PARSE_ERROR",
+                        "recoverable": True,
+                        "next_actions": ["search_content", "read_chunk", "extract_symbol"],
+                        "output": (
+                            f"{raw_output}\n"
+                            "Pattern was interpreted as a regular expression and failed to parse. "
+                            "If this is literal code text, retry search_content with literal=true, or escape regex metacharacters."
+                        ),
+                        "exit_code": result.returncode,
+                        "stdout": stdout[:1000],
+                        "stderr": stderr[:1000],
+                        "error_details": {
+                            "pattern": pattern,
+                            "path": path,
+                            "literal": literal,
+                            "suggested_retry": {
+                                "type": "search_content",
+                                "pattern": pattern,
+                                "path": path,
+                                "recursive": recursive,
+                                "code_only": code_only,
+                                "include_extensions": include_extensions,
+                                "exclude_dirs": exclude_dirs,
+                                "limit": limit,
+                                "ignore_case": ignore_case,
+                                "literal": True,
+                            },
+                        },
+                    }
                 return {
                     "status": "failed",
                     "error_code": "SEARCH_EXIT_NONZERO",
                     "recoverable": True,
                     "next_actions": ["list_directory", "search_files", "read_file"],
-                    "output": (result.stderr or result.stdout or "").strip() or f"ripgrep exited with code {result.returncode}.",
+                    "output": raw_output,
                     "exit_code": result.returncode,
-                    "stdout": (result.stdout or "")[:1000],
-                    "stderr": (result.stderr or "")[:1000],
+                    "stdout": stdout[:1000],
+                    "stderr": stderr[:1000],
                 }
 
             output = result.stdout.strip()
