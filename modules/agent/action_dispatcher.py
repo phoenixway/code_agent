@@ -926,6 +926,10 @@ class ActionDispatcher:
             )
 
         state_metrics = state.record_action_result(command, result, self.config)
+        if status == "success":
+            note_recovery_success = getattr(state, "note_recovery_visibility_success", None)
+            if callable(note_recovery_success):
+                note_recovery_success(command, result)
         if sm is not None:
             sm.note_action(command, result, self.config.STATE_CHANGING_OPS)
 
