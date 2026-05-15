@@ -109,11 +109,14 @@ class RecoveryPromptBuilderMixin:
                 base_lines.append(f"The blocked action pattern failed because of: {blocked_reason}.")
             base_lines.extend(
                 [
-                    "Do NOT retry the same action with cosmetic changes.",
-                    "Choose the next step that most increases progress toward the goal.",
+                    "[RECOVERY_SCOPE]",
+                    "This instruction applies only to the next corrective step after a blocked action pattern under the current intent.",
+                    "[NEXT_STEP_RULE]",
+                    "Avoid repeating the blocked action shape.",
+                    "Choose one allowed action that materially changes the evidence path, or answer directly if current evidence is sufficient.",
                     "Return the next valid output under the current contract.",
-                    "Prefer one materially different next <action> only if tool use is still needed.",
-                    "If the goal can already be answered, return a plain-text answer instead.",
+                    "[EXIT_CONDITION]",
+                    "After one successful progress-making step or a final answer, resume normal intent execution.",
                 ]
             )
         elif reason == "retry_or_continuation_after_failure":

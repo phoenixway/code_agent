@@ -249,9 +249,14 @@ class RecoveryCoordinator:
                         f"Allowed actions under the CURRENT intent contract: {', '.join(allowed) if allowed else 'none'}.\n"
                         f"Current intent goal remains the same: {getattr(active_intent, 'goal', '')}.\n"
                         f"{note}\n"
-                        "Do NOT retry the same action with cosmetic changes.\n"
-                        "Choose a materially different next <action>, or answer from current evidence if enough is already known.\n"
-                        "A legitimate intent contract transition is not globally forbidden, but do not propose one unless the work truly changed."
+                        "[RECOVERY_SCOPE]\n"
+                        "This instruction applies only to the next corrective step after a blocked action pattern under the current intent.\n"
+                        "[NEXT_STEP_RULE]\n"
+                        "Avoid repeating the blocked action shape.\n"
+                        "Choose one allowed action that materially changes the evidence path, or answer directly if current evidence is sufficient.\n"
+                        "A legitimate intent contract transition is not globally forbidden, but do not propose one unless the work truly changed.\n"
+                        "[EXIT_CONDITION]\n"
+                        "After one successful progress-making step or a final answer, resume normal intent execution."
                     ),
                     reason=reason,
                     source="defect_detector",
