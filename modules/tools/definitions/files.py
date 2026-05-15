@@ -842,6 +842,114 @@ class AppendFileBlockTool(BaseTool):
         return ChangeProposal(file_path=path, original_content=original, new_content=new_content)
 
 
+def _reindent_fuzzy_replacement(replace_text: str, base_indent: str) -> str:
+    dedented = _dedent_for_fuzzy_match(replace_text)
+    if not dedented:
+        return ""
+    lines = dedented.split("\n")
+    return "\n".join((base_indent + line) if line.strip() else line for line in lines)
+
+
+class FuzzyEditFileTool(BaseTool):
+    name = "fuzzy_edit_file"
+    description = (
+        "Applies a guarded fuzzy edit when exact edit_file matching failed due to indentation drift. "
+        "Params: 'path' (str), 'search_text' (str), 'replace_text' (str), optional "
+        "'mode' (currently only 'indentation_normalized'), optional 'require_unique_match' (bool, default true). "
+        "Only applies when exactly one high-confidence indentation-normalized candidate is found. "
+        "Use after edit_file reports fuzzy_unique_candidate=true."
+    )
+
+    async def execute(
+        self,
+        path: str,
+        search_text: str,
+        replace_text: str,
+        mode: str = "indentation_normalized",
+        require_unique_match: bool = True,
+    ):
+        normalized_mode = str(mode or "indentation_normalized").strip()
+        if normalized_mode != "indentation_normalized":
+            return {
+                "status": "error",
+                "error_code": "VALIDATION_ERROR",
+                "recoverable": True,
+                "next_actions": ["edit_file", "read_chunk", "extract_symbol", "replace_symbol", "write_file_block"],
+                "output": f"Unsupported fuzzy_edit_file mode: {mode}. Supported: indentation_normalized.",
+                "error_details": {"mode": normalized_mode},
+            }
+        if not require_unique_match:
+            return {
+                "status": "error",
+                "error_code": "VALIDATION_ERROR",
+                "recoverable": True,
+                "next_actions": ["fuzzy_edit_file", "read_chunk", "edit_file"],
+                "output": "fuzzy_edit_file currently requires require_unique_match=true for safety.",
+                "error_details": {"require_unique_match": require_unique_match},
+            }
+
+        p = Path(path)
+        if not p.exists():
+            parent = str(p.parent) if str(p.parent) else "."
+            return {
+                "status": "error",
+                "error_code": "NOT_FOUND",
+                "recoverable": True,
+                "next_actions": ["list_directory", "search_files", "create_file"],
+                "output": f"File not found: {path}",
+                "error_details": {"path": path, "suggested_path": parent},
+            }
+
+        try:
+            content = p.read_text(encoding="utf-8")
+            candidates = _indentation_normalized_fuzzy_candidates(content, search_text)
+            if not candidates:
+                return {
+                    "status": "error",
+                    "error_code": "FUZZY_MATCH_NOT_FOUND",
+                    "recoverable": True,
+                    "next_actions": ["read_chunk", "extract_symbol", "replace_symbol", "edit_file", "write_file_block"],
+                    "output": "No indentation-normalized fuzzy candidate found. Read the exact current target range before retrying.",
+                    "error_details": {
+                        "path": path,
+                        "mode": normalized_mode,
+                        "fuzzy_candidate_count": 0,
+                    },
+                }
+            if len(candidates) != 1:
+                return {
+                    "status": "error",
+                    "error_code": "FUZZY_MATCH_AMBIGUOUS",
+                    "recoverable": True,
+                    "next_actions": ["read_chunk", "extract_symbol", "replace_symbol", "edit_file", "write_file_block"],
+                    "output": f"Found {len(candidates)} indentation-normalized fuzzy candidates. Refusing to apply ambiguous fuzzy edit.",
+                    "error_details": {
+                        "path": path,
+                        "mode": normalized_mode,
+                        "fuzzy_candidate_count": len(candidates),
+                        "fuzzy_candidates": candidates,
+                    },
+                }
+
+            candidate = candidates[0]
+            replacement = _reindent_fuzzy_replacement(replace_text, str(candidate.get("base_indent") or ""))
+            start = int(candidate["start_offset"])
+            end = int(candidate["end_offset"])
+            new_content = content[:start] + replacement + content[end:]
+            marker_error = _validate_no_compact_markers(path, new_content, previous_content=content)
+            if marker_error:
+                return marker_error
+            return ChangeProposal(file_path=path, original_content=content, new_content=new_content)
+        except Exception as e:
+            return {
+                "status": "error",
+                "error_code": "INTERNAL",
+                "recoverable": True,
+                "next_actions": ["read_chunk", "edit_file", "write_file_block"],
+                "output": f"Failed to apply fuzzy edit: {e}",
+            }
+
+
 class EditFileTool(BaseTool):
     name = "edit_file"
     description = (
@@ -906,6 +1014,7 @@ class EditFileTool(BaseTool):
                         path=path,
                         mismatch_type=mismatch_type,
                         active_intent_type="MODIFY",
+                        fuzzy_unique_candidate=len(fuzzy_candidates) == 1,
                     )
                 )
                 return {

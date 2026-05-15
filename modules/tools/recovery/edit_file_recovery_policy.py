@@ -23,6 +23,16 @@ EDIT_FILE_STRUCTURAL_MODIFY_ACTIONS = (
     "write_file_block",
 )
 
+EDIT_FILE_FUZZY_MODIFY_ACTIONS = (
+    "read_chunk",
+    "read_file_skeleton",
+    "extract_symbol",
+    "replace_symbol",
+    "fuzzy_edit_file",
+    "edit_file",
+    "write_file_block",
+)
+
 EDIT_FILE_LEGACY_MODIFY_ACTIONS = (
     "read_chunk",
     "read_file_skeleton",
@@ -68,6 +78,7 @@ class EditFileRecoveryContext:
     active_intent_type: str = ""
     active_allowed_actions: tuple[str, ...] = ()
     replace_symbol_available: bool = True
+    fuzzy_unique_candidate: bool = False
 
 
 @dataclass(frozen=True)
@@ -105,14 +116,28 @@ def resolve_edit_file_recovery(ctx: EditFileRecoveryContext | None = None) -> Ed
         # edit_file validation often has incomplete payload context, and the runtime/intent
         # layer will still filter actions against the active contract.
         path_unknown = not str(ctx.path or "").strip()
-        prefer_structural = bool(ctx.replace_symbol_available and (is_structural_source or path_unknown) and is_search_mismatch)
-        actions = EDIT_FILE_STRUCTURAL_MODIFY_ACTIONS if prefer_structural else EDIT_FILE_LEGACY_MODIFY_ACTIONS
+        prefer_structural = bool(
+            ctx.replace_symbol_available
+            and (is_structural_source or path_unknown)
+            and is_search_mismatch
+        )
+        actions = (
+            EDIT_FILE_FUZZY_MODIFY_ACTIONS
+            if ctx.fuzzy_unique_candidate
+            else EDIT_FILE_STRUCTURAL_MODIFY_ACTIONS
+            if prefer_structural
+            else EDIT_FILE_LEGACY_MODIFY_ACTIONS
+        )
         actions = _merge_allowed_recovery_actions(actions, ctx.active_allowed_actions, active_type=active_type)
         suppress_edit_file = _should_suppress_edit_file_retry(ctx)
         if suppress_edit_file:
             actions = tuple(action for action in actions if action != "edit_file")
         hint = (
-            "Recover from the edit_file mismatch with a structural path when possible: "
+            "Recover from the edit_file mismatch with the unique indentation-normalized fuzzy candidate: "
+            "use fuzzy_edit_file only with the same path, search_text, and replace_text from the failed edit. "
+            "If fuzzy_edit_file is unavailable or fails, use extract_symbol/replace_symbol or read a fresh exact range."
+            if ctx.fuzzy_unique_candidate
+            else "Recover from the edit_file mismatch with a structural path when possible: "
             "use extract_symbol to resolve the current symbol body, then replace_symbol for supported .kt/.py symbol-sized changes. "
             "Use edit_file only for a small exact block freshly read in the current turn."
             if prefer_structural
@@ -158,6 +183,7 @@ def search_mismatch_recovery_actions(
     active_allowed_actions: tuple[str, ...] = (),
     replace_symbol_available: bool = True,
     reason: str = "edit_file_search_mismatch",
+    fuzzy_unique_candidate: bool = False,
 ) -> tuple[str, ...]:
     return resolve_edit_file_recovery(
         EditFileRecoveryContext(
@@ -168,6 +194,7 @@ def search_mismatch_recovery_actions(
             active_intent_type=active_intent_type,
             active_allowed_actions=active_allowed_actions,
             replace_symbol_available=replace_symbol_available,
+            fuzzy_unique_candidate=fuzzy_unique_candidate,
         )
     ).next_actions
 
@@ -200,7 +227,7 @@ def _merge_allowed_recovery_actions(
 
     allowed = list(normalized_allowed)
     if active_type == "MODIFY":
-        for action in ("extract_symbol", "replace_symbol", "write_file_block"):
+        for action in ("extract_symbol", "replace_symbol", "fuzzy_edit_file", "write_file_block"):
             if action in preferred and action not in allowed:
                 allowed.append(action)
 

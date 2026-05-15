@@ -205,3 +205,37 @@ def test_no_legacy_modify_mismatch_action_set():
     assert actions != ("read_file", "search_content", "edit_file", "write_file")
     assert "replace_symbol" in actions
     assert "write_file_block" in actions
+
+
+def test_modify_kotlin_search_mismatch_with_unique_fuzzy_candidate_recommends_fuzzy_edit_file():
+    plan = resolve_edit_file_recovery(
+        EditFileRecoveryContext(
+            reason="edit_file_search_mismatch",
+            error_code="VALIDATION_ERROR",
+            mismatch_type="indentation_or_partial_block_mismatch",
+            path="app/src/main/java/demo/ChecklistScreen.kt",
+            active_intent_type="MODIFY",
+            active_allowed_actions=("read_chunk", "extract_symbol", "replace_symbol", "edit_file", "write_file_block"),
+            fuzzy_unique_candidate=True,
+        )
+    )
+
+    assert "fuzzy_edit_file" in plan.next_actions
+    assert plan.next_actions.index("fuzzy_edit_file") < plan.next_actions.index("edit_file")
+    assert "unique indentation-normalized fuzzy candidate" in plan.prompt_hint
+
+
+def test_modify_kotlin_search_mismatch_without_unique_fuzzy_candidate_does_not_recommend_fuzzy_edit_file():
+    plan = resolve_edit_file_recovery(
+        EditFileRecoveryContext(
+            reason="edit_file_search_mismatch",
+            error_code="VALIDATION_ERROR",
+            mismatch_type="indentation_or_partial_block_mismatch",
+            path="app/src/main/java/demo/ChecklistScreen.kt",
+            active_intent_type="MODIFY",
+            active_allowed_actions=("read_chunk", "extract_symbol", "replace_symbol", "edit_file", "write_file_block"),
+            fuzzy_unique_candidate=False,
+        )
+    )
+
+    assert "fuzzy_edit_file" not in plan.next_actions
