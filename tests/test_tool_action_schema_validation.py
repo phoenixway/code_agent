@@ -60,6 +60,7 @@ def test_edit_file_schema_recommended_actions_come_from_structural_policy():
         "read_file_skeleton",
         "extract_symbol",
         "replace_symbol",
+        "replace_line_range",
         "edit_file",
         "write_file_block",
     )
@@ -217,7 +218,7 @@ def test_repeated_edit_failure_recovery_actions_add_write_file_block_for_modify(
 
     actions = dispatcher._repeated_edit_failure_recovery_actions(state)
 
-    assert actions == ["read_chunk", "extract_symbol", "replace_symbol", "write_file_block"]
+    assert actions == ["read_chunk", "extract_symbol", "replace_symbol", "replace_line_range", "write_file_block"]
     assert "edit_file" not in actions
 
 

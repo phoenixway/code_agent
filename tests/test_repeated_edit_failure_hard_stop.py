@@ -112,12 +112,14 @@ async def test_repeated_edit_validation_failure_hard_stop_includes_write_file_bl
         "read_chunk",
         "extract_symbol",
         "replace_symbol",
+        "replace_line_range",
         "write_file_block",
     ]
     assert state.pending_loop_stop_info["policy_recommended_actions"] == [
         "read_chunk",
         "extract_symbol",
         "replace_symbol",
+        "replace_line_range",
         "write_file_block",
     ]
     assert "edit_file" not in state.pending_loop_stop_info["policy_allowed_actions"]

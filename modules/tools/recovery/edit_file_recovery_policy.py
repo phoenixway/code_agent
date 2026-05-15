@@ -19,6 +19,7 @@ EDIT_FILE_STRUCTURAL_MODIFY_ACTIONS = (
     "read_file_skeleton",
     "extract_symbol",
     "replace_symbol",
+    "replace_line_range",
     "edit_file",
     "write_file_block",
 )
@@ -38,6 +39,7 @@ EDIT_FILE_LEGACY_MODIFY_ACTIONS = (
     "read_chunk",
     "read_file_skeleton",
     "extract_symbol",
+    "replace_line_range",
     "edit_file",
     "write_file_block",
 )
@@ -55,6 +57,7 @@ EDIT_FILE_GENERIC_ACTIONS = (
     "read_file_skeleton",
     "extract_symbol",
     "search_content",
+    "replace_line_range",
     "edit_file",
     "write_file_block",
 )

@@ -24,6 +24,7 @@ def test_modify_kotlin_search_mismatch_prefers_structural_recovery():
         "read_chunk",
         "extract_symbol",
         "replace_symbol",
+        "replace_line_range",
         "edit_file",
         "write_file_block",
     )
@@ -49,10 +50,11 @@ def test_repeated_modify_kotlin_search_mismatch_suppresses_edit_file_retry():
         "read_chunk",
         "extract_symbol",
         "replace_symbol",
+        "replace_line_range",
         "write_file_block",
     )
     assert plan.recommended_actions == plan.next_actions
-    assert "do not retry edit_file" in plan.prompt_hint
+    assert "do not retry edit_file" in plan.prompt_hint.lower()
 
 
 def test_single_modify_kotlin_search_mismatch_keeps_edit_file_available():
@@ -84,46 +86,7 @@ def test_repeated_modify_markdown_search_mismatch_suppresses_edit_file_without_r
 
     assert "edit_file" not in plan.next_actions
     assert "replace_symbol" not in plan.next_actions
-    assert plan.next_actions == ("read_chunk", "extract_symbol", "write_file_block")
-
-
-def test_repeated_modify_kotlin_search_mismatch_suppresses_edit_file_retry():
-    plan = resolve_edit_file_recovery(
-        EditFileRecoveryContext(
-            reason="repeated_edit_failure_hard_stop",
-            error_code="VALIDATION_ERROR",
-            mismatch_type="indentation_or_partial_block_mismatch",
-            path="app/src/main/java/demo/ChecklistScreen.kt",
-            active_intent_type="MODIFY",
-            active_allowed_actions=("read_chunk", "extract_symbol", "replace_symbol", "edit_file", "write_file_block"),
-        )
-    )
-
-    assert plan.prefer_structural_recovery is True
-    assert "edit_file" not in plan.next_actions
-    assert plan.next_actions == (
-        "read_chunk",
-        "extract_symbol",
-        "replace_symbol",
-        "write_file_block",
-    )
-    assert plan.recommended_actions == plan.next_actions
-    assert "Do not retry edit_file" in plan.prompt_hint
-
-
-def test_single_modify_kotlin_search_mismatch_keeps_edit_file_available():
-    plan = resolve_edit_file_recovery(
-        EditFileRecoveryContext(
-            reason="edit_file_search_mismatch",
-            error_code="VALIDATION_ERROR",
-            mismatch_type="indentation_or_partial_block_mismatch",
-            path="app/src/main/java/demo/ChecklistScreen.kt",
-            active_intent_type="MODIFY",
-            active_allowed_actions=("read_chunk", "extract_symbol", "replace_symbol", "edit_file", "write_file_block"),
-        )
-    )
-
-    assert "edit_file" in plan.next_actions
+    assert plan.next_actions == ("read_chunk", "extract_symbol", "replace_line_range", "write_file_block")
 
 
 def test_modify_python_search_mismatch_prefers_structural_recovery():
@@ -152,7 +115,7 @@ def test_modify_unsupported_suffix_excludes_replace_symbol():
 
     assert plan.prefer_structural_recovery is False
     assert "replace_symbol" not in plan.next_actions
-    assert plan.next_actions == ("read_chunk", "extract_symbol", "edit_file", "write_file_block")
+    assert plan.next_actions == ("read_chunk", "extract_symbol", "replace_line_range", "edit_file", "write_file_block")
 
 
 def test_investigate_recovery_excludes_state_changing_actions():
@@ -189,6 +152,7 @@ def test_malformed_edit_file_recovery_uses_same_modify_policy():
         "read_chunk",
         "extract_symbol",
         "replace_symbol",
+        "replace_line_range",
         "edit_file",
         "write_file_block",
     )

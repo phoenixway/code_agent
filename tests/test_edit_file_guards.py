@@ -129,6 +129,7 @@ class EditFileMismatchRecoveryPolicyTests(unittest.IsolatedAsyncioTestCase):
                 "read_file_skeleton",
                 "extract_symbol",
                 "replace_symbol",
+                "replace_line_range",
                 "edit_file",
                 "write_file_block",
             ],
