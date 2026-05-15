@@ -1288,7 +1288,12 @@ class HistoryManager:
                     "SYSTEM: Protected working material is too large to preserve safely in context.\n"
                     "Do not request another huge full read/output immediately.\n"
                     "Use alternatives now: read_file_skeleton, read_chunk, narrower search_content, or narrower run_shell output.\n"
-                    "Return EXACTLY ONE action or a direct answer."
+                    "[RECOVERY_SCOPE]\n"
+                    "This instruction applies only to the next corrective step after protected working material exceeded the safe prompt budget.\n"
+                    "[NEXT_STEP_RULE]\n"
+                    "Use one smaller context-preserving action such as read_file_skeleton, read_chunk, narrower search_content, or narrower run_shell output, or answer directly if current evidence is sufficient.\n"
+                    "[EXIT_CONDITION]\n"
+                    "After a successful smaller step, resume normal intent execution."
                 ),
             }
 

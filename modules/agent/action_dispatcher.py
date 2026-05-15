@@ -493,7 +493,9 @@ class ActionDispatcher:
                         "or run_shell with rg/fd. For supported source files (.kt/.py) and symbol-sized work, "
                         "prefer extract_symbol over large read_chunk ranges when the target symbol is known or inferable. "
                         "If you later need a new intent, request it formally with a legitimate switch reason. "
-                        "Return EXACTLY ONE materially different read-only action."
+                        "[RECOVERY_SCOPE] This instruction applies only to the next corrective step for this oversized read_file action under the current intent. "
+                        "[NEXT_STEP_RULE] Use a materially smaller read-only action: read_chunk, read_file_skeleton, extract_symbol, search_content, search_files, or run_shell with rg/fd. "
+                        "[EXIT_CONDITION] After a successful smaller read step, resume normal intent execution."
                     ),
                     "command": cmd.copy(),
                     "estimated_new_chars": estimated_new_chars,
@@ -526,7 +528,9 @@ class ActionDispatcher:
                 "read exactly one strongest candidate file, use read_chunk, use read_file_skeleton, "
                 "or narrow the investigation through search first (search_content, search_files, rg, fd). "
                 "If you truly need to change intent, do it only through a formal intent request with a legitimate switch reason. "
-                "Return EXACTLY ONE revised action or a smaller read-only batch."
+                "[RECOVERY_SCOPE] This instruction applies only to the next corrective step for this oversized read/search turn under the current intent. "
+                "[NEXT_STEP_RULE] Use a materially smaller action or smaller read-only batch: fewer files, one strongest candidate, read_chunk, read_file_skeleton, narrower search_content/search_files, or rg/fd. "
+                "[EXIT_CONDITION] After a successful smaller step, resume normal intent execution."
             ),
             "command": first_command.copy() if isinstance(first_command, dict) else {},
             "estimated_new_chars": estimated_new_chars,
@@ -1035,14 +1039,37 @@ class ActionDispatcher:
             )
 
         elif action_denied:
-            output_text += "\n[SYSTEM: Action denied by user.]"
+            recovery_visibility = self._targeted_recovery_visibility_metadata(command, result, state)
+            output_text += (
+                "\n[SYSTEM: Action denied by user.]"
+                "\n[RECOVERY_SCOPE]"
+                "\nThis instruction applies only to the next response under the current intent."
+                "\n[WHAT_FAILED]"
+                "\nThe user denied the action."
+                "\n[NEXT_STEP_RULE]"
+                "\nDo not retry the denied action. Choose a safer local diagnostic if useful, or explain what cannot proceed without user approval."
+                "\n[EXIT_CONDITION]"
+                "\nAfter acknowledging the denial or choosing a safe alternative, resume normal intent execution or stop with a concise status."
+            )
             should_stop = True
+            state.pending_loop_stop_info = self._recovery_payload(
+                reason="action_denied_by_user",
+                recoverable=recoverable,
+                error_code=error_code,
+                next_actions=next_actions,
+                command=command.copy(),
+                message=str(result.get("output") or "Action denied by user"),
+                error_details=dict((result.get("error_details") or {}) if isinstance(result.get("error_details"), dict) else {}),
+                policy_allowed_actions=next_actions,
+                policy_recommended_actions=next_actions,
+                policy_authoritative_source="recommended" if next_actions else "",
+                recovery_visibility=recovery_visibility,
+            )
 
         elif execution_failed:
-            output_text += (
-                "\n[SYSTEM: Action failed. Use the runtime recovery payload below. Return only a corrected compact recovery step.]"
-            )
+            output_text += self._generic_failure_recovery_instruction_text(command, result)
             error_details = result.get("error_details") or {}
+            recovery_visibility = self._targeted_recovery_visibility_metadata(command, result, state)
             same_error_repeats = state_metrics.get("same_error_repeats", 0)
             loop_threshold = max(
                 2, int(getattr(self.config, "LOOP_ERROR_REPEAT_THRESHOLD", 2))
@@ -1057,6 +1084,25 @@ class ActionDispatcher:
                 and "Search block not found" in str(result.get("output", ""))
             )
             is_missing_executable = error_code == "MISSING_EXECUTABLE"
+
+            if recovery_visibility is not None:
+                should_stop = True
+                output_text += (
+                    "\n[SYSTEM: Targeted scoped recovery is required for this failed action.]"
+                )
+                state.pending_loop_stop_info = self._recovery_payload(
+                    reason="targeted_scoped_recovery",
+                    recoverable=recoverable,
+                    error_code=error_code,
+                    next_actions=next_actions,
+                    command=command.copy(),
+                    message=str(result.get("output") or ""),
+                    error_details=dict(error_details or {}),
+                    policy_allowed_actions=next_actions,
+                    policy_recommended_actions=next_actions,
+                    policy_authoritative_source="recommended" if next_actions else "",
+                    recovery_visibility=recovery_visibility,
+                )
 
             if is_missing_executable:
                 should_stop = True
@@ -1077,6 +1123,7 @@ class ActionDispatcher:
                         **dict(error_details or {}),
                         "missing_executable": missing_executable,
                     },
+                    recovery_visibility=recovery_visibility,
                 )
 
             if not should_stop and threshold_reached:
@@ -1128,10 +1175,12 @@ class ActionDispatcher:
                             error_code=error_code,
                             next_actions=next_actions,
                             command=command.copy(),
+                            message=str(result.get("output") or ""),
                             error_details=dict(error_details or {}),
                             policy_allowed_actions=next_actions,
                             policy_recommended_actions=next_actions,
                             policy_authoritative_source="recommended" if next_actions else "",
+                            recovery_visibility=recovery_visibility,
                         )
                     else:
                         output_text += (
@@ -1253,6 +1302,135 @@ class ActionDispatcher:
                 return False
 
         return True
+
+    def _active_intent_for_visibility(self, state):
+        active = getattr(state, "active_intent", None)
+        if active is not None:
+            return active
+        runtime = getattr(state, "intent_runtime", None)
+        return getattr(runtime, "active_intent", None) if runtime is not None else None
+
+    def _recovery_visibility_target(self, command: dict) -> str:
+        if not isinstance(command, dict):
+            return ""
+        path = str(command.get("path") or command.get("target") or command.get("file") or command.get("filename") or "").strip()
+        action_type = str(command.get("type") or command.get("action") or "").strip()
+        if action_type == "search_content":
+            pattern = str(command.get("pattern") or command.get("query") or "").strip()
+            if path and pattern:
+                return f"{path}:{pattern}"
+            return path or pattern
+        if action_type == "run_shell":
+            return str(command.get("command") or "").strip()
+        return path
+
+    def _generic_failure_recovery_instruction_text(self, command: dict, result: dict) -> str:
+        action_type = str((command or {}).get("type") or (command or {}).get("action") or "").strip()
+        error_code = str((result or {}).get("error_code") or "").strip().upper()
+        output = str((result or {}).get("output") or "")
+        output_lower = output.lower()
+
+        if action_type in {"read_file", "list_directory"} and error_code == "NOT_FOUND":
+            return (
+                "\n[SYSTEM: Action failed. Use the runtime recovery payload below.]"
+                "\n[RECOVERY_SCOPE]"
+                "\nThis applies only to the next corrective filesystem step under the current intent."
+                "\n[WHAT_FAILED]"
+                "\nThe requested path was not found."
+                "\n[NEXT_STEP_RULE]"
+                "\nDo not repeatedly probe the same missing path. Use one narrower parent-directory listing, search for the intended file, or conclude the path is absent."
+                "\n[EXIT_CONDITION]"
+                "\nAfter locating the correct path, confirming absence, or completing one diagnostic step, resume normal intent execution."
+            )
+
+        if action_type == "run_shell" and (
+            error_code in {"INTERNAL", "TRANSIENT_IO", "TIMEOUT", "COMMAND_TIMEOUT", "MISSING_EXECUTABLE"}
+            or "timed out" in output_lower
+            or "timeout" in output_lower
+            or "transient i/o" in output_lower
+        ):
+            return (
+                "\n[SYSTEM: Action failed. Use the runtime recovery payload below.]"
+                "\n[RECOVERY_SCOPE]"
+                "\nThis applies only to the next corrective shell step under the current intent."
+                "\n[WHAT_FAILED]"
+                "\nThe previous shell command failed, timed out, or hit transient I/O."
+                "\n[NEXT_STEP_RULE]"
+                "\nDo not repeat the same long command blindly. Use a smaller diagnostic command, split the command into bounded steps, or stop and report the external/manual requirement."
+                "\nIf a command fails because an external tool/wrapper is missing, do not manually reconstruct vendor wrapper files or download large external distributions unless explicitly requested or approved. Prefer a small diagnostic such as `gradle --version`; if unavailable, report the manual setup requirement."
+                "\n[EXIT_CONDITION]"
+                "\nAfter one successful diagnostic/corrective command, or if the dependency is unavailable, resume normal intent execution or report status."
+            )
+
+        return (
+            "\n[SYSTEM: Action failed. Use the runtime recovery payload below.]"
+            "\n[RECOVERY_SCOPE]"
+            "\nThis instruction applies only to the next corrective step for this failed action under the current intent."
+            "\n[WHAT_FAILED]"
+            "\nThe last tool action failed. Read last_tool_error_code, last_tool_error_message, and suggested_recovery_actions below."
+            "\n[NEXT_STEP_RULE]"
+            "\nUse one valid corrective action from the runtime recovery policy, or answer directly if the current evidence is already sufficient."
+            "\n[EXIT_CONDITION]"
+            "\nAfter a successful corrective action, resume normal intent execution."
+        )
+
+    def _targeted_recovery_visibility_metadata(self, command: dict, result: dict, state) -> dict | None:
+        if not isinstance(command, dict) or not isinstance(result, dict):
+            return None
+
+        action_type = str(command.get("type") or command.get("action") or "").strip()
+        error_code = str(result.get("error_code") or "").strip().upper()
+        status = str(result.get("status") or "").strip().lower()
+        output = str(result.get("output") or "")
+        output_lower = output.lower()
+
+        mode = ""
+        if (
+            action_type == "create_file"
+            and error_code == "VALIDATION_ERROR"
+            and "requires file body" in output_lower
+        ):
+            mode = "until_same_action_success"
+        elif (
+            action_type == "search_content"
+            and (
+                error_code == "SEARCH_REGEX_PARSE_ERROR"
+                or "regex parse" in output_lower
+                or "invalid regex" in output_lower
+            )
+        ):
+            mode = "next_turn"
+        elif action_type in {"read_file", "list_directory"} and error_code == "NOT_FOUND":
+            mode = "next_turn"
+        elif action_type == "run_shell" and (
+            error_code in {"INTERNAL", "TRANSIENT_IO", "TIMEOUT", "COMMAND_TIMEOUT", "MISSING_EXECUTABLE"}
+            or "timed out" in output_lower
+            or "timeout" in output_lower
+            or "transient i/o" in output_lower
+        ):
+            mode = "next_turn"
+        elif (
+            status == "denied"
+            or error_code in {"ACTION_DENIED", "USER_DENIED", "DENIED"}
+            or "action denied by user" in output_lower
+            or "denied by user" in output_lower
+        ):
+            mode = "next_turn"
+        else:
+            return None
+
+        active = self._active_intent_for_visibility(state)
+        intent_id = str(getattr(active, "intent_id", "") or "").strip()
+        intent_type = str(getattr(active, "intent_type", "") or "").strip()
+        return {
+            "mode": mode,
+            "intent_scope": "current_intent" if intent_id else "any",
+            "intent_id": intent_id,
+            "intent_type": intent_type,
+            "action_type": action_type,
+            "target": self._recovery_visibility_target(command),
+            "created_turn_id": int(getattr(state, "current_turn_id", 0) or 0),
+        }
 
     def _active_intent_type(self, state) -> str:
         active = getattr(state, "active_intent", None)

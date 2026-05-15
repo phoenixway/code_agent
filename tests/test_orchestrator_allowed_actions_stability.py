@@ -110,7 +110,31 @@ class OrchestratorAllowedActionsStabilityTests(unittest.TestCase):
 
         self.assertIn("Allowed actions under the CURRENT intent contract: read_chunk, read_file, search_content.", out)
         self.assertIn("The current intent contract remains valid", out)
+        self.assertIn("Use the current intent contract's allowed actions for one corrective next step", out)
+        self.assertNotIn("Choose one materially different allowed action", out)
         self.assertNotIn("Allowed next actions: search_content, edit_file, write_file.", out)
+
+    def test_blocked_action_signature_uses_scoped_recovery_text(self):
+        stop_info = {
+            "reason": "intent_blocked_action_signature",
+            "recoverable": True,
+            "message_key": "blocked_action_keep_current_intent",
+            "next_actions": ["read_chunk", "read_file", "search_content"],
+            "policy_metadata": {"blocked_reason": "planned_full_read_too_large"},
+        }
+
+        out = self.prompt_builder.build_orchestrated_recovery_prompt(stop_info)
+
+        self.assertIn("The blocked action pattern failed because of: planned_full_read_too_large.", out)
+        self.assertNotIn("Do NOT retry the same action with cosmetic changes.", out)
+        self.assertNotIn("Prefer one materially different next <action> only if tool use is still needed.", out)
+        self.assertIn("[RECOVERY_SCOPE]", out)
+        self.assertIn("This instruction applies only to the next corrective step after a blocked action pattern under the current intent.", out)
+        self.assertIn("[NEXT_STEP_RULE]", out)
+        self.assertIn("Avoid repeating the blocked action shape.", out)
+        self.assertIn("Choose one allowed action that materially changes the evidence path, or answer directly if current evidence is sufficient.", out)
+        self.assertIn("[EXIT_CONDITION]", out)
+        self.assertIn("After one successful progress-making step or a final answer, resume normal intent execution.", out)
 
     def test_modify_recovery_may_offer_write_actions_after_real_intent_switch(self):
         self.active_intent = SimpleNamespace(

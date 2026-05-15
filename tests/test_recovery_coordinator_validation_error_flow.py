@@ -154,6 +154,44 @@ class RecoveryCoordinatorValidationErrorFlowTests(unittest.IsolatedAsyncioTestCa
         self.assertIn("Do NOT output read_chunk again", decision.next_query)
         self.assertIn("search_content", decision.next_query)
         self.assertNotIn("Return EXACTLY ONE valid read_chunk action now.", decision.next_query)
+        self.assertNotIn("Return EXACTLY ONE materially different next step.", decision.next_query)
+        self.assertIn("[RECOVERY_SCOPE]", decision.next_query)
+        self.assertIn("This applies only to the next corrective step after repeated malformed read_chunk payloads.", decision.next_query)
+        self.assertIn("[NEXT_STEP_RULE]", decision.next_query)
+        self.assertIn("Choose one valid alternative from the listed options, or answer directly if current evidence is sufficient.", decision.next_query)
+        self.assertIn("[EXIT_CONDITION]", decision.next_query)
+        self.assertIn("After one valid alternative step or a final answer, resume normal execution.", decision.next_query)
+
+    async def test_intent_blocked_action_signature_uses_scoped_recovery_text(self):
+        agent = self._make_agent()
+        prompt_builder = OrchestratorPromptBuilder(agent)
+        recovery = RecoveryCoordinator(agent, prompt_builder)
+
+        stop_info = {
+            "reason": "intent_blocked_action_signature",
+            "recoverable": True,
+            "message_key": "blocked_action_keep_current_intent",
+            "command": {"type": "read_file", "path": "large.py"},
+            "next_actions": ["read_chunk", "search_content", "read_file_skeleton"],
+            "intent_allowed_actions": ["read_chunk", "search_content", "read_file_skeleton"],
+            "policy_metadata": {"blocked_reason": "planned_full_read_too_large"},
+        }
+
+        decision = await recovery.handle_defect_detector_stop(stop_info)
+
+        self.assertTrue(decision.handled)
+        self.assertFalse(decision.stop_loop)
+        self.assertIn("This blocked tool step does NOT close or invalidate the current intent contract.", decision.next_query)
+        self.assertIn("This exact action shape is blocked for the current intent contract", decision.next_query)
+        self.assertNotIn("Do NOT retry the same action with cosmetic changes.", decision.next_query)
+        self.assertNotIn("Choose a materially different next <action>", decision.next_query)
+        self.assertIn("[RECOVERY_SCOPE]", decision.next_query)
+        self.assertIn("This instruction applies only to the next corrective step after a blocked action pattern under the current intent.", decision.next_query)
+        self.assertIn("[NEXT_STEP_RULE]", decision.next_query)
+        self.assertIn("Avoid repeating the blocked action shape.", decision.next_query)
+        self.assertIn("Choose one allowed action that materially changes the evidence path, or answer directly if current evidence is sufficient.", decision.next_query)
+        self.assertIn("[EXIT_CONDITION]", decision.next_query)
+        self.assertIn("After one successful progress-making step or a final answer, resume normal intent execution.", decision.next_query)
 
     async def test_missing_executable_uses_typed_recovery_prompt(self):
         agent = self._make_agent()

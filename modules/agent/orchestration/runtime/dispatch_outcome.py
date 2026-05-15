@@ -162,6 +162,17 @@ class DispatchOutcomeHandler:
         if exhausted:
             self._close_active_intent_if_terminal_stop(stop_reason or "exhausted_resumable")
 
+    def _record_scoped_recovery_instruction_if_present(self, stop_info) -> None:
+        if not isinstance(stop_info, dict):
+            return
+        visibility = stop_info.get("recovery_visibility")
+        if not isinstance(visibility, dict):
+            return
+        text = stop_info.get("recovery_instruction") or stop_info.get("message") or ""
+        self.history_view.add_recovery_instruction(
+            str(text or ""),
+            recovery_visibility=visibility,
+        )
 
     def _strip_leaked_system_results_from_ui_text(self, text: str) -> tuple[str, bool]:
         value = str(text or "")
@@ -273,6 +284,7 @@ class DispatchOutcomeHandler:
 
         if should_stop:
             stop_info = self.state_view.pending_loop_stop_info()
+            self._record_scoped_recovery_instruction_if_present(stop_info)
             decision = await self.recovery.handle_dispatch_stop(stop_info, ctx.state_machine)
             if decision.handled:
                 if decision.clear_pending_stop:

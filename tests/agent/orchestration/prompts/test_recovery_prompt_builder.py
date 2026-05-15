@@ -191,6 +191,10 @@ def test_typed_stop_recovery_with_missing_goal(prompt_builder: OrchestratorPromp
     prompt = prompt_builder.build_typed_stop_recovery_prompt(stop_info)
     assert isinstance(prompt, str)
     assert "Current contract goal remains the same: ." in prompt
+    assert "Return EXACTLY ONE" not in prompt
+    assert "[RECOVERY_SCOPE]" in prompt
+    assert "[NEXT_STEP_RULE]" in prompt
+    assert "[EXIT_CONDITION]" in prompt
 
     # Case 2: Active intent exists, but `goal` attribute is missing
     active_intent_mock = MagicMock()
@@ -199,3 +203,7 @@ def test_typed_stop_recovery_with_missing_goal(prompt_builder: OrchestratorPromp
     prompt = prompt_builder.build_typed_stop_recovery_prompt(stop_info)
     assert isinstance(prompt, str)
     assert "Current contract goal remains the same: ." in prompt
+    assert "Return EXACTLY ONE" not in prompt
+    assert "[RECOVERY_SCOPE]" in prompt
+    assert "[NEXT_STEP_RULE]" in prompt
+    assert "[EXIT_CONDITION]" in prompt

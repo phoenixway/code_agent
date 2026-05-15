@@ -109,11 +109,14 @@ class RecoveryPromptBuilderMixin:
                 base_lines.append(f"The blocked action pattern failed because of: {blocked_reason}.")
             base_lines.extend(
                 [
-                    "Do NOT retry the same action with cosmetic changes.",
-                    "Choose the next step that most increases progress toward the goal.",
+                    "[RECOVERY_SCOPE]",
+                    "This instruction applies only to the next corrective step after a blocked action pattern under the current intent.",
+                    "[NEXT_STEP_RULE]",
+                    "Avoid repeating the blocked action shape.",
+                    "Choose one allowed action that materially changes the evidence path, or answer directly if current evidence is sufficient.",
                     "Return the next valid output under the current contract.",
-                    "Prefer one materially different next <action> only if tool use is still needed.",
-                    "If the goal can already be answered, return a plain-text answer instead.",
+                    "[EXIT_CONDITION]",
+                    "After one successful progress-making step or a final answer, resume normal intent execution.",
                 ]
             )
         elif reason == "retry_or_continuation_after_failure":
@@ -258,9 +261,9 @@ class RecoveryPromptBuilderMixin:
                 "\nDo not repeat the blocked or low-value action pattern."
                 "\nDo not restart the task from the beginning. Continue from already gathered evidence under the same contract."
                 "\nReturn the next valid output under the current contract."
-                "\nReturn EXACTLY ONE materially different read-only action."
-                "\nUse it only if tool use is still needed."
-                "\nIf current evidence is already sufficient, return a plain-text answer instead."
+                "\n[RECOVERY_SCOPE] This instruction applies only to the next corrective step for this blocked or oversized read-only action pattern under the current intent."
+                "\n[NEXT_STEP_RULE] Use a materially different read-only action only if tool use is still needed. Follow the current contract and updated runtime constraints."
+                "\n[EXIT_CONDITION] After a successful corrective step, resume normal intent execution. If current evidence is already sufficient, return a plain-text answer instead."
             )
         if reason in {"too_broad_search", "low_value_broad_search_repeat"}:
             prompt += (
@@ -634,10 +637,14 @@ class RecoveryPromptBuilderMixin:
             "Do NOT output read_chunk again in the next reply.\n"
             f"{goal_line}"
             f"Next valid options now: {allowed_text}.\n"
-            "Return EXACTLY ONE materially different next step.\n"
+            "[RECOVERY_SCOPE]\n"
+            "This applies only to the next corrective step after repeated malformed read_chunk payloads.\n"
+            "[NEXT_STEP_RULE]\n"
+            "Choose one valid alternative from the listed options, or answer directly if current evidence is sufficient.\n"
             "Prefer search_content, read_file_skeleton, search_files, list_directory, or a narrow read-only run_shell if allowed.\n"
-            "If current evidence is already sufficient, return a plain-text answer instead.\n"
-            "Do not re-send another malformed recovery attempt."
+            "Do not re-send another malformed recovery attempt.\n"
+            "[EXIT_CONDITION]\n"
+            "After one valid alternative step or a final answer, resume normal execution."
         )
 
     def build_orchestrated_recovery_prompt(self, stop_info: dict | None) -> str:

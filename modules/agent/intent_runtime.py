@@ -1285,8 +1285,8 @@ class IntentRuntime:
                 "message": (
                     "This exact action shape is blocked for the current intent. "
                     "The current intent is still valid. "
-                    "Do not retry the same action with cosmetic changes. "
-                    "Choose a materially different allowed action."
+                    "Use the current intent's allowed actions for one corrective next step. "
+                    "Answer directly if current evidence is sufficient."
                 ),
                 "message_key": decision.message_key,
                 "policy_metadata": dict(decision.metadata or {}),
