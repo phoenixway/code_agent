@@ -1043,6 +1043,7 @@ class ActionDispatcher:
                 "\n[SYSTEM: Action failed. Use the runtime recovery payload below. Return only a corrected compact recovery step.]"
             )
             error_details = result.get("error_details") or {}
+            recovery_visibility = self._targeted_recovery_visibility_metadata(command, result, state)
             same_error_repeats = state_metrics.get("same_error_repeats", 0)
             loop_threshold = max(
                 2, int(getattr(self.config, "LOOP_ERROR_REPEAT_THRESHOLD", 2))
@@ -1057,6 +1058,25 @@ class ActionDispatcher:
                 and "Search block not found" in str(result.get("output", ""))
             )
             is_missing_executable = error_code == "MISSING_EXECUTABLE"
+
+            if recovery_visibility is not None:
+                should_stop = True
+                output_text += (
+                    "\n[SYSTEM: Targeted scoped recovery is required for this failed action.]"
+                )
+                state.pending_loop_stop_info = self._recovery_payload(
+                    reason="targeted_scoped_recovery",
+                    recoverable=recoverable,
+                    error_code=error_code,
+                    next_actions=next_actions,
+                    command=command.copy(),
+                    message=str(result.get("output") or ""),
+                    error_details=dict(error_details or {}),
+                    policy_allowed_actions=next_actions,
+                    policy_recommended_actions=next_actions,
+                    policy_authoritative_source="recommended" if next_actions else "",
+                    recovery_visibility=recovery_visibility,
+                )
 
             if is_missing_executable:
                 should_stop = True
@@ -1128,10 +1148,12 @@ class ActionDispatcher:
                             error_code=error_code,
                             next_actions=next_actions,
                             command=command.copy(),
+                            message=str(result.get("output") or ""),
                             error_details=dict(error_details or {}),
                             policy_allowed_actions=next_actions,
                             policy_recommended_actions=next_actions,
                             policy_authoritative_source="recommended" if next_actions else "",
+                            recovery_visibility=recovery_visibility,
                         )
                     else:
                         output_text += (
