@@ -71,7 +71,7 @@ def test_search_content_regex_parse_recovery_visibility_is_next_turn_current_int
     }
 
 
-def test_unrelated_recovery_visibility_metadata_stays_legacy_none():
+def test_read_file_not_found_recovery_visibility_is_next_turn_current_intent():
     dispatcher = _dispatcher()
     command = {"type": "read_file", "path": "missing.py"}
     result = {
@@ -79,6 +79,144 @@ def test_unrelated_recovery_visibility_metadata_stays_legacy_none():
         "error_code": "NOT_FOUND",
         "recoverable": True,
         "output": "File not found",
+    }
+
+    visibility = dispatcher._targeted_recovery_visibility_metadata(command, result, _state())
+
+    assert visibility == {
+        "mode": "next_turn",
+        "intent_scope": "current_intent",
+        "intent_id": "intent-1",
+        "intent_type": "MODIFY",
+        "action_type": "read_file",
+        "target": "missing.py",
+        "created_turn_id": 17,
+    }
+
+
+def test_list_directory_not_found_recovery_visibility_is_next_turn_current_intent():
+    dispatcher = _dispatcher()
+    command = {"type": "list_directory", "path": "missing_dir"}
+    result = {
+        "status": "failed",
+        "error_code": "NOT_FOUND",
+        "recoverable": True,
+        "output": "Directory not found",
+    }
+
+    visibility = dispatcher._targeted_recovery_visibility_metadata(command, result, _state())
+
+    assert visibility == {
+        "mode": "next_turn",
+        "intent_scope": "current_intent",
+        "intent_id": "intent-1",
+        "intent_type": "MODIFY",
+        "action_type": "list_directory",
+        "target": "missing_dir",
+        "created_turn_id": 17,
+    }
+
+
+def test_run_shell_transient_io_recovery_visibility_is_next_turn_current_intent():
+    dispatcher = _dispatcher()
+    command = {"type": "run_shell", "command": "pytest -q tests"}
+    result = {
+        "status": "failed",
+        "error_code": "TRANSIENT_IO",
+        "recoverable": True,
+        "output": "transient I/O failure",
+    }
+
+    visibility = dispatcher._targeted_recovery_visibility_metadata(command, result, _state())
+
+    assert visibility == {
+        "mode": "next_turn",
+        "intent_scope": "current_intent",
+        "intent_id": "intent-1",
+        "intent_type": "MODIFY",
+        "action_type": "run_shell",
+        "target": "pytest -q tests",
+        "created_turn_id": 17,
+    }
+
+
+def test_run_shell_timeout_recovery_visibility_is_next_turn_current_intent():
+    dispatcher = _dispatcher()
+    command = {"type": "run_shell", "command": "./gradlew test"}
+    result = {
+        "status": "failed",
+        "error_code": "COMMAND_TIMEOUT",
+        "recoverable": True,
+        "output": "Command timed out",
+    }
+
+    visibility = dispatcher._targeted_recovery_visibility_metadata(command, result, _state())
+
+    assert visibility == {
+        "mode": "next_turn",
+        "intent_scope": "current_intent",
+        "intent_id": "intent-1",
+        "intent_type": "MODIFY",
+        "action_type": "run_shell",
+        "target": "./gradlew test",
+        "created_turn_id": 17,
+    }
+
+
+def test_action_denied_recovery_visibility_is_next_turn_current_intent():
+    dispatcher = _dispatcher()
+    command = {"type": "run_shell", "command": "rm -rf build"}
+    result = {
+        "status": "denied",
+        "error_code": "USER_DENIED",
+        "recoverable": True,
+        "output": "Action denied by user",
+    }
+
+    visibility = dispatcher._targeted_recovery_visibility_metadata(command, result, _state())
+
+    assert visibility == {
+        "mode": "next_turn",
+        "intent_scope": "current_intent",
+        "intent_id": "intent-1",
+        "intent_type": "MODIFY",
+        "action_type": "run_shell",
+        "target": "rm -rf build",
+        "created_turn_id": 17,
+    }
+
+
+def test_run_shell_missing_executable_recovery_visibility_is_next_turn_current_intent():
+    dispatcher = _dispatcher()
+    command = {"type": "run_shell", "command": "./gradlew test"}
+    result = {
+        "status": "failed",
+        "error_code": "MISSING_EXECUTABLE",
+        "recoverable": True,
+        "output": "Required executable is unavailable",
+    }
+
+    visibility = dispatcher._targeted_recovery_visibility_metadata(command, result, _state())
+
+    assert visibility == {
+        "mode": "next_turn",
+        "intent_scope": "current_intent",
+        "intent_id": "intent-1",
+        "intent_type": "MODIFY",
+        "action_type": "run_shell",
+        "target": "./gradlew test",
+        "created_turn_id": 17,
+    }
+
+
+def test_unmigrated_recovery_visibility_metadata_stays_legacy_none():
+    dispatcher = _dispatcher()
+    command = {"type": "read_file", "path": "weird.py"}
+    result = {
+        "status": "failed",
+        "error_code": "SOME_UNMIGRATED_ERROR",
+        "recoverable": True,
+        "output": "Some unmigrated failure",
     }
 
     assert dispatcher._targeted_recovery_visibility_metadata(command, result, _state()) is None
