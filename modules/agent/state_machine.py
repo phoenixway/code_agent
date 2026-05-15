@@ -380,7 +380,12 @@ class AgentStateMachine:
             "SYSTEM_DIAGNOSTIC: You are in a no-progress loop.\n"
             f"Task kind: {self.task_kind.value}.\n"
             f"Allowed next actions now: {allowed}.\n"
-            "Return EXACTLY ONE action and choose a different strategy."
+            "[RECOVERY_SCOPE]\n"
+            "This instruction applies only to the next diagnostic step for the current no-progress loop.\n"
+            "[NEXT_STEP_RULE]\n"
+            "Choose a materially different next action if tool use is needed, or answer directly if current evidence is sufficient.\n"
+            "[EXIT_CONDITION]\n"
+            "After a successful progress-making step, resume normal execution."
         )
 
     def decide(self) -> LoopDecision:
