@@ -1254,6 +1254,68 @@ class ActionDispatcher:
 
         return True
 
+    def _active_intent_for_visibility(self, state):
+        active = getattr(state, "active_intent", None)
+        if active is not None:
+            return active
+        runtime = getattr(state, "intent_runtime", None)
+        return getattr(runtime, "active_intent", None) if runtime is not None else None
+
+    def _recovery_visibility_target(self, command: dict) -> str:
+        if not isinstance(command, dict):
+            return ""
+        path = str(command.get("path") or command.get("target") or command.get("file") or command.get("filename") or "").strip()
+        action_type = str(command.get("type") or command.get("action") or "").strip()
+        if action_type == "search_content":
+            pattern = str(command.get("pattern") or command.get("query") or "").strip()
+            if path and pattern:
+                return f"{path}:{pattern}"
+            return path or pattern
+        if action_type == "run_shell":
+            return str(command.get("command") or "").strip()
+        return path
+
+    def _targeted_recovery_visibility_metadata(self, command: dict, result: dict, state) -> dict | None:
+        if not isinstance(command, dict) or not isinstance(result, dict):
+            return None
+
+        action_type = str(command.get("type") or command.get("action") or "").strip()
+        error_code = str(result.get("error_code") or "").strip().upper()
+        output = str(result.get("output") or "")
+        output_lower = output.lower()
+
+        mode = ""
+        if (
+            action_type == "create_file"
+            and error_code == "VALIDATION_ERROR"
+            and "requires file body" in output_lower
+        ):
+            mode = "until_same_action_success"
+        elif (
+            action_type == "search_content"
+            and (
+                error_code == "SEARCH_REGEX_PARSE_ERROR"
+                or "regex parse" in output_lower
+                or "invalid regex" in output_lower
+            )
+        ):
+            mode = "next_turn"
+        else:
+            return None
+
+        active = self._active_intent_for_visibility(state)
+        intent_id = str(getattr(active, "intent_id", "") or "").strip()
+        intent_type = str(getattr(active, "intent_type", "") or "").strip()
+        return {
+            "mode": mode,
+            "intent_scope": "current_intent" if intent_id else "any",
+            "intent_id": intent_id,
+            "intent_type": intent_type,
+            "action_type": action_type,
+            "target": self._recovery_visibility_target(command),
+            "created_turn_id": int(getattr(state, "current_turn_id", 0) or 0),
+        }
+
     def _active_intent_type(self, state) -> str:
         active = getattr(state, "active_intent", None)
         return str(getattr(active, "intent_type", "") or "").strip().upper()
