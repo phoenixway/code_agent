@@ -948,6 +948,42 @@ class HistoryManager:
                 keys.add((path, version))
         return keys
 
+    def build_recovery_instruction_injected_messages(self, state=None) -> list[dict[str, str]]:
+        """Build temporary recovery instructions for model-facing runtime overlay.
+
+        Raw history remains untouched. This method only projects currently visible
+        recovery instructions into an injected system block that callers may pass
+        through ModelClient.injected_messages.
+        """
+        from modules.recovery_visibility import recovery_message_is_visible
+
+        visible_lines: list[str] = []
+        for msg in self.messages:
+            if msg.get("type") != "recovery_instruction":
+                continue
+            if not recovery_message_is_visible(msg, state=state):
+                continue
+            content = msg.get("content")
+            if not isinstance(content, str) or not content.strip():
+                continue
+            visible_lines.append(content.strip())
+
+        if not visible_lines:
+            return []
+
+        block_lines = [
+            "## CURRENT RECOVERY INSTRUCTIONS",
+            "These instructions are temporary corrective constraints for the current recovery scope.",
+            "They do not replace the stable system prompt or the active intent contract.",
+            "",
+        ]
+        for index, text in enumerate(visible_lines, start=1):
+            block_lines.append(f"### Recovery instruction {index}")
+            block_lines.append(text)
+            block_lines.append("")
+
+        return [{"role": "system", "content": "\n".join(block_lines).strip()}]
+
     def get_history_for_api(self):
         self._enforce_ordinary_history_pressure()
 

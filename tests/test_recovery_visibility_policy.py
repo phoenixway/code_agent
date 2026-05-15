@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from modules.agent.orchestration.runtime.recovery_visibility import recovery_message_is_visible
+from modules.recovery_visibility import recovery_message_is_visible
 
 
 def _state(intent_id="intent-1", intent_type="MODIFY", current_turn_id=10, successes=None):
