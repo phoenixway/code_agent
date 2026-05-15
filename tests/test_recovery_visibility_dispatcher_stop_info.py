@@ -73,6 +73,10 @@ async def test_create_file_missing_body_stop_info_gets_scoped_recovery_visibilit
     )
 
     assert should_stop is True
+    assert "Return only a corrected compact recovery step" not in _result_text
+    assert "[RECOVERY_SCOPE]" in _result_text
+    assert "This instruction applies only to the next corrective step" in _result_text
+    assert "[EXIT_CONDITION]" in _result_text
     assert state.pending_loop_stop_info["recovery_visibility"] == {
         "mode": "until_same_action_success",
         "intent_scope": "current_intent",
@@ -114,6 +118,8 @@ async def test_unrelated_failed_action_stop_info_does_not_get_recovery_visibilit
     )
 
     assert should_stop is False
+    assert "Use the runtime recovery payload below" in _result_text
+    assert "Return only a corrected compact recovery step" not in _result_text
     assert state.pending_loop_stop_info is None or "recovery_visibility" not in state.pending_loop_stop_info
 
 
@@ -147,6 +153,10 @@ async def test_search_content_regex_parse_stop_info_gets_next_turn_recovery_visi
     )
 
     assert should_stop is True
+    assert "Return only a corrected compact recovery step" not in _result_text
+    assert "[RECOVERY_SCOPE]" in _result_text
+    assert "This instruction applies only to the next corrective step" in _result_text
+    assert "[EXIT_CONDITION]" in _result_text
     assert state.pending_loop_stop_info["recovery_visibility"] == {
         "mode": "next_turn",
         "intent_scope": "current_intent",

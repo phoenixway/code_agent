@@ -1040,7 +1040,15 @@ class ActionDispatcher:
 
         elif execution_failed:
             output_text += (
-                "\n[SYSTEM: Action failed. Use the runtime recovery payload below. Return only a corrected compact recovery step.]"
+                "\n[SYSTEM: Action failed. Use the runtime recovery payload below.]"
+                "\n[RECOVERY_SCOPE]"
+                "\nThis instruction applies only to the next corrective step for this failed action under the current intent."
+                "\n[WHAT_FAILED]"
+                "\nThe last tool action failed. Read last_tool_error_code, last_tool_error_message, and suggested_recovery_actions below."
+                "\n[NEXT_STEP_RULE]"
+                "\nUse one valid corrective action from the runtime recovery policy, or answer directly if the current evidence is already sufficient."
+                "\n[EXIT_CONDITION]"
+                "\nAfter a successful corrective action, resume normal intent execution."
             )
             error_details = result.get("error_details") or {}
             recovery_visibility = self._targeted_recovery_visibility_metadata(command, result, state)
