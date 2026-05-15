@@ -8,7 +8,7 @@ INTENT_MESSAGES: dict[str, dict] = {
         "type": "action_block",
         "template": (
             "A specific action is blocked, but the current intent contract remains valid. "
-            "Choose one materially different allowed action, or answer from current evidence if enough is already known."
+            "Use the current intent contract's allowed actions for one corrective next step, or answer from current evidence if enough is already known."
         ),
     },
     "unnecessary_intent_reactivation_or_replace": {

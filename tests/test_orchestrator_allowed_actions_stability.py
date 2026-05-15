@@ -110,6 +110,8 @@ class OrchestratorAllowedActionsStabilityTests(unittest.TestCase):
 
         self.assertIn("Allowed actions under the CURRENT intent contract: read_chunk, read_file, search_content.", out)
         self.assertIn("The current intent contract remains valid", out)
+        self.assertIn("Use the current intent contract's allowed actions for one corrective next step", out)
+        self.assertNotIn("Choose one materially different allowed action", out)
         self.assertNotIn("Allowed next actions: search_content, edit_file, write_file.", out)
 
     def test_blocked_action_signature_uses_scoped_recovery_text(self):
