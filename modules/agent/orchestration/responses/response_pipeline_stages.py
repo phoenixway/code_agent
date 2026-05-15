@@ -1051,8 +1051,10 @@ class ResponsePipelineStagesMixin:
                 )
 
     def _clear_plan_review_required_if_checkpoint(self, parsed_output) -> bool:
-        runtime_semantics = getattr(parsed_output, "runtime_protocol_semantics", None)
-        if not bool(getattr(runtime_semantics, "has_plan_review_checkpoint", False)):
+        invalid_kind = str(getattr(parsed_output, "invalid_kind", "") or "").strip()
+        if invalid_kind:
+            return False
+        if not self._has_plan_review_checkpoint(parsed_output):
             return False
 
         from ..runtime.execution_commit_observer import ExecutionCommitObserverAdapter

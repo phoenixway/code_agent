@@ -7,22 +7,25 @@ from modules.agent.orchestration.shared.decision_models import ExecutionCommit
 
 
 class Harness(ResponsePipelineStagesMixin):
-    def __init__(self, *, has_plan_review_checkpoint: bool):
+    def __init__(self, *, has_plan_review_checkpoint: bool, invalid_kind: str = "", checkpoint_before_action: bool | None = None):
         self.state = SimpleNamespace()
         self.stage_logger = SimpleNamespace(log=MagicMock())
         self.parser = SimpleNamespace(parse=MagicMock(return_value=[]))
         self._normalize_response_stage = MagicMock(
-            return_value=SimpleNamespace(normalized_response="<plan_review_done />")
+            side_effect=lambda response, **_kwargs: SimpleNamespace(normalized_response=response)
         )
+        if checkpoint_before_action is None:
+            checkpoint_before_action = has_plan_review_checkpoint
         self._classify_intent_output = MagicMock(
             return_value=SimpleNamespace(
-                invalid_kind="",
+                invalid_kind=invalid_kind,
                 has_action_segment=False,
                 auto_closed_think=False,
                 auto_closed_think_reason="",
                 auto_closed_think_tag="",
                 runtime_protocol_semantics=SimpleNamespace(
-                    has_plan_review_checkpoint=has_plan_review_checkpoint
+                    has_plan_review_checkpoint=has_plan_review_checkpoint,
+                    has_plan_review_checkpoint_before_action=checkpoint_before_action,
                 ),
             )
         )
@@ -84,6 +87,47 @@ def test_plan_review_checkpoint_clears_required_state_in_classification_stage():
         plan_review_required_target="src/example.py",
         plan_review_required_action_effects=["edit_file:src/example.py"],
     )
+
+
+def test_invalid_response_with_plan_review_checkpoint_does_not_clear_required_state():
+    harness = Harness(
+        has_plan_review_checkpoint=True,
+        invalid_kind="mixed_visible_text_and_control_protocol",
+    )
+    ExecutionCommitObserverAdapter(harness.state).observe_execution_commit(
+        None,
+        _state_changing_commit(),
+        sys_results=["ok"],
+    )
+
+    harness._run_classification_stage(
+        SimpleNamespace(model_stop_reason=""),
+        '<plan_review_done />\nvisible text\n<action>{"type":"read_file","path":"x.py"}</action>',
+        SimpleNamespace(response='<plan_review_done />\nvisible text\n<action>{"type":"read_file","path":"x.py"}</action>', memory_checkpoint_and_action=False, plan_checkpoint_and_action=True),
+    )
+
+    assert harness.state.plan_review_required_after_state_change is True
+    assert harness.state.plan_review_required_action_type == "edit_file"
+    assert harness.state.plan_review_required_target == "src/example.py"
+
+
+def test_plan_review_checkpoint_after_action_does_not_clear_required_state():
+    harness = Harness(has_plan_review_checkpoint=True, checkpoint_before_action=False)
+    ExecutionCommitObserverAdapter(harness.state).observe_execution_commit(
+        None,
+        _state_changing_commit(),
+        sys_results=["ok"],
+    )
+
+    harness._run_classification_stage(
+        SimpleNamespace(model_stop_reason=""),
+        '<action>{"type":"read_file","path":"x.py"}</action>\n<plan_review_done />',
+        SimpleNamespace(response='<action>{"type":"read_file","path":"x.py"}</action>\n<plan_review_done />', memory_checkpoint_and_action=False, plan_checkpoint_and_action=True),
+    )
+
+    assert harness.state.plan_review_required_after_state_change is True
+    assert harness.state.plan_review_required_action_type == "edit_file"
+    assert harness.state.plan_review_required_target == "src/example.py"
 
 
 def test_response_without_plan_review_checkpoint_does_not_clear_required_state():
