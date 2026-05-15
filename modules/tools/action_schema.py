@@ -54,7 +54,8 @@ class ToolActionSchema:
                 "It does not accept line ranges, byte ranges, file_content, or replace_block. "
                 "Accepted edit_file payload has exactly top-level path, search_text, and replace_text strings. "
                 "Do not use edits arrays, search_block, replace_block, start_line/end_line, byte ranges, content, file_content, patches, or diff-style payloads with edit_file. "
-                "If you only know a line range, call read_chunk first. If you know a Kotlin/Python symbol target, use extract_symbol or replace_symbol. "
+                "If you only know a line range, use replace_line_range with path, start_line, end_line, and replace_text; reread with read_chunk first if the range may be stale. "
+                "If you know a Kotlin/Python symbol target, use extract_symbol or replace_symbol. "
                 "Call edit_file again only after you can provide exact top-level search_text and replace_text."
             )
         else:

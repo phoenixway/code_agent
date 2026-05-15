@@ -50,6 +50,7 @@ def test_edit_file_schema_rejects_line_range_fields():
     assert "edits arrays" in violation.message
     assert "search_block" in violation.message
     assert "replace_block" in violation.message
+    assert "replace_line_range" in violation.message
     assert "top-level path, search_text, and replace_text" in violation.message
 
 

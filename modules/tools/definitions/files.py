@@ -950,6 +950,130 @@ class FuzzyEditFileTool(BaseTool):
             }
 
 
+class ReplaceLineRangeTool(BaseTool):
+    name = "replace_line_range"
+    description = (
+        "Replaces an inclusive line range in an existing file. "
+        "Use when a fresh read_chunk, compiler error, stacktrace, or exact symbol evidence gives reliable line numbers. "
+        "Params: 'path' (str), 'start_line' (int, 1-based), 'end_line' (int, inclusive), "
+        "'replace_text' (str; empty string deletes the range), optional 'expected_excerpt' (str; stale guard). "
+        "Do not use stale line numbers after same-file edits; reread the range or provide expected_excerpt."
+    )
+
+    async def execute(
+        self,
+        path: str,
+        start_line: int,
+        end_line: int,
+        replace_text: str,
+        expected_excerpt: str | None = None,
+    ):
+        p = Path(path)
+        if not p.exists():
+            parent = str(p.parent) if str(p.parent) else "."
+            return {
+                "status": "error",
+                "error_code": "NOT_FOUND",
+                "recoverable": True,
+                "next_actions": ["list_directory", "search_files", "read_file"],
+                "output": f"File not found: {path}",
+                "error_details": {"path": path, "suggested_path": parent},
+            }
+        if not p.is_file():
+            return {
+                "status": "error",
+                "error_code": "VALIDATION_ERROR",
+                "recoverable": True,
+                "next_actions": ["read_file", "read_chunk"],
+                "output": f"Not a file: {path}",
+            }
+        if not isinstance(replace_text, str):
+            return {
+                "status": "error",
+                "error_code": "VALIDATION_ERROR",
+                "recoverable": True,
+                "next_actions": ["replace_line_range", "read_chunk"],
+                "output": "Parameter 'replace_text' must be a string. Use an empty string to delete the line range.",
+            }
+        try:
+            start = int(start_line)
+            end = int(end_line)
+        except Exception:
+            return {
+                "status": "error",
+                "error_code": "VALIDATION_ERROR",
+                "recoverable": True,
+                "next_actions": ["replace_line_range", "read_chunk"],
+                "output": "Parameters 'start_line' and 'end_line' must be integers.",
+            }
+        if start < 1 or end < start:
+            return {
+                "status": "error",
+                "error_code": "VALIDATION_ERROR",
+                "recoverable": True,
+                "next_actions": ["replace_line_range", "read_chunk"],
+                "output": "Line range must satisfy start_line >= 1 and end_line >= start_line.",
+            }
+        if end - start + 1 > 120:
+            return {
+                "status": "error",
+                "error_code": "VALIDATION_ERROR",
+                "recoverable": True,
+                "next_actions": ["read_chunk", "extract_symbol", "replace_symbol", "write_file_block"],
+                "output": "replace_line_range refuses ranges larger than 120 lines. Use a smaller range or a structural/full-file strategy.",
+            }
+
+        try:
+            content = p.read_text(encoding="utf-8")
+            keep_newline = content.endswith("\n")
+            lines = content.splitlines(keepends=True)
+            if end > len(lines):
+                return {
+                    "status": "error",
+                    "error_code": "RANGE_OUT_OF_BOUNDS",
+                    "recoverable": True,
+                    "next_actions": ["read_chunk", "read_file_skeleton", "extract_symbol"],
+                    "output": f"Line range {start}-{end} is outside file length {len(lines)}. Read the current range before retrying.",
+                    "error_details": {"path": path, "start_line": start, "end_line": end, "line_count": len(lines)},
+                }
+
+            current_excerpt = "".join(lines[start - 1:end])
+            if expected_excerpt is not None and current_excerpt != expected_excerpt:
+                return {
+                    "status": "error",
+                    "error_code": "RANGE_STALE",
+                    "recoverable": True,
+                    "next_actions": ["read_chunk", "extract_symbol", "edit_file", "replace_line_range"],
+                    "output": "Current line range does not match expected_excerpt. The range is stale; read the current target range before retrying.",
+                    "error_details": {
+                        "path": path,
+                        "start_line": start,
+                        "end_line": end,
+                        "current_excerpt_preview": current_excerpt[:500],
+                    },
+                }
+
+            replacement = replace_text
+            if replacement and not replacement.endswith("\n") and current_excerpt.endswith("\n"):
+                replacement += "\n"
+            new_lines = lines[:start - 1] + ([replacement] if replacement else []) + lines[end:]
+            new_content = "".join(new_lines)
+            if keep_newline and new_content and not new_content.endswith("\n"):
+                new_content += "\n"
+            marker_error = _validate_no_compact_markers(path, new_content, previous_content=content)
+            if marker_error:
+                return marker_error
+            return ChangeProposal(file_path=path, original_content=content, new_content=new_content)
+        except Exception as e:
+            return {
+                "status": "error",
+                "error_code": "INTERNAL",
+                "recoverable": True,
+                "next_actions": ["read_chunk", "edit_file", "write_file_block"],
+                "output": f"Failed to replace line range: {e}",
+            }
+
+
 class EditFileTool(BaseTool):
     name = "edit_file"
     description = (

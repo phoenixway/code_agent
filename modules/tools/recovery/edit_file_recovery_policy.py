@@ -29,6 +29,7 @@ EDIT_FILE_FUZZY_MODIFY_ACTIONS = (
     "extract_symbol",
     "replace_symbol",
     "fuzzy_edit_file",
+    "replace_line_range",
     "edit_file",
     "write_file_block",
 )
@@ -227,7 +228,7 @@ def _merge_allowed_recovery_actions(
 
     allowed = list(normalized_allowed)
     if active_type == "MODIFY":
-        for action in ("extract_symbol", "replace_symbol", "fuzzy_edit_file", "write_file_block"):
+        for action in ("extract_symbol", "replace_symbol", "fuzzy_edit_file", "replace_line_range", "write_file_block"):
             if action in preferred and action not in allowed:
                 allowed.append(action)
 

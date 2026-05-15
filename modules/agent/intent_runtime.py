@@ -41,6 +41,8 @@ KNOWN_TOOL_ACTIONS = {
     "write_file_block",
     "append_file_block",
     "edit_file",
+    "fuzzy_edit_file",
+    "replace_line_range",
     "replace",
     "delete_file",
     "git_add",

@@ -204,6 +204,8 @@ class AgentConfig:
             "create_file",
             "replace",
             "edit_file",
+            "fuzzy_edit_file",
+            "replace_line_range",
             "write_file",
             "write_file_block",
             "append_file_block",
