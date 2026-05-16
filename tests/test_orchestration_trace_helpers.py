@@ -201,11 +201,6 @@ def test_snapshot_and_runtime_artifacts_preserve_dispatch_metadata_fields():
     assert exported["last_execution_commit"]["atomic_bundle_validated"] is True
     assert exported["last_execution_commit"]["tool_execution_attempted"] is True
     assert exported["last_execution_commit"]["system_result_recorded"] is True
-    assert exported["last_execution_commit"]["action_dispatched"] is True
-    assert exported["last_execution_commit"]["execution_plan_dispatched"] is True
-    assert exported["last_execution_commit"]["atomic_bundle_validated"] is True
-    assert exported["last_execution_commit"]["tool_execution_attempted"] is True
-    assert exported["last_execution_commit"]["system_result_recorded"] is True
 
 
 def test_compact_execution_plan_and_commit_use_stable_trace_shape():
