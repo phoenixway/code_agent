@@ -6,11 +6,13 @@ from modules.providers.base import ProviderAPIError
 from modules.providers.gemini import GeminiProvider
 from modules.providers.ollama import OllamaProvider
 from modules.providers.openai import OpenAICompatibleProvider
+from modules.providers.openrouter import OpenRouterProvider
 from modules.providers.vertexai import VertexAIProvider
 
 log = logging.getLogger(__name__)
 
 PROVIDERS = {
+    "openrouter": (OpenRouterProvider, []),
     "vertexai": (VertexAIProvider, []),
     "gemini": (GeminiProvider, []),
     "deepseek": (OpenAICompatibleProvider, ["https://api.deepseek.com", "DEEPSEEK_API_KEY"]),
@@ -75,6 +77,9 @@ def get_chat_provider(model_name, settings=None):
                 if provider_class == GeminiProvider:
                     clean_name = _strip_provider_prefix(original_model_name, "gemini")
                     return provider_class(clean_name, settings=settings)
+
+                if provider_class == OpenRouterProvider:
+                    return provider_class(original_model_name, settings=settings)
 
                 return provider_class(original_model_name, *args)
 

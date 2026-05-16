@@ -47,6 +47,16 @@ class OrchestrationTraceSchemaTests(unittest.TestCase):
         self.assertIsNone(fields["plan_review_required_action_effects"])
         self.assertIsNone(fields["fallback_commit_used"])
         self.assertEqual("", fields["fallback_commit_reason"])
+        self.assertIsNone(fields["model_action_present"])
+        self.assertIsNone(fields["action_validated"])
+        self.assertIsNone(fields["execution_plan_dispatched"])
+        self.assertIsNone(fields["atomic_bundle_validated"])
+        self.assertIsNone(fields["fallback_dispatch_used"])
+        self.assertIsNone(fields["tool_execution_attempted"])
+        self.assertIsNone(fields["tool_execution_succeeded"])
+        self.assertIsNone(fields["system_result_recorded"])
+        self.assertIsNone(fields["state_change_effect_recorded"])
+        self.assertIsNone(fields["state_change_applied"])
 
     def test_stage_logger_preserves_semantic_decision_record_field(self):
         state = self._state()

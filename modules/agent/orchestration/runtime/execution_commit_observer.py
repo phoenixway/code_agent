@@ -176,10 +176,42 @@ class ExecutionCommitObserverAdapter:
         self._safe_set("plan_review_required_target", "")
         self._safe_set("plan_review_required_action_effects", [])
 
+    def _execution_telemetry_fields(self, execution_commit, *, sys_results=None) -> dict:
+        action_type, _target, action_effects = self._primary_action_effect_parts(execution_commit)
+        transaction_kind = str(getattr(execution_commit, "transaction_kind", "") or "")
+        committed_action_count = int(getattr(execution_commit, "committed_action_count", 0) or 0)
+        committed_system_result_count = int(getattr(execution_commit, "committed_system_result_count", 0) or 0)
+        bundle_validated = bool(getattr(execution_commit, "bundle_validated", False))
+        system_result_recorded = bool(committed_system_result_count > 0 or sys_results)
+        successful_system_result = self.commit_has_successful_system_result(execution_commit, sys_results=sys_results)
+        state_change_effect_recorded = str(action_type or "").strip().lower() in STATE_CHANGING_FILE_ACTIONS
+
+        tool_execution_succeeded = None
+        if system_result_recorded:
+            tool_execution_succeeded = successful_system_result
+
+        return {
+            "model_action_present": bool(action_effects),
+            "action_validated": bool(committed_action_count > 0 or bundle_validated or action_effects),
+            "execution_plan_dispatched": bool(
+                transaction_kind == "atomic_intent_action_bundle" and committed_action_count > 0
+            ),
+            "atomic_bundle_validated": bool(
+                transaction_kind == "atomic_intent_action_bundle" and bundle_validated
+            ),
+            "fallback_dispatch_used": transaction_kind == "fallback_single_action",
+            "tool_execution_attempted": bool(committed_action_count > 0 or system_result_recorded),
+            "tool_execution_succeeded": tool_execution_succeeded,
+            "system_result_recorded": system_result_recorded,
+            "state_change_effect_recorded": state_change_effect_recorded,
+            "state_change_applied": bool(state_change_effect_recorded and successful_system_result),
+        }
+
     def build_operational_journal_entry(self, execution_commit, *, sys_results=None) -> dict | None:
         if execution_commit is None:
             return None
         action_type, target, action_effects = self._primary_action_effect_parts(execution_commit)
+        telemetry = self._execution_telemetry_fields(execution_commit, sys_results=sys_results)
         return {
             "kind": "tool_execution_commit",
             "transaction_kind": str(getattr(execution_commit, "transaction_kind", "") or ""),
@@ -187,6 +219,7 @@ class ExecutionCommitObserverAdapter:
             "bundle_validated": bool(getattr(execution_commit, "bundle_validated", False)),
             "transition_applied": bool(getattr(execution_commit, "transition_applied", False)),
             "action_dispatched": bool(getattr(execution_commit, "action_dispatched", False)),
+            **telemetry,
             "action_type": str(action_type or ""),
             "target": str(target or ""),
             "action_effects": action_effects,
