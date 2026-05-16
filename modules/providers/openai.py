@@ -33,14 +33,27 @@ def _looks_like_quota_error(text: str) -> bool:
 
 
 class OpenAICompatibleProvider(BaseChatProvider):
-    def __init__(self, model_name, base_url, api_key_env):
+    def __init__(
+        self,
+        model_name,
+        base_url,
+        api_key_env,
+        *,
+        provider_name: str | None = None,
+        extra_headers: dict[str, str] | None = None,
+    ):
         super().__init__(model_name)
         self.base_url = base_url.rstrip("/")
         self.api_key = os.getenv(api_key_env)
-        self.provider_name = self._infer_provider_name(self.base_url, model_name)
+        self.provider_name = str(provider_name or "").strip() or self._infer_provider_name(self.base_url, model_name)
+        self.extra_headers = {
+            str(key): str(value)
+            for key, value in dict(extra_headers or {}).items()
+            if str(key).strip() and str(value).strip()
+        }
         if not self.api_key:
             raise ValueError(
-                f"Missing API key for {model_name}. Please set the {api_key_env} environment variable."
+                f"Missing API key for {self.provider_name}. Please set the {api_key_env} environment variable."
             )
 
     @staticmethod
@@ -56,6 +69,7 @@ class OpenAICompatibleProvider(BaseChatProvider):
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
+            **self.extra_headers,
         }
         payload = {
             "model": self.model_name,
