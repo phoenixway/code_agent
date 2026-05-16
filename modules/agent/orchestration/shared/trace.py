@@ -65,6 +65,34 @@ def compact_execution_plan(execution_plan) -> dict | None:
     }
 
 
+def compact_execution_commit_telemetry(execution_commit) -> dict:
+    action_effects = list(getattr(execution_commit, "action_effects", []) or [])
+    transaction_kind = str(getattr(execution_commit, "transaction_kind", "") or "")
+    committed_action_count = int(getattr(execution_commit, "committed_action_count", 0) or 0)
+    committed_system_result_count = int(getattr(execution_commit, "committed_system_result_count", 0) or 0)
+    bundle_validated = bool(getattr(execution_commit, "bundle_validated", False))
+    action_dispatched = bool(getattr(execution_commit, "action_dispatched", False))
+    system_result_recorded = committed_system_result_count > 0
+    tool_execution_attempted = bool(committed_action_count > 0 or system_result_recorded or action_dispatched)
+
+    return {
+        "model_action_present": bool(action_effects),
+        "action_validated": bool(committed_action_count > 0 or bundle_validated or action_effects or action_dispatched),
+        "execution_plan_dispatched": bool(
+            transaction_kind == "atomic_intent_action_bundle" and (committed_action_count > 0 or action_dispatched)
+        ),
+        "atomic_bundle_validated": bool(
+            transaction_kind == "atomic_intent_action_bundle" and bundle_validated
+        ),
+        "fallback_dispatch_used": transaction_kind == "fallback_single_action",
+        "tool_execution_attempted": tool_execution_attempted,
+        "tool_execution_succeeded": None,
+        "system_result_recorded": system_result_recorded,
+        "state_change_effect_recorded": None,
+        "state_change_applied": None,
+    }
+
+
 def compact_execution_commit(execution_commit) -> dict | None:
     if execution_commit is None:
         return None
@@ -74,6 +102,7 @@ def compact_execution_commit(execution_commit) -> dict | None:
         "bundle_validated": getattr(execution_commit, "bundle_validated", False),
         "transition_applied": getattr(execution_commit, "transition_applied", False),
         "action_dispatched": getattr(execution_commit, "action_dispatched", False),
+        **compact_execution_commit_telemetry(execution_commit),
         "before_active_intent_id": getattr(execution_commit, "before_active_intent_id", ""),
         "after_active_intent_id": getattr(execution_commit, "after_active_intent_id", ""),
         "committed_action_count": getattr(execution_commit, "committed_action_count", 0),

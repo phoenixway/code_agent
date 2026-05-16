@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from dataclasses import asdict, is_dataclass
 
-from .shared.trace import render_trace_text, snapshot_trace
+from .shared.decision_models import ExecutionCommit
+from .shared.trace import compact_execution_commit, render_trace_text, snapshot_trace
 
 
 class OrchestrationTraceExporter:
@@ -43,6 +44,12 @@ class OrchestrationTraceExporter:
     def serialize_runtime_artifact(value):
         if value is None:
             return None
+        if isinstance(value, ExecutionCommit) or (
+            not is_dataclass(value)
+            and hasattr(value, "transaction_kind")
+            and hasattr(value, "action_dispatched")
+        ):
+            return compact_execution_commit(value)
         if is_dataclass(value):
             return asdict(value)
         if isinstance(value, dict):

@@ -3463,6 +3463,8 @@ class OrchestrationTraceExporterTests(unittest.TestCase):
 
         self.assertEqual("atomic_intent_action_bundle", exported["last_execution_plan"]["transaction_kind"])
         self.assertTrue(exported["last_execution_commit"]["action_dispatched"])
+        self.assertTrue(exported["last_execution_commit"]["execution_plan_dispatched"])
+        self.assertTrue(exported["last_execution_commit"]["tool_execution_attempted"])
         self.assertEqual(1, exported["last_execution_commit"]["committed_action_count"])
         self.assertEqual([], exported["operational_journal"])
 
@@ -3508,6 +3510,8 @@ class OrchestrationTraceExporterTests(unittest.TestCase):
         self.assertEqual("denied", exported["last_failed_action_result"]["message"])
         self.assertEqual("atomic_intent_action_bundle", exported["last_execution_plan"]["transaction_kind"])
         self.assertTrue(exported["last_execution_commit"]["action_dispatched"])
+        self.assertTrue(exported["last_execution_commit"]["execution_plan_dispatched"])
+        self.assertTrue(exported["last_execution_commit"]["tool_execution_attempted"])
         self.assertEqual("tool_execution_commit", exported["operational_journal"][0]["kind"])
         self.assertIn("stage=response_pipeline", exported["orchestration_trace_text"])
 

@@ -173,6 +173,16 @@ def test_snapshot_and_runtime_artifacts_preserve_dispatch_metadata_fields():
         "bundle_validated": True,
         "transition_applied": True,
         "action_dispatched": True,
+        "model_action_present": True,
+        "action_validated": True,
+        "execution_plan_dispatched": True,
+        "atomic_bundle_validated": True,
+        "fallback_dispatch_used": False,
+        "tool_execution_attempted": True,
+        "tool_execution_succeeded": None,
+        "system_result_recorded": True,
+        "state_change_effect_recorded": None,
+        "state_change_applied": None,
         "before_active_intent_id": "intent_before",
         "after_active_intent_id": "intent_after",
         "committed_action_count": 1,
@@ -186,6 +196,16 @@ def test_snapshot_and_runtime_artifacts_preserve_dispatch_metadata_fields():
     assert exported["last_execution_plan"]["action_effects"] == ["read_chunk:x.py"]
     assert exported["last_execution_commit"]["committed_action_count"] == 1
     assert exported["last_execution_commit"]["dispatch_stop_requested"] is True
+    assert exported["last_execution_commit"]["action_dispatched"] is True
+    assert exported["last_execution_commit"]["execution_plan_dispatched"] is True
+    assert exported["last_execution_commit"]["atomic_bundle_validated"] is True
+    assert exported["last_execution_commit"]["tool_execution_attempted"] is True
+    assert exported["last_execution_commit"]["system_result_recorded"] is True
+    assert exported["last_execution_commit"]["action_dispatched"] is True
+    assert exported["last_execution_commit"]["execution_plan_dispatched"] is True
+    assert exported["last_execution_commit"]["atomic_bundle_validated"] is True
+    assert exported["last_execution_commit"]["tool_execution_attempted"] is True
+    assert exported["last_execution_commit"]["system_result_recorded"] is True
 
 
 def test_compact_execution_plan_and_commit_use_stable_trace_shape():
@@ -229,6 +249,16 @@ def test_compact_execution_plan_and_commit_use_stable_trace_shape():
         "bundle_validated": True,
         "transition_applied": True,
         "action_dispatched": True,
+        "model_action_present": True,
+        "action_validated": True,
+        "execution_plan_dispatched": True,
+        "atomic_bundle_validated": True,
+        "fallback_dispatch_used": False,
+        "tool_execution_attempted": True,
+        "tool_execution_succeeded": None,
+        "system_result_recorded": True,
+        "state_change_effect_recorded": None,
+        "state_change_applied": None,
         "before_active_intent_id": "intent_before",
         "after_active_intent_id": "intent_after",
         "committed_action_count": 1,
