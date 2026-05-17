@@ -290,6 +290,25 @@ class TaskBoardPlanner:
                 return idx
         return -1
 
+    def _normalize_step_title_for_dedupe(self, title: str) -> str:
+        return self._normalize_text(title).casefold()
+
+    def _index_of_duplicate_active_title(self, steps: list[dict], title: str, *, exclude_step_id: str = "") -> int:
+        normalized_title = self._normalize_step_title_for_dedupe(title)
+        if not normalized_title:
+            return -1
+        excluded = str(exclude_step_id or "").strip()
+        for idx, step in enumerate(steps):
+            if not isinstance(step, dict):
+                continue
+            if excluded and str(step.get("id") or "").strip() == excluded:
+                continue
+            if step.get("status") not in {"todo", "in_progress", "blocked"}:
+                continue
+            if self._normalize_step_title_for_dedupe(str(step.get("title") or "")) == normalized_title:
+                return idx
+        return -1
+
     def _ensure_active_step(self, board: dict) -> None:
         steps = self._steps(board)
         valid_ids = {str(step.get("id") or "").strip() for step in steps}
@@ -334,18 +353,25 @@ class TaskBoardPlanner:
                 continue
 
             if name == "create":
+                title = str(op.get("title") or "").strip()[: int(getattr(self.config, "PLANNER_MAX_STEP_TITLE_CHARS", 160))]
+                status = op.get("status") or "todo"
                 idx = self._index_of_step(steps, step_id)
+                if idx < 0:
+                    idx = self._index_of_duplicate_active_title(steps, title, exclude_step_id=step_id)
                 step = {
                     "id": step_id,
-                    "title": str(op.get("title") or "").strip()[: int(getattr(self.config, "PLANNER_MAX_STEP_TITLE_CHARS", 160))],
-                    "status": op.get("status") or "todo",
+                    "title": title,
+                    "status": status,
                 }
                 if idx >= 0:
+                    existing_id = str(steps[idx].get("id") or "").strip()
+                    if existing_id and existing_id != step_id:
+                        step["id"] = existing_id
                     steps[idx].update(step)
                 else:
                     steps.append(step)
                 if step["status"] == "in_progress":
-                    board["active_step_id"] = step_id
+                    board["active_step_id"] = step["id"]
                 continue
 
             if name == "modify":

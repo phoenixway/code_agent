@@ -32,7 +32,7 @@ def _planner():
     return TaskBoardPlanner(_config())
 
 
-def test_p37_duplicate_in_progress_subgoals_with_same_title_are_currently_preserved():
+def test_p37_duplicate_in_progress_subgoals_with_same_title_are_deduped_by_active_title():
     planner = _planner()
     state = _state()
 
@@ -58,13 +58,12 @@ def test_p37_duplicate_in_progress_subgoals_with_same_title_are_currently_preser
 
     assert changed is True
     assert report["kind"] == "plan_update"
-    assert [step["id"] for step in board["steps"]] == ["sg_4", "sg_5"]
-    assert [step["title"] for step in board["steps"]] == [
-        "Create AndroidManifest.xml",
-        "Create AndroidManifest.xml",
-    ]
-    assert [step["status"] for step in board["steps"]] == ["in_progress", "in_progress"]
-    assert board["active_step_id"] == "sg_5"
+    assert [step["id"] for step in board["steps"]] == ["sg_4"]
+    assert [step["title"] for step in board["steps"]] == ["Create AndroidManifest.xml"]
+    assert [step["status"] for step in board["steps"]] == ["in_progress"]
+    assert board["active_step_id"] == "sg_4"
+    assert report["total"] == 1
+    assert report["current_title"] == "Create AndroidManifest.xml"
 
 
 def test_p37_create_with_same_id_updates_existing_step_instead_of_duplicating():
@@ -156,22 +155,17 @@ def test_p37_plan_review_done_alone_does_not_create_subgoal_ops_or_mutate_board(
     assert state.task_board is initial_board
 
 
-def test_p37_plan_board_summary_reflects_duplicate_runtime_board_as_is():
+def test_p37_plan_board_summary_reflects_runtime_board_as_is_after_dedupe():
     state = _state()
     state.task_board = {
         "version": 2,
         "goal": "Implement manifest setup",
-        "active_step_id": "sg_5",
+        "active_step_id": "sg_4",
         "intent_id": "intent-1",
         "lineage_id": "lineage-intent-1",
         "steps": [
             {
                 "id": "sg_4",
-                "title": "Create AndroidManifest.xml",
-                "status": "in_progress",
-            },
-            {
-                "id": "sg_5",
                 "title": "Create AndroidManifest.xml",
                 "status": "in_progress",
             },
@@ -183,7 +177,7 @@ def test_p37_plan_board_summary_reflects_duplicate_runtime_board_as_is():
         summary = history._build_plan_board_summary_block(state)
 
     assert "## CURRENT PLAN BOARD (CANONICAL)" in summary
-    assert "active_step_id: sg_5" in summary
-    assert summary.count("Create AndroidManifest.xml") == 2
+    assert "active_step_id: sg_4" in summary
+    assert summary.count("Create AndroidManifest.xml") == 1
     assert "- sg_4 [in_progress] Create AndroidManifest.xml" in summary
-    assert "- sg_5 [in_progress] Create AndroidManifest.xml" in summary
+    assert "- sg_5 [in_progress] Create AndroidManifest.xml" not in summary
