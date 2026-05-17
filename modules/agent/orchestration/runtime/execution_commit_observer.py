@@ -13,6 +13,7 @@ STATE_CHANGING_FILE_ACTIONS = {
     "edit_file",
     "delete_file",
     "replace",
+    "replace_line_range",
     "replace_symbol",
 }
 
