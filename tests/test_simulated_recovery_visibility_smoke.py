@@ -254,3 +254,197 @@ async def test_p3_action_denied_records_scoped_recovery_instruction_without_retr
     recovery.handle_dispatch_stop.assert_awaited_once_with(stop_info, None)
     assert "Return only a corrected compact recovery step" not in recovery_message
     assert "Return EXACTLY ONE" not in recovery_message
+
+
+def test_p35_current_intent_recovery_hides_after_intent_change_but_raw_history_remains():
+    visibility = {
+        "mode": "next_turn",
+        "intent_scope": "current_intent",
+        "intent_id": "intent-1",
+        "intent_type": "MODIFY",
+        "action_type": "search_content",
+        "target": "modules:(",
+        "created_turn_id": 50,
+    }
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        history = HistoryManager(_DummyChatProvider(), storage_dir=tmpdir)
+        _add_recovery(history, "current-intent recovery text", visibility)
+
+        assert "current-intent recovery text" in _overlay_content(
+            history,
+            _state(intent_id="intent-1", current_turn_id=51),
+        )
+        assert _overlay_content(
+            history,
+            _state(intent_id="intent-2", current_turn_id=51),
+        ) == ""
+
+        raw_recovery_messages = [
+            msg for msg in history.messages
+            if msg.get("type") == "recovery_instruction"
+        ]
+        assert len(raw_recovery_messages) == 1
+        assert raw_recovery_messages[0]["content"] == "current-intent recovery text"
+        assert raw_recovery_messages[0]["recovery_visibility"] == visibility
+
+
+def test_p35_legacy_recovery_without_visibility_metadata_remains_visible_across_intents():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        history = HistoryManager(_DummyChatProvider(), storage_dir=tmpdir)
+        history.add_message(
+            "system",
+            "legacy recovery text",
+            msg_type="recovery_instruction",
+        )
+
+        under_original_intent = _overlay_content(
+            history,
+            _state(intent_id="intent-1", current_turn_id=10),
+        )
+        under_changed_intent = _overlay_content(
+            history,
+            _state(intent_id="intent-2", current_turn_id=10),
+        )
+
+        assert "legacy recovery text" in under_original_intent
+        assert "legacy recovery text" in under_changed_intent
+        assert history.messages[0].get("recovery_visibility") is None
+
+
+def test_p35_mixed_recovery_overlay_filters_only_visible_instructions():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        history = HistoryManager(_DummyChatProvider(), storage_dir=tmpdir)
+
+        _add_recovery(
+            history,
+            "A visible current-intent recovery",
+            {
+                "mode": "next_turn",
+                "intent_scope": "current_intent",
+                "intent_id": "intent-1",
+                "intent_type": "MODIFY",
+                "action_type": "search_content",
+                "target": "modules:(",
+                "created_turn_id": 70,
+            },
+        )
+        _add_recovery(
+            history,
+            "B hidden other-intent recovery",
+            {
+                "mode": "next_turn",
+                "intent_scope": "current_intent",
+                "intent_id": "intent-2",
+                "intent_type": "MODIFY",
+                "action_type": "search_content",
+                "target": "modules:(",
+                "created_turn_id": 70,
+            },
+        )
+        _add_recovery(
+            history,
+            "C expired next-turn recovery",
+            {
+                "mode": "next_turn",
+                "intent_scope": "current_intent",
+                "intent_id": "intent-1",
+                "intent_type": "MODIFY",
+                "action_type": "run_shell",
+                "target": "pytest -q tests",
+                "created_turn_id": 68,
+            },
+        )
+        history.add_message(
+            "system",
+            "D legacy recovery without metadata",
+            msg_type="recovery_instruction",
+        )
+
+        overlay = _overlay_content(
+            history,
+            _state(intent_id="intent-1", current_turn_id=70),
+        )
+
+        assert "## CURRENT RECOVERY INSTRUCTIONS" in overlay
+        assert "A visible current-intent recovery" in overlay
+        assert "D legacy recovery without metadata" in overlay
+        assert "B hidden other-intent recovery" not in overlay
+        assert "C expired next-turn recovery" not in overlay
+        assert overlay.count("### Recovery instruction") == 2
+        assert "### Recovery instruction 1" in overlay
+        assert "### Recovery instruction 2" in overlay
+        assert "### Recovery instruction 3" not in overlay
+
+
+def test_p35_run_shell_transient_io_and_command_timeout_use_next_turn_current_intent_visibility():
+    dispatcher = _dispatcher()
+
+    cases = [
+        (
+            {"type": "run_shell", "command": "pytest -q tests"},
+            {
+                "status": "failed",
+                "error_code": "TRANSIENT_IO",
+                "recoverable": True,
+                "output": "transient I/O failure",
+            },
+            "pytest -q tests",
+        ),
+        (
+            {"type": "run_shell", "command": "./gradlew test"},
+            {
+                "status": "failed",
+                "error_code": "COMMAND_TIMEOUT",
+                "recoverable": True,
+                "output": "Command timed out",
+            },
+            "./gradlew test",
+        ),
+    ]
+
+    for command, result, target in cases:
+        visibility = dispatcher._targeted_recovery_visibility_metadata(
+            command,
+            result,
+            _state(current_turn_id=80),
+        )
+
+        assert visibility == {
+            "mode": "next_turn",
+            "intent_scope": "current_intent",
+            "intent_id": "intent-1",
+            "intent_type": "MODIFY",
+            "action_type": "run_shell",
+            "target": target,
+            "created_turn_id": 80,
+        }
+
+
+def test_p35_denied_action_recovery_lifecycle_is_next_turn_and_current_intent_scoped():
+    visibility = {
+        "mode": "next_turn",
+        "intent_scope": "current_intent",
+        "intent_id": "intent-denied",
+        "intent_type": "MODIFY",
+        "action_type": "run_shell",
+        "target": "rm -rf build",
+        "created_turn_id": 90,
+    }
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        history = HistoryManager(_DummyChatProvider(), storage_dir=tmpdir)
+        _add_recovery(history, "denied action recovery text", visibility)
+
+        assert "denied action recovery text" in _overlay_content(
+            history,
+            _state(intent_id="intent-denied", current_turn_id=91),
+        )
+        assert _overlay_content(
+            history,
+            _state(intent_id="intent-denied", current_turn_id=92),
+        ) == ""
+        assert _overlay_content(
+            history,
+            _state(intent_id="intent-other", current_turn_id=91),
+        ) == ""
