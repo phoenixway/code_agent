@@ -17,6 +17,20 @@ STATE_CHANGING_FILE_ACTIONS = {
     "replace_symbol",
 }
 
+READ_ONLY_OR_COMMAND_SUCCESS_BY_DEFAULT_ACTIONS = {
+    "extract_kotlin_function",
+    "extract_symbol",
+    "find_files",
+    "git_diff",
+    "list_directory",
+    "read_chunk",
+    "read_file",
+    "read_file_skeleton",
+    "run_shell",
+    "search_content",
+    "search_files",
+}
+
 
 class ExecutionCommitObserverAdapter:
     def __init__(self, state):
@@ -82,25 +96,41 @@ class ExecutionCommitObserverAdapter:
             return False
 
         current_text = "\n".join(current_action_lines)
+        current_text_lower = current_text.lower()
         failure_markers = (
-            "Action failed",
-            "VALIDATION_ERROR",
-            "RECOVERABLE",
+            "action denied",
+            "action failed",
+            "command blocked",
+            "command_timeout",
+            "execution failed",
+            "internal",
+            "malformed_",
+            "not_found",
+            "recoverable",
             "status=failed",
+            "timeout",
+            "transient_io",
+            "validation_error",
             "'status': 'failed'",
             "\"status\": \"failed\"",
-            "execution failed",
             "requires both 'search_text' and 'replace_text'",
         )
-        if any(marker in current_text for marker in failure_markers):
+        if any(marker in current_text_lower for marker in failure_markers):
             return False
         success_markers = (
-            "Changes applied",
+            "changes applied",
+            "command executed successfully",
+            "file content is already available",
+            "read file '",
             "status=success",
             "'status': 'success'",
             "\"status\": \"success\"",
+            "added to history as",
+            "already in history as",
         )
-        return any(marker in current_text for marker in success_markers)
+        if any(marker in current_text_lower for marker in success_markers):
+            return True
+        return action_type.strip().lower() in READ_ONLY_OR_COMMAND_SUCCESS_BY_DEFAULT_ACTIONS
 
     def commit_requires_plan_review(self, execution_commit, *, sys_results=None) -> bool:
         if execution_commit is None:

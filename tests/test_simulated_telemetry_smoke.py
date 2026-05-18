@@ -209,3 +209,112 @@ def test_p3_read_only_success_does_not_claim_state_change_applied():
     assert diagnostics["last_execution_commit"]["tool_execution_attempted"] is True
     assert diagnostics["operational_journal"][-1]["state_change_effect_recorded"] is False
     assert diagnostics["operational_journal"][-1]["state_change_applied"] is False
+
+
+def test_p41_read_file_added_to_history_counts_as_success():
+    harness = Harness()
+    result = "SYSTEM RESULT for `read_file`: Read file 'app/build.gradle.kts' and added to history as v1."
+    commit = harness._build_execution_commit(
+        None,
+        [_action_segment("read_file", "app/build.gradle.kts")],
+        [result],
+        False,
+        iteration=_iteration("read_file", "app/build.gradle.kts"),
+    )
+
+    entry = _observe(harness.state, None, commit, sys_results=[result])
+
+    assert entry["tool_execution_attempted"] is True
+    assert entry["tool_execution_succeeded"] is True
+    assert entry["system_result_recorded"] is True
+    assert entry["state_change_effect_recorded"] is False
+    assert entry["state_change_applied"] is False
+
+    diagnostics = OrchestrationTraceExporter().runtime_diagnostics_snapshot(harness.state)
+    assert diagnostics["last_execution_commit"]["tool_execution_succeeded"] is True
+
+    artifacts = OrchestrationTraceExporter().runtime_artifacts(harness.state)
+    assert artifacts["last_execution_commit"]["tool_execution_succeeded"] is True
+
+
+def test_p41_read_file_unchanged_already_in_history_counts_as_success():
+    harness = Harness()
+    result = "SYSTEM RESULT for `read_file`: Read file 'app/build.gradle.kts' (unchanged, already in history as v1)."
+    commit = harness._build_execution_commit(
+        None,
+        [_action_segment("read_file", "app/build.gradle.kts")],
+        [result],
+        False,
+        iteration=_iteration("read_file", "app/build.gradle.kts"),
+    )
+
+    entry = _observe(harness.state, None, commit, sys_results=[result])
+
+    assert entry["tool_execution_attempted"] is True
+    assert entry["tool_execution_succeeded"] is True
+    assert entry["system_result_recorded"] is True
+    assert entry["state_change_effect_recorded"] is False
+    assert entry["state_change_applied"] is False
+
+
+def test_p41_read_file_already_available_stop_is_non_failure_guard():
+    harness = Harness()
+    result = (
+        "SYSTEM RESULT for `read_file`: SYSTEM: File content is already available as history version v1. "
+        "Use that content now. Do not call read_file again."
+    )
+    commit = harness._build_execution_commit(
+        None,
+        [_action_segment("read_file", "app/build.gradle.kts")],
+        [result],
+        True,
+        iteration=_iteration("read_file", "app/build.gradle.kts"),
+    )
+
+    entry = _observe(harness.state, None, commit, sys_results=[result])
+
+    assert entry["tool_execution_attempted"] is True
+    assert entry["tool_execution_succeeded"] is True
+    assert entry["system_result_recorded"] is True
+    assert entry["dispatch_stop_requested"] is True
+    assert entry["state_change_effect_recorded"] is False
+    assert entry["state_change_applied"] is False
+
+
+def test_p41_run_shell_command_executed_successfully_counts_as_success():
+    harness = Harness()
+    result = "SYSTEM RESULT for `run_shell`: Command executed successfully (no output)."
+    commit = harness._build_execution_commit(
+        None,
+        [_action_segment("run_shell", "")],
+        [result],
+        False,
+        iteration=_iteration("run_shell", ""),
+    )
+
+    entry = _observe(harness.state, None, commit, sys_results=[result])
+
+    assert entry["tool_execution_attempted"] is True
+    assert entry["tool_execution_succeeded"] is True
+    assert entry["system_result_recorded"] is True
+    assert entry["state_change_effect_recorded"] is False
+    assert entry["state_change_applied"] is False
+
+
+def test_p41_run_shell_command_blocked_remains_failure():
+    harness = Harness()
+    result = "SYSTEM RESULT for `run_shell`: Command blocked: length exceeds 1000 characters."
+    commit = harness._build_execution_commit(
+        None,
+        [_action_segment("run_shell", "")],
+        [result],
+        True,
+        iteration=_iteration("run_shell", ""),
+    )
+
+    entry = _observe(harness.state, None, commit, sys_results=[result])
+
+    assert entry["tool_execution_attempted"] is True
+    assert entry["tool_execution_succeeded"] is False
+    assert entry["system_result_recorded"] is True
+    assert entry["dispatch_stop_requested"] is True
