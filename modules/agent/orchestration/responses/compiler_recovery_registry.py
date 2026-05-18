@@ -124,6 +124,20 @@ class CompilerRecoveryRegistry:
                 handler_key="malformed_action",
             ),
             CompilerRecoveryStrategy(
+                id="xml_tool_shorthand",
+                error_codes=("E_XML_TOOL_SHORTHAND",),
+                recovery_ids=("xml_tool_shorthand",),
+                invalid_kind="invalid_action_syntax",
+                handler_key="malformed_action",
+            ),
+            CompilerRecoveryStrategy(
+                id="fenced_protocol_block",
+                error_codes=("E_FENCED_PROTOCOL_BLOCK",),
+                recovery_ids=("fenced_protocol_block",),
+                invalid_kind="fenced_protocol_block",
+                handler_key="malformed_action",
+            ),
+            CompilerRecoveryStrategy(
                 id="action_payload_not_object",
                 error_codes=("E_ACTION_PAYLOAD_NOT_OBJECT",),
                 recovery_ids=("action_payload_not_object",),

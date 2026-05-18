@@ -141,10 +141,18 @@ def test_missing_plan_review_prompt_mentions_subgoal_review_and_checkpoint():
         action_effects=["edit_file:src/example.py"],
     )
 
+    assert "Action was not executed" in prompt
     assert "previous state-changing action succeeded" in prompt
     assert "edit_file on src/example.py" in prompt
+    assert "[RECOVERY_SCOPE]" in prompt
+    assert "[NEXT_STEP_RULE]" in prompt
+    assert "Do not emit any <action>" in prompt
+    assert "Review current plan and sub-goals" in prompt
     assert "<subgoal ... />" in prompt
     assert "mark_done" in prompt
     assert "<plan_review_done />" in prompt
+    assert "[EXIT_CONDITION]" in prompt
+    assert "After this checkpoint, normal action output may resume" in prompt
+    assert "Return exactly one valid <action>" not in prompt
     assert "Do not repeat the same edit" in prompt
     assert "Do not automatically complete the whole intent" in prompt

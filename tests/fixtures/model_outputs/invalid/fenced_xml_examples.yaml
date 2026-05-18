@@ -1,9 +1,15 @@
-raw: |
-  ```xml
+raw: '```xml
+
   <intent mode="activate">{"intent_id":"x"}</intent>
+
   <action>{"type":"read_file","path":"x.py"}</action>
+
   ```
-shape: PURE_PLAINTEXT
-valid: true
+
+  '
+shape: INVALID
+valid: false
 transition_applied: false
 action_dispatched: false
+error_code: E_FENCED_PROTOCOL_BLOCK
+recovery_id: fenced_protocol_block

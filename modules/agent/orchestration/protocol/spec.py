@@ -161,6 +161,18 @@ PROTOCOL_SPEC = ProtocolSpec(
             recovery_id="action_payload_tool_code",
             default_message="Action payload appears to be raw tool code, not a JSON object.",
         ),
+        "E_XML_TOOL_SHORTHAND": ErrorSpec(
+            code="E_XML_TOOL_SHORTHAND",
+            phase="parse",
+            recovery_id="xml_tool_shorthand",
+            default_message="XML tool shorthand is not executable. Use canonical <action>{...}</action> JSON protocol.",
+        ),
+        "E_FENCED_PROTOCOL_BLOCK": ErrorSpec(
+            code="E_FENCED_PROTOCOL_BLOCK",
+            phase="parse",
+            recovery_id="fenced_protocol_block",
+            default_message="Protocol block inside markdown fence is not executable.",
+        ),
         "E_ACTION_PAYLOAD_NOT_OBJECT": ErrorSpec(
             code="E_ACTION_PAYLOAD_NOT_OBJECT",
             phase="parse",

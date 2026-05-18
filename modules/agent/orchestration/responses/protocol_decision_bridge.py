@@ -32,6 +32,8 @@ COMPILER_INVALID_KIND_BY_CODE = {
     "E_ACTION_PAYLOAD_ARRAY": "action_payload_array",
     "E_ACTION_PAYLOAD_XML_FIELDS": "action_payload_xml_fields",
     "E_ACTION_PAYLOAD_TOOL_CODE": "action_payload_tool_code",
+    "E_XML_TOOL_SHORTHAND": "invalid_action_syntax",
+    "E_FENCED_PROTOCOL_BLOCK": "fenced_protocol_block",
     "E_ACTION_PAYLOAD_NOT_OBJECT": "action_payload_not_object",
     "E_PROTOCOL_TAG_IN_JSON_STRING": "protocol_tag_in_json_string",
     "E_VISIBLE_TEXT_AFTER_ACTION": "mixed_visible_text_and_control_protocol",
@@ -52,6 +54,8 @@ COMPILER_ACTION_PAYLOAD_ERROR_CODES = {
     "E_ACTION_PAYLOAD_NOT_OBJECT",
     "E_ACTION_PAYLOAD_XML_FIELDS",
     "E_ACTION_PAYLOAD_TOOL_CODE",
+    "E_XML_TOOL_SHORTHAND",
+    "E_FENCED_PROTOCOL_BLOCK",
     "E_PROTOCOL_TAG_IN_JSON_STRING",
 }
 

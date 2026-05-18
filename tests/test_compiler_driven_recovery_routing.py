@@ -61,6 +61,9 @@ class DummyPromptBuilder:
     def build_control_tag_leak_recovery_prompt(self):
         return "CONTROL TAG LEAK"
 
+    def build_malformed_action_strict_recovery_prompt(self):
+        return "MALFORMED ACTION STRICT"
+
 
 class DummyAgent:
     def __init__(self):
@@ -255,3 +258,37 @@ async def test_compiler_code_routes_multiple_actions_recovery_without_legacy_inv
 
     assert decision.reason == "multiple_actions"
     assert decision.next_query == "MULTIPLE ACTIONS"
+
+
+@pytest.mark.asyncio
+async def test_compiler_code_routes_xml_tool_shorthand_without_execution():
+    handler = ModelOutputRecoveryHandler(DummyAgent(), DummyPromptBuilder())
+    parsed = ParsedModelOutput(
+        response='<run_shell command="which gradle" timeout="10" />',
+        invalid_kind="",
+        compiler_error_code="E_XML_TOOL_SHORTHAND",
+        compiler_recovery_id="xml_tool_shorthand",
+    )
+
+    decision = await handler.decide(parsed, malformed_action_retries=0, audit_marker_retries=0)
+
+    assert decision.reason == "invalid_action_syntax"
+    assert decision.source == "compiler_recovery_strategy"
+    assert decision.continue_loop is True
+
+
+@pytest.mark.asyncio
+async def test_compiler_code_routes_fenced_protocol_block_without_execution():
+    handler = ModelOutputRecoveryHandler(DummyAgent(), DummyPromptBuilder())
+    parsed = ParsedModelOutput(
+        response='```xml\n<action>{"type":"run_shell","command":"which gradle"}</action>\n```',
+        invalid_kind="",
+        compiler_error_code="E_FENCED_PROTOCOL_BLOCK",
+        compiler_recovery_id="fenced_protocol_block",
+    )
+
+    decision = await handler.decide(parsed, malformed_action_retries=0, audit_marker_retries=0)
+
+    assert decision.reason == "fenced_protocol_block"
+    assert decision.source == "compiler_recovery_strategy"
+    assert decision.continue_loop is True

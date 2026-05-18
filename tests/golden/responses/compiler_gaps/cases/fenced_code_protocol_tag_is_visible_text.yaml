@@ -1,16 +1,21 @@
 name: fenced_code_protocol_tag_is_visible_text
-input: |
-  ```xml
+input: '```xml
+
   <action>{"type":"read_file","path":"x.py"}</action>
+
   ```
+
+  '
 legacy_expectation:
   handles: true
   invalid_kind: null
 compiler_expectation:
   current_status: ready
-  expected_shape: PURE_PLAINTEXT
-  expected_error_code: null
-  notes: The lexer correctly identifies fenced code blocks and the parser treats them as literal text, not protocol.
+  expected_shape: INVALID
+  expected_error_code: E_FENCED_PROTOCOL_BLOCK
+  notes: The lexer correctly identifies fenced code blocks and the parser treats them
+    as literal text, not protocol.
+  expected_recovery_id: fenced_protocol_block
 migration_target:
   desired_compiler_behavior: No change needed.
   priority: high

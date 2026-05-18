@@ -49,6 +49,40 @@ class ProtocolParser:
         r"</?\s*(action|intent|think|file_content|memory_update_done|plan_review_done|memory_review|fact|finding|decision|preference|path|progress|subgoal)\b",
         re.IGNORECASE,
     )
+    FENCED_EXECUTABLE_PROTOCOL_RE = re.compile(
+        r"^\s*</?\s*(action|intent|think|file_content)\b|^\s*<\s*(memory_update_done|plan_review_done)\b",
+        re.IGNORECASE,
+    )
+    STANDALONE_FENCED_CODE_RE = re.compile(
+        r"^\s*`{3}[^\n`]*\n(?P<body>.*?)\n?`{3}\s*$",
+        re.DOTALL,
+    )
+    XML_TOOL_SHORTHAND_RE = re.compile(
+        r"<\s*([A-Za-z_][A-Za-z0-9_]*)\b[^<>]*?/\s*>",
+        re.IGNORECASE | re.DOTALL,
+    )
+    XML_TOOL_SHORTHAND_TAGS = {
+        "append_file_block",
+        "create_file",
+        "delete_file",
+        "edit_file",
+        "extract_kotlin_function",
+        "extract_symbol",
+        "find_files",
+        "fuzzy_edit_file",
+        "git_diff",
+        "list_directory",
+        "read_chunk",
+        "read_file",
+        "read_file_skeleton",
+        "replace_line_range",
+        "replace_symbol",
+        "run_shell",
+        "search_content",
+        "search_files",
+        "write_file",
+        "write_file_block",
+    }
     THINK_FORBIDDEN_TAG_MAP = {
         "action": "E_ACTION_INSIDE_THINK",
         "intent": "E_INTENT_INSIDE_THINK",
@@ -71,6 +105,13 @@ class ProtocolParser:
 
     def parse(self, raw: str) -> tuple[ResponseAst | None, ErrorValue | None, tuple[Any, ...]]:
         text = str(raw or "")
+        if self._is_standalone_fenced_executable_protocol(text):
+            span = self._absolute_span(text, 0, 0, len(text))
+            return None, self._error("E_FENCED_PROTOCOL_BLOCK", span, actual="fenced_protocol_block"), ()
+        raw_shorthand = self._find_xml_tool_shorthand_in_raw_text(text)
+        if raw_shorthand is not None:
+            span = self._absolute_span(text, 0, raw_shorthand.start(), raw_shorthand.end())
+            return None, self._error("E_XML_TOOL_SHORTHAND", span, actual=raw_shorthand.group(1)), ()
         tokens = self.lexer.lex(text)
         nodes: list[Node] = []
         i = 0
@@ -89,6 +130,8 @@ class ProtocolParser:
                 i += 1
                 continue
             if isinstance(token, FencedCodeToken):
+                if self._fenced_executable_protocol_tag(token.text):
+                    return None, self._error("E_FENCED_PROTOCOL_BLOCK", token.span, actual="fenced_protocol_block"), tokens
                 nodes.append(LiteralProtocolTagNode(text=token.text, context="fenced_code", span=token.span))
                 i += 1
                 continue
@@ -103,6 +146,8 @@ class ProtocolParser:
                     nodes.append(SubgoalNode(attrs=token.attrs, content=None, span=token.span))
                 elif token.name == "intent":
                     nodes.append(IntentNode(attrs=token.attrs, raw_payload="", json_payload=None, json_error=None, span=token.span))
+                elif self._is_xml_tool_shorthand(token):
+                    return None, self._error("E_XML_TOOL_SHORTHAND", token.span, actual=token.name), tokens
                 else:
                     nodes.append(LiteralProtocolTagNode(text=token.span.excerpt, context="self_closing", span=token.span))
                 i += 1
@@ -120,6 +165,33 @@ class ProtocolParser:
             i = next_index
 
         return ResponseAst(raw=text, nodes=tuple(nodes)), None, tokens
+
+    def _is_standalone_fenced_executable_protocol(self, text: str) -> bool:
+        match = self.STANDALONE_FENCED_CODE_RE.match(str(text or ""))
+        if match is None:
+            return False
+        body = str(match.group("body") or "").strip()
+        return bool(self._fenced_executable_protocol_tag(body))
+
+    def _fenced_executable_protocol_tag(self, text: str) -> str | None:
+        stripped = str(text or "").strip()
+        if not stripped:
+            return None
+        match = self.FENCED_EXECUTABLE_PROTOCOL_RE.search(stripped)
+        return match.group(0) if match else None
+
+    def _find_xml_tool_shorthand_in_raw_text(self, text: str) -> re.Match[str] | None:
+        for match in self.XML_TOOL_SHORTHAND_RE.finditer(str(text or "")):
+            name = str(match.group(1) or "").strip().lower()
+            if name in self.XML_TOOL_SHORTHAND_TAGS:
+                return match
+        return None
+
+    def _is_xml_tool_shorthand(self, token: SelfClosingTagToken) -> bool:
+        name = str(getattr(token, "name", "") or "").strip().lower()
+        if name not in self.XML_TOOL_SHORTHAND_TAGS:
+            return False
+        return bool(getattr(token, "attrs", {}) or token.span.excerpt.strip().endswith("/>"))
 
     def _parse_text_token(self, token: TextToken) -> tuple[list[Node], ErrorValue | None]:
         if not token.text:

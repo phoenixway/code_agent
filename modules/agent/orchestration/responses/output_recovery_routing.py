@@ -24,6 +24,8 @@ class OutputRecoveryRoutingMixin:
         "action_payload_array",
         "action_payload_xml_fields",
         "action_payload_tool_code",
+        "invalid_action_syntax",
+        "fenced_protocol_block",
         "action_payload_not_object",
         "protocol_tag_in_json_string",
         "multiple_actions",
@@ -172,6 +174,23 @@ class OutputRecoveryRoutingMixin:
                     raw_chars=raw_chars,
                     parsed_output=parsed_output,
                 )
+
+        if invalid_kind in {"invalid_action_syntax", "fenced_protocol_block"}:
+            self.stage_logger.log(
+                "output_recovery",
+                "continue",
+                reason=invalid_kind,
+                source="compiler_recovery_strategy",
+                action_proposed_but_not_executed=True,
+                tool_execution_attempted=False,
+            )
+            return OutputRecoveryDecision.continue_with(
+                self.prompt_builder.build_malformed_action_strict_recovery_prompt(),
+                reason=invalid_kind,
+                source="compiler_recovery_strategy",
+                malformed_action_retries=malformed_action_retries,
+                audit_marker_retries=0,
+            )
 
         if invalid_kind == "malformed_action":
             next_retries = malformed_action_retries + 1

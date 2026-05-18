@@ -51,16 +51,40 @@ def test_fixture_corpus_compiles_consistently():
             assert analysis.error.action_dispatched is False, path.name
 
 
-def test_inline_and_fenced_literals_do_not_become_structural_blocks():
+def test_inline_literal_protocol_mentions_do_not_become_structural_blocks():
     compiler = ProtocolCompiler()
 
     inline = compiler.analyze("Use `<action>` only as an example.")
-    fenced = compiler.analyze("```xml\n<action>{\"type\":\"read_file\"}</action>\n```")
+    fenced_non_protocol = compiler.analyze("```text\nhello world\n```")
 
     assert inline.shape == ResponseShape.PURE_PLAINTEXT
     assert inline.error is None
-    assert fenced.shape == ResponseShape.PURE_PLAINTEXT
-    assert fenced.error is None
+    assert fenced_non_protocol.shape == ResponseShape.PURE_PLAINTEXT
+    assert fenced_non_protocol.error is None
+
+
+def test_fenced_executable_protocol_block_is_hard_invalid():
+    compiler = ProtocolCompiler()
+
+    fenced = compiler.analyze("```xml\n<action>{\"type\":\"read_file\",\"path\":\"README.md\"}</action>\n```")
+
+    assert fenced.shape == ResponseShape.INVALID
+    assert fenced.error is not None
+    assert fenced.error.code == "E_FENCED_PROTOCOL_BLOCK"
+    assert fenced.error.recovery_id == "fenced_protocol_block"
+    assert fenced.ir is None
+
+
+def test_xml_tool_shorthand_is_hard_invalid_not_normalized():
+    compiler = ProtocolCompiler()
+
+    shorthand = compiler.analyze('<think>Need Gradle.</think>\n<run_shell command="which gradle" timeout="10" />')
+
+    assert shorthand.shape == ResponseShape.INVALID
+    assert shorthand.error is not None
+    assert shorthand.error.code == "E_XML_TOOL_SHORTHAND"
+    assert shorthand.error.recovery_id == "xml_tool_shorthand"
+    assert shorthand.ir is None
 
 
 def test_file_content_preserves_raw_body():

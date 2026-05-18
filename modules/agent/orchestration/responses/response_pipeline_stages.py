@@ -1573,12 +1573,46 @@ class ResponsePipelineStagesMixin:
                 )
 
         if self._plan_review_gate_should_block(parsed_output, parsed_action_count):
+            recovery_prompt = self._plan_review_gate_recovery_prompt()
+            active_intent = getattr(self.state, "active_intent", None)
+            active_intent_id = str(getattr(active_intent, "intent_id", "") or "").strip()
+            recovery_visibility = {
+                "mode": "next_turn",
+                "intent_scope": "current_intent",
+                "intent_id": active_intent_id,
+                "reason": "missing_plan_review_after_state_change",
+            }
+            status_text = (
+                "Action was not executed.\n"
+                "Reason: plan_review_required_after_state_change.\n"
+                "Next required step: review plan/subgoals and emit <plan_review_done /> before any action."
+            )
+            self.state.pending_loop_stop_info = {
+                "reason": "missing_plan_review_after_state_change",
+                "recoverable": True,
+                "action_proposed_but_not_executed": True,
+                "tool_execution_attempted": False,
+                "status_text": status_text,
+                "recovery_instruction": recovery_prompt,
+                "recovery_visibility": recovery_visibility,
+                "plan_review_required_after_state_change": True,
+                "plan_review_required_reason": str(getattr(self.state, "plan_review_required_reason", "") or ""),
+                "plan_review_required_action_type": str(getattr(self.state, "plan_review_required_action_type", "") or ""),
+                "plan_review_required_target": str(getattr(self.state, "plan_review_required_target", "") or ""),
+                "plan_review_required_action_effects": list(
+                    getattr(self.state, "plan_review_required_action_effects", []) or []
+                ),
+            }
             self.stage_logger.log(
                 "response_pipeline",
                 "continue",
                 reason="missing_plan_review_after_state_change",
                 source="plan_review_gate",
                 action_count=parsed_action_count,
+                action_proposed_but_not_executed=True,
+                tool_execution_attempted=False,
+                status_text=status_text,
+                recovery_visibility=recovery_visibility,
                 plan_review_required_after_state_change=True,
                 plan_review_required_reason=str(getattr(self.state, "plan_review_required_reason", "") or ""),
                 plan_review_required_action_type=str(getattr(self.state, "plan_review_required_action_type", "") or ""),
@@ -1588,7 +1622,7 @@ class ResponsePipelineStagesMixin:
                 ),
             )
             return ResponsePipelineOutcome.continue_with(
-                self._plan_review_gate_recovery_prompt(),
+                recovery_prompt,
                 response_text=response,
                 segments=segments,
                 parsed_output=parsed_output,
