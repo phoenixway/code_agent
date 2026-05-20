@@ -221,3 +221,167 @@ def test_p43_execution_commit_partial_failure_records_aggregate_stop_not_per_act
     # structured per-action failure vector.
     assert not hasattr(commit, "per_action_telemetry")
     assert not hasattr(commit, "failed_action_index")
+
+
+def _pipeline_state():
+    return SimpleNamespace(
+        operational_journal=[],
+        operational_journal_sequence=0,
+        orchestration_trace=[],
+        orchestration_trace_sequence=0,
+    )
+
+
+def _batch_execution_plan():
+    return ExecutionPlan(
+        shape="READ_ONLY_BATCH_CANDIDATE",
+        transaction_kind="atomic_intent_action_bundle",
+        action_effects=[
+            "read_file:app/src/main/AndroidManifest.xml",
+            "read_file:app/src/main/java/MainActivity.kt",
+            "search_content:.",
+        ],
+        bundle_validated=True,
+        transition_applied=True,
+        action_dispatched=False,
+        before_active_intent_id="intent_before",
+        after_active_intent_id="intent_after",
+    )
+
+
+def _pipeline_with_state(state):
+    return DispatchPipeline(
+        agent=SimpleNamespace(ui=SimpleNamespace(), state=state, log=None),
+        dispatch_outcome=SimpleNamespace(),
+    )
+
+
+def _observe_commit(state, execution_plan, processed, sys_results, should_stop):
+    from modules.agent.orchestration.runtime.execution_commit_observer import ExecutionCommitObserverAdapter
+
+    pipeline = _pipeline_with_state(state)
+    commit = pipeline._build_execution_commit(
+        execution_plan,
+        processed,
+        sys_results,
+        should_stop,
+        iteration=SimpleNamespace(),
+    )
+    ExecutionCommitObserverAdapter(state).observe_execution_commit(
+        execution_plan,
+        commit,
+        sys_results=sys_results,
+    )
+    return commit, state.operational_journal[-1]
+
+
+def test_p44_successful_readonly_batch_telemetry_is_aggregate_and_exported():
+    from modules.agent.orchestration.trace_export import OrchestrationTraceExporter
+
+    state = _pipeline_state()
+    execution_plan = _batch_execution_plan()
+    processed = [_action(command) for command in _read_only_actions()]
+    sys_results = [
+        "[BATCH 1/3] SYSTEM RESULT for `read_file`: simulated success for app/src/main/AndroidManifest.xml",
+        "[BATCH 2/3] SYSTEM RESULT for `read_file`: simulated success for app/src/main/java/MainActivity.kt",
+        "[BATCH 3/3] SYSTEM RESULT for `search_content`: simulated success for .",
+    ]
+
+    commit, journal = _observe_commit(state, execution_plan, processed, sys_results, False)
+
+    assert commit.committed_action_count == 3
+    assert commit.committed_system_result_count == 3
+    assert commit.dispatch_stop_requested is False
+
+    assert journal["kind"] == "tool_execution_commit"
+    assert journal["tool_execution_attempted"] is True
+    assert journal["tool_execution_succeeded"] is True
+    assert journal["system_result_recorded"] is True
+    assert journal["state_change_effect_recorded"] is False
+    assert journal["state_change_applied"] is False
+    assert journal["committed_action_count"] == 3
+    assert journal["committed_system_result_count"] == 3
+    assert journal["action_effects"] == execution_plan.action_effects
+
+    # Characterization: only the first batch result is exposed as excerpt.
+    assert journal["system_result_excerpt"].startswith("[BATCH 1/3] SYSTEM RESULT for `read_file`")
+    assert "[BATCH 2/3]" not in journal["system_result_excerpt"]
+
+    diagnostics = OrchestrationTraceExporter().runtime_diagnostics_snapshot(state)
+    artifacts = OrchestrationTraceExporter().runtime_artifacts(state)
+
+    assert diagnostics["last_execution_commit"]["tool_execution_succeeded"] is True
+    assert diagnostics["last_execution_commit"]["committed_action_count"] == 3
+    assert diagnostics["last_execution_commit"]["committed_system_result_count"] == 3
+    assert diagnostics["operational_journal"][-1]["tool_execution_succeeded"] is True
+
+    assert artifacts["last_execution_commit"]["tool_execution_succeeded"] is True
+    assert artifacts["last_execution_commit"]["committed_action_count"] == 3
+    assert artifacts["last_execution_commit"]["committed_system_result_count"] == 3
+    assert artifacts["operational_journal"][-1]["tool_execution_succeeded"] is True
+
+    # Characterization: there is still no structured per-action telemetry vector.
+    assert "per_action_telemetry" not in diagnostics["last_execution_commit"]
+    assert "per_action_telemetry" not in artifacts["last_execution_commit"]
+
+
+def test_p44_partial_failure_readonly_batch_telemetry_is_aggregate_stop_and_exported():
+    from modules.agent.orchestration.trace_export import OrchestrationTraceExporter
+
+    state = _pipeline_state()
+    execution_plan = _batch_execution_plan()
+    processed = [_action(command) for command in _read_only_actions()[:2]]
+    sys_results = [
+        "[BATCH 1/3] SYSTEM RESULT for `read_file`: simulated success for app/src/main/AndroidManifest.xml",
+        "[BATCH 2/3] SYSTEM RESULT for `read_file`: NOT_FOUND app/src/main/java/MainActivity.kt",
+        "SYSTEM RESULT for `read_file`: Batch aborted after action 2/3 due to stop condition.",
+    ]
+
+    commit, journal = _observe_commit(state, execution_plan, processed, sys_results, True)
+
+    assert commit.committed_action_count == 2
+    assert commit.committed_system_result_count == 3
+    assert commit.dispatch_stop_requested is True
+
+    assert journal["kind"] == "tool_execution_commit"
+    assert journal["tool_execution_attempted"] is True
+    # Characterization gap: partial read-only batch failure is currently
+    # misclassified as success because telemetry follows the primary
+    # read_file target and ignores later batch failure/abort results.
+    assert journal["tool_execution_succeeded"] is True
+    assert journal["system_result_recorded"] is True
+    assert journal["dispatch_stop_requested"] is True
+    assert journal["committed_action_count"] == 2
+    assert journal["committed_system_result_count"] == 3
+    assert journal["action_effects"] == execution_plan.action_effects
+
+    # Characterization: excerpt still shows only first result, so the NOT_FOUND
+    # and abort note are not visible in system_result_excerpt.
+    assert journal["system_result_excerpt"].startswith("[BATCH 1/3] SYSTEM RESULT for `read_file`")
+    assert "NOT_FOUND" not in journal["system_result_excerpt"]
+    assert "Batch aborted" not in journal["system_result_excerpt"]
+
+    diagnostics = OrchestrationTraceExporter().runtime_diagnostics_snapshot(state)
+    artifacts = OrchestrationTraceExporter().runtime_artifacts(state)
+
+    # Characterization gap: exported last_execution_commit mirrors the
+    # aggregate journal misclassification.
+    assert diagnostics["last_execution_commit"]["tool_execution_succeeded"] is True
+    assert diagnostics["last_execution_commit"]["committed_action_count"] == 2
+    assert diagnostics["last_execution_commit"]["committed_system_result_count"] == 3
+    assert diagnostics["last_execution_commit"]["dispatch_stop_requested"] is True
+    assert diagnostics["operational_journal"][-1]["tool_execution_succeeded"] is True
+
+    # Characterization gap: runtime_artifacts mirrors the same aggregate
+    # success value despite dispatch_stop_requested=True.
+    assert artifacts["last_execution_commit"]["tool_execution_succeeded"] is True
+    assert artifacts["last_execution_commit"]["committed_action_count"] == 2
+    assert artifacts["last_execution_commit"]["committed_system_result_count"] == 3
+    assert artifacts["last_execution_commit"]["dispatch_stop_requested"] is True
+    assert artifacts["operational_journal"][-1]["tool_execution_succeeded"] is True
+
+    # Characterization: partial failure is not represented as a structured vector.
+    assert "per_action_telemetry" not in diagnostics["last_execution_commit"]
+    assert "failed_action_index" not in diagnostics["last_execution_commit"]
+    assert "per_action_telemetry" not in artifacts["last_execution_commit"]
+    assert "failed_action_index" not in artifacts["last_execution_commit"]
