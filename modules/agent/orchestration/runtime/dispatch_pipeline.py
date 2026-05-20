@@ -227,6 +227,113 @@ class DispatchPipeline:
             dispatch_stop_requested=bool(should_stop),
         )
 
+    @staticmethod
+    def _parse_action_effect(effect: str) -> tuple[str, str]:
+        text = str(effect or "").strip()
+        if ":" not in text:
+            return text, ""
+        action_type, target = text.split(":", 1)
+        return action_type.strip(), target.strip()
+
+    @staticmethod
+    def _batch_result_for_index(sys_results, index: int) -> str:
+        prefix = f"[BATCH {index}/"
+        for result in sys_results or []:
+            text = str(result or "")
+            if text.startswith(prefix):
+                return text
+        return ""
+
+    @staticmethod
+    def _batch_result_succeeded(result_text: str) -> bool | None:
+        if not result_text:
+            return None
+        lowered = result_text.lower()
+        failure_markers = (
+            "not_found",
+            "validation_error",
+            "malformed_",
+            "command_timeout",
+            "transient_io",
+            "internal",
+            "action failed",
+            "command blocked",
+            "execution failed",
+            "status=failed",
+            "'status': 'failed'",
+            '"status": "failed"',
+        )
+        if any(marker in lowered for marker in failure_markers):
+            return False
+        return True
+
+    @staticmethod
+    def _batch_failure_kind(result_text: str) -> str:
+        lowered = str(result_text or "").lower()
+        if "not_found" in lowered:
+            return "NOT_FOUND"
+        if "validation_error" in lowered:
+            return "VALIDATION_ERROR"
+        if "malformed_" in lowered:
+            return "MALFORMED"
+        if "command_timeout" in lowered or "timeout" in lowered:
+            return "COMMAND_TIMEOUT"
+        if "transient_io" in lowered:
+            return "TRANSIENT_IO"
+        if "internal" in lowered:
+            return "INTERNAL"
+        if "command blocked" in lowered:
+            return "COMMAND_BLOCKED"
+        if "action failed" in lowered or "execution failed" in lowered or "status=failed" in lowered:
+            return "FAILED"
+        return ""
+
+    def _build_readonly_batch_telemetry(self, execution_plan, committed_actions: int, sys_results, should_stop: bool) -> dict:
+        if str(getattr(execution_plan, "shape", "") or "") != "READ_ONLY_BATCH_CANDIDATE":
+            return {}
+
+        action_effects = list(getattr(execution_plan, "action_effects", []) or [])
+        if not action_effects:
+            return {}
+
+        batch_result_count = sum(1 for result in (sys_results or []) if str(result or "").startswith("[BATCH "))
+        executed_count = max(int(committed_actions or 0), batch_result_count)
+        batch_aborted = any("Batch aborted after action" in str(result or "") for result in (sys_results or []))
+
+        per_action = []
+        failed_action_index = None
+
+        for index, effect in enumerate(action_effects, start=1):
+            action_type, target = self._parse_action_effect(effect)
+            attempted = index <= executed_count
+            result_text = self._batch_result_for_index(sys_results, index) if attempted else ""
+            succeeded = self._batch_result_succeeded(result_text) if attempted else None
+            stop_requested = bool(attempted and succeeded is False)
+
+            item = {
+                "index": index,
+                "action_type": action_type,
+                "target": target,
+                "attempted": attempted,
+                "succeeded": succeeded,
+                "stop_requested": stop_requested,
+            }
+            if result_text:
+                item["system_result_excerpt"] = result_text[:240]
+            if succeeded is False:
+                item["failure_kind"] = self._batch_failure_kind(result_text)
+                if failed_action_index is None:
+                    failed_action_index = index
+            per_action.append(item)
+
+        return {
+            "per_action_telemetry": per_action,
+            "failed_action_index": failed_action_index,
+            "batch_aborted": batch_aborted,
+            "batch_telemetry_source": "compiler_ir",
+            "committed_action_count": executed_count,
+        }
+
     def _build_execution_commit(self, execution_plan, processed_segs, sys_results, should_stop: bool, *, iteration=None):
         if execution_plan is None:
             return self._build_fallback_execution_commit(iteration, processed_segs, sys_results, should_stop)
@@ -237,6 +344,15 @@ class DispatchPipeline:
                 continue
             if isinstance(getattr(seg, "content", None), dict):
                 committed_actions += 1
+
+        batch_telemetry = self._build_readonly_batch_telemetry(
+            execution_plan,
+            committed_actions,
+            sys_results,
+            should_stop,
+        )
+        if batch_telemetry:
+            committed_actions = int(batch_telemetry.get("committed_action_count", committed_actions) or 0)
 
         return ExecutionCommit(
             shape=execution_plan.shape,
@@ -253,6 +369,10 @@ class DispatchPipeline:
             committed_action_count=committed_actions,
             committed_system_result_count=len(sys_results or []),
             dispatch_stop_requested=bool(should_stop),
+            per_action_telemetry=list(batch_telemetry.get("per_action_telemetry", []) or []),
+            failed_action_index=batch_telemetry.get("failed_action_index"),
+            batch_aborted=bool(batch_telemetry.get("batch_aborted", False)),
+            batch_telemetry_source=str(batch_telemetry.get("batch_telemetry_source", "") or ""),
         )
 
     async def run_iteration(self, ctx, iteration):

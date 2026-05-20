@@ -214,7 +214,17 @@ class ExecutionCommitObserverAdapter:
         committed_system_result_count = int(getattr(execution_commit, "committed_system_result_count", 0) or 0)
         bundle_validated = bool(getattr(execution_commit, "bundle_validated", False))
         system_result_recorded = bool(committed_system_result_count > 0 or sys_results)
+
         successful_system_result = self.commit_has_successful_system_result(execution_commit, sys_results=sys_results)
+        per_action_telemetry = list(getattr(execution_commit, "per_action_telemetry", []) or [])
+        if per_action_telemetry:
+            attempted_items = [item for item in per_action_telemetry if item.get("attempted")]
+            successful_system_result = bool(attempted_items) and all(
+                item.get("succeeded") is True for item in attempted_items
+            )
+            if bool(getattr(execution_commit, "batch_aborted", False)) or getattr(execution_commit, "failed_action_index", None):
+                successful_system_result = False
+
         state_change_effect_recorded = str(action_type or "").strip().lower() in STATE_CHANGING_FILE_ACTIONS
 
         tool_execution_succeeded = None
@@ -260,6 +270,10 @@ class ExecutionCommitObserverAdapter:
             "before_active_intent_id": str(getattr(execution_commit, "before_active_intent_id", "") or ""),
             "after_active_intent_id": str(getattr(execution_commit, "after_active_intent_id", "") or ""),
             "system_result_excerpt": str((sys_results or [""])[0] or "")[:240] if sys_results else "",
+            "per_action_telemetry": list(getattr(execution_commit, "per_action_telemetry", []) or []),
+            "failed_action_index": getattr(execution_commit, "failed_action_index", None),
+            "batch_aborted": bool(getattr(execution_commit, "batch_aborted", False)),
+            "batch_telemetry_source": str(getattr(execution_commit, "batch_telemetry_source", "") or ""),
         }
 
     def _safe_set(self, name: str, value) -> None:

@@ -61,6 +61,10 @@ class OrchestrationTraceExporter:
                 "system_result_recorded",
                 "state_change_effect_recorded",
                 "state_change_applied",
+                "per_action_telemetry",
+                "failed_action_index",
+                "batch_aborted",
+                "batch_telemetry_source",
             )
             for key in telemetry_keys:
                 if key in latest_commit_entry:

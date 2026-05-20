@@ -170,11 +170,10 @@ def test_p43_execution_commit_characterizes_batch_as_commit_count_plus_plan_effe
     assert commit.dispatch_stop_requested is False
     assert commit.action_effects == execution_plan.action_effects
 
-    # Characterization: ExecutionCommit has aggregate counts/effects, not
-    # per-action telemetry records. Per-action result detail currently lives only
-    # in sys_results text.
-    assert not hasattr(commit, "per_action_telemetry")
-    assert not hasattr(commit, "system_results")
+    assert commit.per_action_telemetry
+    assert commit.batch_telemetry_source == "compiler_ir"
+    assert commit.failed_action_index is None
+    assert commit.batch_aborted is False
 
 
 def test_p43_execution_commit_partial_failure_records_aggregate_stop_not_per_action_failure_shape():
@@ -217,10 +216,10 @@ def test_p43_execution_commit_partial_failure_records_aggregate_stop_not_per_act
     assert commit.dispatch_stop_requested is True
     assert commit.action_effects == execution_plan.action_effects
 
-    # Characterization: partial failure is aggregate stop metadata, not a
-    # structured per-action failure vector.
-    assert not hasattr(commit, "per_action_telemetry")
-    assert not hasattr(commit, "failed_action_index")
+    assert commit.per_action_telemetry
+    assert commit.batch_telemetry_source == "compiler_ir"
+    assert commit.failed_action_index == 2
+    assert commit.batch_aborted is False
 
 
 def _pipeline_state():
@@ -320,9 +319,10 @@ def test_p44_successful_readonly_batch_telemetry_is_aggregate_and_exported():
     assert artifacts["last_execution_commit"]["committed_system_result_count"] == 3
     assert artifacts["operational_journal"][-1]["tool_execution_succeeded"] is True
 
-    # Characterization: there is still no structured per-action telemetry vector.
-    assert "per_action_telemetry" not in diagnostics["last_execution_commit"]
-    assert "per_action_telemetry" not in artifacts["last_execution_commit"]
+    assert len(diagnostics["last_execution_commit"]["per_action_telemetry"]) == 3
+    assert diagnostics["last_execution_commit"]["batch_telemetry_source"] == "compiler_ir"
+    assert len(artifacts["last_execution_commit"]["per_action_telemetry"]) == 3
+    assert artifacts["last_execution_commit"]["batch_telemetry_source"] == "compiler_ir"
 
 
 def test_p44_partial_failure_readonly_batch_telemetry_is_aggregate_stop_and_exported():
@@ -345,10 +345,7 @@ def test_p44_partial_failure_readonly_batch_telemetry_is_aggregate_stop_and_expo
 
     assert journal["kind"] == "tool_execution_commit"
     assert journal["tool_execution_attempted"] is True
-    # Characterization gap: partial read-only batch failure is currently
-    # misclassified as success because telemetry follows the primary
-    # read_file target and ignores later batch failure/abort results.
-    assert journal["tool_execution_succeeded"] is True
+    assert journal["tool_execution_succeeded"] is False
     assert journal["system_result_recorded"] is True
     assert journal["dispatch_stop_requested"] is True
     assert journal["committed_action_count"] == 2
@@ -364,31 +361,29 @@ def test_p44_partial_failure_readonly_batch_telemetry_is_aggregate_stop_and_expo
     diagnostics = OrchestrationTraceExporter().runtime_diagnostics_snapshot(state)
     artifacts = OrchestrationTraceExporter().runtime_artifacts(state)
 
-    # Characterization gap: exported last_execution_commit mirrors the
-    # aggregate journal misclassification.
-    assert diagnostics["last_execution_commit"]["tool_execution_succeeded"] is True
+    assert diagnostics["last_execution_commit"]["tool_execution_succeeded"] is False
     assert diagnostics["last_execution_commit"]["committed_action_count"] == 2
     assert diagnostics["last_execution_commit"]["committed_system_result_count"] == 3
     assert diagnostics["last_execution_commit"]["dispatch_stop_requested"] is True
-    assert diagnostics["operational_journal"][-1]["tool_execution_succeeded"] is True
+    assert diagnostics["operational_journal"][-1]["tool_execution_succeeded"] is False
 
-    # Characterization gap: runtime_artifacts mirrors the same aggregate
-    # success value despite dispatch_stop_requested=True.
-    assert artifacts["last_execution_commit"]["tool_execution_succeeded"] is True
+    assert artifacts["last_execution_commit"]["tool_execution_succeeded"] is False
     assert artifacts["last_execution_commit"]["committed_action_count"] == 2
     assert artifacts["last_execution_commit"]["committed_system_result_count"] == 3
     assert artifacts["last_execution_commit"]["dispatch_stop_requested"] is True
-    assert artifacts["operational_journal"][-1]["tool_execution_succeeded"] is True
+    assert artifacts["operational_journal"][-1]["tool_execution_succeeded"] is False
 
-    # Characterization: partial failure is not represented as a structured vector.
-    assert "per_action_telemetry" not in diagnostics["last_execution_commit"]
-    assert "failed_action_index" not in diagnostics["last_execution_commit"]
-    assert "per_action_telemetry" not in artifacts["last_execution_commit"]
-    assert "failed_action_index" not in artifacts["last_execution_commit"]
+    assert len(diagnostics["last_execution_commit"]["per_action_telemetry"]) == 3
+    assert diagnostics["last_execution_commit"]["failed_action_index"] == 2
+    assert diagnostics["last_execution_commit"]["batch_aborted"] is True
+    assert diagnostics["last_execution_commit"]["batch_telemetry_source"] == "compiler_ir"
+    assert len(artifacts["last_execution_commit"]["per_action_telemetry"]) == 3
+    assert artifacts["last_execution_commit"]["failed_action_index"] == 2
+    assert artifacts["last_execution_commit"]["batch_aborted"] is True
+    assert artifacts["last_execution_commit"]["batch_telemetry_source"] == "compiler_ir"
 
 
-@pytest.mark.xfail(strict=True, reason="P4.5 desired: batch telemetry should be compiler/IR-aware")
-def test_p45_desired_successful_readonly_batch_exports_per_action_telemetry_from_ir():
+def test_p45_successful_readonly_batch_exports_per_action_telemetry_from_ir():
     from modules.agent.orchestration.trace_export import OrchestrationTraceExporter
 
     state = _pipeline_state()
@@ -408,7 +403,17 @@ def test_p45_desired_successful_readonly_batch_exports_per_action_telemetry_from
     per_action = last_commit["per_action_telemetry"]
 
     assert len(per_action) == 3
-    assert per_action == [
+    assert [
+        {
+            "index": item["index"],
+            "action_type": item["action_type"],
+            "target": item["target"],
+            "attempted": item["attempted"],
+            "succeeded": item["succeeded"],
+            "stop_requested": item["stop_requested"],
+        }
+        for item in per_action
+    ] == [
         {
             "index": 1,
             "action_type": "read_file",
@@ -434,12 +439,12 @@ def test_p45_desired_successful_readonly_batch_exports_per_action_telemetry_from
             "stop_requested": False,
         },
     ]
+    assert all("system_result_excerpt" in item for item in per_action)
     assert last_commit["tool_execution_succeeded"] is True
     assert last_commit["batch_telemetry_source"] == "compiler_ir"
 
 
-@pytest.mark.xfail(strict=True, reason="P4.5 desired: partial batch failure should not be aggregate success")
-def test_p45_desired_partial_failure_readonly_batch_exports_failed_action_and_false_aggregate_success():
+def test_p45_partial_failure_readonly_batch_exports_failed_action_and_false_aggregate_success():
     from modules.agent.orchestration.trace_export import OrchestrationTraceExporter
 
     state = _pipeline_state()

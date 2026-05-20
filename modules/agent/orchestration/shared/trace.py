@@ -96,7 +96,7 @@ def compact_execution_commit_telemetry(execution_commit) -> dict:
 def compact_execution_commit(execution_commit) -> dict | None:
     if execution_commit is None:
         return None
-    return {
+    result = {
         "shape": getattr(execution_commit, "shape", ""),
         "transaction_kind": getattr(execution_commit, "transaction_kind", ""),
         "bundle_validated": getattr(execution_commit, "bundle_validated", False),
@@ -110,6 +110,13 @@ def compact_execution_commit(execution_commit) -> dict | None:
         "dispatch_stop_requested": getattr(execution_commit, "dispatch_stop_requested", False),
         "action_effects": list(getattr(execution_commit, "action_effects", []) or []),
     }
+    per_action = list(getattr(execution_commit, "per_action_telemetry", []) or [])
+    if per_action:
+        result["per_action_telemetry"] = per_action
+        result["failed_action_index"] = getattr(execution_commit, "failed_action_index", None)
+        result["batch_aborted"] = bool(getattr(execution_commit, "batch_aborted", False))
+        result["batch_telemetry_source"] = str(getattr(execution_commit, "batch_telemetry_source", "") or "")
+    return result
 
 
 def compact_compiler_replay(compiler_analysis) -> dict:

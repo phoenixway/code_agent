@@ -85,6 +85,10 @@ class ExecutionCommit:
     committed_action_count: int = 0
     committed_system_result_count: int = 0
     dispatch_stop_requested: bool = False
+    per_action_telemetry: list[dict] = field(default_factory=list)
+    failed_action_index: int | None = None
+    batch_aborted: bool = False
+    batch_telemetry_source: str = ""
 
 
 @dataclass
