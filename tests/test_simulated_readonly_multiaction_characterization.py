@@ -485,3 +485,77 @@ def test_p45_partial_failure_readonly_batch_exports_failed_action_and_false_aggr
     assert per_action[2]["attempted"] is False
     assert per_action[2]["succeeded"] is None
     assert per_action[2]["stop_requested"] is False
+
+
+def test_p47_post_dispatch_stage_log_can_surface_successful_batch_per_action_telemetry():
+    from modules.agent.orchestration.shared.trace import compact_execution_commit
+
+    state = _pipeline_state()
+    execution_plan = _batch_execution_plan()
+    processed = [_action(command) for command in _read_only_actions()]
+    sys_results = [
+        "[BATCH 1/3] SYSTEM RESULT for `read_file`: simulated success for app/src/main/AndroidManifest.xml",
+        "[BATCH 2/3] SYSTEM RESULT for `read_file`: simulated success for app/src/main/java/MainActivity.kt",
+        "[BATCH 3/3] SYSTEM RESULT for `search_content`: simulated success for .",
+    ]
+
+    commit, journal = _observe_commit(state, execution_plan, processed, sys_results, False)
+    stage_log_commit = compact_execution_commit(commit)
+
+    assert stage_log_commit["shape"] == "READ_ONLY_BATCH_CANDIDATE"
+    assert stage_log_commit["tool_execution_succeeded"] is None
+    assert stage_log_commit["committed_action_count"] == 3
+    assert stage_log_commit["committed_system_result_count"] == 3
+    assert stage_log_commit["dispatch_stop_requested"] is False
+
+    assert stage_log_commit["batch_telemetry_source"] == "compiler_ir"
+    assert stage_log_commit["failed_action_index"] is None
+    assert stage_log_commit["batch_aborted"] is False
+    assert len(stage_log_commit["per_action_telemetry"]) == 3
+
+    # compact_execution_commit is raw commit serialization for stage-log payloads.
+    # The observer/journal carries classified aggregate success.
+    assert journal["tool_execution_succeeded"] is True
+
+
+def test_p47_post_dispatch_stage_log_can_surface_partial_failure_batch_per_action_telemetry():
+    from modules.agent.orchestration.shared.trace import compact_execution_commit
+
+    state = _pipeline_state()
+    execution_plan = _batch_execution_plan()
+    processed = [_action(command) for command in _read_only_actions()[:2]]
+    sys_results = [
+        "[BATCH 1/3] SYSTEM RESULT for `read_file`: simulated success for app/src/main/AndroidManifest.xml",
+        "[BATCH 2/3] SYSTEM RESULT for `read_file`: NOT_FOUND app/src/main/java/MainActivity.kt",
+        "SYSTEM RESULT for `read_file`: Batch aborted after action 2/3 due to stop condition.",
+    ]
+
+    commit, journal = _observe_commit(state, execution_plan, processed, sys_results, True)
+    stage_log_commit = compact_execution_commit(commit)
+
+    assert stage_log_commit["shape"] == "READ_ONLY_BATCH_CANDIDATE"
+    assert stage_log_commit["tool_execution_succeeded"] is None
+    assert stage_log_commit["committed_action_count"] == 2
+    assert stage_log_commit["committed_system_result_count"] == 3
+    assert stage_log_commit["dispatch_stop_requested"] is True
+
+    assert stage_log_commit["batch_telemetry_source"] == "compiler_ir"
+    assert stage_log_commit["failed_action_index"] == 2
+    assert stage_log_commit["batch_aborted"] is True
+    assert len(stage_log_commit["per_action_telemetry"]) == 3
+
+    failed = stage_log_commit["per_action_telemetry"][1]
+    assert failed["index"] == 2
+    assert failed["action_type"] == "read_file"
+    assert failed["attempted"] is True
+    assert failed["succeeded"] is False
+    assert failed["stop_requested"] is True
+    assert failed["failure_kind"] == "NOT_FOUND"
+
+    skipped = stage_log_commit["per_action_telemetry"][2]
+    assert skipped["action_type"] == "search_content"
+    assert skipped["attempted"] is False
+    assert skipped["succeeded"] is None
+
+    # Observer/journal carries the classified aggregate batch result.
+    assert journal["tool_execution_succeeded"] is False
