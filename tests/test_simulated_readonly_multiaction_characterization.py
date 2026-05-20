@@ -385,3 +385,98 @@ def test_p44_partial_failure_readonly_batch_telemetry_is_aggregate_stop_and_expo
     assert "failed_action_index" not in diagnostics["last_execution_commit"]
     assert "per_action_telemetry" not in artifacts["last_execution_commit"]
     assert "failed_action_index" not in artifacts["last_execution_commit"]
+
+
+@pytest.mark.xfail(strict=True, reason="P4.5 desired: batch telemetry should be compiler/IR-aware")
+def test_p45_desired_successful_readonly_batch_exports_per_action_telemetry_from_ir():
+    from modules.agent.orchestration.trace_export import OrchestrationTraceExporter
+
+    state = _pipeline_state()
+    execution_plan = _batch_execution_plan()
+    processed = [_action(command) for command in _read_only_actions()]
+    sys_results = [
+        "[BATCH 1/3] SYSTEM RESULT for `read_file`: simulated success for app/src/main/AndroidManifest.xml",
+        "[BATCH 2/3] SYSTEM RESULT for `read_file`: simulated success for app/src/main/java/MainActivity.kt",
+        "[BATCH 3/3] SYSTEM RESULT for `search_content`: simulated success for .",
+    ]
+
+    _commit, _journal = _observe_commit(state, execution_plan, processed, sys_results, False)
+
+    diagnostics = OrchestrationTraceExporter().runtime_diagnostics_snapshot(state)
+    last_commit = diagnostics["last_execution_commit"]
+
+    per_action = last_commit["per_action_telemetry"]
+
+    assert len(per_action) == 3
+    assert per_action == [
+        {
+            "index": 1,
+            "action_type": "read_file",
+            "target": "app/src/main/AndroidManifest.xml",
+            "attempted": True,
+            "succeeded": True,
+            "stop_requested": False,
+        },
+        {
+            "index": 2,
+            "action_type": "read_file",
+            "target": "app/src/main/java/MainActivity.kt",
+            "attempted": True,
+            "succeeded": True,
+            "stop_requested": False,
+        },
+        {
+            "index": 3,
+            "action_type": "search_content",
+            "target": ".",
+            "attempted": True,
+            "succeeded": True,
+            "stop_requested": False,
+        },
+    ]
+    assert last_commit["tool_execution_succeeded"] is True
+    assert last_commit["batch_telemetry_source"] == "compiler_ir"
+
+
+@pytest.mark.xfail(strict=True, reason="P4.5 desired: partial batch failure should not be aggregate success")
+def test_p45_desired_partial_failure_readonly_batch_exports_failed_action_and_false_aggregate_success():
+    from modules.agent.orchestration.trace_export import OrchestrationTraceExporter
+
+    state = _pipeline_state()
+    execution_plan = _batch_execution_plan()
+    processed = [_action(command) for command in _read_only_actions()[:2]]
+    sys_results = [
+        "[BATCH 1/3] SYSTEM RESULT for `read_file`: simulated success for app/src/main/AndroidManifest.xml",
+        "[BATCH 2/3] SYSTEM RESULT for `read_file`: NOT_FOUND app/src/main/java/MainActivity.kt",
+        "SYSTEM RESULT for `read_file`: Batch aborted after action 2/3 due to stop condition.",
+    ]
+
+    _commit, _journal = _observe_commit(state, execution_plan, processed, sys_results, True)
+
+    diagnostics = OrchestrationTraceExporter().runtime_diagnostics_snapshot(state)
+    last_commit = diagnostics["last_execution_commit"]
+
+    per_action = last_commit["per_action_telemetry"]
+
+    assert last_commit["tool_execution_succeeded"] is False
+    assert last_commit["dispatch_stop_requested"] is True
+    assert last_commit["failed_action_index"] == 2
+    assert last_commit["batch_aborted"] is True
+    assert last_commit["batch_telemetry_source"] == "compiler_ir"
+
+    assert len(per_action) == 3
+    assert per_action[0]["attempted"] is True
+    assert per_action[0]["succeeded"] is True
+    assert per_action[0]["stop_requested"] is False
+
+    assert per_action[1]["attempted"] is True
+    assert per_action[1]["succeeded"] is False
+    assert per_action[1]["stop_requested"] is True
+    assert per_action[1]["failure_kind"] == "NOT_FOUND"
+
+    # The third planned action exists in compiler/IR but was not executed
+    # because the batch stopped after action 2/3.
+    assert per_action[2]["action_type"] == "search_content"
+    assert per_action[2]["attempted"] is False
+    assert per_action[2]["succeeded"] is None
+    assert per_action[2]["stop_requested"] is False
