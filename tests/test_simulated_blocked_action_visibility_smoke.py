@@ -7,6 +7,7 @@ from modules.agent.orchestration.prompts.recovery_prompt_builder import Recovery
 
 class BlockedActionVisibilityHarness(ResponsePipelineStagesMixin, RecoveryPromptBuilderMixin):
     def __init__(self):
+        self._hard_exhausted = False
         self.state = SimpleNamespace(
             active_intent=SimpleNamespace(intent_id="intent-1"),
             plan_review_required_after_state_change=True,
@@ -16,6 +17,7 @@ class BlockedActionVisibilityHarness(ResponsePipelineStagesMixin, RecoveryPrompt
             plan_review_required_action_effects=["edit_file:src/example.py"],
             pending_loop_stop_info=None,
         )
+        self.state.has_hard_exhausted_active_intent = lambda: self._hard_exhausted
         self.prompt_builder = self
         self.stage_logger = SimpleNamespace(log=MagicMock())
         self.semantics = SimpleNamespace(
@@ -79,3 +81,60 @@ def test_p40_plan_review_done_then_action_still_allowed_by_existing_gate_invaria
     harness.parsed_output.runtime_protocol_semantics.has_plan_review_checkpoint_before_action = True
 
     assert harness._plan_review_gate_should_block(harness.parsed_output, parsed_action_count=1) is False
+
+
+def test_p42_hard_exhausted_action_sets_next_turn_current_intent_recovery_metadata():
+    harness = BlockedActionVisibilityHarness()
+    harness._hard_exhausted = True
+    harness.state.plan_review_required_after_state_change = False
+
+    assert harness._hard_exhausted_gate_should_block(harness.parsed_output, parsed_action_count=1) is True
+
+    recovery = harness._hard_exhausted_gate_recovery_prompt()
+    active_intent_id = harness.state.active_intent.intent_id
+    recovery_visibility = {
+        "mode": "next_turn",
+        "intent_scope": "current_intent",
+        "intent_id": active_intent_id,
+        "reason": "current_intent_hard_exhausted",
+    }
+    status_text = (
+        "Action was not executed.\n"
+        "Reason: current_intent_hard_exhausted.\n"
+        "Next required step: request intent reuse with switch_reason=\"current_intent_exhausted\", complete the intent, or provide a concise handoff/status."
+    )
+    harness.state.pending_loop_stop_info = {
+        "reason": "current_intent_hard_exhausted",
+        "recoverable": True,
+        "action_proposed_but_not_executed": True,
+        "tool_execution_attempted": False,
+        "tool_execution_succeeded": None,
+        "status_text": status_text,
+        "recovery_instruction": recovery,
+        "recovery_visibility": recovery_visibility,
+    }
+
+    assert "Action was not executed" in status_text
+    assert "current_intent_hard_exhausted" in status_text
+    assert "Do not emit any normal <action>" in recovery
+    assert "switch_reason=\"current_intent_exhausted\"" in recovery
+    assert "complete the current intent" in recovery
+    assert "handoff/status" in recovery
+    assert "[EXIT_CONDITION]" in recovery
+    assert harness.state.pending_loop_stop_info["action_proposed_but_not_executed"] is True
+    assert harness.state.pending_loop_stop_info["tool_execution_attempted"] is False
+    assert harness.state.pending_loop_stop_info["tool_execution_succeeded"] is None
+    assert harness.state.pending_loop_stop_info["recovery_visibility"] == {
+        "mode": "next_turn",
+        "intent_scope": "current_intent",
+        "intent_id": "intent-1",
+        "reason": "current_intent_hard_exhausted",
+    }
+
+
+def test_p42_hard_exhausted_gate_does_not_block_when_no_action_is_proposed():
+    harness = BlockedActionVisibilityHarness()
+    harness._hard_exhausted = True
+    harness.semantics.has_any_action_proposal.return_value = False
+
+    assert harness._hard_exhausted_gate_should_block(harness.parsed_output, parsed_action_count=0) is False

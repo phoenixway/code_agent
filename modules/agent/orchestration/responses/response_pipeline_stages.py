@@ -1092,6 +1092,66 @@ class ResponsePipelineStagesMixin:
             return bool(before_action)
         return bool(getattr(runtime_semantics, "has_plan_review_checkpoint", False))
 
+    def _hard_exhausted_gate_should_block(self, parsed_output, parsed_action_count: int) -> bool:
+        checker = getattr(self.state, "has_hard_exhausted_active_intent", None)
+        try:
+            hard_exhausted = bool(checker()) if callable(checker) else False
+        except Exception:
+            hard_exhausted = False
+        if not hard_exhausted:
+            return False
+        return bool(self.semantics.has_any_action_proposal(parsed_output, parsed_action_count))
+
+    def _hard_exhausted_gate_recovery_prompt(self) -> str:
+        builder = getattr(self.prompt_builder, "build_current_intent_hard_exhausted_action_prompt", None)
+        if callable(builder):
+            return builder()
+        return (
+            "SYSTEM: Action was not executed. The current intent hard step budget is exhausted.\n"
+            "Reason: current_intent_hard_exhausted.\n"
+            "Do not emit any normal <action>. Request intent reuse, complete the intent, or provide a concise handoff/status."
+        )
+
+    def _hard_exhausted_gate_should_block(self, parsed_output, parsed_action_count: int) -> bool:
+        checker = getattr(self.state, "has_hard_exhausted_active_intent", None)
+        try:
+            hard_exhausted = bool(checker()) if callable(checker) else False
+        except Exception:
+            hard_exhausted = False
+        if not hard_exhausted:
+            return False
+        return bool(self.semantics.has_any_action_proposal(parsed_output, parsed_action_count))
+
+    def _hard_exhausted_gate_recovery_prompt(self) -> str:
+        builder = getattr(self.prompt_builder, "build_current_intent_hard_exhausted_action_prompt", None)
+        if callable(builder):
+            return builder()
+        return (
+            "SYSTEM: Action was not executed. The current intent hard step budget is exhausted.\n"
+            "Reason: current_intent_hard_exhausted.\n"
+            "Do not emit any normal <action>. Request intent reuse, complete the intent, or provide a concise handoff/status."
+        )
+
+    def _hard_exhausted_gate_should_block(self, parsed_output, parsed_action_count: int) -> bool:
+        checker = getattr(self.state, "has_hard_exhausted_active_intent", None)
+        try:
+            hard_exhausted = bool(checker()) if callable(checker) else False
+        except Exception:
+            hard_exhausted = False
+        if not hard_exhausted:
+            return False
+        return bool(self.semantics.has_any_action_proposal(parsed_output, parsed_action_count))
+
+    def _hard_exhausted_gate_recovery_prompt(self) -> str:
+        builder = getattr(self.prompt_builder, "build_current_intent_hard_exhausted_action_prompt", None)
+        if callable(builder):
+            return builder()
+        return (
+            "SYSTEM: Action was not executed. The current intent hard step budget is exhausted.\n"
+            "Reason: current_intent_hard_exhausted.\n"
+            "Do not emit any normal <action>. Request intent reuse, complete the intent, or provide a concise handoff/status."
+        )
+
     def _plan_review_gate_should_block(self, parsed_output, parsed_action_count: int) -> bool:
         if not bool(getattr(self.state, "plan_review_required_after_state_change", False)):
             return False
@@ -1571,6 +1631,55 @@ class ResponsePipelineStagesMixin:
                     reason=parsed_output.invalid_kind,
                     source="structural_invalid_guard",
                 )
+
+        if self._hard_exhausted_gate_should_block(parsed_output, parsed_action_count):
+            recovery_prompt = self._hard_exhausted_gate_recovery_prompt()
+            active_intent = getattr(self.state, "active_intent", None)
+            active_intent_id = str(getattr(active_intent, "intent_id", "") or "").strip()
+            recovery_visibility = {
+                "mode": "next_turn",
+                "intent_scope": "current_intent",
+                "intent_id": active_intent_id,
+                "reason": "current_intent_hard_exhausted",
+            }
+            status_text = (
+                "Action was not executed.\n"
+                "Reason: current_intent_hard_exhausted.\n"
+                "Next required step: request intent reuse with switch_reason=\"current_intent_exhausted\", complete the intent, or provide a concise handoff/status."
+            )
+            self.state.pending_loop_stop_info = {
+                "reason": "current_intent_hard_exhausted",
+                "recoverable": True,
+                "action_proposed_but_not_executed": True,
+                "tool_execution_attempted": False,
+                "tool_execution_succeeded": None,
+                "status_text": status_text,
+                "recovery_instruction": recovery_prompt,
+                "recovery_visibility": recovery_visibility,
+            }
+            self.stage_logger.log(
+                "response_pipeline",
+                "continue",
+                reason="current_intent_hard_exhausted",
+                source="hard_exhausted_gate",
+                action_count=parsed_action_count,
+                action_proposed_but_not_executed=True,
+                tool_execution_attempted=False,
+                tool_execution_succeeded=None,
+                status_text=status_text,
+                recovery_visibility=recovery_visibility,
+            )
+            return ResponsePipelineOutcome.continue_with(
+                recovery_prompt,
+                response_text=response,
+                segments=segments,
+                parsed_output=parsed_output,
+                parsed_action_count=parsed_action_count,
+                malformed_action_retries=0,
+                audit_marker_retries=0,
+                reason="current_intent_hard_exhausted",
+                source="hard_exhausted_gate",
+            )
 
         if self._plan_review_gate_should_block(parsed_output, parsed_action_count):
             recovery_prompt = self._plan_review_gate_recovery_prompt()

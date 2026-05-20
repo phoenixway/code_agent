@@ -582,6 +582,22 @@ class RecoveryPromptBuilderMixin:
             "Do not suppress legitimate verification or a distinct follow-up edit."
         )
 
+    def build_current_intent_hard_exhausted_action_prompt(self) -> str:
+        return (
+            "SYSTEM: Action was not executed. The current intent hard step budget is exhausted, so normal tool actions are forbidden until the intent is continued or closed.\n"
+            "Reason: current_intent_hard_exhausted.\n"
+            "[RECOVERY_SCOPE]\n"
+            "This applies only to the next response while the current intent is hard-exhausted.\n"
+            "[NEXT_STEP_RULE]\n"
+            "Do not emit any normal <action>.\n"
+            "Choose one allowed continuation:\n"
+            "1. request intent reuse with switch_reason=\"current_intent_exhausted\";\n"
+            "2. complete the current intent if the goal is done;\n"
+            "3. provide a concise plain-text handoff/status if user input is needed.\n"
+            "[EXIT_CONDITION]\n"
+            "After the intent is reused, completed, or handed off, normal execution rules resume according to the new state."
+        )
+
     def build_missing_executable_prompt(self, stop_info: dict | None) -> str:
         ctx = self._recovery_context(stop_info)
         return self.build_current_intent_retry_recovery_query(
