@@ -129,7 +129,7 @@ async def test_p43_action_dispatcher_stops_readonly_batch_after_partial_failure(
     )
 
 
-def test_p43_execution_commit_characterizes_batch_as_commit_count_plus_plan_effects_not_per_action_telemetry():
+def test_p46_execution_commit_exports_successful_readonly_batch_per_action_telemetry():
     pipeline = DispatchPipeline(
         agent=SimpleNamespace(ui=SimpleNamespace(), state=SimpleNamespace(), log=None),
         dispatch_outcome=SimpleNamespace(),
@@ -176,7 +176,7 @@ def test_p43_execution_commit_characterizes_batch_as_commit_count_plus_plan_effe
     assert commit.batch_aborted is False
 
 
-def test_p43_execution_commit_partial_failure_records_aggregate_stop_not_per_action_failure_shape():
+def test_p46_execution_commit_exports_partial_failure_readonly_batch_per_action_telemetry():
     pipeline = DispatchPipeline(
         agent=SimpleNamespace(ui=SimpleNamespace(), state=SimpleNamespace(), log=None),
         dispatch_outcome=SimpleNamespace(),
@@ -274,7 +274,7 @@ def _observe_commit(state, execution_plan, processed, sys_results, should_stop):
     return commit, state.operational_journal[-1]
 
 
-def test_p44_successful_readonly_batch_telemetry_is_aggregate_and_exported():
+def test_p46_successful_readonly_batch_telemetry_is_per_action_and_exported():
     from modules.agent.orchestration.trace_export import OrchestrationTraceExporter
 
     state = _pipeline_state()
@@ -302,7 +302,7 @@ def test_p44_successful_readonly_batch_telemetry_is_aggregate_and_exported():
     assert journal["committed_system_result_count"] == 3
     assert journal["action_effects"] == execution_plan.action_effects
 
-    # Characterization: only the first batch result is exposed as excerpt.
+    # Current export surface: top-level system_result_excerpt still shows only the first batch result.
     assert journal["system_result_excerpt"].startswith("[BATCH 1/3] SYSTEM RESULT for `read_file`")
     assert "[BATCH 2/3]" not in journal["system_result_excerpt"]
 
@@ -325,7 +325,7 @@ def test_p44_successful_readonly_batch_telemetry_is_aggregate_and_exported():
     assert artifacts["last_execution_commit"]["batch_telemetry_source"] == "compiler_ir"
 
 
-def test_p44_partial_failure_readonly_batch_telemetry_is_aggregate_stop_and_exported():
+def test_p46_partial_failure_readonly_batch_telemetry_is_per_action_and_exported():
     from modules.agent.orchestration.trace_export import OrchestrationTraceExporter
 
     state = _pipeline_state()
@@ -352,8 +352,8 @@ def test_p44_partial_failure_readonly_batch_telemetry_is_aggregate_stop_and_expo
     assert journal["committed_system_result_count"] == 3
     assert journal["action_effects"] == execution_plan.action_effects
 
-    # Characterization: excerpt still shows only first result, so the NOT_FOUND
-    # and abort note are not visible in system_result_excerpt.
+    # Current export surface: top-level system_result_excerpt still shows only first result,
+    # while per_action_telemetry carries the structured failure detail.
     assert journal["system_result_excerpt"].startswith("[BATCH 1/3] SYSTEM RESULT for `read_file`")
     assert "NOT_FOUND" not in journal["system_result_excerpt"]
     assert "Batch aborted" not in journal["system_result_excerpt"]
