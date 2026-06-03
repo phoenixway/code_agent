@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import asdict, is_dataclass
 
 from .shared.decision_models import ExecutionCommit
@@ -91,6 +92,7 @@ class OrchestrationTraceExporter:
                 failed_sequence=failed_sequence,
                 action_type=action_type,
                 target=target,
+                last_failed_command=last_failed_command,
             )
 
         resolved = bool(has_failure and resolved_by is not None)
@@ -144,7 +146,15 @@ class OrchestrationTraceExporter:
             return None
 
     @classmethod
-    def _same_failure_target(cls, success_entry, *, action_type: str | None, target: str | None) -> bool:
+    def _same_failure_target(
+        cls,
+        success_entry,
+        *,
+        action_type: str | None,
+        target: str | None,
+        failed_entry=None,
+        last_failed_command=None,
+    ) -> bool:
         if not isinstance(success_entry, dict):
             return False
         if action_type and str(success_entry.get("action_type") or "") != str(action_type):
@@ -153,7 +163,49 @@ class OrchestrationTraceExporter:
             success_target = str(success_entry.get("target") or "")
             if success_target and success_target != str(target):
                 return False
+
+        # For symbol extraction, file-level target is not specific enough:
+        # a later success for another symbol in the same file must not resolve
+        # a previous NOT_FOUND for a different symbol/container.
+        if str(action_type or "") in {"extract_symbol", "extract_kotlin_function"}:
+            failed_symbol = cls._first_non_empty(
+                cls._dict_get(failed_entry, "symbol_name"),
+                cls._dict_get(last_failed_command, "symbol_name"),
+            )
+            failed_container = cls._first_non_empty(
+                cls._dict_get(failed_entry, "container_name"),
+                cls._dict_get(last_failed_command, "container_name"),
+            )
+
+            if failed_symbol:
+                success_symbol = cls._first_non_empty(
+                    cls._dict_get(success_entry, "symbol_name"),
+                    cls._extract_symbol_name_from_excerpt(cls._dict_get(success_entry, "system_result_excerpt")),
+                )
+                if not success_symbol or str(success_symbol) != str(failed_symbol):
+                    return False
+
+            if failed_container:
+                success_container = cls._first_non_empty(
+                    cls._dict_get(success_entry, "container_name"),
+                    cls._extract_container_name_from_excerpt(cls._dict_get(success_entry, "system_result_excerpt")),
+                )
+                if success_container and str(success_container) != str(failed_container):
+                    return False
+
         return True
+
+    @staticmethod
+    def _extract_symbol_name_from_excerpt(excerpt) -> str | None:
+        text = str(excerpt or "")
+        match = re.search(r"['\"]([A-Za-z_][A-Za-z0-9_]*)['\"]", text)
+        return match.group(1) if match else None
+
+    @staticmethod
+    def _extract_container_name_from_excerpt(excerpt) -> str | None:
+        text = str(excerpt or "")
+        match = re.search(r"container ['\"]([A-Za-z_][A-Za-z0-9_]*)['\"]", text)
+        return match.group(1) if match else None
 
     @classmethod
     def find_resolving_success_entry(
@@ -164,6 +216,7 @@ class OrchestrationTraceExporter:
         failed_sequence: int | None = None,
         action_type: str | None = None,
         target: str | None = None,
+        last_failed_command=None,
     ) -> dict | None:
         if failed_sequence is None and isinstance(failed_entry, dict):
             failed_sequence = cls._entry_sequence(failed_entry)
@@ -176,7 +229,13 @@ class OrchestrationTraceExporter:
                 continue
             if entry.get("tool_execution_succeeded") is not True:
                 continue
-            if cls._same_failure_target(entry, action_type=action_type, target=target):
+            if cls._same_failure_target(
+                entry,
+                action_type=action_type,
+                target=target,
+                failed_entry=failed_entry,
+                last_failed_command=last_failed_command,
+            ):
                 return dict(entry)
         return None
 

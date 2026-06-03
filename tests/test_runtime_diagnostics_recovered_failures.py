@@ -168,3 +168,125 @@ def test_runtime_diagnostics_has_no_current_blocker_without_failure_state_or_fai
     assert diagnostics["resolved_by_sequence"] is None
     assert diagnostics["current_blocker"] is None
     assert diagnostics["last_unresolved_error_code"] is None
+
+
+def test_runtime_diagnostics_same_file_different_extract_symbol_success_does_not_resolve_failure():
+    journal = [
+        {
+            "sequence": 11,
+            "kind": "tool_execution_commit",
+            "action_type": "extract_symbol",
+            "target": "app/src/main/java/com/example/ContextScreenViewModel.kt",
+            "tool_execution_attempted": True,
+            "tool_execution_succeeded": False,
+            "system_result_recorded": True,
+            "error_code": "NOT_FOUND",
+            "recoverable": True,
+            "symbol_name": "onProjectViewChange",
+            "container_name": "ContextScreenViewModel",
+            "system_result_excerpt": "SYSTEM RESULT for `extract_symbol`: NOT_FOUND onProjectViewChange",
+        },
+        {
+            "sequence": 12,
+            "kind": "tool_execution_commit",
+            "action_type": "extract_symbol",
+            "target": "app/src/main/java/com/example/ContextScreenViewModel.kt",
+            "tool_execution_attempted": True,
+            "tool_execution_succeeded": True,
+            "system_result_recorded": True,
+            "symbol_name": "helper",
+            "container_name": "ContextScreenViewModel",
+            "system_result_excerpt": "SYSTEM RESULT for `extract_symbol`: Extracted Kotlin function 'helper'.",
+        },
+    ]
+
+    state = _state(journal=journal)
+    diagnostics = OrchestrationTraceExporter().runtime_diagnostics_snapshot(state)
+
+    assert diagnostics["last_error_resolved"] is False
+    assert diagnostics["resolved_by_sequence"] is None
+    assert diagnostics["last_unresolved_error_code"] == "NOT_FOUND"
+    assert diagnostics["current_blocker"]["sequence"] == 11
+    assert diagnostics["current_blocker"]["action_type"] == "extract_symbol"
+    assert diagnostics["current_blocker"]["target"] == "app/src/main/java/com/example/ContextScreenViewModel.kt"
+
+
+def test_runtime_diagnostics_same_file_same_extract_symbol_success_resolves_failure():
+    journal = [
+        {
+            "sequence": 11,
+            "kind": "tool_execution_commit",
+            "action_type": "extract_symbol",
+            "target": "app/src/main/java/com/example/ContextScreenViewModel.kt",
+            "tool_execution_attempted": True,
+            "tool_execution_succeeded": False,
+            "system_result_recorded": True,
+            "error_code": "NOT_FOUND",
+            "recoverable": True,
+            "symbol_name": "onProjectViewChange",
+            "symbol_kind": "method",
+            "container_name": "ContextScreenViewModel",
+            "system_result_excerpt": "SYSTEM RESULT for `extract_symbol`: NOT_FOUND onProjectViewChange",
+        },
+        {
+            "sequence": 12,
+            "kind": "tool_execution_commit",
+            "action_type": "extract_symbol",
+            "target": "app/src/main/java/com/example/ContextScreenViewModel.kt",
+            "tool_execution_attempted": True,
+            "tool_execution_succeeded": True,
+            "system_result_recorded": True,
+            "symbol_name": "onProjectViewChange",
+            "symbol_kind": "function",
+            "container_name": "ContextScreenViewModel",
+            "system_result_excerpt": (
+                "SYSTEM RESULT for `extract_symbol`: Extracted Kotlin function "
+                "'onProjectViewChange' at lines 732-737."
+            ),
+        },
+    ]
+
+    state = _state(journal=journal)
+    diagnostics = OrchestrationTraceExporter().runtime_diagnostics_snapshot(state)
+
+    assert diagnostics["last_error_resolved"] is True
+    assert diagnostics["resolved_by_sequence"] == 12
+    assert diagnostics["current_blocker"] is None
+    assert diagnostics["last_unresolved_error_code"] is None
+
+
+def test_runtime_diagnostics_same_symbol_different_container_success_does_not_resolve_failure():
+    journal = [
+        {
+            "sequence": 11,
+            "kind": "tool_execution_commit",
+            "action_type": "extract_symbol",
+            "target": "app/src/main/java/com/example/ContextScreenViewModel.kt",
+            "tool_execution_attempted": True,
+            "tool_execution_succeeded": False,
+            "system_result_recorded": True,
+            "error_code": "NOT_FOUND",
+            "recoverable": True,
+            "symbol_name": "onProjectViewChange",
+            "container_name": "ContextScreenViewModel",
+        },
+        {
+            "sequence": 12,
+            "kind": "tool_execution_commit",
+            "action_type": "extract_symbol",
+            "target": "app/src/main/java/com/example/ContextScreenViewModel.kt",
+            "tool_execution_attempted": True,
+            "tool_execution_succeeded": True,
+            "system_result_recorded": True,
+            "symbol_name": "onProjectViewChange",
+            "container_name": "OtherViewModel",
+        },
+    ]
+
+    state = _state(journal=journal)
+    diagnostics = OrchestrationTraceExporter().runtime_diagnostics_snapshot(state)
+
+    assert diagnostics["last_error_resolved"] is False
+    assert diagnostics["resolved_by_sequence"] is None
+    assert diagnostics["last_unresolved_error_code"] == "NOT_FOUND"
+    assert diagnostics["current_blocker"]["sequence"] == 11
