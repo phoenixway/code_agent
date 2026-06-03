@@ -157,6 +157,15 @@ class TuiUI:
         return text[:limit], hidden
 
     @staticmethod
+    def _with_preview_ellipsis(text: str, hidden: int) -> str:
+        if hidden <= 0:
+            return text
+        stripped = text.rstrip()
+        if not stripped:
+            return "..."
+        return f"{stripped}\n..."
+
+    @staticmethod
     def _assistant_text_should_use_markdown(text: str) -> bool:
         if not isinstance(text, str):
             return False
@@ -692,16 +701,15 @@ class TuiUI:
         output = result.get('output', '')
         status = result.get('status')
         output_preview, hidden = self._truncate_chat_output(output)
+        output_display = self._with_preview_ellipsis(output_preview, hidden)
 
         md_parts = []
         if status == 'success' and after_execution:
             md_parts.append(f"✔ {after_execution.strip()}")
 
         icon_char = '✔' if status == 'success' else '✘'
-        result_box = f"```sh\n{icon_char} run_shell: {shell_command}\n---\n{escape(output_preview.strip())}\n```"
+        result_box = f"```sh\n{icon_char} run_shell: {shell_command}\n---\n{escape(output_display.strip())}\n```"
         md_parts.append(result_box)
-        if hidden > 0:
-            md_parts.append(f"[dim]... output truncated in chat: {hidden} chars hidden.[/dim]")
 
         new_renderable = RichMarkdown("\n\n".join(md_parts))
         widget.update(new_renderable)
@@ -769,16 +777,15 @@ class TuiUI:
     async def print_command_result(self, text: str, truncated: bool = False):
         content_raw = text if text is not None else ""
         content_preview, hidden = self._truncate_chat_output(content_raw)
+        content_display = self._with_preview_ellipsis(content_preview, hidden)
         if hidden > 0:
             truncated = True
 
-        subtitle = " (truncated)" if truncated else ""
+        subtitle = " (preview)" if truncated else ""
         md_lines = [f"**✔ Result**{subtitle}"]
         
-        content = content_preview.strip() if content_preview and content_preview.strip() else "(empty)"
+        content = content_display.strip() if content_display and content_display.strip() else "(empty)"
         md_lines.append(f"```\n{escape(content)}\n```")
-        if hidden > 0:
-            md_lines.append(f"[dim]... output truncated in chat: {hidden} chars hidden.[/dim]")
 
         renderable = RichMarkdown("\n\n".join(md_lines))
         widget = Static(renderable, classes="chat-message tool-result-message", expand=False)
