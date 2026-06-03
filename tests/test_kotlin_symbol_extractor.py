@@ -171,3 +171,147 @@ def test_extract_symbol_kotlin_object_with_body_returns_full_object(tmp_path):
     assert "object ChecklistActions" in result["file_content"]
     assert "fun run() = Unit" in result["file_content"]
     assert result["file_content"].strip().endswith("}")
+
+
+KOTLIN_MEMBER_DUPLICATE_SAMPLE = """package sample
+
+class ContextScreenViewModel @Inject constructor(
+    private val contextViewActions: ContextViewActions,
+    private val contextSettingsActions: ContextSettingsActions,
+    private val ioDispatcher: CoroutineDispatcher,
+) : ViewModel() {
+    fun onProjectViewChange(mode: ContextViewMode) {
+        val resolved = contextViewActions.applyViewChange(mode)
+        viewModelScope.launch(ioDispatcher) {
+            contextSettingsActions.persistContextViewMode(contextIdFlow.value, resolved)
+        }
+    }
+
+    private fun helper() {
+        println("helper")
+    }
+}
+
+fun onProjectViewChange(mode: ContextViewMode) {
+    println("top level")
+}
+
+class OtherViewModel {
+    fun onProjectViewChange(mode: ContextViewMode) {
+        println("other member")
+    }
+}
+
+enum class ContextViewMode {
+    Dashboard,
+    Backlog
+}
+"""
+
+
+def test_extract_symbol_finds_kotlin_member_function_as_method_with_container(tmp_path):
+    path = tmp_path / "ContextScreenViewModel.kt"
+    path.write_text(KOTLIN_MEMBER_DUPLICATE_SAMPLE, encoding="utf-8")
+
+    result = KotlinSymbolExtractor().extract_symbol(
+        path=str(path),
+        symbol_name="onProjectViewChange",
+        symbol_kind="method",
+        container_name="ContextScreenViewModel",
+        include_signature=True,
+        include_body=True,
+        include_line_range=True,
+    )
+
+    assert result["status"] == "success"
+    assert result["symbol_name"] == "onProjectViewChange"
+    assert result["symbol_kind"] == "method"
+    assert result["container_name"] == "ContextScreenViewModel"
+    assert "fun onProjectViewChange(mode: ContextViewMode)" in result["signature"]
+    assert "val resolved = contextViewActions.applyViewChange(mode)" in result["body"]
+    assert "contextSettingsActions.persistContextViewMode" in result["file_content"]
+    assert 'println("top level")' not in result["file_content"]
+    assert 'println("other member")' not in result["file_content"]
+
+
+def test_extract_symbol_method_container_disambiguates_from_top_level_function(tmp_path):
+    path = tmp_path / "ContextScreenViewModel.kt"
+    path.write_text(KOTLIN_MEMBER_DUPLICATE_SAMPLE, encoding="utf-8")
+
+    result = KotlinSymbolExtractor().extract_symbol(
+        path=str(path),
+        symbol_name="onProjectViewChange",
+        symbol_kind="method",
+        container_name="OtherViewModel",
+        include_signature=True,
+        include_body=True,
+        include_line_range=True,
+    )
+
+    assert result["status"] == "success"
+    assert result["symbol_kind"] == "method"
+    assert result["container_name"] == "OtherViewModel"
+    assert 'println("other member")' in result["file_content"]
+    assert "val resolved = contextViewActions.applyViewChange(mode)" not in result["file_content"]
+    assert 'println("top level")' not in result["file_content"]
+
+
+def test_extract_symbol_method_wrong_container_returns_not_found(tmp_path):
+    path = tmp_path / "ContextScreenViewModel.kt"
+    path.write_text(KOTLIN_MEMBER_DUPLICATE_SAMPLE, encoding="utf-8")
+
+    result = KotlinSymbolExtractor().extract_symbol(
+        path=str(path),
+        symbol_name="onProjectViewChange",
+        symbol_kind="method",
+        container_name="MissingViewModel",
+        include_signature=True,
+        include_body=True,
+        include_line_range=True,
+    )
+
+    assert result["status"] == "error"
+    assert result["error_code"] == "NOT_FOUND"
+    assert "MissingViewModel" in result["output"]
+
+
+def test_extract_symbol_kotlin_member_function_still_extractable_as_function_with_container(tmp_path):
+    path = tmp_path / "ContextScreenViewModel.kt"
+    path.write_text(KOTLIN_MEMBER_DUPLICATE_SAMPLE, encoding="utf-8")
+
+    result = KotlinSymbolExtractor().extract_symbol(
+        path=str(path),
+        symbol_name="onProjectViewChange",
+        symbol_kind="function",
+        container_name="ContextScreenViewModel",
+        include_signature=True,
+        include_body=True,
+        include_line_range=True,
+    )
+
+    assert result["status"] == "success"
+    assert result["symbol_kind"] == "method"
+    assert result["container_name"] == "ContextScreenViewModel"
+    assert "val resolved = contextViewActions.applyViewChange(mode)" in result["file_content"]
+    assert 'println("top level")' not in result["file_content"]
+
+
+def test_extract_symbol_auto_can_find_kotlin_member_function_with_container(tmp_path):
+    path = tmp_path / "ContextScreenViewModel.kt"
+    path.write_text(KOTLIN_MEMBER_DUPLICATE_SAMPLE, encoding="utf-8")
+
+    result = KotlinSymbolExtractor().extract_symbol(
+        path=str(path),
+        symbol_name="onProjectViewChange",
+        symbol_kind="auto",
+        container_name="ContextScreenViewModel",
+        include_signature=True,
+        include_body=True,
+        include_line_range=True,
+    )
+
+    assert result["status"] == "success"
+    assert result["symbol_kind"] == "method"
+    assert result["container_name"] == "ContextScreenViewModel"
+    assert "val resolved = contextViewActions.applyViewChange(mode)" in result["file_content"]
+    assert 'println("top level")' not in result["file_content"]
